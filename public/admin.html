@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>聊天室管理后台</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1200px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .header .subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .login-container {
+            padding: 40px;
+            text-align: center;
+        }
+
+        .login-form {
+            max-width: 400px;
+            margin: 0 auto;
+        }
+
+        .login-form input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #dee2e6;
+            border-radius: 10px;
+            font-size: 16px;
+            margin-bottom: 20px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .login-form input:focus {
+            border-color: #667eea;
+        }
+
+        .login-form button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .login-form button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .admin-panel {
+            display: none;
+            padding: 20px;
+        }
+
+        .admin-panel.active {
+            display: block;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+        }
+
+        .stat-card h3 {
+            font-size: 14px;
+            margin-bottom: 10px;
+            opacity: 0.9;
+        }
+
+        .stat-card .value {
+            font-size: 32px;
+            font-weight: bold;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section h2 {
+            font-size: 20px;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .user-list {
+            background: #f8f9fa;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .user-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            border-bottom: 1px solid #dee2e6;
+            background: white;
+        }
+
+        .user-item:last-child {
+            border-bottom: none;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .user-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .user-name {
+            font-weight: 500;
+        }
+
+        .user-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .btn-kick {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-kick:hover {
+            background: #c82333;
+        }
+
+        .btn-rename {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .btn-rename:hover {
+            background: #e0a800;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .input-group input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .input-group input:focus {
+            border-color: #667eea;
+        }
+
+        .input-group button {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 400px;
+        }
+
+        .modal-content h3 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .modal-content input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 20px;
+            outline: none;
+        }
+
+        .modal-content input:focus {
+            border-color: #667eea;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .modal-buttons button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .btn-cancel {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-confirm {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>聊天室管理后台</h1>
+            <div class="subtitle">管理员控制面板</div>
+        </div>
+
+        <div class="login-container" id="loginContainer">
+            <div class="login-form">
+                <input type="password" id="adminPassword" placeholder="请输入管理员密码">
+                <button onclick="login()">登录</button>
+            </div>
+        </div>
+
+        <div class="admin-panel" id="adminPanel">
+            <div class="stats">
+                <div class="stat-card">
+                    <h3>在线用户</h3>
+                    <div class="value" id="userCount">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>消息总数</h3>
+                    <div class="value" id="messageCount">0</div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>在线用户管理</h2>
+                <div class="user-list" id="userList">
+                    <div style="padding: 20px; text-align: center; color: #999;">暂无在线用户</div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>系统消息</h2>
+                <div class="input-group">
+                    <input type="text" id="systemMessage" placeholder="输入系统消息内容">
+                    <button class="btn btn-primary" onclick="sendSystemMessage()">发送</button>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>消息管理</h2>
+                <button class="btn btn-danger" onclick="clearMessages()">清空所有消息</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="renameModal">
+        <div class="modal-content">
+            <h3>重命名用户</h3>
+            <input type="text" id="newUsername" placeholder="输入新用户名" maxlength="20">
+            <div class="modal-buttons">
+                <button class="btn btn-cancel" onclick="closeRenameModal()">取消</button>
+                <button class="btn btn-confirm" onclick="confirmRename()">确认</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let users = [];
+        let selectedSocketId = null;
+
+        const loginContainer = document.getElementById('loginContainer');
+        const adminPanel = document.getElementById('adminPanel');
+        const adminPassword = document.getElementById('adminPassword');
+        const userList = document.getElementById('userList');
+        const userCount = document.getElementById('userCount');
+        const messageCount = document.getElementById('messageCount');
+        const systemMessage = document.getElementById('systemMessage');
+        const renameModal = document.getElementById('renameModal');
+        const newUsername = document.getElementById('newUsername');
+
+        adminPassword.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                login();
+            }
+        });
+
+        newUsername.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                confirmRename();
+            }
+        });
+
+        systemMessage.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendSystemMessage();
+            }
+        });
+
+        function login() {
+            const password = adminPassword.value;
+            socket.emit('admin-login', password);
+        }
+
+        socket.on('admin-login-success', (success) => {
+            if (success) {
+                loginContainer.classList.add('hidden');
+                adminPanel.classList.add('active');
+            } else {
+                alert('密码错误！');
+                adminPassword.value = '';
+            }
+        });
+
+        socket.on('user-joined', (data) => {
+            users = data.users;
+            updateUserList();
+        });
+
+        socket.on('user-left', (data) => {
+            users = data.users;
+            updateUserList();
+        });
+
+        socket.on('user-renamed', (data) => {
+            users = data.users;
+            updateUserList();
+        });
+
+        function updateUserList() {
+            userCount.textContent = users.length;
+            
+            if (users.length === 0) {
+                userList.innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">暂无在线用户</div>';
+                return;
+            }
+
+            userList.innerHTML = users.map(user => `
+                <div class="user-item">
+                    <div class="user-info">
+                        <div class="user-color" style="background: ${user.color}"></div>
+                        <div class="user-name">${escapeHtml(user.username)}</div>
+                    </div>
+                    <div class="user-actions">
+                        <button class="btn btn-rename" onclick="openRenameModal('${user.socketId}')">重命名</button>
+                        <button class="btn btn-kick" onclick="kickUser('${user.socketId}')">踢出</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function kickUser(socketId) {
+            if (confirm('确定要踢出该用户吗？')) {
+                socket.emit('admin-kick-user', socketId);
+            }
+        }
+
+        function openRenameModal(socketId) {
+            selectedSocketId = socketId;
+            newUsername.value = '';
+            renameModal.classList.add('active');
+            newUsername.focus();
+        }
+
+        function closeRenameModal() {
+            renameModal.classList.remove('active');
+            selectedSocketId = null;
+        }
+
+        function confirmRename() {
+            const newName = newUsername.value.trim();
+            if (newName) {
+                socket.emit('admin-rename-user', {
+                    socketId: selectedSocketId,
+                    newName: newName
+                });
+                closeRenameModal();
+            }
+        }
+
+        function sendSystemMessage() {
+            const message = systemMessage.value.trim();
+            if (message) {
+                socket.emit('admin-system-message', message);
+                systemMessage.value = '';
+            }
+        }
+
+        function clearMessages() {
+            if (confirm('确定要清空所有消息吗？此操作不可恢复！')) {
+                socket.emit('admin-clear-messages');
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>
