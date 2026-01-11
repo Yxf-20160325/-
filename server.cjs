@@ -109,6 +109,21 @@ io.on('connection', (socket) => {
                     allowViewMessages: true,
                     allowCall: true
                 };
+            } else {
+                // 确保所有权限字段都存在，如果不存在则设置默认值
+                const defaultPermissions = {
+                    allowAudio: true,
+                    allowImage: true,
+                    allowFile: true,
+                    allowSendMessages: true,
+                    allowViewMessages: true,
+                    allowCall: true
+                };
+                
+                user.permissions = {
+                    ...defaultPermissions,
+                    ...user.permissions
+                };
             }
             
             // 权限检查
