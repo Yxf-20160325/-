@@ -23,11 +23,14 @@
 
         .container {
             width: 100%;
-            max-width: 1200px;
+            max-width: 1400px;
             background: white;
             border-radius: 20px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
             overflow: hidden;
+            max-height: 95vh;
+            display: flex;
+            flex-direction: column;
         }
 
         .header {
@@ -35,6 +38,7 @@
             color: white;
             padding: 20px;
             text-align: center;
+            flex-shrink: 0;
         }
 
         .header h1 {
@@ -50,11 +54,16 @@
         .login-container {
             padding: 40px;
             text-align: center;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .login-form {
             max-width: 400px;
             margin: 0 auto;
+            width: 100%;
         }
 
         .login-form input {
@@ -92,6 +101,8 @@
         .admin-panel {
             display: none;
             padding: 20px;
+            flex: 1;
+            overflow-y: auto;
         }
 
         .admin-panel.active {
@@ -132,6 +143,9 @@
             font-size: 20px;
             margin-bottom: 15px;
             color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
 
         .user-list {
@@ -218,6 +232,29 @@
 
         .btn-danger:hover {
             background: #c82333;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+
+        .btn-info:hover {
+            background: #138496;
+        }
+
+        .btn-sm {
+            padding: 5px 10px;
+            font-size: 12px;
         }
 
         .input-group {
@@ -318,6 +355,221 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
         }
+
+        .file-list {
+            background: #f8f9fa;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            border-bottom: 1px solid #dee2e6;
+            background: white;
+        }
+
+        .file-item:last-child {
+            border-bottom: none;
+        }
+
+        .file-info {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .file-icon {
+            font-size: 24px;
+        }
+
+        .file-details {
+            flex: 1;
+        }
+
+        .file-name {
+            font-weight: 500;
+            margin-bottom: 5px;
+            word-break: break-all;
+        }
+
+        .file-meta {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .file-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .upload-area {
+            border: 2px dashed #dee2e6;
+            border-radius: 10px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .upload-area:hover {
+            border-color: #667eea;
+            background: #f8f9fa;
+        }
+
+        .upload-area.dragover {
+            border-color: #667eea;
+            background: #e9ecef;
+        }
+
+        .upload-area input {
+            display: none;
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        .upload-text {
+            color: #666;
+        }
+
+        .messages-container {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .message-item {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            border-left: 4px solid #667eea;
+        }
+
+        .message-item.deleted {
+            border-left-color: #dc3545;
+            opacity: 0.7;
+        }
+
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .message-sender {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .message-time {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .message-content {
+            color: #666;
+            word-break: break-word;
+        }
+
+        .message-content img {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+
+        .message-content audio {
+            width: 100%;
+            max-width: 300px;
+            margin-top: 10px;
+        }
+
+        .message-status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+
+        .message-status.active {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .message-status.deleted {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background: #f8f9fa;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                border-radius: 0;
+                max-height: 100vh;
+            }
+
+            .file-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            .file-actions {
+                width: 100%;
+                justify-content: flex-end;
+            }
+        }
     </style>
 </head>
 <body>
@@ -329,8 +581,10 @@
 
         <div class="login-container" id="loginContainer">
             <div class="login-form">
-                <input type="password" id="adminPassword" placeholder="请输入管理员密码">
-                <button onclick="login()">登录</button>
+                <form onsubmit="event.preventDefault(); login();">
+                    <input type="password" id="adminPassword" placeholder="请输入管理员密码">
+                    <button type="submit">登录</button>
+                </form>
             </div>
         </div>
 
@@ -344,26 +598,72 @@
                     <h3>消息总数</h3>
                     <div class="value" id="messageCount">0</div>
                 </div>
-            </div>
-
-            <div class="section">
-                <h2>在线用户管理</h2>
-                <div class="user-list" id="userList">
-                    <div style="padding: 20px; text-align: center; color: #999;">暂无在线用户</div>
+                <div class="stat-card">
+                    <h3>已撤回消息</h3>
+                    <div class="value" id="deletedMessageCount">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>上传文件</h3>
+                    <div class="value" id="fileCount">0</div>
                 </div>
             </div>
 
-            <div class="section">
-                <h2>系统消息</h2>
-                <div class="input-group">
-                    <input type="text" id="systemMessage" placeholder="输入系统消息内容">
-                    <button class="btn btn-primary" onclick="sendSystemMessage()">发送</button>
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('users')">用户管理</button>
+                <button class="tab" onclick="switchTab('files')">文件管理</button>
+                <button class="tab" onclick="switchTab('messages')">消息管理</button>
+            </div>
+
+            <div class="tab-content active" id="usersTab">
+                <div class="section">
+                    <h2>在线用户管理</h2>
+                    <div class="user-list" id="userList">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">👥</div>
+                            <div>暂无在线用户</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>系统消息</h2>
+                    <div class="input-group">
+                        <form onsubmit="event.preventDefault(); sendSystemMessage();">
+                            <input type="text" id="systemMessage" placeholder="输入系统消息内容">
+                            <button type="submit" class="btn btn-primary">发送</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>消息管理</h2>
+                    <button class="btn btn-danger" onclick="clearMessages()">清空所有消息</button>
                 </div>
             </div>
 
-            <div class="section">
-                <h2>消息管理</h2>
-                <button class="btn btn-danger" onclick="clearMessages()">清空所有消息</button>
+            <div class="tab-content" id="filesTab">
+                <div class="section">
+                    <h2>文件管理</h2>
+                    <div class="empty-state">
+                        <div class="empty-state-icon">�</div>
+                        <div>文件上传功能已关闭</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="messagesTab">
+                <div class="section">
+                    <h2>所有消息</h2>
+                    <div class="input-group">
+                        <button class="btn btn-primary" onclick="loadMessages()">刷新消息</button>
+                    </div>
+                    <div class="messages-container" id="messagesContainer">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">💬</div>
+                            <div>暂无消息</div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -371,11 +671,13 @@
     <div class="modal" id="renameModal">
         <div class="modal-content">
             <h3>重命名用户</h3>
-            <input type="text" id="newUsername" placeholder="输入新用户名" maxlength="20">
-            <div class="modal-buttons">
-                <button class="btn btn-cancel" onclick="closeRenameModal()">取消</button>
-                <button class="btn btn-confirm" onclick="confirmRename()">确认</button>
-            </div>
+            <form onsubmit="event.preventDefault(); confirmRename();">
+                <input type="text" id="newUsername" placeholder="输入新用户名" maxlength="20">
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeRenameModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">确认</button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -391,9 +693,11 @@
         const userList = document.getElementById('userList');
         const userCount = document.getElementById('userCount');
         const messageCount = document.getElementById('messageCount');
+        const deletedMessageCount = document.getElementById('deletedMessageCount');
         const systemMessage = document.getElementById('systemMessage');
         const renameModal = document.getElementById('renameModal');
         const newUsername = document.getElementById('newUsername');
+        const messagesContainer = document.getElementById('messagesContainer');
 
         adminPassword.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
@@ -413,6 +717,8 @@
             }
         });
 
+
+
         function login() {
             const password = adminPassword.value;
             socket.emit('admin-login', password);
@@ -422,6 +728,7 @@
             if (success) {
                 loginContainer.classList.add('hidden');
                 adminPanel.classList.add('active');
+                loadMessages();
             } else {
                 alert('密码错误！');
                 adminPassword.value = '';
@@ -443,11 +750,31 @@
             updateUserList();
         });
 
+        socket.on('admin-messages', (data) => {
+            displayMessages(data);
+        });
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(tabName + 'Tab').classList.add('active');
+
+            if (tabName === 'messages') {
+                loadMessages();
+            }
+        }
+
         function updateUserList() {
             userCount.textContent = users.length;
             
             if (users.length === 0) {
-                userList.innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">暂无在线用户</div>';
+                userList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">👥</div>
+                        <div>暂无在线用户</div>
+                    </div>`;
                 return;
             }
 
@@ -506,6 +833,67 @@
             if (confirm('确定要清空所有消息吗？此操作不可恢复！')) {
                 socket.emit('admin-clear-messages');
             }
+        }
+
+        function loadMessages() {
+            socket.emit('admin-get-messages');
+        }
+
+        function displayMessages(data) {
+            messageCount.textContent = data.active.length;
+            deletedMessageCount.textContent = data.deleted.length;
+            
+            const allMessages = [...data.active.map(m => ({ ...m, status: 'active' })), ...data.deleted.map(m => ({ ...m, status: 'deleted' }))];
+            
+            if (allMessages.length === 0) {
+                messagesContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">💬</div>
+                        <div>暂无消息</div>
+                    </div>`;
+                return;
+            }
+
+            messagesContainer.innerHTML = allMessages.map(msg => {
+                let contentHtml = '';
+                if (msg.type === 'image') {
+                    contentHtml = `<img src="${msg.message}" alt="图片">`;
+                } else if (msg.type === 'audio') {
+                    contentHtml = `<audio controls><source src="${msg.message}" type="audio/webm">您的浏览器不支持音频播放</audio>`;
+                } else {
+                    contentHtml = escapeHtml(msg.message);
+                }
+
+                const statusText = msg.status === 'active' ? '正常' : '已撤回';
+                const statusClass = msg.status === 'active' ? 'active' : 'deleted';
+                const recallTime = msg.recallTime ? `<br><small>撤回时间: ${msg.recallTime}</small>` : '';
+
+                return `
+                    <div class="message-item ${msg.status}">
+                        <div class="message-header">
+                            <div>
+                                <span class="message-sender" style="color: ${msg.color}">${escapeHtml(msg.username)}</span>
+                                <span class="message-status ${statusClass}">${statusText}</span>
+                            </div>
+                            <span class="message-time">${msg.timestamp}${recallTime}</span>
+                        </div>
+                        <div class="message-content">${contentHtml}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function formatDate(date) {
+            const d = new Date(date);
+            return d.toLocaleString('zh-CN');
         }
 
         function escapeHtml(text) {
