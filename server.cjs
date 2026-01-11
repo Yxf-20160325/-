@@ -3,7 +3,6 @@ const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
-const multer = require('multer');
 const fs = require('fs');
 
 const app = express();
@@ -15,38 +14,6 @@ app.use(cors({
 }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
-
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-if (!fs.existsSync(path.join(__dirname, 'uploads'))) {
-    fs.mkdirSync(path.join(__dirname, 'uploads'));
-}
-
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, 'uploads/');
-    },
-    filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, uniqueSuffix + path.extname(file.originalname));
-    }
-});
-
-const upload = multer({ storage: storage });
-
-app.post('/upload-image', upload.single('image'), (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ error: '没有上传文件' });
-    }
-    res.json({ imageUrl: `/uploads/${req.file.filename}` });
-});
-
-app.post('/upload-audio', upload.single('audio'), (req, res) => {
-    if (!req.file) {
-        return res.status(400).json({ error: '没有上传文件' });
-    }
-    res.json({ audioUrl: `/uploads/${req.file.filename}` });
-});
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
@@ -64,7 +31,8 @@ const io = new Server(server, {
 });
 
 const users = new Map();
-const messages = [];
+const messages = new Map();
+const deletedMessages = new Map();
 
 io.on('connection', (socket) => {
     console.log(`用户连接: ${socket.id}`);
@@ -88,17 +56,21 @@ io.on('connection', (socket) => {
     socket.on('message', (data) => {
         const user = users.get(socket.id);
         if (user) {
+            const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
             const messageData = {
+                id: messageId,
                 username: user.username,
                 color: user.color,
                 message: data.message,
                 type: data.type || 'text',
-                timestamp: new Date().toLocaleTimeString()
+                timestamp: new Date().toLocaleTimeString(),
+                senderSocketId: socket.id
             };
             
-            messages.push(messageData);
-            if (messages.length > 100) {
-                messages.shift();
+            messages.set(messageId, messageData);
+            if (messages.size > 100) {
+                const firstKey = messages.keys().next().value;
+                messages.delete(firstKey);
             }
             
             io.emit('message', messageData);
@@ -161,9 +133,29 @@ io.on('connection', (socket) => {
 
     socket.on('admin-clear-messages', () => {
         if (socket.id === adminSocketId) {
-            messages.length = 0;
+            messages.clear();
             io.emit('messages-cleared');
             console.log('管理员清空了所有消息');
+        }
+    });
+
+    socket.on('message-recall', (messageId) => {
+        const message = messages.get(messageId);
+        if (message && message.senderSocketId === socket.id) {
+            deletedMessages.set(messageId, { ...message, recalled: true, recallTime: new Date().toLocaleTimeString() });
+            messages.delete(messageId);
+            io.emit('message-recalled', messageId);
+            console.log(`${message.username} 撤回了一条消息`);
+        }
+    });
+
+    socket.on('admin-get-messages', () => {
+        if (socket.id === adminSocketId) {
+            const allMessages = {
+                active: Array.from(messages.values()),
+                deleted: Array.from(deletedMessages.values())
+            };
+            socket.emit('admin-messages', allMessages);
         }
     });
 
