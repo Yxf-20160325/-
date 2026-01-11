@@ -374,6 +374,14 @@
         let mediaRecorder = null;
         let audioChunks = [];
         let isRecording = false;
+        let userPermissions = {
+            allowAudio: true,
+            allowImage: true,
+            allowFile: true,
+            allowSendMessages: true,
+            allowViewMessages: true,
+            allowCall: true
+        };
 
         const messagesDiv = document.getElementById('messages');
         const usersListDiv = document.getElementById('usersList');
@@ -407,6 +415,10 @@
         sendBtn.addEventListener('click', () => {
             const message = messageInput.value.trim();
             if (message) {
+                if (!userPermissions.allowSendMessages) {
+                    alert('您没有发送消息的权限');
+                    return;
+                }
                 socket.emit('message', { message, type: 'text' });
                 messageInput.value = '';
             }
@@ -419,12 +431,21 @@
         });
 
         imageBtn.addEventListener('click', () => {
-            imageInput.click();
+            if (userPermissions.allowImage) {
+                imageInput.click();
+            } else {
+                alert('您没有发送图片的权限');
+            }
         });
 
         imageInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (file) {
+                if (!userPermissions.allowImage) {
+                    alert('您没有发送图片的权限');
+                    imageInput.value = '';
+                    return;
+                }
                 try {
                     const reader = new FileReader();
                     reader.onload = async (event) => {
@@ -453,6 +474,11 @@
         });
 
         audioBtn.addEventListener('click', async () => {
+            if (!userPermissions.allowAudio) {
+                alert('您没有发送语音的权限');
+                return;
+            }
+            
             if (!isRecording) {
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -508,6 +534,26 @@
             addSystemMessage(`${data.username} 加入了聊天室`);
             updateUserList(data.users);
             userCountSpan.textContent = data.userCount;
+            
+            // 更新当前用户的权限
+            if (data.username === username) {
+                const currentUser = data.users.find(u => u.username === username);
+                if (currentUser) {
+                    userPermissions = currentUser.permissions;
+                }
+            }
+        });
+        
+        socket.on('user-permissions-changed', (data) => {
+            // 更新当前用户的权限
+            const currentUser = data.users.find(u => u.socketId === socket.id);
+            if (currentUser) {
+                userPermissions = currentUser.permissions;
+            }
+        });
+
+        socket.on('permission-denied', (data) => {
+            alert(data.message);
         });
 
         socket.on('message', (data) => {
@@ -602,10 +648,16 @@
             users.forEach(user => {
                 const userDiv = document.createElement('div');
                 userDiv.className = 'user-item';
+                
+                // 只有当当前用户和目标用户都有通话权限时才显示通话按钮
+                //const showCallButton = userPermissions.allowCall && user.permissions.allowCall;
+                
                 userDiv.innerHTML = `
                     <div class="user-color" style="background: ${user.color}"></div>
                     <div class="user-name">${escapeHtml(user.username)}</div>
+                    
                 `;
+                
                 usersListDiv.appendChild(userDiv);
             });
         }
