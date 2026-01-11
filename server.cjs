@@ -14,6 +14,41 @@ app.use(cors({
 }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
+app.use(express.raw({ type: ['image/*', 'audio/*'], limit: '10mb' }));
+
+// 确保 uploads 目录存在
+if (!fs.existsSync(path.join(__dirname, 'uploads'))) {
+    fs.mkdirSync(path.join(__dirname, 'uploads'));
+}
+
+// 静态文件服务 - 提供上传的文件
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// 图片上传接口
+app.post('/upload-image', (req, res) => {
+    try {
+        const filename = Date.now() + '-' + Math.round(Math.random() * 1E9) + '.jpg';
+        const filePath = path.join(__dirname, 'uploads', filename);
+        fs.writeFileSync(filePath, req.body);
+        res.json({ imageUrl: `/uploads/${filename}` });
+    } catch (error) {
+        console.error('上传图片失败:', error);
+        res.status(500).json({ error: '上传图片失败' });
+    }
+});
+
+// 音频上传接口
+app.post('/upload-audio', (req, res) => {
+    try {
+        const filename = Date.now() + '-' + Math.round(Math.random() * 1E9) + '.webm';
+        const filePath = path.join(__dirname, 'uploads', filename);
+        fs.writeFileSync(filePath, req.body);
+        res.json({ audioUrl: `/uploads/${filename}` });
+    } catch (error) {
+        console.error('上传音频失败:', error);
+        res.status(500).json({ error: '上传音频失败' });
+    }
+});
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
