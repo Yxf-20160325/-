@@ -202,6 +202,11 @@
             color: white;
         }
 
+        .btn-permissions {
+            background: #28a745;
+            color: white;
+        }
+
         .btn-kick:hover {
             background: #c82333;
         }
@@ -354,6 +359,62 @@
         .btn-confirm {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
+        }
+
+        .permission-item {
+            margin-bottom: 15px;
+            padding: 10px;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            background: #f8f9fa;
+        }
+
+        .permission-item label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-weight: normal;
+        }
+
+        .permission-item input[type="checkbox"] {
+            margin-right: 10px;
+            transform: scale(1.2);
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .input-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 20px;
+            outline: none;
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .input-group textarea:focus {
+            border-color: #667eea;
+        }
+
+        .input-group input[type="color"] {
+            width: 100%;
+            height: 40px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 20px;
         }
 
         .file-list {
@@ -639,6 +700,11 @@
                     <h2>消息管理</h2>
                     <button class="btn btn-danger" onclick="clearMessages()">清空所有消息</button>
                 </div>
+
+                <div class="section">
+                    <h2>伪装发送消息</h2>
+                    <button class="btn btn-primary" onclick="openAdminMessageModal()">伪装发送消息</button>
+                </div>
             </div>
 
             <div class="tab-content" id="filesTab">
@@ -681,6 +747,85 @@
         </div>
     </div>
 
+    <div class="modal" id="permissionsModal">
+        <div class="modal-content">
+            <h3>设置用户权限</h3>
+            <div id="permissionsForm">
+                <div class="permission-item">
+                    <label>
+                        <input type="checkbox" id="allowAudio" checked>
+                        允许发送语音
+                    </label>
+                </div>
+                <div class="permission-item">
+                    <label>
+                        <input type="checkbox" id="allowImage" checked>
+                        允许发送图片
+                    </label>
+                </div>
+                <div class="permission-item">
+                    <label>
+                        <input type="checkbox" id="allowFile" checked>
+                        允许发送文件
+                    </label>
+                </div>
+                <div class="permission-item">
+                    <label>
+                        <input type="checkbox" id="allowSendMessages" checked>
+                        允许发送消息
+                    </label>
+                </div>
+                <div class="permission-item">
+                    <label>
+                        <input type="checkbox" id="allowViewMessages" checked>
+                        允许查看消息
+                    </label>
+                </div>
+                <div class="permission-item">
+                    <label>
+                        <input type="checkbox" id="allowCall" checked>
+                        允许通话
+                    </label>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closePermissionsModal()">取消</button>
+                    <button type="button" class="btn btn-confirm" onclick="confirmPermissions()">确认</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="adminMessageModal">
+        <div class="modal-content">
+            <h3>伪装发送消息</h3>
+            <form onsubmit="event.preventDefault(); sendDisguisedMessage();">
+                <div class="input-group">
+                    <label>用户名</label>
+                    <input type="text" id="disguiseUsername" placeholder="输入要伪装的用户名" required>
+                </div>
+                <div class="input-group">
+                    <label>消息内容</label>
+                    <textarea id="disguiseMessage" placeholder="输入消息内容" rows="3" required></textarea>
+                </div>
+                <div class="input-group">
+                    <label>消息类型</label>
+                    <select id="disguiseMessageType">
+                        <option value="text">普通消息</option>
+                        <option value="system">系统消息</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>消息颜色</label>
+                    <input type="color" id="disguiseColor" value="#667eea">
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeAdminMessageModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">发送</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
@@ -698,6 +843,20 @@
         const renameModal = document.getElementById('renameModal');
         const newUsername = document.getElementById('newUsername');
         const messagesContainer = document.getElementById('messagesContainer');
+        const permissionsModal = document.getElementById('permissionsModal');
+        const permissionsForm = document.getElementById('permissionsForm');
+        const allowAudio = document.getElementById('allowAudio');
+        const allowImage = document.getElementById('allowImage');
+        const allowFile = document.getElementById('allowFile');
+        const allowSendMessages = document.getElementById('allowSendMessages');
+        const allowViewMessages = document.getElementById('allowViewMessages');
+        const allowCall = document.getElementById('allowCall');
+        const adminMessageModal = document.getElementById('adminMessageModal');
+        const disguiseUsername = document.getElementById('disguiseUsername');
+        const disguiseMessageType = document.getElementById('disguiseMessageType');
+        const disguiseMessage = document.getElementById('disguiseMessage');
+        const disguiseColor = document.getElementById('disguiseColor');
+        let selectedPermissionsSocketId = null;
 
         adminPassword.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
@@ -729,6 +888,8 @@
                 loginContainer.classList.add('hidden');
                 adminPanel.classList.add('active');
                 loadMessages();
+                // 主动请求最新的用户列表
+                socket.emit('admin-get-users');
             } else {
                 alert('密码错误！');
                 adminPassword.value = '';
@@ -746,6 +907,11 @@
         });
 
         socket.on('user-renamed', (data) => {
+            users = data.users;
+            updateUserList();
+        });
+
+        socket.on('user-permissions-changed', (data) => {
             users = data.users;
             updateUserList();
         });
@@ -787,6 +953,7 @@
                     <div class="user-actions">
                         <button class="btn btn-rename" onclick="openRenameModal('${user.socketId}')">重命名</button>
                         <button class="btn btn-kick" onclick="kickUser('${user.socketId}')">踢出</button>
+                        <button class="btn btn-permissions" onclick="openPermissionsModal('${user.socketId}')">权限</button>
                     </div>
                 </div>
             `).join('');
@@ -818,6 +985,70 @@
                     newName: newName
                 });
                 closeRenameModal();
+            }
+        }
+
+        function openPermissionsModal(socketId) {
+            selectedPermissionsSocketId = socketId;
+            const user = users.find(u => u.socketId === socketId);
+            if (user) {
+                allowAudio.checked = user.permissions.allowAudio;
+                allowImage.checked = user.permissions.allowImage;
+                allowFile.checked = user.permissions.allowFile;
+                allowSendMessages.checked = user.permissions.allowSendMessages;
+                allowViewMessages.checked = user.permissions.allowViewMessages;
+                allowCall.checked = user.permissions.allowCall;
+            }
+            permissionsModal.classList.add('active');
+        }
+
+        function closePermissionsModal() {
+            permissionsModal.classList.remove('active');
+            selectedPermissionsSocketId = null;
+        }
+
+        function confirmPermissions() {
+            if (selectedPermissionsSocketId) {
+                socket.emit('admin-set-permissions', {
+                    socketId: selectedPermissionsSocketId,
+                    permissions: {
+                        allowAudio: allowAudio.checked,
+                        allowImage: allowImage.checked,
+                        allowFile: allowFile.checked,
+                        allowSendMessages: allowSendMessages.checked,
+                        allowViewMessages: allowViewMessages.checked,
+                        allowCall: allowCall.checked
+                    }
+                });
+                closePermissionsModal();
+            }
+        }
+
+        function openAdminMessageModal() {
+            adminMessageModal.classList.add('active');
+            disguiseUsername.focus();
+        }
+
+        function closeAdminMessageModal() {
+            adminMessageModal.classList.remove('active');
+            disguiseUsername.value = '';
+            disguiseMessage.value = '';
+        }
+
+        function sendDisguisedMessage() {
+            const username = disguiseUsername.value.trim();
+            const message = disguiseMessage.value.trim();
+            const color = disguiseColor.value;
+            const type = disguiseMessageType.value;
+            
+            if (username && message) {
+                socket.emit('admin-send-message', {
+                    username: username,
+                    message: message,
+                    color: color,
+                    type: type
+                });
+                closeAdminMessageModal();
             }
         }
 
