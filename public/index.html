@@ -569,6 +569,11 @@
         socket.on('user-renamed', (data) => {
             addSystemMessage(`${data.oldName} 改名为 ${data.newName}`);
             updateUserList(data.users);
+            
+            // 如果当前用户被重命名，更新本地用户名
+            if (data.oldName === username) {
+                username = data.newName;
+            }
         });
 
         socket.on('system-message', (data) => {
