@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>聊天室</title>
+    <title>聊天室管理后台</title>
     <style>
         * {
             margin: 0;
@@ -14,22 +14,23 @@
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            height: 100vh;
+            min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
+            padding: 20px;
         }
 
         .container {
-            width: 90%;
-            max-width: 800px;
-            height: 90vh;
+            width: 100%;
+            max-width: 1400px;
             background: white;
             border-radius: 20px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            max-height: 95vh;
             display: flex;
             flex-direction: column;
-            overflow: hidden;
         }
 
         .header {
@@ -37,6 +38,7 @@
             color: white;
             padding: 20px;
             text-align: center;
+            flex-shrink: 0;
         }
 
         .header h1 {
@@ -44,291 +46,528 @@
             margin-bottom: 5px;
         }
 
-        .header .online-count {
+        .header .subtitle {
             font-size: 14px;
             opacity: 0.9;
         }
 
-        .chat-container {
+        .login-container {
+            padding: 40px;
+            text-align: center;
             flex: 1;
-            display: flex;
-            overflow: hidden;
-        }
-
-        .messages {
-            flex: 1;
-            padding: 20px;
-            overflow-y: auto;
-            background: #f8f9fa;
-        }
-
-        .message {
-            margin-bottom: 15px;
-            animation: slideIn 0.3s ease;
-        }
-
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .message-header {
             display: flex;
             align-items: center;
-            margin-bottom: 5px;
+            justify-content: center;
         }
 
-        .username {
-            font-weight: bold;
-            margin-right: 10px;
+        .login-form {
+            max-width: 400px;
+            margin: 0 auto;
+            width: 100%;
         }
 
-        .timestamp {
-            font-size: 12px;
-            color: #999;
-        }
-
-        .message-content {
-            background: white;
-            padding: 10px 15px;
-            border-radius: 10px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-            word-wrap: break-word;
-        }
-
-
-
-        .message-actions {
-            display: flex;
-            justify-content: flex-end;
-            margin-top: 5px;
-        }
-
-        .recall-btn {
-            background: none;
-            border: none;
-            color: #667eea;
-            font-size: 12px;
-            cursor: pointer;
-            opacity: 0.7;
-            transition: opacity 0.2s;
-        }
-
-        .recall-btn:hover {
-            opacity: 1;
-        }
-
-        .system-message {
-            text-align: center;
-            color: #666;
-            font-style: italic;
-            margin: 10px 0;
-            padding: 5px;
-            background: #e9ecef;
-            border-radius: 5px;
-        }
-
-        .system-message.admin {
-            background: #fff3cd;
-            color: #856404;
-            font-weight: bold;
-        }
-
-        .users-panel {
-            width: 200px;
-            background: #f1f3f5;
+        .login-form input {
+            width: 100%;
             padding: 15px;
-            border-left: 1px solid #dee2e6;
+            border: 2px solid #dee2e6;
+            border-radius: 10px;
+            font-size: 16px;
+            margin-bottom: 20px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .login-form input:focus {
+            border-color: #667eea;
+        }
+
+        .login-form button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .login-form button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .admin-panel {
+            display: none;
+            padding: 20px;
+            flex: 1;
             overflow-y: auto;
         }
 
-        .users-panel h3 {
-            font-size: 16px;
+        .admin-panel.active {
+            display: block;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+        }
+
+        .stat-card h3 {
+            font-size: 14px;
+            margin-bottom: 10px;
+            opacity: 0.9;
+        }
+
+        .stat-card .value {
+            font-size: 32px;
+            font-weight: bold;
+        }
+
+        .section {
+            margin-bottom: 30px;
+        }
+
+        .section h2 {
+            font-size: 20px;
             margin-bottom: 15px;
-            color: #495057;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .user-list {
+            background: #f8f9fa;
+            border-radius: 10px;
+            overflow: hidden;
         }
 
         .user-item {
             display: flex;
+            justify-content: space-between;
             align-items: center;
-            padding: 8px;
-            margin-bottom: 8px;
+            padding: 15px 20px;
+            border-bottom: 1px solid #dee2e6;
             background: white;
-            border-radius: 8px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .user-item:last-child {
+            border-bottom: none;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
 
         .user-color {
             width: 12px;
             height: 12px;
             border-radius: 50%;
-            margin-right: 10px;
         }
 
         .user-name {
-            font-size: 14px;
-            color: #495057;
+            font-weight: 500;
         }
 
-        .input-area {
-            padding: 20px;
-            background: white;
-            border-top: 1px solid #dee2e6;
-        }
-
-        #usernameInput {
-            width: 100%;
-            padding: 12px 15px;
-            border: 2px solid #dee2e6;
-            border-radius: 25px;
-            font-size: 14px;
-            outline: none;
-            transition: border-color 0.3s;
-        }
-
-        #usernameInput:focus {
-            border-color: #667eea;
-        }
-
-        #joinBtn {
-            width: 100%;
-            padding: 12px 30px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 25px;
-            font-size: 14px;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-            margin-top: 10px;
-        }
-
-        #joinBtn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-        }
-
-        #chatForm {
+        .user-actions {
             display: flex;
             gap: 10px;
-            align-items: center;
         }
 
-        #messageInput {
+        .btn {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .btn-kick {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-kick:hover {
+            background: #c82333;
+        }
+
+        .btn-rename {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .btn-rename:hover {
+            background: #e0a800;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+
+        .btn-info:hover {
+            background: #138496;
+        }
+
+        .btn-sm {
+            padding: 5px 10px;
+            font-size: 12px;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .input-group input {
             flex: 1;
-            padding: 12px 15px;
+            padding: 12px;
             border: 2px solid #dee2e6;
-            border-radius: 25px;
+            border-radius: 8px;
             font-size: 14px;
             outline: none;
-            transition: border-color 0.3s;
         }
 
-        #messageInput:focus {
+        .input-group input:focus {
             border-color: #667eea;
         }
 
-        .action-buttons {
-            display: flex;
-            gap: 8px;
-        }
-
-        .action-btn {
-            width: 45px;
-            height: 45px;
-            border: none;
-            border-radius: 50%;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-            transition: all 0.2s;
-            background: #f8f9fa;
-            color: #667eea;
-        }
-
-        .action-btn:hover {
-            background: #667eea;
-            color: white;
-            transform: scale(1.1);
-        }
-
-        .action-btn.recording {
-            background: #dc3545;
-            color: white;
-            animation: pulse 1s infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% {
-                transform: scale(1);
-            }
-            50% {
-                transform: scale(1.1);
-            }
-        }
-
-        #sendBtn {
+        .input-group button {
             padding: 12px 25px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
             border: none;
-            border-radius: 25px;
-            font-size: 14px;
+            border-radius: 8px;
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-
-        #sendBtn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+            font-size: 14px;
         }
 
         .hidden {
             display: none !important;
         }
 
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
 
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 400px;
+        }
+
+        .modal-content h3 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .modal-content input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 20px;
+            outline: none;
+        }
+
+        .modal-content input:focus {
+            border-color: #667eea;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .modal-buttons button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .btn-cancel {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-confirm {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .file-list {
+            background: #f8f9fa;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            border-bottom: 1px solid #dee2e6;
+            background: white;
+        }
+
+        .file-item:last-child {
+            border-bottom: none;
+        }
+
+        .file-info {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .file-icon {
+            font-size: 24px;
+        }
+
+        .file-details {
+            flex: 1;
+        }
+
+        .file-name {
+            font-weight: 500;
+            margin-bottom: 5px;
+            word-break: break-all;
+        }
+
+        .file-meta {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .file-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .upload-area {
+            border: 2px dashed #dee2e6;
+            border-radius: 10px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .upload-area:hover {
+            border-color: #667eea;
+            background: #f8f9fa;
+        }
+
+        .upload-area.dragover {
+            border-color: #667eea;
+            background: #e9ecef;
+        }
+
+        .upload-area input {
+            display: none;
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        .upload-text {
+            color: #666;
+        }
+
+        .messages-container {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .message-item {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            border-left: 4px solid #667eea;
+        }
+
+        .message-item.deleted {
+            border-left-color: #dc3545;
+            opacity: 0.7;
+        }
+
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .message-sender {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .message-time {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .message-content {
+            color: #666;
+            word-break: break-word;
+        }
+
+        .message-content img {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+
+        .message-content audio {
+            width: 100%;
+            max-width: 300px;
+            margin-top: 10px;
+        }
+
+        .message-status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+
+        .message-status.active {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .message-status.deleted {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background: #f8f9fa;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
 
         @media (max-width: 768px) {
             .container {
-                width: 100%;
-                height: 100vh;
                 border-radius: 0;
+                max-height: 100vh;
             }
 
-            .users-panel {
-                display: none;
-            }
-
-            .chat-container {
+            .file-item {
                 flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
             }
 
-            .messages {
-                padding: 15px;
+            .file-actions {
                 width: 100%;
-            }
-
-            .action-btn {
-                width: 40px;
-                height: 40px;
-                font-size: 16px;
-            }
-
-            #chatForm {
-                flex-wrap: wrap;
-            }
-
-            #messageInput {
-                flex-basis: 100%;
+                justify-content: flex-end;
             }
         }
     </style>
@@ -336,278 +575,325 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>聊天室</h1>
-            <div class="online-count">在线人数: <span id="userCount">0</span></div>
+            <h1>聊天室管理后台</h1>
+            <div class="subtitle">管理员控制面板</div>
         </div>
 
-        <div class="chat-container">
-            <div class="messages" id="messages">
-                <div class="system-message">欢迎来到聊天室！请输入昵称加入。</div>
-            </div>
-            <div class="users-panel">
-                <h3>在线用户</h3>
-                <div id="usersList"></div>
+        <div class="login-container" id="loginContainer">
+            <div class="login-form">
+                <form onsubmit="event.preventDefault(); login();">
+                    <input type="password" id="adminPassword" placeholder="请输入管理员密码">
+                    <button type="submit">登录</button>
+                </form>
             </div>
         </div>
 
-        <div class="input-area">
-            <div id="loginForm">
-                <input type="text" id="usernameInput" placeholder="请输入你的昵称" maxlength="20">
-                <button id="joinBtn">加入聊天</button>
-            </div>
-            <div id="chatForm" class="hidden">
-                <input type="file" id="imageInput" accept="image/*">
-                <div class="action-buttons">
-                    <button class="action-btn" id="imageBtn" title="发送图片">📷</button>
-                    <button class="action-btn" id="audioBtn" title="发送语音">🎤</button>
+        <div class="admin-panel" id="adminPanel">
+            <div class="stats">
+                <div class="stat-card">
+                    <h3>在线用户</h3>
+                    <div class="value" id="userCount">0</div>
                 </div>
-                <input type="text" id="messageInput" placeholder="输入消息..." maxlength="500">
-                <button id="sendBtn">发送</button>
+                <div class="stat-card">
+                    <h3>消息总数</h3>
+                    <div class="value" id="messageCount">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>已撤回消息</h3>
+                    <div class="value" id="deletedMessageCount">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>上传文件</h3>
+                    <div class="value" id="fileCount">0</div>
+                </div>
             </div>
+
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('users')">用户管理</button>
+                <button class="tab" onclick="switchTab('files')">文件管理</button>
+                <button class="tab" onclick="switchTab('messages')">消息管理</button>
+            </div>
+
+            <div class="tab-content active" id="usersTab">
+                <div class="section">
+                    <h2>在线用户管理</h2>
+                    <div class="user-list" id="userList">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">👥</div>
+                            <div>暂无在线用户</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>系统消息</h2>
+                    <div class="input-group">
+                        <form onsubmit="event.preventDefault(); sendSystemMessage();">
+                            <input type="text" id="systemMessage" placeholder="输入系统消息内容">
+                            <button type="submit" class="btn btn-primary">发送</button>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>消息管理</h2>
+                    <button class="btn btn-danger" onclick="clearMessages()">清空所有消息</button>
+                </div>
+            </div>
+
+            <div class="tab-content" id="filesTab">
+                <div class="section">
+                    <h2>文件管理</h2>
+                    <div class="empty-state">
+                        <div class="empty-state-icon">�</div>
+                        <div>文件上传功能已关闭</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="messagesTab">
+                <div class="section">
+                    <h2>所有消息</h2>
+                    <div class="input-group">
+                        <button class="btn btn-primary" onclick="loadMessages()">刷新消息</button>
+                    </div>
+                    <div class="messages-container" id="messagesContainer">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">💬</div>
+                            <div>暂无消息</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="renameModal">
+        <div class="modal-content">
+            <h3>重命名用户</h3>
+            <form onsubmit="event.preventDefault(); confirmRename();">
+                <input type="text" id="newUsername" placeholder="输入新用户名" maxlength="20">
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeRenameModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">确认</button>
+                </div>
+            </form>
         </div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
-        let username = '';
-        let mediaRecorder = null;
-        let audioChunks = [];
-        let isRecording = false;
+        let users = [];
+        let selectedSocketId = null;
 
-        const messagesDiv = document.getElementById('messages');
-        const usersListDiv = document.getElementById('usersList');
-        const userCountSpan = document.getElementById('userCount');
-        const usernameInput = document.getElementById('usernameInput');
-        const messageInput = document.getElementById('messageInput');
-        const joinBtn = document.getElementById('joinBtn');
-        const sendBtn = document.getElementById('sendBtn');
-        const loginForm = document.getElementById('loginForm');
-        const chatForm = document.getElementById('chatForm');
-        const imageInput = document.getElementById('imageInput');
-        const imageBtn = document.getElementById('imageBtn');
-        const audioBtn = document.getElementById('audioBtn');
+        const loginContainer = document.getElementById('loginContainer');
+        const adminPanel = document.getElementById('adminPanel');
+        const adminPassword = document.getElementById('adminPassword');
+        const userList = document.getElementById('userList');
+        const userCount = document.getElementById('userCount');
+        const messageCount = document.getElementById('messageCount');
+        const deletedMessageCount = document.getElementById('deletedMessageCount');
+        const systemMessage = document.getElementById('systemMessage');
+        const renameModal = document.getElementById('renameModal');
+        const newUsername = document.getElementById('newUsername');
+        const messagesContainer = document.getElementById('messagesContainer');
 
-        joinBtn.addEventListener('click', () => {
-            username = usernameInput.value.trim();
-            if (username) {
-                socket.emit('join', username);
-                loginForm.classList.add('hidden');
-                chatForm.classList.remove('hidden');
-                messageInput.focus();
-            }
-        });
-
-        usernameInput.addEventListener('keypress', (e) => {
+        adminPassword.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
-                joinBtn.click();
+                login();
             }
         });
 
-        sendBtn.addEventListener('click', () => {
-            const message = messageInput.value.trim();
-            if (message) {
-                socket.emit('message', { message, type: 'text' });
-                messageInput.value = '';
-            }
-        });
-
-        messageInput.addEventListener('keypress', (e) => {
+        newUsername.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
-                sendBtn.click();
+                confirmRename();
             }
         });
 
-        imageBtn.addEventListener('click', () => {
-            imageInput.click();
-        });
-
-        imageInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                try {
-                    const reader = new FileReader();
-                    reader.onload = async (event) => {
-                        const arrayBuffer = event.target.result;
-                        const response = await fetch('/upload-image', {
-                            method: 'POST',
-                            body: arrayBuffer,
-                            headers: {
-                                'Content-Type': file.type
-                            }
-                        });
-                        const data = await response.json();
-                        
-                        if (data.imageUrl) {
-                            socket.emit('message', { message: data.imageUrl, type: 'image' });
-                        }
-                    };
-                    reader.readAsArrayBuffer(file);
-                } catch (error) {
-                    console.error('上传图片失败:', error);
-                    alert('上传图片失败，请重试');
-                }
-                
-                imageInput.value = '';
+        systemMessage.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendSystemMessage();
             }
         });
 
-        audioBtn.addEventListener('click', async () => {
-            if (!isRecording) {
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    mediaRecorder = new MediaRecorder(stream);
-                    audioChunks = [];
-                    
-                    mediaRecorder.ondataavailable = (event) => {
-                        audioChunks.push(event.data);
-                    };
-                    
-                    mediaRecorder.onstop = async () => {
-                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                        
-                        try {
-                            const arrayBuffer = await audioBlob.arrayBuffer();
-                            const response = await fetch('/upload-audio', {
-                                method: 'POST',
-                                body: arrayBuffer,
-                                headers: {
-                                    'Content-Type': 'audio/webm'
-                                }
-                            });
-                            const data = await response.json();
-                            
-                            if (data.audioUrl) {
-                                socket.emit('message', { message: data.audioUrl, type: 'audio' });
-                            }
-                        } catch (error) {
-                            console.error('上传语音失败:', error);
-                            alert('上传语音失败，请重试');
-                        }
-                        
-                        stream.getTracks().forEach(track => track.stop());
-                    };
-                    
-                    mediaRecorder.start();
-                    isRecording = true;
-                    audioBtn.classList.add('recording');
-                    audioBtn.title = '停止录制';
-                } catch (error) {
-                    console.error('无法访问麦克风:', error);
-                    alert('无法访问麦克风，请检查权限设置');
-                }
+
+
+        function login() {
+            const password = adminPassword.value;
+            socket.emit('admin-login', password);
+        }
+
+        socket.on('admin-login-success', (success) => {
+            if (success) {
+                loginContainer.classList.add('hidden');
+                adminPanel.classList.add('active');
+                loadMessages();
             } else {
-                mediaRecorder.stop();
-                isRecording = false;
-                audioBtn.classList.remove('recording');
-                audioBtn.title = '发送语音';
+                alert('密码错误！');
+                adminPassword.value = '';
             }
         });
 
         socket.on('user-joined', (data) => {
-            addSystemMessage(`${data.username} 加入了聊天室`);
-            updateUserList(data.users);
-            userCountSpan.textContent = data.userCount;
-        });
-
-        socket.on('message', (data) => {
-            addMessage(data);
+            users = data.users;
+            updateUserList();
         });
 
         socket.on('user-left', (data) => {
-            addSystemMessage(`${data.username} 离开了聊天室`);
-            updateUserList(data.users);
-            userCountSpan.textContent = data.userCount;
+            users = data.users;
+            updateUserList();
         });
 
         socket.on('user-renamed', (data) => {
-            addSystemMessage(`${data.oldName} 改名为 ${data.newName}`);
-            updateUserList(data.users);
+            users = data.users;
+            updateUserList();
         });
 
-        socket.on('system-message', (data) => {
-            addSystemMessage(data.message, true);
+        socket.on('admin-messages', (data) => {
+            displayMessages(data);
         });
 
-        socket.on('messages-cleared', () => {
-            messagesDiv.innerHTML = '<div class="system-message">消息已被管理员清空</div>';
-        });
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(tabName + 'Tab').classList.add('active');
 
-        socket.on('kicked', (message) => {
-            alert(message);
-            location.reload();
-        });
+            if (tabName === 'messages') {
+                loadMessages();
+            }
+        }
 
-        socket.on('message-recalled', (messageId) => {
-            const messageDiv = document.querySelector(`[data-message-id="${messageId}"]`);
-            if (messageDiv) {
-                const username = messageDiv.querySelector('.username').textContent;
-                messageDiv.innerHTML = `
-                    <div class="message-header">
-                        <span class="username" style="color: ${messageDiv.querySelector('.username').style.color}">${username}</span>
-                        <span class="timestamp">${messageDiv.querySelector('.timestamp').textContent}</span>
+        function updateUserList() {
+            userCount.textContent = users.length;
+            
+            if (users.length === 0) {
+                userList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">👥</div>
+                        <div>暂无在线用户</div>
+                    </div>`;
+                return;
+            }
+
+            userList.innerHTML = users.map(user => `
+                <div class="user-item">
+                    <div class="user-info">
+                        <div class="user-color" style="background: ${user.color}"></div>
+                        <div class="user-name">${escapeHtml(user.username)}</div>
                     </div>
-                    <div class="message-content">[消息已撤回]</div>
-                `;
-            }
-        });
-
-        function recallMessage(messageId) {
-            socket.emit('message-recall', messageId);
-        }
-
-        function addMessage(data) {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'message';
-            messageDiv.dataset.messageId = data.id;
-            
-            let contentHtml;
-            if (data.type === 'image') {
-                contentHtml = `<img src="${data.message}" alt="图片" style="max-width: 100%; max-height: 200px; border-radius: 5px;">`;
-            } else if (data.type === 'audio') {
-                contentHtml = `<audio controls style="width: 100%; border-radius: 5px;"><source src="${data.message}" type="audio/webm">您的浏览器不支持音频播放</audio>`;
-            } else {
-                contentHtml = escapeHtml(data.message);
-            }
-            
-            let actionsHtml = '';
-            if (data.username === username) {
-                actionsHtml = `<div class="message-actions">
-                    <button class="recall-btn" onclick="recallMessage('${data.id}')">撤回</button>
-                </div>`;
-            }
-            
-            messageDiv.innerHTML = `
-                <div class="message-header">
-                    <span class="username" style="color: ${data.color}">${data.username}</span>
-                    <span class="timestamp">${data.timestamp}</span>
+                    <div class="user-actions">
+                        <button class="btn btn-rename" onclick="openRenameModal('${user.socketId}')">重命名</button>
+                        <button class="btn btn-kick" onclick="kickUser('${user.socketId}')">踢出</button>
+                    </div>
                 </div>
-                <div class="message-content">${contentHtml}</div>
-                ${actionsHtml}
-            `;
-            messagesDiv.appendChild(messageDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            `).join('');
         }
 
-        function addSystemMessage(text, isAdmin = false) {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'system-message' + (isAdmin ? ' admin' : '');
-            messageDiv.textContent = text;
-            messagesDiv.appendChild(messageDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        function kickUser(socketId) {
+            if (confirm('确定要踢出该用户吗？')) {
+                socket.emit('admin-kick-user', socketId);
+            }
         }
 
-        function updateUserList(users) {
-            usersListDiv.innerHTML = '';
-            users.forEach(user => {
-                const userDiv = document.createElement('div');
-                userDiv.className = 'user-item';
-                userDiv.innerHTML = `
-                    <div class="user-color" style="background: ${user.color}"></div>
-                    <div class="user-name">${escapeHtml(user.username)}</div>
+        function openRenameModal(socketId) {
+            selectedSocketId = socketId;
+            newUsername.value = '';
+            renameModal.classList.add('active');
+            newUsername.focus();
+        }
+
+        function closeRenameModal() {
+            renameModal.classList.remove('active');
+            selectedSocketId = null;
+        }
+
+        function confirmRename() {
+            const newName = newUsername.value.trim();
+            if (newName) {
+                socket.emit('admin-rename-user', {
+                    socketId: selectedSocketId,
+                    newName: newName
+                });
+                closeRenameModal();
+            }
+        }
+
+        function sendSystemMessage() {
+            const message = systemMessage.value.trim();
+            if (message) {
+                socket.emit('admin-system-message', message);
+                systemMessage.value = '';
+            }
+        }
+
+        function clearMessages() {
+            if (confirm('确定要清空所有消息吗？此操作不可恢复！')) {
+                socket.emit('admin-clear-messages');
+            }
+        }
+
+        function loadMessages() {
+            socket.emit('admin-get-messages');
+        }
+
+        function displayMessages(data) {
+            messageCount.textContent = data.active.length;
+            deletedMessageCount.textContent = data.deleted.length;
+            
+            const allMessages = [...data.active.map(m => ({ ...m, status: 'active' })), ...data.deleted.map(m => ({ ...m, status: 'deleted' }))];
+            
+            if (allMessages.length === 0) {
+                messagesContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">💬</div>
+                        <div>暂无消息</div>
+                    </div>`;
+                return;
+            }
+
+            messagesContainer.innerHTML = allMessages.map(msg => {
+                let contentHtml = '';
+                if (msg.type === 'image') {
+                    contentHtml = `<img src="${msg.message}" alt="图片">`;
+                } else if (msg.type === 'audio') {
+                    contentHtml = `<audio controls><source src="${msg.message}" type="audio/webm">您的浏览器不支持音频播放</audio>`;
+                } else {
+                    contentHtml = escapeHtml(msg.message);
+                }
+
+                const statusText = msg.status === 'active' ? '正常' : '已撤回';
+                const statusClass = msg.status === 'active' ? 'active' : 'deleted';
+                const recallTime = msg.recallTime ? `<br><small>撤回时间: ${msg.recallTime}</small>` : '';
+
+                return `
+                    <div class="message-item ${msg.status}">
+                        <div class="message-header">
+                            <div>
+                                <span class="message-sender" style="color: ${msg.color}">${escapeHtml(msg.username)}</span>
+                                <span class="message-status ${statusClass}">${statusText}</span>
+                            </div>
+                            <span class="message-time">${msg.timestamp}${recallTime}</span>
+                        </div>
+                        <div class="message-content">${contentHtml}</div>
+                    </div>
                 `;
-                usersListDiv.appendChild(userDiv);
-            });
+            }).join('');
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function formatDate(date) {
+            const d = new Date(date);
+            return d.toLocaleString('zh-CN');
         }
 
         function escapeHtml(text) {
