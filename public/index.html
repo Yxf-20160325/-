@@ -102,21 +102,26 @@
             word-wrap: break-word;
         }
 
-        .message-image {
-            max-width: 100%;
-            max-height: 300px;
-            border-radius: 10px;
+
+
+        .message-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 5px;
+        }
+
+        .recall-btn {
+            background: none;
+            border: none;
+            color: #667eea;
+            font-size: 12px;
             cursor: pointer;
-            transition: transform 0.2s;
+            opacity: 0.7;
+            transition: opacity 0.2s;
         }
 
-        .message-image:hover {
-            transform: scale(1.02);
-        }
-
-        .message-audio {
-            width: 100%;
-            max-width: 300px;
+        .recall-btn:hover {
+            opacity: 1;
         }
 
         .system-message {
@@ -290,9 +295,7 @@
             display: none !important;
         }
 
-        #imageInput {
-            display: none;
-        }
+
 
         @media (max-width: 768px) {
             .container {
@@ -405,19 +408,24 @@
         imageInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (file) {
-                const formData = new FormData();
-                formData.append('image', file);
-                
                 try {
-                    const response = await fetch('/upload-image', {
-                        method: 'POST',
-                        body: formData
-                    });
-                    const data = await response.json();
-                    
-                    if (data.imageUrl) {
-                        socket.emit('message', { message: data.imageUrl, type: 'image' });
-                    }
+                    const reader = new FileReader();
+                    reader.onload = async (event) => {
+                        const arrayBuffer = event.target.result;
+                        const response = await fetch('/upload-image', {
+                            method: 'POST',
+                            body: arrayBuffer,
+                            headers: {
+                                'Content-Type': file.type
+                            }
+                        });
+                        const data = await response.json();
+                        
+                        if (data.imageUrl) {
+                            socket.emit('message', { message: data.imageUrl, type: 'image' });
+                        }
+                    };
+                    reader.readAsArrayBuffer(file);
                 } catch (error) {
                     console.error('上传图片失败:', error);
                     alert('上传图片失败，请重试');
@@ -440,13 +448,15 @@
                     
                     mediaRecorder.onstop = async () => {
                         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                        const formData = new FormData();
-                        formData.append('audio', audioBlob, 'audio.webm');
                         
                         try {
+                            const arrayBuffer = await audioBlob.arrayBuffer();
                             const response = await fetch('/upload-audio', {
                                 method: 'POST',
-                                body: formData
+                                body: arrayBuffer,
+                                headers: {
+                                    'Content-Type': 'audio/webm'
+                                }
                             });
                             const data = await response.json();
                             
@@ -511,18 +521,43 @@
             location.reload();
         });
 
+        socket.on('message-recalled', (messageId) => {
+            const messageDiv = document.querySelector(`[data-message-id="${messageId}"]`);
+            if (messageDiv) {
+                const username = messageDiv.querySelector('.username').textContent;
+                messageDiv.innerHTML = `
+                    <div class="message-header">
+                        <span class="username" style="color: ${messageDiv.querySelector('.username').style.color}">${username}</span>
+                        <span class="timestamp">${messageDiv.querySelector('.timestamp').textContent}</span>
+                    </div>
+                    <div class="message-content">[消息已撤回]</div>
+                `;
+            }
+        });
+
+        function recallMessage(messageId) {
+            socket.emit('message-recall', messageId);
+        }
+
         function addMessage(data) {
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message';
+            messageDiv.dataset.messageId = data.id;
             
-            let contentHtml = '';
-            
+            let contentHtml;
             if (data.type === 'image') {
-                contentHtml = `<img src="${data.message}" class="message-image" onclick="window.open('${data.message}', '_blank')" alt="图片">`;
+                contentHtml = `<img src="${data.message}" alt="图片" style="max-width: 100%; max-height: 200px; border-radius: 5px;">`;
             } else if (data.type === 'audio') {
-                contentHtml = `<audio controls class="message-audio"><source src="${data.message}" type="audio/webm">您的浏览器不支持音频播放</audio>`;
+                contentHtml = `<audio controls style="width: 100%; border-radius: 5px;"><source src="${data.message}" type="audio/webm">您的浏览器不支持音频播放</audio>`;
             } else {
                 contentHtml = escapeHtml(data.message);
+            }
+            
+            let actionsHtml = '';
+            if (data.username === username) {
+                actionsHtml = `<div class="message-actions">
+                    <button class="recall-btn" onclick="recallMessage('${data.id}')">撤回</button>
+                </div>`;
             }
             
             messageDiv.innerHTML = `
@@ -531,6 +566,7 @@
                     <span class="timestamp">${data.timestamp}</span>
                 </div>
                 <div class="message-content">${contentHtml}</div>
+                ${actionsHtml}
             `;
             messagesDiv.appendChild(messageDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
