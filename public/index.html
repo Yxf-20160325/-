@@ -111,17 +111,168 @@
         }
 
         .recall-btn {
-            background: none;
+            background: #dc3545;
+            color: white;
             border: none;
-            color: #667eea;
-            font-size: 12px;
+            padding: 5px 10px;
+            border-radius: 5px;
             cursor: pointer;
-            opacity: 0.7;
-            transition: opacity 0.2s;
+            font-size: 12px;
+            margin-left: 10px;
         }
 
         .recall-btn:hover {
-            opacity: 1;
+            background: #c82333;
+        }
+
+        .call-btn {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-left: 10px;
+        }
+
+        .call-btn:hover {
+            background: #218838;
+        }
+
+        .call-btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
+        .video-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .video-container.active {
+            display: flex;
+        }
+
+        .video-content {
+            display: flex;
+            gap: 20px;
+            max-width: 1200px;
+            width: 90%;
+        }
+
+        .video-box {
+            flex: 1;
+            background: #000;
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .video-box video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .video-label {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .video-controls {
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+        }
+
+        .video-control-btn {
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            border: none;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .video-control-btn:hover {
+            background: rgba(0, 0, 0, 0.9);
+        }
+
+        .video-control-btn.end {
+            background: #dc3545;
+        }
+
+        .video-control-btn.end:hover {
+            background: #c82333;
+        }
+
+        .call-incoming {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+            display: none;
+            z-index: 999;
+            max-width: 300px;
+        }
+
+        .call-incoming.active {
+            display: block;
+        }
+
+        .call-incoming h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .call-incoming-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .call-incoming-buttons button {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .call-accept {
+            background: #28a745;
+            color: white;
+        }
+
+        .call-reject {
+            background: #dc3545;
+            color: white;
         }
 
         .system-message {
@@ -164,6 +315,12 @@
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
 
+        .user-actions {
+            display: flex;
+            gap: 5px;
+            margin-left: auto;
+        }
+
         .user-color {
             width: 12px;
             height: 12px;
@@ -182,7 +339,7 @@
             border-top: 1px solid #dee2e6;
         }
 
-        #usernameInput {
+        #usernameInput, #roomNameInput, #roomPasswordInput {
             width: 100%;
             padding: 12px 15px;
             border: 2px solid #dee2e6;
@@ -190,9 +347,10 @@
             font-size: 14px;
             outline: none;
             transition: border-color 0.3s;
+            margin-bottom: 10px;
         }
 
-        #usernameInput:focus {
+        #usernameInput:focus, #roomNameInput:focus, #roomPasswordInput:focus {
             border-color: #667eea;
         }
 
@@ -206,7 +364,6 @@
             font-size: 14px;
             cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
-            margin-top: 10px;
         }
 
         #joinBtn:hover {
@@ -360,9 +517,48 @@
                 <div class="action-buttons">
                     <button class="action-btn" id="imageBtn" title="发送图片">📷</button>
                     <button class="action-btn" id="audioBtn" title="发送语音">🎤</button>
+                    <button class="action-btn" id="videoCallBtn" title="视频通话">📹</button>
+                    <button class="action-btn" id="audioCallBtn" title="语音通话">📞</button>
                 </div>
                 <input type="text" id="messageInput" placeholder="输入消息..." maxlength="500">
                 <button id="sendBtn">发送</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="video-container" id="videoContainer">
+        <div class="video-content">
+            <div class="video-box">
+                <video id="localVideo" autoplay playsinline muted></video>
+                <div class="video-label">我</div>
+            </div>
+            <div class="video-box">
+                <video id="remoteVideo" autoplay playsinline></video>
+                <div class="video-label">对方</div>
+            </div>
+        </div>
+        <div class="video-controls">
+            <button class="video-control-btn" id="toggleVideoBtn">📹</button>
+            <button class="video-control-btn" id="toggleAudioBtn">🎤</button>
+            <button class="video-control-btn end" id="endCallBtn">📞</button>
+        </div>
+    </div>
+
+    <div class="call-incoming" id="callIncoming">
+        <h3 id="callIncomingText">来电</h3>
+        <div class="call-incoming-buttons">
+            <button class="call-accept" onclick="acceptCall()">接听</button>
+            <button class="call-reject" onclick="rejectCall()">拒绝</button>
+        </div>
+    </div>
+
+    <div class="modal" id="deviceSelectModal">
+        <div class="modal-content" style="max-width: 500px;">
+            <h3>选择设备</h3>
+            <div id="deviceSelectContent"></div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-cancel" onclick="closeDeviceSelectModal()">取消</button>
+                <button type="button" class="btn btn-confirm" onclick="confirmDeviceSelect()">确定</button>
             </div>
         </div>
     </div>
@@ -371,6 +567,7 @@
     <script>
         const socket = io();
         let username = '';
+        let currentRoom = '';
         let mediaRecorder = null;
         let audioChunks = [];
         let isRecording = false;
@@ -380,7 +577,7 @@
             allowFile: true,
             allowSendMessages: true,
             allowViewMessages: true,
-            allowCall: true
+            allowCall: false
         };
 
         const messagesDiv = document.getElementById('messages');
@@ -395,14 +592,59 @@
         const imageInput = document.getElementById('imageInput');
         const imageBtn = document.getElementById('imageBtn');
         const audioBtn = document.getElementById('audioBtn');
+        const videoCallBtn = document.getElementById('videoCallBtn');
+        const audioCallBtn = document.getElementById('audioCallBtn');
+        const videoContainer = document.getElementById('videoContainer');
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+        const toggleVideoBtn = document.getElementById('toggleVideoBtn');
+        const toggleAudioBtn = document.getElementById('toggleAudioBtn');
+        const endCallBtn = document.getElementById('endCallBtn');
+        const callIncoming = document.getElementById('callIncoming');
+        const callIncomingText = document.getElementById('callIncomingText');
+        const deviceSelectModal = document.getElementById('deviceSelectModal');
+        const deviceSelectContent = document.getElementById('deviceSelectContent');
 
+        let localStream = null;
+        let remoteStream = null;
+        let peerConnection = null;
+        let currentCallId = null;
+        let isVideoCall = false;
+        let isVideoEnabled = true;
+        let isAudioEnabled = true;
+        
+        // 设备选择相关变量
+        let availableVideoDevices = [];
+        let availableAudioDevices = [];
+        let selectedVideoDeviceId = null;
+        let selectedAudioDeviceId = null;
+        let pendingCallAction = null;
+
+        // 从URL路径获取房间名
+        function getRoomFromUrl() {
+            const path = window.location.pathname;
+            if (path && path !== '/') {
+                return path.substring(1); // 移除开头的斜杠
+            }
+            return null;
+        }
+
+        // 处理加入按钮点击
         joinBtn.addEventListener('click', () => {
             username = usernameInput.value.trim();
             if (username) {
-                socket.emit('join', username);
-                loginForm.classList.add('hidden');
-                chatForm.classList.remove('hidden');
-                messageInput.focus();
+                // 从URL获取房间名，默认使用'main'
+                const roomName = getRoomFromUrl() || 'main';
+                
+                // 如果不是默认房间，提示用户输入密码（如果需要）
+                if (roomName !== 'main') {
+                    const password = prompt(`请输入房间 "${roomName}" 的密码（留空表示无密码）:`);
+                    currentRoom = roomName;
+                    socket.emit('join', { username, roomName, password: password || null });
+                } else {
+                    currentRoom = roomName;
+                    socket.emit('join', { username, roomName });
+                }
             }
         });
 
@@ -411,6 +653,8 @@
                 joinBtn.click();
             }
         });
+        
+        // 页面加载时不需要设置输入框，因为已经删除了房间名输入框
 
         sendBtn.addEventListener('click', () => {
             const message = messageInput.value.trim();
@@ -493,14 +737,19 @@
                         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
                         
                         try {
-                            const arrayBuffer = await audioBlob.arrayBuffer();
+                            // 直接使用Blob上传，不转换为arrayBuffer
                             const response = await fetch('/upload-audio', {
                                 method: 'POST',
-                                body: arrayBuffer,
+                                body: audioBlob,
                                 headers: {
                                     'Content-Type': 'audio/webm'
                                 }
                             });
+                            
+                            if (!response.ok) {
+                                throw new Error(`网络响应错误: ${response.statusText}`);
+                            }
+                            
                             const data = await response.json();
                             
                             if (data.audioUrl) {
@@ -540,6 +789,10 @@
                 const currentUser = data.users.find(u => u.username === username);
                 if (currentUser) {
                     userPermissions = currentUser.permissions;
+                    // 加入房间成功后切换到聊天界面
+                    loginForm.classList.add('hidden');
+                    chatForm.classList.remove('hidden');
+                    messageInput.focus();
                 }
             }
         });
@@ -602,6 +855,30 @@
                 `;
             }
         });
+        
+        // 房间加入失败
+        socket.on('join-error', (data) => {
+            alert(data.message);
+        });
+        
+        // 房间变更通知
+        socket.on('room-changed', (data) => {
+            currentRoom = data.roomName;
+            // 清空消息列表
+            messagesDiv.innerHTML = '<div class="system-message">' + data.message + '</div>';
+            // 更新用户列表
+            updateUserList([]);
+        });
+        
+        // 房间历史消息
+        socket.on('room-history', (data) => {
+            // 清空当前消息
+            messagesDiv.innerHTML = '';
+            // 添加历史消息
+            data.messages.forEach(message => {
+                addMessage(message);
+            });
+        });
 
         function recallMessage(messageId) {
             socket.emit('message-recall', messageId);
@@ -655,12 +932,22 @@
                 userDiv.className = 'user-item';
                 
                 // 只有当当前用户和目标用户都有通话权限时才显示通话按钮
-                //const showCallButton = userPermissions.allowCall && user.permissions.allowCall;
+                const showCallButton = userPermissions.allowCall && user.permissions.allowCall;
+                
+                let callButtonsHtml = '';
+                if (showCallButton && user.socketId !== socket.id) {
+                    callButtonsHtml = `
+                        <div class="user-actions">
+                            <button class="call-btn" onclick="startVideoCall('${user.socketId}', '${user.username}')">📹</button>
+                            <button class="call-btn" onclick="startAudioCall('${user.socketId}', '${user.username}')">📞</button>
+                        </div>
+                    `;
+                }
                 
                 userDiv.innerHTML = `
                     <div class="user-color" style="background: ${user.color}"></div>
                     <div class="user-name">${escapeHtml(user.username)}</div>
-                    
+                    ${callButtonsHtml}
                 `;
                 
                 usersListDiv.appendChild(userDiv);
@@ -671,6 +958,891 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        // 媒体录制器
+        mediaRecorder = null;
+        let mediaChunks = [];
+        isRecording = false;
+        let isDeviceSelectModalOpen = false;
+        
+        // 媒体源和缓冲区
+        let mediaSource = null;
+        let sourceBuffer = null;
+        let audioContext = null;
+        let audioSource = null;
+        let audioBuffer = null;
+        
+        // 当前媒体URL
+        let currentMediaUrl = null;
+        
+        // 媒体数据队列
+        let mediaDataQueue = [];
+
+        // 开始视频通话
+        async function startVideoCall(targetSocketId, targetUsername) {
+            if (!userPermissions.allowCall) {
+                alert('您没有通话权限');
+                return;
+            }
+            
+            isVideoCall = true;
+            currentCallId = Date.now().toString();
+            currentTargetSocketId = targetSocketId;
+            
+            try {
+                // 检查浏览器支持
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('您的浏览器不支持媒体设备访问');
+                }
+                
+                // 获取可用设备
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                const audioDevices = devices.filter(device => device.kind === 'audioinput');
+                
+                console.log('可用视频设备:', videoDevices);
+                console.log('可用音频设备:', audioDevices);
+                
+                if (videoDevices.length === 0) {
+                    throw new Error('未检测到摄像头设备');
+                }
+                
+                if (audioDevices.length === 0) {
+                    throw new Error('未检测到麦克风设备');
+                }
+                
+                // 如果有多个设备，显示设备选择界面
+                if (videoDevices.length > 1 || audioDevices.length > 1) {
+                    availableVideoDevices = videoDevices;
+                    availableAudioDevices = audioDevices;
+                    selectedVideoDeviceId = videoDevices[0].deviceId;
+                    selectedAudioDeviceId = audioDevices[0].deviceId;
+                    pendingCallAction = { type: 'video', targetSocketId, targetUsername };
+                    showDeviceSelectModal();
+                    return;
+                }
+                
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    },
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    }
+                });
+                
+                localStream = stream;
+                localVideo.srcObject = stream;
+                
+                // 不要立即开始录制，等待对方接受通话后再开始
+                // startMediaRecording(stream);
+                
+                socket.emit('call-request', {
+                    targetSocketId: targetSocketId,
+                    callId: currentCallId,
+                    type: 'video',
+                    fromUsername: username
+                });
+                
+                videoContainer.classList.add('active');
+                addSystemMessage(`正在向 ${targetUsername} 发起视频通话...`);
+            } catch (error) {
+                console.error('获取摄像头失败:', error);
+                let errorMessage = '无法访问摄像头，请检查权限设置';
+                
+                if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                    errorMessage = '您拒绝了摄像头和麦克风权限，请在浏览器设置中允许访问';
+                } else if (error.name === 'NotFoundError') {
+                    errorMessage = '未找到摄像头或麦克风设备';
+                } else if (error.name === 'NotReadableError') {
+                    errorMessage = '无法读取摄像头或麦克风数据';
+                } else if (error.message) {
+                    errorMessage = error.message;
+                }
+                
+                alert(errorMessage);
+            }
+        }
+
+        // 开始语音通话
+        async function startAudioCall(targetSocketId, targetUsername) {
+            if (!userPermissions.allowCall) {
+                alert('您没有通话权限');
+                return;
+            }
+            
+            isVideoCall = false;
+            currentCallId = Date.now().toString();
+            currentTargetSocketId = targetSocketId;
+            
+            try {
+                // 检查浏览器支持
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('您的浏览器不支持媒体设备访问');
+                }
+                
+                // 获取可用设备
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const audioDevices = devices.filter(device => device.kind === 'audioinput');
+                
+                console.log('可用音频设备:', audioDevices);
+                
+                if (audioDevices.length === 0) {
+                    throw new Error('未检测到麦克风设备');
+                }
+                
+                // 如果有多个设备，显示设备选择界面
+                if (audioDevices.length > 1) {
+                    availableVideoDevices = [];
+                    availableAudioDevices = audioDevices;
+                    selectedVideoDeviceId = null;
+                    selectedAudioDeviceId = audioDevices[0].deviceId;
+                    pendingCallAction = { type: 'audio', targetSocketId, targetUsername };
+                    showDeviceSelectModal();
+                    return;
+                }
+                
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+                
+                localStream = stream;
+                
+                // 不要立即开始录制，等待对方接受通话后再开始
+                // startMediaRecording(stream);
+                
+                socket.emit('call-request', {
+                    targetSocketId: targetSocketId,
+                    callId: currentCallId,
+                    type: 'audio',
+                    fromUsername: username
+                });
+                
+                videoContainer.classList.add('active');
+                addSystemMessage(`正在向 ${targetUsername} 发起语音通话...`);
+            } catch (error) {
+                console.error('获取麦克风失败:', error);
+                let errorMessage = '无法访问麦克风，请检查权限设置';
+                
+                if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                    errorMessage = '您拒绝了麦克风权限，请在浏览器设置中允许访问';
+                } else if (error.name === 'NotFoundError') {
+                    errorMessage = '未找到麦克风设备';
+                } else if (error.name === 'NotReadableError') {
+                    errorMessage = '无法读取麦克风数据';
+                } else if (error.message) {
+                    errorMessage = error.message;
+                }
+                
+                alert(errorMessage);
+            }
+        }
+
+        // 开始媒体录制
+        function startMediaRecording(stream) {
+            mediaChunks = [];
+            
+            const mimeType = isVideoCall ? 'video/webm;codecs=vp8' : 'audio/webm';
+            mediaRecorder = new MediaRecorder(stream, { 
+                mimeType,
+                videoBitsPerSecond: isVideoCall ? 100000 : undefined
+            });
+            
+            mediaRecorder.ondataavailable = async (event) => {
+                if (event.data && event.data.size > 0) {
+                    try {
+                        // 将Blob转换为Uint8Array
+                        const arrayBuffer = await event.data.arrayBuffer();
+                        const uint8Array = new Uint8Array(arrayBuffer);
+                        
+                        // 通过Socket.io发送媒体数据
+                        socket.emit('call-media', {
+                            targetSocketId: currentTargetSocketId,
+                            callId: currentCallId,
+                            type: isVideoCall ? 'video' : 'audio',
+                            data: uint8Array
+                        });
+                    } catch (error) {
+                        console.error('发送媒体数据失败:', error);
+                    }
+                }
+            };
+            
+            mediaRecorder.start(500); // 每500ms发送一次数据
+            isRecording = true;
+        }
+
+        // 停止媒体录制
+        function stopMediaRecording() {
+            if (mediaRecorder && isRecording) {
+                mediaRecorder.stop();
+                isRecording = false;
+            }
+        }
+
+        // 接受通话
+        async function acceptCall() {
+            callIncoming.classList.remove('active');
+            
+            try {
+                // 检查浏览器支持
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('您的浏览器不支持媒体设备访问');
+                }
+                
+                // 获取可用设备
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                
+                if (isVideoCall) {
+                    const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                    const audioDevices = devices.filter(device => device.kind === 'audioinput');
+                    
+                    console.log('可用视频设备:', videoDevices);
+                    console.log('可用音频设备:', audioDevices);
+                    
+                    if (videoDevices.length === 0) {
+                        throw new Error('未检测到摄像头设备');
+                    }
+                    
+                    if (audioDevices.length === 0) {
+                        throw new Error('未检测到麦克风设备');
+                    }
+                    
+                    // 如果有多个设备，显示设备选择界面
+                    if (videoDevices.length > 1 || audioDevices.length > 1) {
+                        availableVideoDevices = videoDevices;
+                        availableAudioDevices = audioDevices;
+                        selectedVideoDeviceId = videoDevices[0].deviceId;
+                        selectedAudioDeviceId = audioDevices[0].deviceId;
+                        // 设置pendingCallAction，用于设备选择后的通话流程
+                        pendingCallAction = { 
+                            type: 'video', 
+                            isAcceptingCall: true,
+                            targetSocketId: currentCallerSocketId,
+                            targetUsername: '对方'
+                        };
+                        showDeviceSelectModal();
+                        return;
+                    }
+                    
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true
+                        },
+                        video: {
+                            width: { ideal: 640 },
+                            height: { ideal: 480 },
+                            facingMode: 'user'
+                        }
+                    });
+                    
+                    localStream = stream;
+                    localVideo.srcObject = stream;
+                    
+                    // 接受通话时立即开始录制并发送数据
+                    startMediaRecording(stream);
+                    
+                    // 设置目标Socket ID，确保能发送数据给对方
+                    currentTargetSocketId = currentCallerSocketId;
+                    
+                    socket.emit('call-accept', {
+                        callerSocketId: currentCallerSocketId,
+                        callId: currentCallId
+                    });
+                    
+                    videoContainer.classList.add('active');
+                    addSystemMessage('通话已接通');
+                } else {
+                    const audioDevices = devices.filter(device => device.kind === 'audioinput');
+                    
+                    console.log('可用音频设备:', audioDevices);
+                    
+                    if (audioDevices.length === 0) {
+                        throw new Error('未检测到麦克风设备');
+                    }
+                    
+                    // 如果有多个设备，显示设备选择界面
+                    if (audioDevices.length > 1) {
+                        availableVideoDevices = [];
+                        availableAudioDevices = audioDevices;
+                        selectedVideoDeviceId = null;
+                        selectedAudioDeviceId = audioDevices[0].deviceId;
+                        // 设置pendingCallAction，用于设备选择后的通话流程
+                        pendingCallAction = { 
+                            type: 'audio', 
+                            isAcceptingCall: true,
+                            targetSocketId: currentCallerSocketId,
+                            targetUsername: '对方'
+                        };
+                        showDeviceSelectModal();
+                        return;
+                    }
+                    
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true
+                        }
+                    });
+                    
+                    localStream = stream;
+                    
+                    // 不要立即开始录制，等待对方接受通话后再开始
+                    // startMediaRecording(stream);
+                    
+                    // 设置目标Socket ID，确保能发送数据给对方
+                    currentTargetSocketId = currentCallerSocketId;
+                    
+                    socket.emit('call-accept', {
+                        callerSocketId: currentCallerSocketId,
+                        callId: currentCallId
+                    });
+                    
+                    videoContainer.classList.add('active');
+                    addSystemMessage('通话已接通');
+                }
+            } catch (error) {
+                console.error('获取媒体流失败:', error);
+                let errorMessage = '无法访问摄像头/麦克风，请检查权限设置';
+                
+                if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                    errorMessage = '您拒绝了摄像头和麦克风权限，请在浏览器设置中允许访问';
+                } else if (error.name === 'NotFoundError') {
+                    errorMessage = '未找到摄像头或麦克风设备';
+                } else if (error.name === 'NotReadableError') {
+                    errorMessage = '无法读取摄像头或麦克风数据';
+                } else if (error.message) {
+                    errorMessage = error.message;
+                }
+                
+                alert(errorMessage);
+                // 重置来电状态
+                callIncoming.classList.remove('active');
+                currentCallId = null;
+            }
+        }
+
+        // 拒绝通话
+        function rejectCall() {
+            callIncoming.classList.remove('active');
+            
+                socket.emit('call-media', {
+                    targetSocketId: currentCallerSocketId,
+                    callId: currentCallId,
+                    type: 'reject'
+                });
+                
+                addSystemMessage('已拒绝通话');
+                currentCallId = null;
+            }   
+        
+
+        // 结束通话
+        function endCall() {
+            stopMediaRecording();
+            
+            // 清理媒体URL
+            if (currentMediaUrl) {
+                URL.revokeObjectURL(currentMediaUrl);
+                currentMediaUrl = null;
+            }
+            
+            // 清理媒体源和音频上下文
+            if (mediaSource) {
+                mediaSource.endOfStream();
+                remoteVideo.srcObject = null;
+                mediaSource = null;
+            }
+            
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+            
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            
+            videoContainer.classList.remove('active');
+            
+            if (currentTargetSocketId) {
+                socket.emit('call-end', {
+                    targetSocketId: currentTargetSocketId,
+                    callId: currentCallId
+                });
+            }
+            
+            currentCallId = null;
+            currentTargetSocketId = null;
+            sourceBuffer = [];
+            audioBuffer = [];
+            mediaDataQueue = [];
+            addSystemMessage('通话已结束');
+        }
+
+        // 切换视频
+        function toggleVideo() {
+            if (localStream) {
+                const videoTrack = localStream.getVideoTracks()[0];
+                if (videoTrack) {
+                    isVideoEnabled = !isVideoEnabled;
+                    videoTrack.enabled = isVideoEnabled;
+                    toggleVideoBtn.textContent = isVideoEnabled ? '📹' : '🚫';
+                }
+            }
+        }
+
+        // 切换音频
+        function toggleAudio() {
+            if (localStream) {
+                const audioTrack = localStream.getAudioTracks()[0];
+                if (audioTrack) {
+                    isAudioEnabled = !isAudioEnabled;
+                    audioTrack.enabled = isAudioEnabled;
+                    toggleAudioBtn.textContent = isAudioEnabled ? '🎤' : '🔇';
+                }
+            }
+        }
+
+        // Socket事件处理
+        let currentCallerSocketId = null;
+        let currentTargetSocketId = null;
+        let remoteVideoBuffer = [];
+
+        // 接收通话请求
+        socket.on('call-request', (data) => {
+            if (!userPermissions.allowCall) {
+                socket.emit('call-reject', {
+                    callerSocketId: data.from,
+                    callId: data.callId
+                });
+                return;
+            }
+            
+            currentCallerSocketId = data.from;
+            currentCallId = data.callId;
+            // 从请求数据中获取通话类型
+            isVideoCall = data.type === 'video';
+            
+            callIncomingText.textContent = `${data.fromUsername} 请求${isVideoCall ? '视频' : '语音'}通话`;
+            callIncoming.classList.add('active');
+        });
+
+        // 通话被接受
+        socket.on('call-accepted', (data) => {
+            addSystemMessage('对方已接受通话');
+            // 对方接受通话后，开始发送媒体数据
+            if (localStream && !isRecording) {
+                startMediaRecording(localStream);
+            }
+        });
+
+        // 通话被拒绝
+        socket.on('call-rejected', (data) => {
+            stopMediaRecording();
+            addSystemMessage('对方拒绝了通话');
+            currentCallId = null;
+        });
+
+        // 通话结束
+        socket.on('call-ended', (data) => {
+            stopMediaRecording();
+            videoContainer.classList.remove('active');
+            currentCallId = null;
+            addSystemMessage('通话已结束');
+        });
+
+        // 接收媒体数据
+        socket.on('call-media', (data) => {
+            if (data.callId === currentCallId) {
+                try {
+                    // 将Uint8Array转换回Blob
+                    const uint8Array = new Uint8Array(data.data);
+                    const blob = new Blob([uint8Array], { type: isVideoCall ? 'video/webm' : 'audio/webm' });
+                    
+                    if (isVideoCall) {
+                        // 视频播放 - 每次更新URL
+                        const url = URL.createObjectURL(blob);
+                        if (currentMediaUrl) {
+                            URL.revokeObjectURL(currentMediaUrl);
+                        }
+                        currentMediaUrl = url;
+                        remoteVideo.src = url;
+                    } else {
+                        // 音频播放 - 每次更新URL
+                        const url = URL.createObjectURL(blob);
+                        if (currentMediaUrl) {
+                            URL.revokeObjectURL(currentMediaUrl);
+                        }
+                        currentMediaUrl = url;
+                        
+                        // 创建新的音频元素并播放
+                        const audio = new Audio(url);
+                        audio.play();
+                    }
+                } catch (error) {
+                    console.error('播放媒体数据失败:', error);
+                }
+            }
+        });
+
+        // 视频通话按钮事件
+        videoCallBtn.addEventListener('click', () => {
+            const targetUser = prompt('请输入要视频通话的用户名:');
+            if (targetUser) {
+                const userElements = usersListDiv.querySelectorAll('.user-item');
+                for (let userElement of userElements) {
+                    const name = userElement.querySelector('.user-name').textContent;
+                    if (name === targetUser) {
+                        const callBtn = userElement.querySelector('.call-btn');
+                        if (callBtn && callBtn.textContent === '📹') {
+                            const socketId = callBtn.getAttribute('onclick').match(/'([^']+)'/)[1];
+                            startVideoCall(socketId, targetUser);
+                            return;
+                        }
+                    }
+                }
+                alert('未找到该用户或该用户没有通话权限');
+            }
+        });
+
+        // 语音通话按钮事件
+        audioCallBtn.addEventListener('click', () => {
+            const targetUser = prompt('请输入要语音通话的用户名:');
+            if (targetUser) {
+                const userElements = usersListDiv.querySelectorAll('.user-item');
+                for (let userElement of userElements) {
+                    const name = userElement.querySelector('.user-name').textContent;
+                    if (name === targetUser) {
+                        const callBtns = userElement.querySelectorAll('.call-btn');
+                        for (let callBtn of callBtns) {
+                            if (callBtn.textContent === '📞') {
+                                const socketId = callBtn.getAttribute('onclick').match(/'([^']+)'/)[1];
+                                startAudioCall(socketId, targetUser);
+                                return;
+                            }
+                        }
+                    }
+                }
+                alert('未找到该用户或该用户没有通话权限');
+            }
+        });
+
+        // 视频控制按钮事件
+        toggleVideoBtn.addEventListener('click', toggleVideo);
+        toggleAudioBtn.addEventListener('click', toggleAudio);
+        endCallBtn.addEventListener('click', endCall);
+        
+        // 显示设备选择模态框
+        function showDeviceSelectModal() {
+            // 如果模态框已经打开，不重复显示
+            if (isDeviceSelectModalOpen) {
+                return;
+            }
+            
+            isDeviceSelectModalOpen = true;
+            deviceSelectContent.innerHTML = '';
+            
+            // 添加搜索框
+            const searchInput = document.createElement('input');
+            searchInput.type = 'text';
+            searchInput.placeholder = '搜索设备...';
+            searchInput.style.width = '100%';
+            searchInput.style.padding = '10px';
+            searchInput.style.marginBottom = '15px';
+            searchInput.style.border = '1px solid #dee2e6';
+            searchInput.style.borderRadius = '5px';
+            searchInput.addEventListener('input', (e) => {
+                filterDeviceList(e.target.value);
+            });
+            
+            deviceSelectContent.appendChild(searchInput);
+            
+            // 添加视频设备选择
+            if (availableVideoDevices.length > 0) {
+                const videoSection = document.createElement('div');
+                videoSection.innerHTML = '<h4 style="margin-bottom: 10px;">选择摄像头:</h4>';
+                
+                availableVideoDevices.forEach((device, index) => {
+                    const deviceDiv = document.createElement('div');
+                    deviceDiv.style.display = 'flex';
+                    deviceDiv.style.alignItems = 'center';
+                    deviceDiv.style.padding = '10px';
+                    deviceDiv.style.marginBottom = '5px';
+                    deviceDiv.style.border = '1px solid #e9ecef';
+                    deviceDiv.style.borderRadius = '5px';
+                    deviceDiv.style.cursor = 'pointer';
+                    deviceDiv.dataset.deviceId = device.deviceId;
+                    deviceDiv.dataset.deviceType = 'video';
+                    
+                    const deviceLabel = device.label || `摄像头 ${index + 1}`;
+                    
+                    deviceDiv.innerHTML = `
+                        <input type="radio" name="videoDevice" value="${device.deviceId}" ${device.deviceId === selectedVideoDeviceId ? 'checked' : ''}>
+                        <span style="margin-left: 10px;">${escapeHtml(deviceLabel)}</span>
+                    `;
+                    
+                    deviceDiv.addEventListener('click', () => {
+                        selectedVideoDeviceId = device.deviceId;
+                        document.querySelectorAll('input[name="videoDevice"]').forEach(input => {
+                            input.checked = input.value === device.deviceId;
+                        });
+                    });
+                    
+                    videoSection.appendChild(deviceDiv);
+                });
+                
+                deviceSelectContent.appendChild(videoSection);
+            }
+            
+            // 添加音频设备选择
+            if (availableAudioDevices.length > 0) {
+                const audioSection = document.createElement('div');
+                audioSection.innerHTML = '<h4 style="margin-bottom: 10px;">选择麦克风:</h4>';
+                
+                availableAudioDevices.forEach((device, index) => {
+                    const deviceDiv = document.createElement('div');
+                    deviceDiv.style.display = 'flex';
+                    deviceDiv.style.alignItems = 'center';
+                    deviceDiv.style.padding = '10px';
+                    deviceDiv.style.marginBottom = '5px';
+                    deviceDiv.style.border = '1px solid #e9ecef';
+                    deviceDiv.style.borderRadius = '5px';
+                    deviceDiv.style.cursor = 'pointer';
+                    deviceDiv.dataset.deviceId = device.deviceId;
+                    deviceDiv.dataset.deviceType = 'audio';
+                    
+                    const deviceLabel = device.label || `麦克风 ${index + 1}`;
+                    
+                    deviceDiv.innerHTML = `
+                        <input type="radio" name="audioDevice" value="${device.deviceId}" ${device.deviceId === selectedAudioDeviceId ? 'checked' : ''}>
+                        <span style="margin-left: 10px;">${escapeHtml(deviceLabel)}</span>
+                    `;
+                    
+                    deviceDiv.addEventListener('click', () => {
+                        selectedAudioDeviceId = device.deviceId;
+                        document.querySelectorAll('input[name="audioDevice"]').forEach(input => {
+                            input.checked = input.value === device.deviceId;
+                        });
+                    });
+                    
+                    audioSection.appendChild(deviceDiv);
+                });
+                
+                deviceSelectContent.appendChild(audioSection);
+            }
+            
+            deviceSelectModal.classList.add('active');
+        }
+        
+        // 过滤设备列表
+        function filterDeviceList(searchTerm) {
+            const deviceDivs = deviceSelectContent.querySelectorAll('[data-device-type]');
+            
+            deviceDivs.forEach(deviceDiv => {
+                const deviceName = deviceDiv.querySelector('span').textContent.toLowerCase();
+                const isVisible = deviceName.includes(searchTerm.toLowerCase());
+                deviceDiv.style.display = isVisible ? 'flex' : 'none';
+            });
+        }
+        
+        // 关闭设备选择模态框
+        function closeDeviceSelectModal() {
+            deviceSelectModal.classList.remove('active');
+            isDeviceSelectModalOpen = false;
+            pendingCallAction = null;
+        }
+        
+        // 确认设备选择
+        function confirmDeviceSelect() {
+            if (pendingCallAction) {
+                deviceSelectModal.classList.remove('active');
+                isDeviceSelectModalOpen = false;
+                
+                // 检查是否是接受通话的情况
+                if (pendingCallAction.isAcceptingCall) {
+                    // 使用选择的设备接受通话
+                    if (pendingCallAction.type === 'video') {
+                        acceptVideoCallWithDevice(selectedVideoDeviceId, selectedAudioDeviceId);
+                    } else if (pendingCallAction.type === 'audio') {
+                        acceptAudioCallWithDevice(selectedAudioDeviceId);
+                    }
+                } else {
+                    // 使用选择的设备发起通话
+                    if (pendingCallAction.type === 'video') {
+                        startVideoCallWithDevice(pendingCallAction.targetSocketId, pendingCallAction.targetUsername, selectedVideoDeviceId);
+                    } else if (pendingCallAction.type === 'audio') {
+                        startAudioCallWithDevice(pendingCallAction.targetSocketId, pendingCallAction.targetUsername, selectedAudioDeviceId);
+                    }
+                }
+            }
+        }
+        
+        // 使用指定设备接受视频通话
+        async function acceptVideoCallWithDevice(videoDeviceId, audioDeviceId) {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        deviceId: audioDeviceId,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    },
+                    video: {
+                        deviceId: videoDeviceId,
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    }
+                });
+                
+                localStream = stream;
+                localVideo.srcObject = stream;
+                
+                // 接受通话时立即开始录制并发送数据
+                startMediaRecording(stream);
+                
+                // 设置目标Socket ID，确保能发送数据给对方
+                currentTargetSocketId = currentCallerSocketId;
+                
+                socket.emit('call-accept', {
+                    callerSocketId: currentCallerSocketId,
+                    callId: currentCallId
+                });
+                
+                videoContainer.classList.add('active');
+                addSystemMessage('通话已接通');
+            } catch (error) {
+                console.error('获取媒体流失败:', error);
+                alert('无法访问摄像头/麦克风，请检查权限设置');
+            }
+        }
+        
+        // 使用指定设备接受语音通话
+        async function acceptAudioCallWithDevice(audioDeviceId) {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        deviceId: audioDeviceId,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+                
+                localStream = stream;
+                
+                // 不要立即开始录制，等待对方接受通话后再开始
+                // startMediaRecording(stream);
+                
+                // 设置目标Socket ID，确保能发送数据给对方
+                currentTargetSocketId = currentCallerSocketId;
+                
+                socket.emit('call-accept', {
+                    callerSocketId: currentCallerSocketId,
+                    callId: currentCallId
+                });
+                
+                videoContainer.classList.add('active');
+                addSystemMessage('通话已接通');
+            } catch (error) {
+                console.error('获取媒体流失败:', error);
+                alert('无法访问麦克风，请检查权限设置');
+            }
+        }
+        
+        // 使用指定设备开始视频通话
+        async function startVideoCallWithDevice(targetSocketId, targetUsername, deviceId) {
+            if (!userPermissions.allowCall) {
+                alert('您没有通话权限');
+                return;
+            }
+            
+            isVideoCall = true;
+            currentCallId = Date.now().toString();
+            currentTargetSocketId = targetSocketId;
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        deviceId: selectedAudioDeviceId,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    },
+                    video: {
+                        deviceId: deviceId,
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    }
+                });
+                
+                localStream = stream;
+                localVideo.srcObject = stream;
+                
+                // 不要立即开始录制，等待对方接受通话后再开始
+                // startMediaRecording(stream);
+                
+                socket.emit('call-request', {
+                    targetSocketId: targetSocketId,
+                    callId: currentCallId,
+                    type: 'video',
+                    fromUsername: username
+                });
+                
+                videoContainer.classList.add('active');
+                addSystemMessage(`正在向 ${targetUsername} 发起视频通话...`);
+            } catch (error) {
+                console.error('获取摄像头失败:', error);
+                alert('无法访问摄像头，请检查权限设置');
+            }
+        }
+        
+        // 使用指定设备开始语音通话
+        async function startAudioCallWithDevice(targetSocketId, targetUsername, deviceId) {
+            if (!userPermissions.allowCall) {
+                alert('您没有通话权限');
+                return;
+            }
+            
+            isVideoCall = false;
+            currentCallId = Date.now().toString();
+            currentTargetSocketId = targetSocketId;
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        deviceId: deviceId,
+                        echoCancellation: true,
+                        noiseSuppression: true
+                    }
+                });
+                
+                localStream = stream;
+                
+                // 不要立即开始录制，等待对方接受通话后再开始
+                // startMediaRecording(stream);
+                
+                socket.emit('call-request', {
+                    targetSocketId: targetSocketId,
+                    callId: currentCallId,
+                    type: 'audio',
+                    fromUsername: username
+                });
+                
+                videoContainer.classList.add('active');
+                addSystemMessage(`正在向 ${targetUsername} 发起语音通话...`);
+            } catch (error) {
+                console.error('获取麦克风失败:', error);
+                alert('无法访问麦克风，请检查权限设置');
+            }
         }
     </script>
 </body>
