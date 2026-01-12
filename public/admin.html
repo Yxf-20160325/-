@@ -673,11 +673,16 @@
                 <button class="tab active" onclick="switchTab('users')">用户管理</button>
                 <button class="tab" onclick="switchTab('files')">文件管理</button>
                 <button class="tab" onclick="switchTab('messages')">消息管理</button>
+                <button class="tab" onclick="switchTab('rooms')">房间管理</button>
+                <button class="tab" onclick="switchTab('roomDetails')">房间详细</button>
             </div>
 
             <div class="tab-content active" id="usersTab">
                 <div class="section">
                     <h2>在线用户管理</h2>
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <input type="text" id="userSearch" placeholder="搜索用户名或房间名" oninput="filterUsers()">
+                    </div>
                     <div class="user-list" id="userList">
                         <div class="empty-state">
                             <div class="empty-state-icon">👥</div>
@@ -728,6 +733,75 @@
                             <div class="empty-state-icon">💬</div>
                             <div>暂无消息</div>
                         </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tab-content" id="roomsTab">
+                <div class="section">
+                    <h2>创建新房间</h2>
+                    <form onsubmit="event.preventDefault(); createRoom();">
+                        <div class="input-group">
+                            <input type="text" id="roomName" placeholder="房间名" required>
+                            <input type="password" id="roomPassword" placeholder="房间密码（可选）">
+                        </div>
+                        <div class="input-group">
+                            <button type="submit" class="btn btn-primary">创建房间</button>
+                        </div>
+                    </form>
+                </div>
+                
+                <div class="section">
+                    <h2>房间列表</h2>
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <input type="text" id="roomSearch" placeholder="搜索房间名" oninput="filterRooms()">
+                    </div>
+                    <div class="user-list" id="roomList">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🏠</div>
+                            <div>暂无房间</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tab-content" id="roomDetailsTab">
+                <div class="section">
+                    <h2 id="roomDetailsTitle">房间详细信息</h2>
+                    <div id="roomDetailsInfo" style="margin-bottom: 20px;">
+                        <p>点击房间列表中的"查看用户"按钮查看房间详情</p>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>房间用户管理</h2>
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <input type="text" id="roomUserSearch" placeholder="搜索房间内的用户名" oninput="filterRoomUsers()">
+                    </div>
+                    <div class="user-list" id="roomUserList">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">👥</div>
+                            <div>该房间暂无用户</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>房间消息管理</h2>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <h3>发送系统消息</h3>
+                        <div class="input-group">
+                            <form onsubmit="event.preventDefault(); sendRoomSystemMessage();">
+                                <input type="text" id="roomSystemMessage" placeholder="输入房间系统消息内容">
+                                <button type="submit" class="btn btn-primary">发送</button>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h3>伪装发送消息</h3>
+                        <button class="btn btn-primary" onclick="openRoomAdminMessageModal()">伪装发送消息</button>
                     </div>
                 </div>
             </div>
@@ -825,11 +899,47 @@
             </form>
         </div>
     </div>
+    
+    <div class="modal" id="editRoomModal">
+        <div class="modal-content">
+            <h3>编辑房间</h3>
+            <form onsubmit="event.preventDefault(); confirmEditRoom();">
+                <div class="input-group">
+                    <label>房间名</label>
+                    <input type="text" id="editRoomName" readonly>
+                </div>
+                <div class="input-group">
+                    <label>房间密码</label>
+                    <input type="password" id="editRoomPassword" placeholder="留空表示不设置密码">
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeEditRoomModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="roomUsersModal">
+        <div class="modal-content" style="max-width: 600px;">
+            <h3 id="roomUsersTitle">房间用户列表</h3>
+            <div id="roomUsersList">
+                <div class="empty-state">
+                    <div class="empty-state-icon">👥</div>
+                    <div>暂无用户</div>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-cancel" onclick="closeRoomUsersModal()">关闭</button>
+            </div>
+        </div>
+    </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
         let users = [];
+        let originalUsers = []; // 存储原始用户列表，用于搜索过滤
         let selectedSocketId = null;
 
         const loginContainer = document.getElementById('loginContainer');
@@ -857,6 +967,39 @@
         const disguiseMessage = document.getElementById('disguiseMessage');
         const disguiseColor = document.getElementById('disguiseColor');
         let selectedPermissionsSocketId = null;
+        
+        // 房间管理相关元素
+        const roomName = document.getElementById('roomName');
+        const roomPassword = document.getElementById('roomPassword');
+        const roomList = document.getElementById('roomList');
+        
+        // 编辑房间相关元素
+        const editRoomModal = document.getElementById('editRoomModal');
+        const editRoomName = document.getElementById('editRoomName');
+        const editRoomPassword = document.getElementById('editRoomPassword');
+        let selectedEditRoomName = null;
+        
+        // 房间用户管理相关元素
+        const roomUsersModal = document.getElementById('roomUsersModal');
+        const roomUsersTitle = document.getElementById('roomUsersTitle');
+        const roomUsersList = document.getElementById('roomUsersList');
+        let currentRoomName = null;
+        let currentRoomUsers = [];
+        
+        // 搜索相关元素
+        const userSearch = document.getElementById('userSearch');
+        const roomSearch = document.getElementById('roomSearch');
+        let originalRooms = []; // 存储原始房间列表，用于搜索过滤
+        
+        // 房间详细页相关元素
+        const roomDetailsTitle = document.getElementById('roomDetailsTitle');
+        const roomDetailsInfo = document.getElementById('roomDetailsInfo');
+        const roomUserSearch = document.getElementById('roomUserSearch');
+        const roomUserListElement = document.getElementById('roomUserList');
+        const roomSystemMessage = document.getElementById('roomSystemMessage');
+        let currentRoomDetails = null;
+        let roomUserList = [];
+        let originalRoomUsers = [];
 
         adminPassword.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
@@ -878,6 +1021,8 @@
 
 
 
+        let userRefreshInterval = null;
+        
         function login() {
             const password = adminPassword.value;
             socket.emit('admin-login', password);
@@ -890,34 +1035,123 @@
                 loadMessages();
                 // 主动请求最新的用户列表
                 socket.emit('admin-get-users');
+                
+                // 启动用户列表自动刷新定时器（每秒一次）
+                if (userRefreshInterval) {
+                    clearInterval(userRefreshInterval);
+                }
+                userRefreshInterval = setInterval(() => {
+                    socket.emit('admin-get-users');
+                }, 1000);
             } else {
                 alert('密码错误！');
                 adminPassword.value = '';
             }
         });
 
-        socket.on('user-joined', (data) => {
-            users = data.users;
+        function updateUsersWithSearch(data) {
+            originalUsers = [...data.users]; // 保存原始数据
+            
+            // 检查是否有活跃的搜索
+            const searchTerm = userSearch ? userSearch.value.toLowerCase().trim() : '';
+            if (searchTerm) {
+                // 如果有搜索，应用相同的搜索条件过滤新的用户列表
+                users = data.users.filter(user => {
+                    const username = user.username.toLowerCase();
+                    const roomName = (user.roomName || 'main').toLowerCase();
+                    return username.includes(searchTerm) || roomName.includes(searchTerm);
+                });
+            } else {
+                // 如果没有搜索，直接使用完整列表
+                users = [...data.users];
+            }
+            
             updateUserList();
+        }
+        
+        socket.on('user-joined', (data) => {
+            updateUsersWithSearch(data);
         });
 
         socket.on('user-left', (data) => {
-            users = data.users;
-            updateUserList();
+            updateUsersWithSearch(data);
         });
 
         socket.on('user-renamed', (data) => {
-            users = data.users;
-            updateUserList();
+            updateUsersWithSearch(data);
         });
 
         socket.on('user-permissions-changed', (data) => {
-            users = data.users;
-            updateUserList();
+            updateUsersWithSearch(data);
         });
 
         socket.on('admin-messages', (data) => {
             displayMessages(data);
+        });
+        
+        function updateRoomsWithSearch(rooms) {
+            originalRooms = [...rooms]; // 保存原始数据
+            
+            // 检查是否有活跃的搜索
+            const searchTerm = roomSearch ? roomSearch.value.toLowerCase().trim() : '';
+            if (searchTerm) {
+                // 如果有搜索，应用相同的搜索条件过滤新的房间列表
+                const filteredRooms = rooms.filter(room => {
+                    return room.roomName.toLowerCase().includes(searchTerm);
+                });
+                updateRoomList(filteredRooms);
+            } else {
+                // 如果没有搜索，直接使用完整列表
+                updateRoomList(rooms);
+            }
+        }
+        
+        // 房间管理相关的socket事件
+        socket.on('admin-rooms', (rooms) => {
+            updateRoomsWithSearch(rooms);
+        });
+        
+        socket.on('admin-room-error', (data) => {
+            alert(data.message);
+        });
+        
+        socket.on('admin-room-users', (data) => {
+            // 获取当前房间的详细信息
+            const room = originalRooms.find(r => r.roomName === currentRoomName);
+            if (room) {
+                currentRoomDetails = room;
+                
+                // 更新房间详细信息
+                roomDetailsTitle.textContent = `${escapeHtml(room.roomName)} 房间详细信息`;
+                const passwordText = room.password ? '有密码' : '无密码';
+                roomDetailsInfo.innerHTML = `
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div>
+                            <strong>房间名:</strong> ${escapeHtml(room.roomName)}
+                        </div>
+                        <div>
+                            <strong>密码:</strong> ${passwordText}
+                        </div>
+                        <div>
+                            <strong>创建时间:</strong> ${new Date(room.createdAt).toLocaleString()}
+                        </div>
+                        <div>
+                            <strong>更新时间:</strong> ${new Date(room.updatedAt).toLocaleString()}
+                        </div>
+                        <div>
+                            <strong>用户数量:</strong> ${data.users.length}
+                        </div>
+                        <div>
+                            <strong>最大用户数:</strong> ${room.settings.maxUsers}
+                        </div>
+                    </div>
+                `;
+                
+                // 更新房间用户列表
+                roomUserList = data.users;
+                originalRoomUsers = [...data.users];
+                updateRoomUserList();
+            }
         });
 
         function switchTab(tabName) {
@@ -929,6 +1163,333 @@
 
             if (tabName === 'messages') {
                 loadMessages();
+            } else if (tabName === 'rooms') {
+                loadRooms();
+            }
+        }
+        
+        // 房间管理功能
+        function createRoom() {
+            const name = roomName.value.trim();
+            const password = roomPassword.value.trim() || null;
+            
+            if (name) {
+                socket.emit('admin-create-room', { roomName: name, password: password });
+                roomName.value = '';
+                roomPassword.value = '';
+            }
+        }
+        
+        function loadRooms() {
+            socket.emit('admin-get-rooms');
+        }
+        
+        function deleteRoom(roomName) {
+            if (confirm(`确定要删除房间 ${roomName} 吗？房间内的用户将被转移到默认房间。`)) {
+                socket.emit('admin-delete-room', roomName);
+            }
+        }
+        
+        function updateRoom(roomName) {
+            selectedEditRoomName = roomName;
+            editRoomName.value = roomName;
+            editRoomPassword.value = '';
+            editRoomModal.classList.add('active');
+        }
+        
+        function closeEditRoomModal() {
+            editRoomModal.classList.remove('active');
+            selectedEditRoomName = null;
+        }
+        
+        function confirmEditRoom() {
+            const password = editRoomPassword.value.trim() || null;
+            
+            if (selectedEditRoomName) {
+                socket.emit('admin-update-room', {
+                    roomName: selectedEditRoomName,
+                    updates: { password: password }
+                });
+                closeEditRoomModal();
+            }
+        }
+        
+        function updateRoomList(rooms) {
+            if (rooms.length === 0) {
+                roomList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🏠</div>
+                        <div>暂无房间</div>
+                    </div>`;
+                return;
+            }
+            
+            roomList.innerHTML = rooms.map(room => {
+                const passwordText = room.password ? '有密码' : '无密码';
+                const userCount = room.users.length;
+                
+                return `
+                    <div class="user-item">
+                        <div class="user-info">
+                            <div class="user-color" style="background: #667eea;"></div>
+                            <div>
+                                <div class="user-name">${escapeHtml(room.roomName)}</div>
+                                <small style="color: #666;">${passwordText} | ${userCount} 个用户 | 创建于: ${new Date(room.createdAt).toLocaleString()}</small>
+                            </div>
+                        </div>
+                        <div class="user-actions">
+                            <button class="btn btn-info btn-sm" onclick="updateRoom('${room.roomName}')">编辑</button>
+                            <button class="btn btn-primary btn-sm" onclick="viewRoomUsers('${room.roomName}')">查看用户</button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteRoom('${room.roomName}')">删除</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function viewRoomUsers(roomName) {
+            currentRoomName = roomName;
+            
+            // 请求获取该房间的用户列表
+            socket.emit('admin-get-room-users', roomName);
+            
+            // 切换到房间详细页标签
+            switchTab('roomDetails');
+        }
+        
+        function closeRoomUsersModal() {
+            roomUsersModal.classList.remove('active');
+            currentRoomName = null;
+            currentRoomUsers = [];
+        }
+        
+        function updateRoomUsersList(users) {
+            // 兼容原有模态框显示
+            if (roomUsersModal.classList.contains('active')) {
+                currentRoomUsers = users;
+                
+                if (users.length === 0) {
+                    roomUsersList.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">👥</div>
+                            <div>该房间暂无用户</div>
+                        </div>`;
+                    return;
+                }
+                
+                roomUsersList.innerHTML = users.map(user => {
+                    return `
+                        <div class="user-item">
+                            <div class="user-info">
+                                <div class="user-color" style="background: ${user.color}"></div>
+                                <div class="user-name">${escapeHtml(user.username)}</div>
+                            </div>
+                            <div class="user-actions">
+                                <button class="btn btn-rename" onclick="openRoomUserRenameModal('${user.socketId}', '${user.username}')">重命名</button>
+                                <button class="btn btn-kick" onclick="roomKickUser('${user.socketId}', '${user.username}')">踢出房间</button>
+                                <button class="btn btn-permissions" onclick="openRoomUserPermissionsModal('${user.socketId}')">权限</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+        
+        function updateRoomUserList() {
+            if (roomUserList.length === 0) {
+                roomUserListElement.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">👥</div>
+                        <div>该房间暂无用户</div>
+                    </div>`;
+                return;
+            }
+            
+            roomUserListElement.innerHTML = roomUserList.map(user => {
+                return `
+                    <div class="user-item">
+                        <div class="user-info">
+                            <div class="user-color" style="background: ${user.color}"></div>
+                            <div class="user-name">${escapeHtml(user.username)}</div>
+                        </div>
+                        <div class="user-actions">
+                            <button class="btn btn-rename" onclick="openRoomUserRenameModal('${user.socketId}', '${user.username}')">重命名</button>
+                            <button class="btn btn-kick" onclick="roomKickUser('${user.socketId}', '${user.username}')">踢出房间</button>
+                            <button class="btn btn-permissions" onclick="openRoomUserPermissionsModal('${user.socketId}')">权限</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function filterRoomUsers() {
+            const searchTerm = roomUserSearch.value.toLowerCase().trim();
+            
+            if (!searchTerm) {
+                // 如果搜索框为空，显示所有房间用户
+                roomUserList = [...originalRoomUsers];
+                updateRoomUserList();
+                return;
+            }
+            
+            // 根据用户名过滤房间内的用户
+            roomUserList = originalRoomUsers.filter(user => {
+                const username = user.username.toLowerCase();
+                return username.includes(searchTerm);
+            });
+            
+            updateRoomUserList();
+        }
+        
+        // 发送房间系统消息
+        function sendRoomSystemMessage() {
+            const message = roomSystemMessage.value.trim();
+            if (message && currentRoomName) {
+                socket.emit('admin-room-system-message', {
+                    roomName: currentRoomName,
+                    message: message
+                });
+                roomSystemMessage.value = '';
+                alert('系统消息已发送到房间 ' + currentRoomName);
+            }
+        }
+        
+        // 打开房间伪装发消息模态框
+        function openRoomAdminMessageModal() {
+            if (currentRoomName) {
+                openAdminMessageModal();
+            } else {
+                alert('请先选择一个房间');
+            }
+        }
+        
+        function roomKickUser(socketId, username) {
+            if (confirm(`确定要将 ${escapeHtml(username)} 踢出房间 ${escapeHtml(currentRoomName)} 吗？`)) {
+                socket.emit('admin-room-kick-user', {
+                    roomName: currentRoomName,
+                    socketId: socketId
+                });
+                
+                // 重新获取房间用户列表
+                socket.emit('admin-get-room-users', currentRoomName);
+            }
+        }
+        
+        // 为房间详细页添加自动刷新功能
+        let roomDetailsRefreshInterval = null;
+        
+        // 在切换到房间详细页时启动自动刷新
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(tabName + 'Tab').classList.add('active');
+            
+            if (tabName === 'messages') {
+                loadMessages();
+            } else if (tabName === 'rooms') {
+                loadRooms();
+            } else if (tabName === 'roomDetails') {
+                // 启动房间详细页的自动刷新（每秒一次）
+                if (roomDetailsRefreshInterval) {
+                    clearInterval(roomDetailsRefreshInterval);
+                }
+                if (currentRoomName) {
+                    roomDetailsRefreshInterval = setInterval(() => {
+                        socket.emit('admin-get-room-users', currentRoomName);
+                    }, 1000);
+                }
+            } else {
+                // 如果切换到其他标签页，停止房间详细页的自动刷新
+                if (roomDetailsRefreshInterval) {
+                    clearInterval(roomDetailsRefreshInterval);
+                    roomDetailsRefreshInterval = null;
+                }
+            }
+        }
+        
+        function openRoomUserRenameModal(socketId, currentName) {
+            selectedSocketId = socketId;
+            newUsername.value = currentName;
+            renameModal.classList.add('active');
+            newUsername.focus();
+        }
+        
+        function confirmRename() {
+            const newName = newUsername.value.trim();
+            if (newName && selectedSocketId) {
+                if (currentRoomName) {
+                    // 如果在房间用户列表中重命名，使用房间内重命名功能
+                    socket.emit('admin-room-rename-user', {
+                        roomName: currentRoomName,
+                        socketId: selectedSocketId,
+                        newName: newName
+                    });
+                    
+                    // 重新获取房间用户列表
+                    socket.emit('admin-get-room-users', currentRoomName);
+                } else {
+                    // 否则使用全局重命名功能
+                    socket.emit('admin-rename-user', {
+                        socketId: selectedSocketId,
+                        newName: newName
+                    });
+                }
+                
+                closeRenameModal();
+            }
+        }
+        
+        function openRoomUserPermissionsModal(socketId) {
+            selectedPermissionsSocketId = socketId;
+            const user = currentRoomUsers.find(u => u.socketId === socketId);
+            if (user) {
+                allowAudio.checked = user.permissions.allowAudio;
+                allowImage.checked = user.permissions.allowImage;
+                allowFile.checked = user.permissions.allowFile;
+                allowSendMessages.checked = user.permissions.allowSendMessages;
+                allowViewMessages.checked = user.permissions.allowViewMessages;
+                allowCall.checked = user.permissions.allowCall;
+            }
+            permissionsModal.classList.add('active');
+        }
+        
+        function confirmPermissions() {
+            if (selectedPermissionsSocketId) {
+                if (currentRoomName) {
+                    // 如果在房间用户列表中设置权限，使用房间内权限设置功能
+                    socket.emit('admin-room-set-permissions', {
+                        roomName: currentRoomName,
+                        socketId: selectedPermissionsSocketId,
+                        permissions: {
+                            allowAudio: allowAudio.checked,
+                            allowImage: allowImage.checked,
+                            allowFile: allowFile.checked,
+                            allowSendMessages: allowSendMessages.checked,
+                            allowViewMessages: allowViewMessages.checked,
+                            allowCall: allowCall.checked
+                        }
+                    });
+                    
+                    // 重新获取房间用户列表
+                    socket.emit('admin-get-room-users', currentRoomName);
+                } else {
+                    // 否则使用全局权限设置功能
+                    socket.emit('admin-set-permissions', {
+                        socketId: selectedPermissionsSocketId,
+                        permissions: {
+                            allowAudio: allowAudio.checked,
+                            allowImage: allowImage.checked,
+                            allowFile: allowFile.checked,
+                            allowSendMessages: allowSendMessages.checked,
+                            allowViewMessages: allowViewMessages.checked,
+                            allowCall: allowCall.checked
+                        }
+                    });
+                }
+                
+                closePermissionsModal();
             }
         }
 
@@ -948,7 +1509,10 @@
                 <div class="user-item">
                     <div class="user-info">
                         <div class="user-color" style="background: ${user.color}"></div>
-                        <div class="user-name">${escapeHtml(user.username)}</div>
+                        <div>
+                            <div class="user-name">${escapeHtml(user.username)}</div>
+                            <small style="color: #666;">房间: ${escapeHtml(user.roomName || 'main')}</small>
+                        </div>
                     </div>
                     <div class="user-actions">
                         <button class="btn btn-rename" onclick="openRenameModal('${user.socketId}')">重命名</button>
@@ -1042,12 +1606,24 @@
             const type = disguiseMessageType.value;
             
             if (username && message) {
-                socket.emit('admin-send-message', {
-                    username: username,
-                    message: message,
-                    color: color,
-                    type: type
-                });
+                if (currentRoomName) {
+                    // 如果在房间详细页，发送到指定房间
+                    socket.emit('admin-room-send-message', {
+                        roomName: currentRoomName,
+                        username: username,
+                        message: message,
+                        color: color,
+                        type: type
+                    });
+                } else {
+                    // 否则发送到所有房间
+                    socket.emit('admin-send-message', {
+                        username: username,
+                        message: message,
+                        color: color,
+                        type: type
+                    });
+                }
                 closeAdminMessageModal();
             }
         }
@@ -1132,6 +1708,56 @@
             div.textContent = text;
             return div.innerHTML;
         }
+        
+        // 过滤用户列表
+        function filterUsers() {
+            const searchTerm = userSearch.value.toLowerCase().trim();
+            
+            if (!searchTerm) {
+                // 如果搜索框为空，显示所有用户
+                users = [...originalUsers];
+                updateUserList();
+                return;
+            }
+            
+            // 根据用户名或房间名过滤用户
+            users = originalUsers.filter(user => {
+                const username = user.username.toLowerCase();
+                const roomName = (user.roomName || 'main').toLowerCase();
+                
+                return username.includes(searchTerm) || roomName.includes(searchTerm);
+            });
+            
+            updateUserList();
+        }
+        
+        // 过滤房间列表
+        function filterRooms() {
+            const searchTerm = roomSearch.value.toLowerCase().trim();
+            
+            if (!searchTerm) {
+                // 如果搜索框为空，显示所有房间
+                updateRoomList(originalRooms);
+                return;
+            }
+            
+            // 根据房间名过滤房间
+            const filteredRooms = originalRooms.filter(room => {
+                return room.roomName.toLowerCase().includes(searchTerm);
+            });
+            
+            updateRoomList(filteredRooms);
+        }
+        
+        // 页面卸载时清除定时器
+        window.addEventListener('beforeunload', () => {
+            if (userRefreshInterval) {
+                clearInterval(userRefreshInterval);
+            }
+            if (roomDetailsRefreshInterval) {
+                clearInterval(roomDetailsRefreshInterval);
+            }
+        });
     </script>
 </body>
 </html>
