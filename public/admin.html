@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="X-XSS-Protection" content="1; mode=block">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ws: wss:; font-src 'self' data:;">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
     <title>聊天室管理后台</title>
     <style>
         * {
@@ -675,20 +679,13 @@
                 <button class="tab" onclick="switchTab('messages')">消息管理</button>
                 <button class="tab" onclick="switchTab('rooms')">房间管理</button>
                 <button class="tab" onclick="switchTab('roomDetails')">房间详细</button>
+                <button class="tab" onclick="switchTab('friends')">好友管理</button>
             </div>
 
             <div class="tab-content active" id="usersTab">
                 <div class="section">
                     <h2>在线用户管理</h2>
-                    <div class="input-group" style="margin-bottom: 15px;">
-                        <input type="text" id="userSearch" placeholder="搜索用户名或房间名" oninput="filterUsers()">
-                    </div>
-                    <div class="user-list" id="userList">
-                        <div class="empty-state">
-                            <div class="empty-state-icon">👥</div>
-                            <div>暂无在线用户</div>
-                        </div>
-                    </div>
+                    <button class="btn btn-primary" onclick="openUsersModal()">打开用户列表</button>
                 </div>
 
                 <div class="section">
@@ -727,6 +724,9 @@
                     <h2>所有消息</h2>
                     <div class="input-group">
                         <button class="btn btn-primary" onclick="loadMessages()">刷新消息</button>
+                        <select id="roomSelect" class="btn btn-primary" style="margin-left: 10px;">
+                            <option value="">选择房间</option>
+                        </select>
                     </div>
                     <div class="messages-container" id="messagesContainer">
                         <div class="empty-state">
@@ -804,6 +804,39 @@
                         <button class="btn btn-primary" onclick="openRoomAdminMessageModal()">伪装发送消息</button>
                     </div>
                 </div>
+            </div>
+            
+            <div class="tab-content" id="friendsTab">
+                <div class="section">
+                    <h2>好友管理</h2>
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <input type="text" id="friendSearch" placeholder="搜索用户名..." oninput="filterFriends()">
+                    </div>
+                    <div class="user-list" id="friendsTabList">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">👥</div>
+                            <div>暂无用户</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal" id="usersModal">
+        <div class="modal-content" style="max-width: 800px;">
+            <h3>在线用户管理</h3>
+            <div class="input-group" style="margin-bottom: 15px;">
+                <input type="text" id="userSearch" placeholder="搜索用户名或房间名" oninput="filterUsers()">
+            </div>
+            <div class="user-list" id="userList">
+                <div class="empty-state">
+                    <div class="empty-state-icon">👥</div>
+                    <div>暂无在线用户</div>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-cancel" onclick="closeUsersModal()">关闭</button>
             </div>
         </div>
     </div>
@@ -934,7 +967,22 @@
             </div>
         </div>
     </div>
-
+    
+    <div class="modal" id="friendsModal">
+        <div class="modal-content" style="max-width: 800px;">
+            <h3>好友管理</h3>
+            <div id="friendsList">
+                <div class="empty-state">
+                    <div class="empty-state-icon">👥</div>
+                    <div>暂无好友关系</div>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-cancel" onclick="closeFriendsModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+    
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
@@ -966,6 +1014,7 @@
         const disguiseMessageType = document.getElementById('disguiseMessageType');
         const disguiseMessage = document.getElementById('disguiseMessage');
         const disguiseColor = document.getElementById('disguiseColor');
+        const usersModal = document.getElementById('usersModal');
         let selectedPermissionsSocketId = null;
         
         // 房间管理相关元素
@@ -991,6 +1040,12 @@
         const roomSearch = document.getElementById('roomSearch');
         let originalRooms = []; // 存储原始房间列表，用于搜索过滤
         
+        // 好友管理相关元素
+        const friendSearch = document.getElementById('friendSearch');
+        const friendsTabList = document.getElementById('friendsTabList');
+        const friendsModal = document.getElementById('friendsModal');
+        originalUsers = []; // 存储原始用户列表，用于搜索过滤
+        
         // 房间详细页相关元素
         const roomDetailsTitle = document.getElementById('roomDetailsTitle');
         const roomDetailsInfo = document.getElementById('roomDetailsInfo');
@@ -1000,7 +1055,16 @@
         let currentRoomDetails = null;
         let roomUserList = [];
         let originalRoomUsers = [];
-
+        
+        // 房间选择功能
+        const roomSelect = document.getElementById('roomSelect');
+        roomSelect.addEventListener('change', () => {
+            const selectedRoom = roomSelect.value;
+            if (selectedRoom) {
+                loadRoomMessages(selectedRoom);
+            }
+        });
+        
         adminPassword.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 login();
@@ -1019,8 +1083,6 @@
             }
         });
 
-
-
         let userRefreshInterval = null;
         
         function login() {
@@ -1033,6 +1095,7 @@
                 loginContainer.classList.add('hidden');
                 adminPanel.classList.add('active');
                 loadMessages();
+                loadRooms();
                 // 主动请求最新的用户列表
                 socket.emit('admin-get-users');
                 
@@ -1046,6 +1109,30 @@
             } else {
                 alert('密码错误！');
                 adminPassword.value = '';
+            }
+        });
+        
+        // 监听新消息并自动刷新
+        socket.on('message', () => {
+            const selectedRoom = roomSelect.value || 'main';
+            loadRoomMessages(selectedRoom);
+        });
+        
+        // 监听消息撤回并自动刷新
+        socket.on('message-recalled', () => {
+            const selectedRoom = roomSelect.value || 'main';
+            loadRoomMessages(selectedRoom);
+        });
+
+        newUsername.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                confirmRename();
+            }
+        });
+
+        systemMessage.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendSystemMessage();
             }
         });
 
@@ -1109,10 +1196,23 @@
         // 房间管理相关的socket事件
         socket.on('admin-rooms', (rooms) => {
             updateRoomsWithSearch(rooms);
+            updateRoomSelect(rooms);
         });
         
         socket.on('admin-room-error', (data) => {
             alert(data.message);
+        });
+        
+        socket.on('admin-room-messages', (data) => {
+            const roomMessages = {
+                active: data.messages.filter(m => !m.recalled),
+                deleted: data.messages.filter(m => m.recalled)
+            };
+            displayMessages(roomMessages, true);
+        });
+        
+        socket.on('friends-list', (friends) => {
+            updateFriendsList(friends);
         });
         
         socket.on('admin-room-users', (data) => {
@@ -1154,20 +1254,6 @@
             }
         });
 
-        function switchTab(tabName) {
-            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            
-            event.target.classList.add('active');
-            document.getElementById(tabName + 'Tab').classList.add('active');
-
-            if (tabName === 'messages') {
-                loadMessages();
-            } else if (tabName === 'rooms') {
-                loadRooms();
-            }
-        }
-        
         // 房间管理功能
         function createRoom() {
             const name = roomName.value.trim();
@@ -1227,24 +1313,38 @@
             roomList.innerHTML = rooms.map(room => {
                 const passwordText = room.password ? '有密码' : '无密码';
                 const userCount = room.users.length;
+                const isDefaultRoom = room.roomName === 'main';
+                const defaultBadge = isDefaultRoom ? '<span style="background: #667eea; color: white; padding: 2px 6px; border-radius: 4px; font-size: 12px; margin-left: 5px;">默认</span>' : '';
                 
                 return `
                     <div class="user-item">
                         <div class="user-info">
                             <div class="user-color" style="background: #667eea;"></div>
                             <div>
-                                <div class="user-name">${escapeHtml(room.roomName)}</div>
+                                <div class="user-name">${escapeHtml(room.roomName)}${defaultBadge}</div>
                                 <small style="color: #666;">${passwordText} | ${userCount} 个用户 | 创建于: ${new Date(room.createdAt).toLocaleString()}</small>
                             </div>
                         </div>
                         <div class="user-actions">
                             <button class="btn btn-info btn-sm" onclick="updateRoom('${room.roomName}')">编辑</button>
                             <button class="btn btn-primary btn-sm" onclick="viewRoomUsers('${room.roomName}')">查看用户</button>
-                            <button class="btn btn-danger btn-sm" onclick="deleteRoom('${room.roomName}')">删除</button>
+                            ${!isDefaultRoom ? `<button class="btn btn-danger btn-sm" onclick="deleteRoom('${room.roomName}')">删除</button>` : ''}
                         </div>
                     </div>
                 `;
             }).join('');
+        }
+        
+        function updateRoomSelect(rooms) {
+            roomSelect.innerHTML = '<option value="">选择房间</option>';
+            rooms.forEach(room => {
+                const option = document.createElement('option');
+                option.value = room.roomName;
+                option.textContent = room.roomName;
+                roomSelect.appendChild(option);
+            });
+            
+            roomSelect.value = 'main';
         }
         
         function viewRoomUsers(roomName) {
@@ -1400,6 +1500,8 @@
                         socket.emit('admin-get-room-users', currentRoomName);
                     }, 1000);
                 }
+            } else if (tabName === 'friends') {
+                loadFriends();
             } else {
                 // 如果切换到其他标签页，停止房间详细页的自动刷新
                 if (roomDetailsRefreshInterval) {
@@ -1453,6 +1555,25 @@
                 allowCall.checked = user.permissions.allowCall;
             }
             permissionsModal.classList.add('active');
+        }
+        
+        function openPermissionsModal(socketId) {
+            selectedPermissionsSocketId = socketId;
+            const user = users.find(u => u.socketId === socketId);
+            if (user) {
+                allowAudio.checked = user.permissions.allowAudio;
+                allowImage.checked = user.permissions.allowImage;
+                allowFile.checked = user.permissions.allowFile;
+                allowSendMessages.checked = user.permissions.allowSendMessages;
+                allowViewMessages.checked = user.permissions.allowViewMessages;
+                allowCall.checked = user.permissions.allowCall;
+            }
+            permissionsModal.classList.add('active');
+        }
+        
+        function closePermissionsModal() {
+            permissionsModal.classList.remove('active');
+            selectedPermissionsSocketId = null;
         }
         
         function confirmPermissions() {
@@ -1532,6 +1653,7 @@
         function openRenameModal(socketId) {
             selectedSocketId = socketId;
             newUsername.value = '';
+            usersModal.classList.remove('active');
             renameModal.classList.add('active');
             newUsername.focus();
         }
@@ -1539,53 +1661,6 @@
         function closeRenameModal() {
             renameModal.classList.remove('active');
             selectedSocketId = null;
-        }
-
-        function confirmRename() {
-            const newName = newUsername.value.trim();
-            if (newName) {
-                socket.emit('admin-rename-user', {
-                    socketId: selectedSocketId,
-                    newName: newName
-                });
-                closeRenameModal();
-            }
-        }
-
-        function openPermissionsModal(socketId) {
-            selectedPermissionsSocketId = socketId;
-            const user = users.find(u => u.socketId === socketId);
-            if (user) {
-                allowAudio.checked = user.permissions.allowAudio;
-                allowImage.checked = user.permissions.allowImage;
-                allowFile.checked = user.permissions.allowFile;
-                allowSendMessages.checked = user.permissions.allowSendMessages;
-                allowViewMessages.checked = user.permissions.allowViewMessages;
-                allowCall.checked = user.permissions.allowCall;
-            }
-            permissionsModal.classList.add('active');
-        }
-
-        function closePermissionsModal() {
-            permissionsModal.classList.remove('active');
-            selectedPermissionsSocketId = null;
-        }
-
-        function confirmPermissions() {
-            if (selectedPermissionsSocketId) {
-                socket.emit('admin-set-permissions', {
-                    socketId: selectedPermissionsSocketId,
-                    permissions: {
-                        allowAudio: allowAudio.checked,
-                        allowImage: allowImage.checked,
-                        allowFile: allowFile.checked,
-                        allowSendMessages: allowSendMessages.checked,
-                        allowViewMessages: allowViewMessages.checked,
-                        allowCall: allowCall.checked
-                    }
-                });
-                closePermissionsModal();
-            }
         }
 
         function openAdminMessageModal() {
@@ -1597,6 +1672,14 @@
             adminMessageModal.classList.remove('active');
             disguiseUsername.value = '';
             disguiseMessage.value = '';
+        }
+        
+        function openUsersModal() {
+            usersModal.classList.add('active');
+        }
+        
+        function closeUsersModal() {
+            usersModal.classList.remove('active');
         }
 
         function sendDisguisedMessage() {
@@ -1635,6 +1718,103 @@
                 systemMessage.value = '';
             }
         }
+        
+        // 好友管理功能
+        function loadFriends() {
+            socket.emit('admin-get-users');
+        }
+        
+        function filterFriends() {
+            const searchTerm = friendSearch.value.trim().toLowerCase();
+            if (!searchTerm) {
+                updateFriendsList(users);
+                return;
+            }
+            
+            const filteredUsers = users.filter(user => 
+                user.username.toLowerCase().includes(searchTerm)
+            );
+            updateFriendsList(filteredUsers);
+        }
+        
+        function updateFriendsList(users) {
+            if (users.length === 0) {
+                friendsTabList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">👥</div>
+                        <div>暂无用户</div>
+                    </div>`;
+                return;
+            }
+            
+            friendsTabList.innerHTML = users.map(user => `
+                <div class="user-item">
+                    <div class="user-info">
+                        <div class="user-color" style="background: ${user.color}"></div>
+                        <div>
+                            <div class="user-name">${escapeHtml(user.username)}</div>
+                            <small style="color: #666;">房间: ${escapeHtml(user.roomName || 'main')}</small>
+                        </div>
+                    </div>
+                    <div class="user-actions">
+                        <button class="btn btn-primary btn-sm" onclick="adminPrivateChat('${user.socketId}', '${user.username}')">私聊</button>
+                        <button class="btn btn-info btn-sm" onclick="viewPrivateChat('${user.socketId}', '${user.username}')">查看私聊</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function adminPrivateChat(socketId, username) {
+            const message = prompt(`发送私聊消息给 ${username}：`);
+            if (message) {
+                socket.emit('admin-private-message', {
+                    targetSocketId: socketId,
+                    message: message,
+                    type: 'text'
+                });
+            }
+        }
+        
+        function viewPrivateChat(socketId, username) {
+            const chatId = [socket.id, socketId].sort().join('-');
+            socket.emit('admin-get-private-messages', {
+                targetSocketId: socketId
+            });
+            
+            // 显示私聊历史
+            const modalDiv = document.createElement('div');
+            modalDiv.className = 'modal active';
+            modalDiv.innerHTML = `
+                <div class="modal-content" style="max-width: 800px; max-height: 80vh; overflow-y: auto;">
+                    <h3>与 ${username} 的私聊历史</h3>
+                    <div id="privateChatHistory" style="max-height: 500px; overflow-y: auto; background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 20px;"></div>
+                    <div class="modal-buttons">
+                        <button type="button" class="btn btn-cancel" onclick="this.parentElement.parentElement.parentElement.remove();">关闭</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modalDiv);
+            
+            // 监听私聊历史消息
+            socket.on('admin-private-messages-history', (data) => {
+                const historyDiv = document.getElementById('privateChatHistory');
+                if (historyDiv) {
+                    historyDiv.innerHTML = data.messages.map(msg => `
+                        <div class="message-item">
+                            <div class="message-header">
+                                <span class="message-sender">${msg.fromUsername}</span>
+                                <span class="message-time">${msg.timestamp}</span>
+                            </div>
+                            <div class="message-content">${escapeHtml(msg.message)}</div>
+                        </div>
+                    `).join('');
+                }
+            });
+        }
+        
+        function closeFriendsModal() {
+            friendsModal.classList.remove('active');
+        }
 
         function clearMessages() {
             if (confirm('确定要清空所有消息吗？此操作不可恢复！')) {
@@ -1643,10 +1823,15 @@
         }
 
         function loadMessages() {
-            socket.emit('admin-get-messages');
+            const selectedRoom = roomSelect.value || 'main';
+            loadRoomMessages(selectedRoom);
         }
-
-        function displayMessages(data) {
+        
+        function loadRoomMessages(roomName) {
+            socket.emit('admin-get-room-messages', roomName);
+        }
+        
+        function displayMessages(data, isRoomMessages = false) {
             messageCount.textContent = data.active.length;
             deletedMessageCount.textContent = data.deleted.length;
             
@@ -1656,7 +1841,7 @@
                 messagesContainer.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-state-icon">💬</div>
-                        <div>暂无消息</div>
+                        <div>${isRoomMessages ? '该房间暂无消息' : '暂无消息'}</div>
                     </div>`;
                 return;
             }
@@ -1729,6 +1914,16 @@
             });
             
             updateUserList();
+        }
+        
+        // 切换用户列表显示/隐藏
+        function toggleUserList() {
+            const userListElement = document.getElementById('userList');
+            if (userListElement.style.display === 'none') {
+                userListElement.style.display = 'block';
+            } else {
+                userListElement.style.display = 'none';
+            }
         }
         
         // 过滤房间列表
