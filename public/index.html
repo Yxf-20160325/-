@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="X-XSS-Protection" content="1; mode=block">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ws: wss:; font-src 'self' data:;">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
     <title>聊天室</title>
     <style>
         * {
@@ -48,18 +52,57 @@
             font-size: 14px;
             opacity: 0.9;
         }
-
+        
+        .header-actions {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+        }
+        
+        .header-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            cursor: pointer;
+            font-size: 18px;
+            transition: all 0.2s;
+        }
+        
+        .header-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.1);
+        }
+        
         .chat-container {
             flex: 1;
             display: flex;
             overflow: hidden;
         }
-
+        
         .messages {
             flex: 1;
             padding: 20px;
             overflow-y: auto;
             background: #f8f9fa;
+        }
+        
+        .users-panel {
+            width: 200px;
+            background: #f1f3f5;
+            padding: 15px;
+            border-left: 1px solid #dee2e6;
+            overflow-y: auto;
+            display: block;
+            position: relative;
+            z-index: 1;
+            transition: all 0.3s;
+        }
+
+        .users-panel.hidden {
+            display: none;
         }
 
         .message {
@@ -100,6 +143,7 @@
             border-radius: 10px;
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
             word-wrap: break-word;
+            color: #333;
         }
 
 
@@ -297,48 +341,52 @@
             padding: 15px;
             border-left: 1px solid #dee2e6;
             overflow-y: auto;
+            display: block;
         }
-
-        .users-panel h3 {
-            font-size: 16px;
+        
+        .search-box {
             margin-bottom: 15px;
-            color: #495057;
         }
-
-        .user-item {
-            display: flex;
-            align-items: center;
-            padding: 8px;
-            margin-bottom: 8px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        }
-
-        .user-actions {
-            display: flex;
-            gap: 5px;
-            margin-left: auto;
-        }
-
-        .user-color {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            margin-right: 10px;
-        }
-
-        .user-name {
+        
+        #searchInput {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
             font-size: 14px;
-            color: #495057;
+            outline: none;
+            transition: border-color 0.3s;
         }
-
-        .input-area {
-            padding: 20px;
-            background: white;
-            border-top: 1px solid #dee2e6;
+        
+        #searchInput:focus {
+            border-color: #667eea;
         }
-
+        
+        #userDetailModal .modal-content {
+            max-width: 400px;
+        }
+        
+        #userDetailContent {
+            margin-bottom: 20px;
+        }
+        
+        #userDetailContent > div {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+        }
+        
+        #userDetailContent > div > div {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+        }
+        
+        #userDetailContent > div > div:last-child {
+            margin-bottom: 0;
+        }
+        
         #usernameInput, #roomNameInput, #roomPasswordInput {
             width: 100%;
             padding: 12px 15px;
@@ -352,6 +400,69 @@
 
         #usernameInput:focus, #roomNameInput:focus, #roomPasswordInput:focus {
             border-color: #667eea;
+        }
+
+        .user-item {
+            display: block;
+            width: 100%;
+            margin-bottom: 10px;
+            padding: 10px 15px;
+            background: white;
+            border: 2px solid #dee2e6;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: left;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .user-item:hover {
+            border-color: #667eea;
+            background: #f8f9fa;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);
+        }
+
+        .user-item:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 5px rgba(102, 126, 234, 0.2);
+        }
+
+        .user-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        .user-name {
+            display: inline-block;
+            vertical-align: middle;
+            font-size: 14px;
+            font-weight: 500;
+            color: #333;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: calc(100% - 20px);
+        }
+
+        .user-item .btn-info {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            padding: 5px 10px;
+            font-size: 12px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .user-item:hover .btn-info {
+            opacity: 1;
         }
 
         #joinBtn {
@@ -451,59 +562,425 @@
         .hidden {
             display: none !important;
         }
-
-
-
-        @media (max-width: 768px) {
-            .container {
-                width: 100%;
-                height: 100vh;
-                border-radius: 0;
-            }
-
-            .users-panel {
-                display: none;
-            }
-
-            .chat-container {
-                flex-direction: column;
-            }
-
-            .messages {
-                padding: 15px;
-                width: 100%;
-            }
-
-            .action-btn {
-                width: 40px;
-                height: 40px;
-                font-size: 16px;
-            }
-
-            #chatForm {
-                flex-wrap: wrap;
-            }
-
-            #messageInput {
-                flex-basis: 100%;
-            }
+        
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
         }
+        
+        .modal.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            max-width: 500px;
+            width: 90%;
+        }
+        
+        .modal-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+        
+        .modal h3 {
+            margin-bottom: 15px;
+            margin-top: 0;
+        }
+        
+        #deviceSelectContent {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        #deviceSelectContent h4 {
+            margin-bottom: 10px;
+            margin-top: 0;
+        }
+        
+        #deviceSelectContent input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+        
+        #deviceSelectContent input[type="radio"] {
+            margin-right: 10px;
+        }
+        
+        #deviceSelectContent span {
+            margin-left: 10px;
+        }
+        
+        #deviceSelectContent div[data-device-type] {
+            padding: 10px;
+            margin-bottom: 5px;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        
+        #deviceSelectContent div[data-device-type]:hover {
+            background: #f8f9fa;
+        }
+        
+        #deviceSelectContent div[data-device-type]:hover input[type="radio"] {
+            transform: scale(1.1);
+        }
+        
+        .friend-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #dee2e6;
+            transition: background 0.2s;
+            cursor: pointer;
+            border: 2px solid transparent;
+            border-radius: 8px;
+            margin: 8px 0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .friend-item:hover {
+            background: #f0f0f0;
+            border-color: #007bff;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
+        
+        .friend-item:active {
+            background: #e9ecef;
+            border-color: #0056b3;
+            transform: translateY(0);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .friend-color {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            margin-right: 10px;
+            flex-shrink: 0;
+        }
+        
+        .friend-info {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .friend-name {
+            font-weight: bold;
+            margin-bottom: 5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .friend-status {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .friend-actions {
+            display: none;
+            gap: 5px;
+        }
+        
+        .friend-item.expanded .friend-actions {
+            display: flex;
+        }
+        
+        .friend-btn {
+            padding: 5px 10px;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            background: white;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        
+        .friend-btn:hover {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        
+        .friend-btn.danger {
+            color: #dc3545;
+            border-color: #dc3545;
+        }
+        
+        .friend-btn.danger:hover {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .private-chat-messages {
+            max-height: 400px;
+            overflow-y: auto;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .private-chat-message {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 10px;
+            background: white;
+        }
+        
+        .private-chat-message.sent {
+            background: #667eea;
+            color: white;
+        }
+        
+        .private-chat-message-header {
+            font-size: 12px;
+            margin-bottom: 5px;
+            opacity: 0.8;
+        }
+        
+        .private-chat-input {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        #privateChatInput {
+            flex: 1;
+            padding: 10px 15px;
+            border: 2px solid #dee2e6;
+            border-radius: 25px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        
+        #privateChatInput:focus {
+            border-color: #667eea;
+        }
+        
+        #privateChatSendBtn {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        #privateChatSendBtn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .admin-panel-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #dee2e6;
+            padding-bottom: 10px;
+        }
+        
+        .admin-tab {
+            padding: 10px 20px;
+            border: none;
+            background: #f8f9fa;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        
+        .admin-tab:hover {
+            background: #e9ecef;
+        }
+        
+        .admin-tab.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        .admin-tab-content {
+            display: none;
+        }
+        
+        .admin-tab-content.active {
+            display: block;
+        }
+        
+        .admin-user-item {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            border-bottom: 1px solid #dee2e6;
+            transition: background 0.2s;
+        }
+        
+        .admin-user-item:hover {
+            background: #f8f9fa;
+        }
+        
+        .admin-user-info {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .admin-user-name {
+            font-weight: bold;
+            margin-bottom: 5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .admin-user-role {
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            display: inline-block;
+            margin-right: 5px;
+        }
+        
+        .admin-user-role.user {
+            background: #e9ecef;
+            color: #666;
+        }
+        
+        .admin-user-role.admin {
+            background: #ffc107;
+            color: #333;
+        }
+        
+        .admin-user-role.superadmin {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .admin-user-actions {
+            display: flex;
+            gap: 5px;
+        }
+        
+        .admin-action-btn {
+            padding: 5px 10px;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            background: white;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        
+        .admin-action-btn:hover {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        
+        .admin-action-btn.danger {
+            color: #dc3545;
+            border-color: #dc3545;
+        }
+        
+        .admin-action-btn.danger:hover {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .admin-select {
+            padding: 5px 10px;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            background: white;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        
+        .container {
+            width: 100%;
+            height: 100vh;
+            border-radius: 0;
+        }
+        .chat-container {
+            flex-direction: column;
+        }
+        .messages {
+            padding: 15px;
+            width: 100%;
+        }
+        .action-btn {
+            width: 40px;
+            height: 40px;
+            font-size: 16px;
+        }
+        #chatForm {
+            flex-wrap: wrap;
+        }
+        #messageInput {
+            flex-basis: 100%;
+        }
+    
+            .container {
+            width: 100%;
+            height: 100vh;
+            border-radius: 0;
+        }
+        .chat-container {
+            flex-direction: column;
+        }
+        .messages {
+            padding: 15px;
+            width: 100%;
+        }
+        .action-btn {
+            width: 40px;
+            height: 40px;
+            font-size: 16px;
+        }
+        #chatForm {
+            flex-wrap: wrap;
+        }
+        #messageInput {
+            flex-basis: 100%;
+        }
+        @media (max-width: 768px) {}
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>聊天室</h1>
-            <div class="online-count">在线人数: <span id="userCount">0</span></div>
+            <div class="header-actions">
+                <div class="online-count">在线人数: <span id="userCount">0</span></div>
+                <button class="header-btn" id="usersBtn" title="用户列表">👥</button>
+                <button class="header-btn" id="friendsBtn" title="好友列表">👥</button>
+                <button class="header-btn" id="adminPanelBtn" title="管理员面板">⚙️</button>
+            </div>
         </div>
 
         <div class="chat-container">
             <div class="messages" id="messages">
                 <div class="system-message">欢迎来到聊天室！请输入昵称加入。</div>
-            </div>
-            <div class="users-panel">
-                <h3>在线用户</h3>
-                <div id="usersList"></div>
             </div>
         </div>
 
@@ -515,10 +992,10 @@
             <div id="chatForm" class="hidden">
                 <input type="file" id="imageInput" accept="image/*">
                 <div class="action-buttons">
-                    <button class="action-btn" id="imageBtn" title="发送图片">📷</button>
-                    <button class="action-btn" id="audioBtn" title="发送语音">🎤</button>
-                    <button class="action-btn" id="videoCallBtn" title="视频通话">📹</button>
-                    <button class="action-btn" id="audioCallBtn" title="语音通话">📞</button>
+                    <button class="action-btn disabled" id="imageBtn" title="发送图片">📷</button>
+                    <button class="action-btn disabled" id="audioBtn" title="发送语音">🎤</button>
+                    <button class="action-btn disabled" id="videoCallBtn" title="视频通话">📹</button>
+                    <button class="action-btn disabled" id="audioCallBtn" title="语音通话">📞</button>
                 </div>
                 <input type="text" id="messageInput" placeholder="输入消息..." maxlength="500">
                 <button id="sendBtn">发送</button>
@@ -551,7 +1028,89 @@
             <button class="call-reject" onclick="rejectCall()">拒绝</button>
         </div>
     </div>
-
+    
+    <div class="modal" id="userDetailModal">
+        <div class="modal-content">
+            <h3 id="userDetailTitle">用户详情</h3>
+            <div id="userDetailContent"></div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-cancel" onclick="closeUserDetailModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal" id="usersModal">
+        <div class="modal-content" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
+            <h3>在线用户</h3>
+            <div class="search-box" style="margin-bottom: 15px;">
+                <input type="text" id="searchInput" placeholder="搜索用户..." maxlength="20">
+            </div>
+            <div id="usersList"></div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-cancel" onclick="closeUsersModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal" id="friendsModal">
+        <div class="modal-content" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
+            <h3>好友列表</h3>
+            <div id="friendsList"></div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-cancel" onclick="closeFriendsModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal" id="privateChatModal">
+        <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+            <h3 id="privateChatTitle">私聊</h3>
+            <div class="private-chat-messages" id="privateChatMessages"></div>
+            <div class="private-chat-input">
+                <input type="text" id="privateChatInput" placeholder="输入私聊消息..." maxlength="500">
+                <button id="privateChatSendBtn">发送</button>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-cancel" onclick="closePrivateChatModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal" id="adminPanelModal">
+        <div class="modal-content" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
+            <h3>管理员面板</h3>
+            <div class="admin-panel-tabs">
+                <button class="admin-tab active" data-tab="users">用户管理</button>
+                <button class="admin-tab" data-tab="rooms">房间管理</button>
+                <button class="admin-tab" data-tab="messages">消息管理</button>
+                <button class="admin-tab" data-tab="friends">好友管理</button>
+            </div>
+            <div class="admin-panel-content">
+                <div class="admin-tab-content active" id="usersTab">
+                    <div id="adminUsersList"></div>
+                </div>
+                <div class="admin-tab-content" id="roomsTab">
+                    <div id="adminRoomsList"></div>
+                </div>
+                <div class="admin-tab-content" id="messagesTab">
+                    <div style="margin-bottom: 20px;">
+                        <label>
+                            <input type="checkbox" id="allowMentionsCheckbox" checked>
+                            允许@功能
+                        </label>
+                    </div>
+                    <div id="adminMessagesList"></div>
+                </div>
+                <div class="admin-tab-content" id="friendsTab">
+                    <div id="adminFriendsList"></div>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-cancel" onclick="closeAdminPanelModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+    
     <div class="modal" id="deviceSelectModal">
         <div class="modal-content" style="max-width: 500px;">
             <h3>选择设备</h3>
@@ -604,7 +1163,45 @@
         const callIncomingText = document.getElementById('callIncomingText');
         const deviceSelectModal = document.getElementById('deviceSelectModal');
         const deviceSelectContent = document.getElementById('deviceSelectContent');
-
+        const searchInput = document.getElementById('searchInput');
+        
+        // 用户列表模态框
+        const usersBtn = document.getElementById('usersBtn');
+        const usersModal = document.getElementById('usersModal');
+        
+        // 用户详情模态框
+        const userDetailModal = document.getElementById('userDetailModal');
+        const userDetailTitle = document.getElementById('userDetailTitle');
+        const userDetailContent = document.getElementById('userDetailContent');
+        
+        // 搜索相关变量
+        let allUsers = [];
+        let searchResults = [];
+        let currentSearchTerm = '';
+        
+        // 好友系统相关变量
+        const friendsBtn = document.getElementById('friendsBtn');
+        const friendsModal = document.getElementById('friendsModal');
+        const friendsListDiv = document.getElementById('friendsList');
+        const privateChatModal = document.getElementById('privateChatModal');
+        const privateChatTitle = document.getElementById('privateChatTitle');
+        const privateChatMessagesDiv = document.getElementById('privateChatMessages');
+        const privateChatInput = document.getElementById('privateChatInput');
+        const privateChatSendBtn = document.getElementById('privateChatSendBtn');
+        
+        // 管理员面板相关变量
+        const adminPanelBtn = document.getElementById('adminPanelBtn');
+        const adminPanelModal = document.getElementById('adminPanelModal');
+        const adminUsersListDiv = document.getElementById('adminUsersList');
+        const adminRoomsListDiv = document.getElementById('adminRoomsList');
+        const adminMessagesListDiv = document.getElementById('adminMessagesList');
+        const adminFriendsListDiv = document.getElementById('adminFriendsList');
+        
+        let userRole = 'user'; // 当前用户的角色：user, admin, superadmin
+        
+        let friends = [];
+        let currentPrivateChatTarget = null;
+        
         let localStream = null;
         let remoteStream = null;
         let peerConnection = null;
@@ -856,6 +1453,394 @@
             }
         });
         
+        // 搜索功能
+        searchInput.addEventListener('input', (e) => {
+            const searchTerm = e.target.value.trim().toLowerCase();
+            currentSearchTerm = searchTerm;
+            
+            if (searchTerm === '') {
+                updateUserList(allUsers);
+                return;
+            }
+            
+            const filteredUsers = allUsers.filter(user => 
+                user.username.toLowerCase().includes(searchTerm)
+            );
+            
+            updateUserList(filteredUsers);
+        });
+        
+        // 用户列表功能
+        
+        // 打开用户列表
+        usersBtn.addEventListener('click', () => {
+            usersModal.classList.add('active');
+        });
+        
+        // 关闭用户列表
+        function closeUsersModal() {
+            usersModal.classList.remove('active');
+        }
+        
+        // 好友系统功能
+        
+        // 打开好友列表
+        friendsBtn.addEventListener('click', () => {
+            socket.emit('get-friends');
+            friendsModal.classList.add('active');
+        });
+        
+        // 关闭好友列表
+        function closeFriendsModal() {
+            friendsModal.classList.remove('active');
+        }
+        
+        // 关闭私聊模态框
+        function closePrivateChatModal() {
+            privateChatModal.classList.remove('active');
+            currentPrivateChatTarget = null;
+        }
+        
+        // 发送私聊消息
+        privateChatSendBtn.addEventListener('click', () => {
+            const message = privateChatInput.value.trim();
+            if (message && currentPrivateChatTarget) {
+                socket.emit('private-message', {
+                    targetSocketId: currentPrivateChatTarget,
+                    message: message,
+                    type: 'text'
+                });
+                privateChatInput.value = '';
+            }
+        });
+        
+        privateChatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                privateChatSendBtn.click();
+            }
+        });
+        
+        // 打开私聊
+        function openPrivateChat(friendSocketId, friendUsername) {
+            currentPrivateChatTarget = friendSocketId;
+            privateChatTitle.textContent = `与 ${friendUsername} 私聊`;
+            privateChatMessagesDiv.innerHTML = '';
+            
+            // 获取私聊历史消息
+            socket.emit('get-private-messages', friendSocketId);
+            
+            privateChatModal.classList.add('active');
+        }
+        
+        // 添加好友
+        function addFriend(targetSocketId) {
+            socket.emit('add-friend', targetSocketId);
+        }
+        
+        // 删除好友
+        function removeFriend(friendSocketId) {
+            if (confirm('确定要删除这个好友吗？')) {
+                socket.emit('remove-friend', friendSocketId);
+            }
+        }
+        
+        // Socket事件处理 - 好友系统
+        
+        // 好友列表
+        socket.on('friends-list', (data) => {
+            friends = data;
+            updateFriendsList(data);
+        });
+        
+        // 好友请求
+        socket.on('friend-request', (data) => {
+            const notificationDiv = document.createElement('div');
+            notificationDiv.className = 'system-message';
+            notificationDiv.innerHTML = `
+                <div style="margin-bottom: 10px;">
+                    <strong>${escapeHtml(data.fromUsername)}</strong> 请求添加你为好友
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: center;">
+                    <button class="btn btn-confirm" onclick="socket.emit('accept-friend', '${data.fromSocketId}'); this.parentElement.parentElement.parentElement.remove();">接受</button>
+                    <button class="btn btn-cancel" onclick="socket.emit('reject-friend', '${data.fromSocketId}'); this.parentElement.parentElement.parentElement.remove();">拒绝</button>
+                </div>
+            `;
+            messagesDiv.appendChild(notificationDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        });
+        
+        // 好友请求被接受
+        socket.on('friend-accepted', (data) => {
+            alert(`你已成功添加 ${data.friendUsername} 为好友`);
+            socket.emit('get-friends');
+        });
+        
+        // 好友请求被拒绝
+        socket.on('friend-rejected', (data) => {
+            alert(`${data.friendUsername} 拒绝了你的好友请求`);
+        });
+        
+        // 好友被删除
+        socket.on('friend-removed', (data) => {
+            alert(`你已删除好友 ${data.friendUsername}`);
+            socket.emit('get-friends');
+        });
+        
+        // 私聊消息
+        socket.on('private-message', (data) => {
+            addPrivateMessage(data);
+        });
+        
+        // 私聊历史消息
+        socket.on('private-messages-history', (data) => {
+            data.messages.forEach(message => {
+                addPrivateMessage(message);
+            });
+        });
+        
+        // 好友错误
+        socket.on('friend-error', (data) => {
+            alert(data.message);
+        });
+        
+        // @通知
+        socket.on('mention-notification', (data) => {
+            const notificationDiv = document.createElement('div');
+            notificationDiv.className = 'system-message mention';
+            notificationDiv.innerHTML = `
+                <strong>${escapeHtml(data.fromUsername)}</strong> @了你：${escapeHtml(data.message)}
+                <div style="font-size: 12px; color: #999; margin-top: 5px;">${data.timestamp}</div>
+            `;
+            messagesDiv.appendChild(notificationDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            
+            // 播放提示音
+            const audio = new Audio('/notification.mp3');
+            audio.play().catch(() => {});
+        });
+        
+        // 更新好友列表
+        function updateFriendsList(friends) {
+            friendsListDiv.innerHTML = '';
+            
+            if (friends.length === 0) {
+                friendsListDiv.innerHTML = '<div style="text-align: center; color: #999; padding: 20px;">暂无好友</div>';
+                return;
+            }
+            
+            friends.forEach(friend => {
+                const friendDiv = document.createElement('div');
+                friendDiv.className = 'friend-item';
+                friendDiv.onclick = function() {
+                    const friendItems = document.querySelectorAll('.friend-item');
+                    friendItems.forEach(item => {
+                        item.classList.remove('expanded');
+                    });
+                    this.classList.toggle('expanded');
+                };
+                
+                friendDiv.innerHTML = `
+                    <div class="friend-color" style="background: ${friend.color}"></div>
+                    <div class="friend-info">
+                        <div class="friend-name">${escapeHtml(friend.username)}</div>
+                        <div class="friend-status">${friend.online ? '在线' : '离线'}</div>
+                    </div>
+                    <div class="friend-actions">
+                        <button class="friend-btn" onclick="event.stopPropagation(); openPrivateChat('${friend.socketId}', '${friend.username}')">💬</button>
+                        <button class="friend-btn danger" onclick="event.stopPropagation(); removeFriend('${friend.socketId}')">🗑️</button>
+                    </div>
+                `;
+                
+                friendsListDiv.appendChild(friendDiv);
+            });
+        }
+        
+        // 添加私聊消息
+        function addPrivateMessage(data) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'private-chat-message' + (data.fromSocketId === socket.id ? ' sent' : '');
+            
+            messageDiv.innerHTML = `
+                <div class="private-chat-message-header">
+                    ${data.fromSocketId === socket.id ? '我' : data.fromUsername} - ${data.timestamp}
+                </div>
+                <div class="message-content">${escapeHtml(data.message)}</div>
+            `;
+            
+            privateChatMessagesDiv.appendChild(messageDiv);
+            privateChatMessagesDiv.scrollTop = privateChatMessagesDiv.scrollHeight;
+        }
+        
+        // 管理员面板功能
+        
+        // 打开管理员面板
+        adminPanelBtn.addEventListener('click', () => {
+            // 只有admin和superadmin角色才能打开管理员面板
+            if (userRole === 'user') {
+                alert('您没有权限访问管理员面板');
+                return;
+            }
+            
+            adminPanelModal.classList.add('active');
+            
+            // 获取用户列表
+            socket.emit('admin-get-users');
+            
+            // 获取房间列表
+            socket.emit('admin-get-rooms');
+        });
+        
+        // 关闭管理员面板
+        function closeAdminPanelModal() {
+            adminPanelModal.classList.remove('active');
+        }
+        
+        // 标签页切换
+        document.querySelectorAll('.admin-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                // 移除所有active类
+                document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active'));
+                
+                // 添加active类到当前标签
+                tab.classList.add('active');
+                const tabName = tab.dataset.tab;
+                document.getElementById(tabName + 'Tab').classList.add('active');
+                
+                // 根据标签页加载相应数据
+                if (tabName === 'rooms') {
+                    socket.emit('admin-get-rooms');
+                } else if (tabName === 'messages') {
+                    socket.emit('admin-get-messages');
+                } else if (tabName === 'friends') {
+                    socket.emit('admin-get-users');
+                }
+            });
+        });
+        
+        // @功能开关
+        document.getElementById('allowMentionsCheckbox').addEventListener('change', (e) => {
+            socket.emit('admin-set-mentions', {
+                allow: e.target.checked
+            });
+        });
+        
+        // Socket事件处理 - 管理员面板
+        
+        // 用户角色变更
+        socket.on('user-role-changed', (data) => {
+            if (data.socketId === socket.id) {
+                userRole = data.newRole;
+                
+                // 如果角色变为user，隐藏管理员面板按钮
+                if (userRole === 'user') {
+                    adminPanelBtn.style.display = 'none';
+                } else {
+                    adminPanelBtn.style.display = 'block';
+                }
+            }
+            
+            // 更新管理员面板中的用户列表
+            updateAdminUsersList(data.users);
+        });
+        
+        // 获取用户列表（用于管理员面板的好友管理标签页）
+        socket.on('admin-get-users', (data) => {
+            updateAdminFriendsList(data.users);
+        });
+        
+        // 更新管理员用户列表
+        function updateAdminUsersList(users) {
+            adminUsersListDiv.innerHTML = '';
+            
+            users.forEach(user => {
+                const userDiv = document.createElement('div');
+                userDiv.className = 'admin-user-item';
+                
+                userDiv.innerHTML = `
+                    <div class="admin-user-info">
+                        <div class="admin-user-name">${escapeHtml(user.username)}</div>
+                        <span class="admin-user-role ${user.role}">${user.role}</span>
+                    </div>
+                    <div class="admin-user-actions">
+                        <select class="admin-select" onchange="changeUserRole('${user.socketId}', this.value)">
+                            <option value="user" ${user.role === 'user' ? 'selected' : ''}>user</option>
+                            <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>admin</option>
+                            <option value="superadmin" ${user.role === 'superadmin' ? 'selected' : ''}>superadmin</option>
+                        </select>
+                        <button class="admin-action-btn" onclick="adminPrivateChat('${user.socketId}', '${user.username}')">私聊</button>
+                        <button class="admin-action-btn danger" onclick="kickUser('${user.socketId}')">踢出</button>
+                    </div>
+                `;
+                
+                adminUsersListDiv.appendChild(userDiv);
+            });
+        }
+        
+        // 更新管理员好友列表（显示所有用户）
+        function updateAdminFriendsList(users) {
+            adminFriendsListDiv.innerHTML = '';
+            
+            users.forEach(user => {
+                const userDiv = document.createElement('div');
+                userDiv.className = 'admin-user-item';
+                
+                userDiv.innerHTML = `
+                    <div class="admin-user-info">
+                        <div class="admin-user-name">${escapeHtml(user.username)}</div>
+                        <span class="admin-user-role ${user.role}">${user.role}</span>
+                    </div>
+                    <div class="admin-user-actions">
+                        <button class="admin-action-btn" onclick="adminPrivateChat('${user.socketId}', '${user.username}')">私聊</button>
+                        <button class="admin-action-btn" onclick="openPrivateChat('${user.socketId}', '${user.username}')">查看私聊</button>
+                    </div>
+                `;
+                
+                adminFriendsListDiv.appendChild(userDiv);
+            });
+        }
+        
+        // 更改用户角色
+        function changeUserRole(socketId, newRole) {
+            socket.emit('admin-set-role', {
+                socketId: socketId,
+                role: newRole
+            });
+        }
+        
+        // 修改用户权限
+        function changeUserPermissions(socketId, permissionKey, value) {
+            const user = allUsers.find(u => u.socketId === socketId);
+            if (user) {
+                const newPermissions = { ...user.permissions };
+                newPermissions[permissionKey] = value;
+                
+                socket.emit('admin-set-permissions', {
+                    socketId: socketId,
+                    permissions: newPermissions
+                });
+            }
+        }
+        
+        // 踢出用户
+        function kickUser(socketId) {
+            if (confirm('确定要踢出这个用户吗？')) {
+                socket.emit('admin-kick-user', socketId);
+            }
+        }
+        
+        // 管理员私聊
+        function adminPrivateChat(socketId, username) {
+            const message = prompt(`发送私聊消息给 ${username}：`);
+            if (message) {
+                socket.emit('admin-private-message', {
+                    targetSocketId: socketId,
+                    message: message,
+                    type: 'text'
+                });
+            }
+        }
+        
         // 房间加入失败
         socket.on('join-error', (data) => {
             alert(data.message);
@@ -926,28 +1911,25 @@
         }
 
         function updateUserList(users) {
+            allUsers = users;
+            searchResults = users;
             usersListDiv.innerHTML = '';
+            
+            if (users.length === 0) {
+                usersListDiv.innerHTML = '<div style="text-align: center; color: #999; padding: 20px;">暂无在线用户</div>';
+                return;
+            }
+            
             users.forEach(user => {
                 const userDiv = document.createElement('div');
                 userDiv.className = 'user-item';
-                
-                // 只有当当前用户和目标用户都有通话权限时才显示通话按钮
-                const showCallButton = userPermissions.allowCall && user.permissions.allowCall;
-                
-                let callButtonsHtml = '';
-                if (showCallButton && user.socketId !== socket.id) {
-                    callButtonsHtml = `
-                        <div class="user-actions">
-                            <button class="call-btn" onclick="startVideoCall('${user.socketId}', '${user.username}')">📹</button>
-                            <button class="call-btn" onclick="startAudioCall('${user.socketId}', '${user.username}')">📞</button>
-                        </div>
-                    `;
-                }
+                userDiv.onclick = () => {
+                    showUserDetail(user.socketId, user.username, user.color, JSON.stringify(user.permissions).replace(/"/g, '&quot;'));
+                };
                 
                 userDiv.innerHTML = `
                     <div class="user-color" style="background: ${user.color}"></div>
                     <div class="user-name">${escapeHtml(user.username)}</div>
-                    ${callButtonsHtml}
                 `;
                 
                 usersListDiv.appendChild(userDiv);
@@ -972,12 +1954,22 @@
         let audioContext = null;
         let audioSource = null;
         let audioBuffer = null;
+        let audioElement = null;
         
         // 当前媒体URL
         let currentMediaUrl = null;
         
         // 媒体数据队列
         let mediaDataQueue = [];
+        
+        // 远程视频和音频缓冲区
+        remoteVideoBuffer = null;
+        let remoteAudioBuffer = null;
+        let remoteAudioIsPlaying = false;
+        
+        // 接收数据队列
+        let receiveDataQueue = [];
+        let isAppending = false;
 
         // 开始视频通话
         async function startVideoCall(targetSocketId, targetUsername) {
@@ -988,7 +1980,6 @@
             
             isVideoCall = true;
             currentCallId = Date.now().toString();
-            currentTargetSocketId = targetSocketId;
             
             try {
                 // 检查浏览器支持
@@ -1038,8 +2029,8 @@
                 localStream = stream;
                 localVideo.srcObject = stream;
                 
-                // 不要立即开始录制，等待对方接受通话后再开始
-                // startMediaRecording(stream);
+                // 设置目标Socket ID
+                currentTargetSocketId = targetSocketId;
                 
                 socket.emit('call-request', {
                     targetSocketId: targetSocketId,
@@ -1149,10 +2140,32 @@
         function startMediaRecording(stream) {
             mediaChunks = [];
             
-            const mimeType = isVideoCall ? 'video/webm;codecs=vp8' : 'audio/webm';
+            // 检查浏览器支持的 MIME 类型，优先使用 mp4 格式
+            let mimeType;
+            if (isVideoCall) {
+                const videoTypes = [
+                    'video/mp4',
+                    'video/webm',
+                    'video/webm;codecs=vp9,opus',
+                    'video/webm;codecs=vp8,opus',
+                    'video/webm;codecs=h264'
+                ];
+                mimeType = videoTypes.find(type => MediaRecorder.isTypeSupported(type)) || 'video/webm';
+            } else {
+                const audioTypes = [
+                    'audio/mp4',
+                    'audio/webm',
+                    'audio/webm;codecs=opus',
+                    'audio/ogg;codecs=opus'
+                ];
+                mimeType = audioTypes.find(type => MediaRecorder.isTypeSupported(type)) || 'audio/webm';
+            }
+            
+            console.log('使用的 MIME 类型:', mimeType);
+            
             mediaRecorder = new MediaRecorder(stream, { 
                 mimeType,
-                videoBitsPerSecond: isVideoCall ? 100000 : undefined
+                videoBitsPerSecond: isVideoCall ? 500000 : undefined
             });
             
             mediaRecorder.ondataavailable = async (event) => {
@@ -1167,6 +2180,7 @@
                             targetSocketId: currentTargetSocketId,
                             callId: currentCallId,
                             type: isVideoCall ? 'video' : 'audio',
+                            mimeType: mimeType,
                             data: uint8Array
                         });
                     } catch (error) {
@@ -1175,7 +2189,7 @@
                 }
             };
             
-            mediaRecorder.start(500); // 每500ms发送一次数据
+            mediaRecorder.start(50); // 每50ms发送一次数据
             isRecording = true;
         }
 
@@ -1184,6 +2198,50 @@
             if (mediaRecorder && isRecording) {
                 mediaRecorder.stop();
                 isRecording = false;
+            }
+            
+            // 清理 MediaSource 和 SourceBuffer
+            if (sourceBuffer) {
+                try {
+                    sourceBuffer.abort();
+                } catch (e) {
+                    console.error('中止 SourceBuffer 失败:', e);
+                }
+                sourceBuffer = null;
+            }
+            
+            if (mediaSource) {
+                try {
+                    if (mediaSource.readyState === 'open') {
+                        mediaSource.endOfStream();
+                    }
+                } catch (e) {
+                    console.error('结束 MediaStream 失败:', e);
+                }
+                
+                try {
+                    URL.revokeObjectURL(remoteVideo.src);
+                    if (audioElement) {
+                        URL.revokeObjectURL(audioElement.src);
+                    }
+                } catch (e) {
+                    console.error('释放 URL 失败:', e);
+                }
+                mediaSource = null;
+            }
+            
+            if (audioElement) {
+                audioElement = null;
+            }
+            
+            // 清理当前的媒体URL
+            if (currentMediaUrl) {
+                try {
+                    URL.revokeObjectURL(currentMediaUrl);
+                } catch (e) {
+                    console.error('释放 URL 失败:', e);
+                }
+                currentMediaUrl = null;
             }
         }
 
@@ -1295,7 +2353,7 @@
                     
                     localStream = stream;
                     
-                    // 不要立即开始录制，等待对方接受通话后再开始
+                    // 接受通话时立即开始录制并发送数据
                     // startMediaRecording(stream);
                     
                     // 设置目标Socket ID，确保能发送数据给对方
@@ -1414,6 +2472,65 @@
         }
 
         // Socket事件处理
+        
+        // 显示用户详情
+        function showUserDetail(socketId, username, color, permissions) {
+            usersModal.classList.remove('active');
+            userDetailTitle.textContent = '用户详情';
+            userDetailContent.innerHTML = `
+                <div style="margin-bottom: 15px;">
+                    <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                        <div class="user-color" style="background: ${color}; width: 50px; height: 50px; border-radius: 50%;"></div>
+                        <div>
+                            <div style="font-size: 16px; font-weight: bold; margin-bottom: 5px;">${escapeHtml(username)}</div>
+                            <div style="font-size: 12px; color: #666;">Socket ID: ${socketId}</div>
+                        </div>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <div style="font-weight: bold; margin-bottom: 5px;">权限</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                            <div>
+                                <span>发送语音:</span>
+                                <input type="checkbox" ${permissions.allowAudio ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowAudio', this.checked)">
+                            </div>
+                            <div>
+                                <span>发送图片:</span>
+                                <input type="checkbox" ${permissions.allowImage ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowImage', this.checked)">
+                            </div>
+                            <div>
+                                <span>发送文件:</span>
+                                <input type="checkbox" ${permissions.allowFile ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowFile', this.checked)">
+                            </div>
+                            <div>
+                                <span>发送消息:</span>
+                                <input type="checkbox" ${permissions.allowSendMessages ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowSendMessages', this.checked)">
+                            </div>
+                            <div>
+                                <span>查看消息:</span>
+                                <input type="checkbox" ${permissions.allowViewMessages ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowViewMessages', this.checked)">
+                            </div>
+                            <div>
+                                <span>通话:</span>
+                                <input type="checkbox" ${permissions.allowCall ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowCall', this.checked)">
+                            </div>
+                        </div>
+                    </div>
+                    <div style="text-align: center;">
+                        <button class="btn btn-confirm" onclick="addFriend('${socketId}'); closeUserDetailModal();">添加好友</button>
+                    </div>
+                </div>
+            `;
+            
+            userDetailModal.classList.add('active');
+        }
+        
+        // 关闭用户详情模态框
+        function closeUserDetailModal() {
+            userDetailModal.classList.remove('active');
+            usersModal.classList.add('active');
+        }
+        
+        // Socket事件处理
         let currentCallerSocketId = null;
         let currentTargetSocketId = null;
         let remoteVideoBuffer = [];
@@ -1465,82 +2582,192 @@
         socket.on('call-media', (data) => {
             if (data.callId === currentCallId) {
                 try {
-                    // 将Uint8Array转换回Blob
+                    // 将Uint8Array转换回Blob，使用接收到的 MIME 类型
                     const uint8Array = new Uint8Array(data.data);
-                    const blob = new Blob([uint8Array], { type: isVideoCall ? 'video/webm' : 'audio/webm' });
+                    let mimeType = data.mimeType || (isVideoCall ? 'video/webm' : 'audio/webm');
                     
-                    if (isVideoCall) {
-                        // 视频播放 - 每次更新URL
-                        const url = URL.createObjectURL(blob);
-                        if (currentMediaUrl) {
-                            URL.revokeObjectURL(currentMediaUrl);
-                        }
-                        currentMediaUrl = url;
-                        remoteVideo.src = url;
-                    } else {
-                        // 音频播放 - 每次更新URL
-                        const url = URL.createObjectURL(blob);
-                        if (currentMediaUrl) {
-                            URL.revokeObjectURL(currentMediaUrl);
-                        }
-                        currentMediaUrl = url;
-                        
-                        // 创建新的音频元素并播放
-                        const audio = new Audio(url);
-                        audio.play();
+                    // 将数据添加到队列
+                    receiveDataQueue.push({ uint8Array, mimeType });
+                    
+                    // 如果没有正在处理数据，开始处理队列
+                    if (!isAppending) {
+                        processReceiveQueue();
                     }
                 } catch (error) {
                     console.error('播放媒体数据失败:', error);
                 }
             }
         });
-
-        // 视频通话按钮事件
-        videoCallBtn.addEventListener('click', () => {
-            const targetUser = prompt('请输入要视频通话的用户名:');
-            if (targetUser) {
-                const userElements = usersListDiv.querySelectorAll('.user-item');
-                for (let userElement of userElements) {
-                    const name = userElement.querySelector('.user-name').textContent;
-                    if (name === targetUser) {
-                        const callBtn = userElement.querySelector('.call-btn');
-                        if (callBtn && callBtn.textContent === '📹') {
-                            const socketId = callBtn.getAttribute('onclick').match(/'([^']+)'/)[1];
-                            startVideoCall(socketId, targetUser);
-                            return;
-                        }
-                    }
-                }
-                alert('未找到该用户或该用户没有通话权限');
+        
+        // 处理接收数据队列
+        function processReceiveQueue() {
+            if (receiveDataQueue.length === 0) {
+                isAppending = false;
+                return;
             }
-        });
-
-        // 语音通话按钮事件
-        audioCallBtn.addEventListener('click', () => {
-            const targetUser = prompt('请输入要语音通话的用户名:');
-            if (targetUser) {
-                const userElements = usersListDiv.querySelectorAll('.user-item');
-                for (let userElement of userElements) {
-                    const name = userElement.querySelector('.user-name').textContent;
-                    if (name === targetUser) {
-                        const callBtns = userElement.querySelectorAll('.call-btn');
-                        for (let callBtn of callBtns) {
-                            if (callBtn.textContent === '📞') {
-                                const socketId = callBtn.getAttribute('onclick').match(/'([^']+)'/)[1];
-                                startAudioCall(socketId, targetUser);
-                                return;
+            
+            isAppending = true;
+            const { uint8Array, mimeType } = receiveDataQueue.shift();
+            
+            // 检查浏览器是否支持这个 MIME 类型用于 SourceBuffer
+            if (isVideoCall) {
+                // 视频播放 - 使用 MediaSource API
+                if (!mediaSource) {
+                    mediaSource = new MediaSource();
+                    remoteVideo.src = URL.createObjectURL(mediaSource);
+                    
+                    mediaSource.addEventListener('sourceopen', () => {
+                        console.log('MediaSource 已打开，尝试使用 MIME 类型:', mimeType);
+                        
+                        // 检查浏览器支持的 MIME 类型
+                        const videoTypes = [
+                            mimeType,
+                            'video/webm;codecs=vp9,opus',
+                            'video/webm;codecs=vp8,opus',
+                            'video/webm;codecs=vp8',
+                            'video/webm',
+                            'video/mp4'
+                        ];
+                        
+                        for (const type of videoTypes) {
+                            try {
+                                if (MediaSource.isTypeSupported(type)) {
+                                    console.log('使用支持的 MIME 类型:', type);
+                                    sourceBuffer = mediaSource.addSourceBuffer(type);
+                                    sourceBuffer.addEventListener('updateend', () => {
+                                        console.log('缓冲区更新完成');
+                                        // 处理下一个数据
+                                        processReceiveQueue();
+                                    });
+                                    break;
+                                }
+                            } catch (e) {
+                                console.log('尝试', type, '失败:', e.message);
                             }
                         }
-                    }
+                    });
                 }
-                alert('未找到该用户或该用户没有通话权限');
+                
+                // 将数据添加到缓冲区
+                if (sourceBuffer && mediaSource.readyState === 'open') {
+                    const appendData = () => {
+                        if (!sourceBuffer.updating) {
+                            try {
+                                sourceBuffer.appendBuffer(uint8Array);
+                                console.log('成功添加数据，大小:', uint8Array.length);
+                            } catch (e) {
+                                console.error('添加缓冲区失败:', e);
+                            }
+                        } else {
+                            // 如果正在更新，等待50ms后重试
+                            setTimeout(appendData, 50);
+                        }
+                    };
+                    appendData();
+                }
+            } else {
+                // 音频播放 - 使用 MediaSource API
+                if (!mediaSource) {
+                    mediaSource = new MediaSource();
+                    if (!audioElement) {
+                        audioElement = new Audio();
+                        audioElement.autoplay = true;
+                    }
+                    audioElement.src = URL.createObjectURL(mediaSource);
+                    
+                    mediaSource.addEventListener('sourceopen', () => {
+                        console.log('MediaSource 已打开，尝试使用 MIME 类型:', mimeType);
+                        
+                        // 检查浏览器支持的 MIME 类型
+                        const audioTypes = [
+                            mimeType,
+                            'audio/webm;codecs=opus',
+                            'audio/webm',
+                            'audio/ogg;codecs=opus',
+                            'audio/mp4'
+                        ];
+                        
+                        for (const type of audioTypes) {
+                            try {
+                                if (MediaSource.isTypeSupported(type)) {
+                                    console.log('使用支持的 MIME 类型:', type);
+                                    sourceBuffer = mediaSource.addSourceBuffer(type);
+                                    sourceBuffer.addEventListener('updateend', () => {
+                                        console.log('缓冲区更新完成');
+                                        // 处理下一个数据
+                                        processReceiveQueue();
+                                    });
+                                    break;
+                                }
+                            } catch (e) {
+                                console.log('尝试', type, '失败:', e.message);
+                            }
+                        }
+                    });
+                }
+                
+                // 将数据添加到缓冲区
+                if (sourceBuffer && mediaSource.readyState === 'open') {
+                    const appendData = () => {
+                        if (!sourceBuffer.updating) {
+                            try {
+                                sourceBuffer.appendBuffer(uint8Array);
+                                console.log('成功添加数据，大小:', uint8Array.length);
+                            } catch (e) {
+                                console.error('添加缓冲区失败:', e);
+                            }
+                        } else {
+                            // 如果正在更新，等待50ms后重试
+                            setTimeout(appendData, 50);
+                        }
+                    };
+                    appendData();
+                }
             }
-        });
+        }
 
-        // 视频控制按钮事件
-        toggleVideoBtn.addEventListener('click', toggleVideo);
-        toggleAudioBtn.addEventListener('click', toggleAudio);
-        endCallBtn.addEventListener('click', endCall);
+        // 视频通话按钮事件
+        // videoCallBtn.addEventListener('click', () => {
+        //     const targetUser = prompt('请输入要视频通话的用户名:');
+        //     if (targetUser) {
+        //         const userElements = usersListDiv.querySelectorAll('.user-item');
+        //         for (let userElement of userElements) {
+        //             const name = userElement.querySelector('.user-name').textContent;
+        //             if (name === targetUser) {
+        //                 const callBtn = userElement.querySelector('.call-btn');
+        //                 if (callBtn && callBtn.textContent === '📹') {
+        //                     const socketId = callBtn.getAttribute('onclick').match(/'([^']+)'/)[1];
+        //                     startVideoCall(socketId, targetUser);
+        //                     return;
+        //                 }
+        //         }
+        //         alert('未找到该用户或该用户没有通话权限');
+        // });
+        
+        // // 语音通话按钮事件
+        // audioCallBtn.addEventListener('click', () => {
+        //     const targetUser = prompt('请输入要语音通话的用户名:');
+        //     if (targetUser) {
+        //         const userElements = usersListDiv.querySelectorAll('.user-item');
+        //         for (let userElement of userElements) {
+        //             const name = userElement.querySelector('.user-name').textContent;
+        //             if (name === targetUser) {
+        //                 const callBtns = userElement.querySelectorAll('.call-btn');
+        //                 for (let callBtn of callBtns) {
+        //                     if (callBtn.textContent === '📞') {
+        //                         const socketId = callBtn.getAttribute('onclick').match(/'([^']+)'/)[1];
+        //                         startAudioCall(socketId, targetUser);
+        //                         return;
+        //                     }
+        //                 }
+        //         }
+        //         alert('未找到该用户或该用户没有通话权限');
+        // });
+        
+        // // 视频控制按钮事件
+        // toggleVideoBtn.addEventListener('click', toggleVideo);
+        // toggleAudioBtn.addEventListener('click', toggleAudio);
+        // endCallBtn.addEventListener('click', endCall);
         
         // 显示设备选择模态框
         function showDeviceSelectModal() {
