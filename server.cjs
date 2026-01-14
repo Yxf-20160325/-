@@ -99,6 +99,13 @@ const deletedMessages = new Map();
 // 房间系统数据结构
 const rooms = new Map();
 
+// 好友系统数据结构
+const friendships = new Map(); // 存储好友关系: Map<socketId, Set<friendSocketId>>
+const privateMessages = new Map(); // 存储私聊消息: Map<chatId, Array<message>>
+
+// @功能开关
+let allowMentions = true; // 默认开启@功能
+
 // 默认房间
 rooms.set('main', {
     roomName: 'main',
@@ -140,12 +147,27 @@ io.on('connection', (socket) => {
             return;
         }
         
+        // 检查是否允许创建新房间（至少有一个房间存在）
+        const allRooms = Array.from(rooms.values());
+        if (allRooms.length === 0) {
+            socket.emit('join-error', { message: '至少需要有一个房间才能加入' });
+            return;
+        }
+        
+        // 检查用户名是否已存在
+        const existingUser = Array.from(users.values()).find(user => user.username === username);
+        if (existingUser) {
+            socket.emit('join-error', { message: '用户名已存在，请选择其他用户名' });
+            return;
+        }
+        
         // 设置用户信息
         users.set(socket.id, {
             username: username,
             color: getRandomColor(),
             socketId: socket.id,
             roomName: roomName,
+            role: 'user', // 默认角色为user
             permissions: {
                 allowAudio: true,
                 allowImage: true,
@@ -249,6 +271,27 @@ io.on('connection', (socket) => {
                 senderSocketId: socket.id
             };
             
+            // 检查消息中是否包含@{用户名}
+            const mentions = data.message.match(/@\{([^}]+)\}/g);
+            if (mentions && allowMentions) {
+                mentions.forEach(mention => {
+                    const mentionedUsername = mention.replace('@{', '').replace('}', '');
+                    const mentionedUser = Array.from(users.values()).find(u => u.username === mentionedUsername);
+                    
+                    if (mentionedUser) {
+                        // 发送@通知给被@的用户
+                        io.to(mentionedUser.socketId).emit('mention-notification', {
+                            fromUsername: user.username,
+                            fromColor: user.color,
+                            message: data.message,
+                            timestamp: new Date().toLocaleTimeString()
+                        });
+                        
+                        console.log(`[通知] ${user.username} @了 ${mentionedUser.username}`);
+                    }
+                });
+            }
+            
             // 获取用户所在的房间
             const room = rooms.get(user.roomName);
             if (room) {
@@ -265,6 +308,11 @@ io.on('connection', (socket) => {
                         io.to(userId).emit('message', messageData);
                     }
                 });
+                
+                // 发送给管理员
+                if (adminSocketId) {
+                    io.to(adminSocketId).emit('message', messageData);
+                }
                 
                 console.log(`[房间 ${user.roomName}] ${user.username}: ${data.type === 'text' ? data.message : data.type}`);
             }
@@ -343,6 +391,36 @@ io.on('connection', (socket) => {
             }
         }
     });
+    
+    // 设置用户角色
+    socket.on('admin-set-role', (data) => {
+        if (socket.id === adminSocketId) {
+            const user = users.get(data.socketId);
+            if (user) {
+                const oldRole = user.role;
+                user.role = data.role;
+                
+                // 发送角色更新通知
+                io.emit('user-role-changed', {
+                    socketId: data.socketId,
+                    username: user.username,
+                    oldRole: oldRole,
+                    newRole: data.role,
+                    users: Array.from(users.values())
+                });
+                
+                console.log(`管理员将用户 ${user.username} 的角色从 ${oldRole} 更改为 ${data.role}`);
+            }
+        }
+    });
+    
+    // 设置@功能开关
+    socket.on('admin-set-mentions', (data) => {
+        if (socket.id === adminSocketId) {
+            allowMentions = data.allow;
+            console.log(`管理员将@功能设置为 ${allowMentions ? '开启' : '关闭'}`);
+        }
+    });
 
     socket.on('admin-system-message', (message) => {
             if (socket.id === adminSocketId) {
@@ -387,7 +465,7 @@ io.on('connection', (socket) => {
         });
         
         // 管理员在指定房间伪装发送消息
-        socket.on('admin-room-send-message', (data) => {
+        socket.on('admin-room-send-mes·sage', (data) => {
             if (socket.id === adminSocketId) {
                 const { roomName, username, message, color, type } = data;
                 const room = rooms.get(roomName);
@@ -537,6 +615,13 @@ io.on('connection', (socket) => {
             // 不允许删除默认房间
             if (roomName === 'main') {
                 socket.emit('admin-room-error', { message: '不能删除默认房间' });
+                return;
+            }
+            
+            // 检查是否至少有一个房间存在
+            const allRooms = Array.from(rooms.values());
+            if (allRooms.length <= 1) {
+                socket.emit('admin-room-error', { message: '至少需要有一个房间，不能删除最后一个房间' });
                 return;
             }
             
@@ -717,6 +802,11 @@ io.on('connection', (socket) => {
                             io.to(userId).emit('message-recalled', messageId);
                         });
                         
+                        // 发送给管理员
+                        if (adminSocketId) {
+                            io.to(adminSocketId).emit('message-recalled', messageId);
+                        }
+                        
                         console.log(`[房间 ${user.roomName}] ${message.username} 撤回了一条消息`);
                     }
                 }
@@ -795,6 +885,21 @@ io.on('connection', (socket) => {
             });
         }
     });
+    
+    // 管理员获取指定房间的消息
+    socket.on('admin-get-room-messages', (roomName) => {
+        if (socket.id === adminSocketId) {
+            const room = rooms.get(roomName);
+            if (room) {
+                socket.emit('admin-room-messages', {
+                    roomName: roomName,
+                    messages: room.messages
+                });
+            } else {
+                socket.emit('admin-room-error', { message: '房间不存在' });
+            }
+        }
+    });
 
     socket.on('admin-get-messages', () => {
         if (socket.id === adminSocketId) {
@@ -803,6 +908,271 @@ io.on('connection', (socket) => {
                 deleted: Array.from(deletedMessages.values())
             };
             socket.emit('admin-messages', allMessages);
+        }
+    });
+
+    // 好友系统功能
+    
+    // 添加好友
+    socket.on('add-friend', (targetSocketId) => {
+        const user = users.get(socket.id);
+        const targetUser = users.get(targetSocketId);
+        
+        if (!user || !targetUser) {
+            socket.emit('friend-error', { message: '用户不存在' });
+            return;
+        }
+        
+        // 检查是否已经是好友
+        if (!friendships.has(socket.id)) {
+            friendships.set(socket.id, new Set());
+        }
+        if (friendships.get(socket.id).has(targetSocketId)) {
+            socket.emit('friend-error', { message: '已经是好友了' });
+            return;
+        }
+        
+        // 添加好友关系
+        friendships.get(socket.id).add(targetSocketId);
+        
+        // 通知目标用户
+        io.to(targetSocketId).emit('friend-request', {
+            fromSocketId: socket.id,
+            fromUsername: user.username,
+            fromColor: user.color
+        });
+        
+        console.log(`${user.username} 请求添加 ${targetUser.username} 为好友`);
+    });
+    
+    // 接受好友请求
+    socket.on('accept-friend', (fromSocketId) => {
+        const user = users.get(socket.id);
+        const fromUser = users.get(fromSocketId);
+        
+        if (!user || !fromUser) {
+            socket.emit('friend-error', { message: '用户不存在' });
+            return;
+        }
+        
+        // 确保对方已经发送了好友请求
+        if (!friendships.has(fromSocketId) || !friendships.get(fromSocketId).has(socket.id)) {
+            socket.emit('friend-error', { message: '没有收到该用户的好友请求' });
+            return;
+        }
+        
+        // 为当前用户添加好友关系
+        if (!friendships.has(socket.id)) {
+            friendships.set(socket.id, new Set());
+        }
+        friendships.get(socket.id).add(fromSocketId);
+        
+        // 通知双方
+        io.to(socket.id).emit('friend-accepted', {
+            friendSocketId: fromSocketId,
+            friendUsername: fromUser.username,
+            friendColor: fromUser.color
+        });
+        
+        io.to(fromSocketId).emit('friend-accepted', {
+            friendSocketId: socket.id,
+            friendUsername: user.username,
+            friendColor: user.color
+        });
+        
+        console.log(`${user.username} 接受了 ${fromUser.username} 的好友请求`);
+    });
+    
+    // 拒绝好友请求
+    socket.on('reject-friend', (fromSocketId) => {
+        const user = users.get(socket.id);
+        const fromUser = users.get(fromSocketId);
+        
+        if (!user || !fromUser) {
+            socket.emit('friend-error', { message: '用户不存在' });
+            return;
+        }
+        
+        // 移除对方的好友请求
+        if (friendships.has(fromSocketId)) {
+            friendships.get(fromSocketId).delete(socket.id);
+        }
+        
+        // 通知对方
+        io.to(fromSocketId).emit('friend-rejected', {
+            friendSocketId: socket.id,
+            friendUsername: user.username
+        });
+        
+        console.log(`${user.username} 拒绝了 ${fromUser.username} 的好友请求`);
+    });
+    
+    // 删除好友
+    socket.on('remove-friend', (friendSocketId) => {
+        const user = users.get(socket.id);
+        const friendUser = users.get(friendSocketId);
+        
+        if (!user || !friendUser) {
+            socket.emit('friend-error', { message: '用户不存在' });
+            return;
+        }
+        
+        // 移除好友关系
+        if (friendships.has(socket.id)) {
+            friendships.get(socket.id).delete(friendSocketId);
+        }
+        if (friendships.has(friendSocketId)) {
+            friendships.get(friendSocketId).delete(socket.id);
+        }
+        
+        // 通知双方
+        io.to(socket.id).emit('friend-removed', {
+            friendSocketId: friendSocketId,
+            friendUsername: friendUser.username
+        });
+        
+        io.to(friendSocketId).emit('friend-removed', {
+            friendSocketId: socket.id,
+            friendUsername: user.username
+        });
+        
+        console.log(`${user.username} 删除了好友 ${friendUser.username}`);
+    });
+    
+    // 获取好友列表
+    socket.on('get-friends', () => {
+        const user = users.get(socket.id);
+        if (!user) {
+            return;
+        }
+        
+        const friendSocketIds = friendships.get(socket.id) || new Set();
+        const friends = [];
+        
+        friendSocketIds.forEach(friendSocketId => {
+            const friendUser = users.get(friendSocketId);
+            if (friendUser) {
+                friends.push({
+                    socketId: friendSocketId,
+                    username: friendUser.username,
+                    color: friendUser.color,
+                    permissions: friendUser.permissions,
+                    online: true
+                });
+            }
+        });
+        
+        socket.emit('friends-list', friends);
+        console.log(`${user.username} 获取好友列表，共 ${friends.length} 个好友`);
+    });
+    
+    // 发送私聊消息
+    socket.on('private-message', (data) => {
+        const user = users.get(socket.id);
+        const targetUser = users.get(data.targetSocketId);
+        
+        if (!user || !targetUser) {
+            socket.emit('private-message-error', { message: '用户不存在' });
+            return;
+        }
+        
+        // 检查是否是好友
+        if (!friendships.has(socket.id) || !friendships.get(socket.id).has(data.targetSocketId)) {
+            socket.emit('private-message-error', { message: '只能给好友发送私聊消息' });
+            return;
+        }
+        
+        const chatId = [socket.id, data.targetSocketId].sort().join('-');
+        const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        
+        const messageData = {
+            id: messageId,
+            chatId: chatId,
+            fromSocketId: socket.id,
+            fromUsername: user.username,
+            fromColor: user.color,
+            toSocketId: data.targetSocketId,
+            message: data.message,
+            type: data.type || 'text',
+            timestamp: new Date().toLocaleTimeString()
+        };
+        
+        // 存储私聊消息
+        if (!privateMessages.has(chatId)) {
+            privateMessages.set(chatId, []);
+        }
+        privateMessages.get(chatId).push(messageData);
+        
+        // 限制私聊消息数量
+        if (privateMessages.get(chatId).length > 100) {
+            privateMessages.get(chatId).shift();
+        }
+        
+        // 发送给双方
+        io.to(socket.id).emit('private-message', messageData);
+        io.to(data.targetSocketId).emit('private-message', messageData);
+        
+        console.log(`[私聊] ${user.username} -> ${targetUser.username}: ${data.type === 'text' ? data.message : data.type}`);
+    });
+    
+    // 获取私聊历史消息
+    socket.on('get-private-messages', (targetSocketId) => {
+        const user = users.get(socket.id);
+        if (!user) {
+            return;
+        }
+        
+        const chatId = [socket.id, targetSocketId].sort().join('-');
+        const messages = privateMessages.get(chatId) || [];
+        
+        socket.emit('private-messages-history', {
+            targetSocketId: targetSocketId,
+            messages: messages
+        });
+        
+        console.log(`${user.username} 获取与 ${targetSocketId} 的私聊历史消息，共 ${messages.length} 条`);
+    });
+    
+    // 管理员私聊功能（不需要好友关系）
+    socket.on('admin-private-message', (data) => {
+        if (socket.id === adminSocketId) {
+            const targetUser = users.get(data.targetSocketId);
+            if (!targetUser) {
+                socket.emit('private-message-error', { message: '用户不存在' });
+                return;
+            }
+            
+            const chatId = [socket.id, data.targetSocketId].sort().join('-');
+            const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            
+            const messageData = {
+                id: messageId,
+                chatId: chatId,
+                fromSocketId: socket.id,
+                fromUsername: 'admin',
+                fromColor: '#dc3545',
+                toSocketId: data.targetSocketId,
+                message: data.message,
+                type: data.type || 'text',
+                timestamp: new Date().toLocaleTimeString()
+            };
+            
+            // 存储私聊消息
+            if (!privateMessages.has(chatId)) {
+                privateMessages.set(chatId, []);
+            }
+            privateMessages.get(chatId).push(messageData);
+            
+            // 限制私聊消息数量
+            if (privateMessages.get(chatId).length > 100) {
+                privateMessages.get(chatId).shift();
+            }
+            
+            // 发送给双方
+            io.to(socket.id).emit('private-message', messageData);
+            io.to(data.targetSocketId).emit('private-message', messageData);
+            
+            console.log(`[管理员私聊] admin -> ${targetUser.username}: ${data.type === 'text' ? data.message : data.type}`);
         }
     });
 
