@@ -57,6 +57,195 @@ app.post('/upload-audio', (req, res) => {
     }
 });
 
+// 文件管理API - 获取文件列表（支持目录浏览）
+app.get('/api/files', (req, res) => {
+    try {
+        const relativePath = req.query.path || '';
+        const uploadsDir = path.join(__dirname, 'uploads', relativePath);
+        
+        if (!fs.existsSync(uploadsDir)) {
+            return res.json({ files: [], currentPath: relativePath });
+        }
+        
+        const files = fs.readdirSync(uploadsDir).map(filename => {
+            const filePath = path.join(uploadsDir, filename);
+            const stats = fs.statSync(filePath);
+            const isDirectory = stats.isDirectory();
+            return {
+                name: filename,
+                size: isDirectory ? 0 : stats.size,
+                createdAt: stats.birthtime,
+                modifiedAt: stats.mtime,
+                isDirectory: isDirectory,
+                url: isDirectory ? null : `/uploads/${relativePath ? relativePath + '/' + filename : filename}`
+            };
+        });
+        
+        res.json({ 
+            files: files.sort((a, b) => {
+                if (a.isDirectory && !b.isDirectory) return -1;
+                if (!a.isDirectory && b.isDirectory) return 1;
+                return b.createdAt - a.createdAt;
+            }),
+            currentPath: relativePath
+        });
+    } catch (error) {
+        console.error('获取文件列表失败:', error);
+        res.status(500).json({ error: '获取文件列表失败' });
+    }
+});
+
+// 文件管理API - 创建目录
+app.post('/api/files/create-directory', express.json(), (req, res) => {
+    try {
+        const { dirname, path: relativePath } = req.body;
+        if (!dirname) {
+            return res.status(400).json({ error: '目录名不能为空' });
+        }
+        
+        const dirPath = path.join(__dirname, 'uploads', relativePath || '', dirname);
+        
+        if (fs.existsSync(dirPath)) {
+            return res.status(400).json({ error: '目录已存在' });
+        }
+        
+        fs.mkdirSync(dirPath, { recursive: true });
+        res.json({ success: true });
+    } catch (error) {
+        console.error('创建目录失败:', error);
+        res.status(500).json({ error: '创建目录失败' });
+    }
+});
+
+// 文件管理API - 上传文件
+app.post('/api/files/upload', (req, res) => {
+    try {
+        const relativePath = req.headers['x-path'] || '';
+        const filename = req.headers['x-filename'] || Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const filePath = path.join(__dirname, 'uploads', relativePath, filename);
+        fs.writeFileSync(filePath, req.body);
+        const stats = fs.statSync(filePath);
+        
+        res.json({
+            name: filename,
+            size: stats.size,
+            createdAt: stats.birthtime,
+            modifiedAt: stats.mtime,
+            url: `/uploads/${relativePath ? relativePath + '/' + filename : filename}`
+        });
+    } catch (error) {
+        console.error('上传文件失败:', error);
+        res.status(500).json({ error: '上传文件失败' });
+    }
+});
+
+// 文件管理API - 删除文件或目录
+app.delete('/api/files/*', (req, res) => {
+    try {
+        const itemPath = req.params[0];
+        const fullPath = path.join(__dirname, 'uploads', itemPath);
+        
+        if (!fs.existsSync(fullPath)) {
+            return res.status(404).json({ error: '文件或目录不存在' });
+        }
+        
+        const stats = fs.statSync(fullPath);
+        if (stats.isDirectory()) {
+            fs.rmSync(fullPath, { recursive: true, force: true });
+        } else {
+            fs.unlinkSync(fullPath);
+        }
+        
+        res.json({ success: true });
+    } catch (error) {
+        console.error('删除失败:', error);
+        res.status(500).json({ error: '删除失败' });
+    }
+});
+
+// 文件管理API - 创建文本文件
+app.post('/api/files/create', express.json(), (req, res) => {
+    try {
+        const { filename, content, path: relativePath } = req.body;
+        if (!filename) {
+            return res.status(400).json({ error: '文件名不能为空' });
+        }
+        
+        const filePath = path.join(__dirname, 'uploads', relativePath || '', filename);
+        fs.writeFileSync(filePath, content || '');
+        const stats = fs.statSync(filePath);
+        
+        res.json({
+            name: filename,
+            size: stats.size,
+            createdAt: stats.birthtime,
+            modifiedAt: stats.mtime,
+            url: `/uploads/${relativePath ? relativePath + '/' + filename : filename}`
+        });
+    } catch (error) {
+        console.error('创建文件失败:', error);
+        res.status(500).json({ error: '创建文件失败' });
+    }
+});
+
+// 文件管理API - 编辑文件内容
+app.put('/api/files/*', express.json(), (req, res) => {
+    try {
+        const itemPath = req.params[0];
+        const { content } = req.body;
+        const filePath = path.join(__dirname, 'uploads', itemPath);
+        
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ error: '文件不存在' });
+        }
+        
+        const stats = fs.statSync(filePath);
+        if (stats.isDirectory()) {
+            return res.status(400).json({ error: '不能编辑目录' });
+        }
+        
+        fs.writeFileSync(filePath, content || '');
+        const newStats = fs.statSync(filePath);
+        
+        const filename = path.basename(itemPath);
+        const relativePath = path.dirname(itemPath);
+        
+        res.json({
+            name: filename,
+            size: newStats.size,
+            createdAt: newStats.birthtime,
+            modifiedAt: newStats.mtime,
+            url: `/uploads/${itemPath}`
+        });
+    } catch (error) {
+        console.error('编辑文件失败:', error);
+        res.status(500).json({ error: '编辑文件失败' });
+    }
+});
+
+// 文件管理API - 获取文件内容
+app.get('/api/files/*/content', (req, res) => {
+    try {
+        const itemPath = req.params[0];
+        const filePath = path.join(__dirname, 'uploads', itemPath);
+        
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json({ error: '文件不存在' });
+        }
+        
+        const stats = fs.statSync(filePath);
+        if (stats.isDirectory()) {
+            return res.status(400).json({ error: '不能读取目录内容' });
+        }
+        
+        const content = fs.readFileSync(filePath, 'utf8');
+        res.json({ content });
+    } catch (error) {
+        console.error('获取文件内容失败:', error);
+        res.status(500).json({ error: '获取文件内容失败' });
+    }
+});
+
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 
@@ -76,7 +265,7 @@ app.get('/:roomName', (req, res) => {
     }
 });
 
-const ADMIN_PASSWORD = 'admin123';
+let ADMIN_PASSWORD = 'admin123';
 let adminSocketId = null;
 
 const server = http.createServer(app);
@@ -105,6 +294,21 @@ const privateMessages = new Map(); // 存储私聊消息: Map<chatId, Array<mess
 
 // @功能开关
 let allowMentions = true; // 默认开启@功能
+
+// 默认权限
+let defaultPermissions = {
+    allowAudio: true,
+    allowImage: true,
+    allowFile: true,
+    allowSendMessages: true,
+    allowViewMessages: true,
+    allowCall: true,
+    allowAddFriends: true,
+    allowViewUsers: true,
+    allowPrivateChat: true,
+    allowOpenFriendsPage: true,
+    allowRecallMessage: true
+};
 
 // 默认房间
 rooms.set('main', {
@@ -168,15 +372,11 @@ io.on('connection', (socket) => {
             socketId: socket.id,
             roomName: roomName,
             role: 'user', // 默认角色为user
-            permissions: {
-                allowAudio: true,
-                allowImage: true,
-                allowFile: true,
-                allowSendMessages: true,
-                allowViewMessages: true,
-                allowCall: true
-            }
+            permissions: { ...defaultPermissions }
         });
+        
+        // 获取当前用户对象
+        const user = users.get(socket.id);
         
         // 将用户添加到房间
         room.users.push(socket.id);
@@ -185,22 +385,28 @@ io.on('connection', (socket) => {
         socket.join(roomName);
         
         // 发送房间内的用户列表和消息
-        const roomUsers = room.users.map(userId => users.get(userId)).filter(user => user);
+        let roomUsers = room.users.map(userId => users.get(userId)).filter(user => user);
         const roomMessages = room.messages;
+        
+        // 检查用户是否有查看用户列表的权限
+        if (!user.permissions.allowViewUsers) {
+            roomUsers = [];
+        }
         
         // 发送给当前用户
         socket.emit('user-joined', {
             username: username,
-            userCount: roomUsers.length,
+            userCount: room.users.length,
             users: roomUsers,
             roomName: roomName
         });
         
-        // 发送给房间内其他用户
+        // 发送给房间内其他用户（只发送有权限的用户）
+        const otherUsers = roomUsers.filter(u => u.permissions.allowViewUsers);
         socket.to(roomName).emit('user-joined', {
             username: username,
-            userCount: roomUsers.length,
-            users: roomUsers,
+            userCount: room.users.length,
+            users: otherUsers,
             roomName: roomName
         });
         
@@ -223,7 +429,12 @@ io.on('connection', (socket) => {
                     allowFile: true,
                     allowSendMessages: true,
                     allowViewMessages: true,
-                    allowCall: true
+                    allowCall: true,
+                    allowAddFriends: true,
+                    allowViewUsers: true,
+                    allowPrivateChat: true,
+                    allowOpenFriendsPage: true,
+                    allowRecallMessage: true
                 };
             } else {
                 // 确保所有权限字段都存在，如果不存在则设置默认值
@@ -233,7 +444,12 @@ io.on('connection', (socket) => {
                     allowFile: true,
                     allowSendMessages: true,
                     allowViewMessages: true,
-                    allowCall: true
+                    allowCall: true,
+                    allowAddFriends: true,
+                    allowViewUsers: true,
+                    allowPrivateChat: true,
+                    allowOpenFriendsPage: true,
+                    allowRecallMessage: true
                 };
                 
                 user.permissions = {
@@ -380,7 +596,12 @@ io.on('connection', (socket) => {
                     allowFile: data.permissions.allowFile,
                     allowSendMessages: data.permissions.allowSendMessages,
                     allowViewMessages: data.permissions.allowViewMessages,
-                    allowCall: data.permissions.allowCall
+                    allowCall: data.permissions.allowCall,
+                    allowAddFriends: data.permissions.allowAddFriends,
+                    allowViewUsers: data.permissions.allowViewUsers,
+                    allowPrivateChat: data.permissions.allowPrivateChat,
+                    allowOpenFriendsPage: data.permissions.allowOpenFriendsPage,
+                    allowRecallMessage: data.permissions.allowRecallMessage
                 };
                 io.emit('user-permissions-changed', {
                     socketId: data.socketId,
@@ -419,6 +640,35 @@ io.on('connection', (socket) => {
         if (socket.id === adminSocketId) {
             allowMentions = data.allow;
             console.log(`管理员将@功能设置为 ${allowMentions ? '开启' : '关闭'}`);
+        }
+    });
+
+    // 设置全体权限（应用到所有用户）
+    socket.on('admin-set-global-permissions', (permissions) => {
+        if (socket.id === adminSocketId) {
+            users.forEach((user, socketId) => {
+                user.permissions = {
+                    ...user.permissions,
+                    ...permissions
+                };
+            });
+            
+            // 通知所有用户权限已更新
+            io.emit('user-permissions-changed', {
+                socketId: null,
+                permissions: permissions,
+                users: Array.from(users.values())
+            });
+            
+            console.log('管理员设置了全体权限:', JSON.stringify(permissions));
+        }
+    });
+
+    // 设置默认权限（仅应用到新用户）
+    socket.on('admin-set-default-permissions', (permissions) => {
+        if (socket.id === adminSocketId) {
+            defaultPermissions = permissions;
+            console.log('管理员设置了默认权限:', JSON.stringify(permissions));
         }
     });
 
@@ -465,7 +715,7 @@ io.on('connection', (socket) => {
         });
         
         // 管理员在指定房间伪装发送消息
-        socket.on('admin-room-send-mes·sage', (data) => {
+        socket.on('admin-room-send-message', (data) => {
             if (socket.id === adminSocketId) {
                 const { roomName, username, message, color, type } = data;
                 const room = rooms.get(roomName);
@@ -565,6 +815,116 @@ io.on('connection', (socket) => {
             });
         }
     });
+    
+    socket.on('admin-get-friends', () => {
+        if (socket.id === adminSocketId) {
+            console.log('管理员请求获取好友列表');
+            const allFriendships = [];
+            friendships.forEach((friendSet, userSocketId) => {
+                const user = users.get(userSocketId);
+                if (user) {
+                    friendSet.forEach(friendSocketId => {
+                        const friend = users.get(friendSocketId);
+                        if (friend) {
+                            allFriendships.push({
+                                userSocketId: userSocketId,
+                                username: user.username,
+                                userColor: user.color,
+                                friendSocketId: friendSocketId,
+                                friendUsername: friend.username,
+                                friendColor: friend.color
+                            });
+                        }
+                    });
+                }
+            });
+            console.log('发送好友列表给管理员，共', allFriendships.length, '条');
+            socket.emit('admin-friends-list', allFriendships);
+        } else {
+            console.log('非管理员请求获取好友列表，socket.id:', socket.id, 'adminSocketId:', adminSocketId);
+        }
+    });
+
+    socket.on('admin-delete-friendship', (data) => {
+        if (socket.id === adminSocketId) {
+            const { userSocketId, friendSocketId } = data;
+            
+            const user = users.get(userSocketId);
+            const friend = users.get(friendSocketId);
+            
+            // 删除好友关系（双向删除）
+            if (friendships.has(userSocketId)) {
+                friendships.get(userSocketId).delete(friendSocketId);
+            }
+            if (friendships.has(friendSocketId)) {
+                friendships.get(friendSocketId).delete(userSocketId);
+            }
+            
+            console.log(`管理员删除了好友关系: ${userSocketId} <-> ${friendSocketId}`);
+            
+            // 通知双方用户
+            io.to(userSocketId).emit('friend-removed', {
+                friendSocketId: friendSocketId,
+                friendUsername: friend?.username
+            });
+            io.to(friendSocketId).emit('friend-removed', {
+                friendSocketId: userSocketId,
+                friendUsername: user?.username
+            });
+            
+            // 重新发送好友列表
+            socket.emit('admin-get-friends');
+        }
+    });
+
+    socket.on('admin-add-friendship', (data) => {
+        if (socket.id === adminSocketId) {
+            const { userSocketId, friendSocketId } = data;
+            
+            const user = users.get(userSocketId);
+            const friend = users.get(friendSocketId);
+            
+            if (!user || !friend) {
+                socket.emit('friend-error', { message: '用户不存在' });
+                return;
+            }
+            
+            // 初始化好友集合
+            if (!friendships.has(userSocketId)) {
+                friendships.set(userSocketId, new Set());
+            }
+            if (!friendships.has(friendSocketId)) {
+                friendships.set(friendSocketId, new Set());
+            }
+            
+            // 检查是否已经是好友
+            if (friendships.get(userSocketId).has(friendSocketId)) {
+                socket.emit('friend-error', { message: '已经是好友了' });
+                return;
+            }
+            
+            // 双向添加好友关系
+            friendships.get(userSocketId).add(friendSocketId);
+            friendships.get(friendSocketId).add(userSocketId);
+            
+            console.log(`管理员添加了好友关系: ${user.username} <-> ${friend.username}`);
+            
+            // 通知双方用户
+            io.to(userSocketId).emit('friend-added', {
+                friendSocketId: friendSocketId,
+                friendUsername: friend.username,
+                friendColor: friend.color
+            });
+            io.to(friendSocketId).emit('friend-added', {
+                friendSocketId: userSocketId,
+                friendUsername: user.username,
+                friendColor: user.color
+            });
+            
+            // 重新发送好友列表
+            socket.emit('admin-get-friends');
+        }
+    });
 
     socket.on('admin-clear-messages', () => {
         if (socket.id === adminSocketId) {
@@ -585,6 +945,12 @@ io.on('connection', (socket) => {
                 return;
             }
             
+            // 验证maxUsers参数是否为有效数字
+            if (settings?.maxUsers && (typeof settings.maxUsers !== 'number' || settings.maxUsers <= 0)) {
+                socket.emit('admin-room-error', { message: 'maxUsers必须是一个大于0的数字' });
+                return;
+            }
+            
             // 创建新房间
             const newRoom = {
                 roomName: roomName,
@@ -595,7 +961,7 @@ io.on('connection', (socket) => {
                 users: [],
                 messages: [],
                 settings: {
-                    maxUsers: 100,
+                    maxUsers: settings?.maxUsers || 100,
                     allowPublicAccess: true,
                     ...settings
                 }
@@ -674,6 +1040,25 @@ io.on('connection', (socket) => {
                 socket.emit('admin-rooms', Array.from(rooms.values()));
                 console.log(`管理员更新了房间 ${roomName} 的设置`);
             }
+        }
+    });
+
+    // 管理员修改管理员密码
+    socket.on('admin-change-password', (data) => {
+        if (socket.id === adminSocketId) {
+            const { oldPassword, newPassword } = data;
+            
+            // 验证旧密码
+            if (oldPassword !== ADMIN_PASSWORD) {
+                socket.emit('admin-password-error', { message: '旧密码错误' });
+                return;
+            }
+            
+            // 更新管理员密码
+            ADMIN_PASSWORD = newPassword;
+            
+            socket.emit('admin-password-success', { message: '管理员密码已修改' });
+            console.log('管理员修改了密码');
         }
     });
     
@@ -786,6 +1171,12 @@ io.on('connection', (socket) => {
     socket.on('message-recall', (messageId) => {
         const user = users.get(socket.id);
         if (user) {
+            // 检查撤回消息权限
+            if (!user.permissions.allowRecallMessage) {
+                socket.emit('permission-denied', { message: '您没有撤回消息的权限' });
+                return;
+            }
+            
             const room = rooms.get(user.roomName);
             if (room) {
                 // 查找要撤回的消息
@@ -923,6 +1314,12 @@ io.on('connection', (socket) => {
             return;
         }
         
+        // 检查添加好友权限
+        if (!user.permissions.allowAddFriends) {
+            socket.emit('friend-error', { message: '您没有添加好友的权限' });
+            return;
+        }
+        
         // 检查是否已经是好友
         if (!friendships.has(socket.id)) {
             friendships.set(socket.id, new Set());
@@ -1046,6 +1443,12 @@ io.on('connection', (socket) => {
             return;
         }
         
+        // 检查打开好友页面权限
+        if (!user.permissions.allowOpenFriendsPage) {
+            socket.emit('permission-denied', { message: '您没有查看好友页面的权限' });
+            return;
+        }
+        
         const friendSocketIds = friendships.get(socket.id) || new Set();
         const friends = [];
         
@@ -1073,6 +1476,12 @@ io.on('connection', (socket) => {
         
         if (!user || !targetUser) {
             socket.emit('private-message-error', { message: '用户不存在' });
+            return;
+        }
+        
+        // 检查私聊权限
+        if (!user.permissions.allowPrivateChat) {
+            socket.emit('private-message-error', { message: '您没有私聊的权限' });
             return;
         }
         
