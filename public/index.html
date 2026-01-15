@@ -964,6 +964,55 @@
             flex-basis: 100%;
         }
         @media (max-width: 768px) {}
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #667eea;
+        }
+
+        input:focus + .slider {
+            box-shadow: 0 0 1px #667eea;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
     </style>
 </head>
 <body>
@@ -1067,8 +1116,15 @@
             <h3 id="privateChatTitle">私聊</h3>
             <div class="private-chat-messages" id="privateChatMessages"></div>
             <div class="private-chat-input">
-                <input type="text" id="privateChatInput" placeholder="输入私聊消息..." maxlength="500">
-                <button id="privateChatSendBtn">发送</button>
+                <input type="file" id="privateChatImageInput" accept="image/*" style="display: none;">
+                <div class="action-buttons" style="margin-bottom: 10px;">
+                    <button class="action-btn" id="privateChatImageBtn" title="发送图片">📷</button>
+                    <button class="action-btn" id="privateChatAudioBtn" title="发送语音">🎤</button>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" id="privateChatInput" placeholder="输入私聊消息..." maxlength="500" style="flex: 1;">
+                    <button id="privateChatSendBtn">发送</button>
+                </div>
             </div>
             <div class="modal-buttons">
                 <button type="button" class="btn btn-cancel" onclick="closePrivateChatModal()">关闭</button>
@@ -1188,6 +1244,9 @@
         const privateChatMessagesDiv = document.getElementById('privateChatMessages');
         const privateChatInput = document.getElementById('privateChatInput');
         const privateChatSendBtn = document.getElementById('privateChatSendBtn');
+        const privateChatImageInput = document.getElementById('privateChatImageInput');
+        const privateChatImageBtn = document.getElementById('privateChatImageBtn');
+        const privateChatAudioBtn = document.getElementById('privateChatAudioBtn');
         
         // 管理员面板相关变量
         const adminPanelBtn = document.getElementById('adminPanelBtn');
@@ -1520,6 +1579,120 @@
             }
         });
         
+        // 私聊发送图片
+        privateChatImageBtn.addEventListener('click', () => {
+            privateChatImageInput.click();
+        });
+        
+        privateChatImageInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (file && currentPrivateChatTarget) {
+                if (!userPermissions.allowImage) {
+                    alert('您没有发送图片的权限');
+                    privateChatImageInput.value = '';
+                    return;
+                }
+                try {
+                    const reader = new FileReader();
+                    reader.onload = async (event) => {
+                        const arrayBuffer = event.target.result;
+                        const response = await fetch('/upload-image', {
+                            method: 'POST',
+                            body: arrayBuffer,
+                            headers: {
+                                'Content-Type': file.type
+                            }
+                        });
+                        const data = await response.json();
+                        
+                        if (data.imageUrl) {
+                            socket.emit('private-message', {
+                                targetSocketId: currentPrivateChatTarget,
+                                message: data.imageUrl,
+                                type: 'image'
+                            });
+                        }
+                    };
+                    reader.readAsArrayBuffer(file);
+                } catch (error) {
+                    console.error('上传图片失败:', error);
+                    alert('上传图片失败，请重试');
+                }
+                
+                privateChatImageInput.value = '';
+            }
+        });
+        
+        // 私聊发送语音
+        let privateChatMediaRecorder = null;
+        let privateChatAudioChunks = [];
+        let privateChatIsRecording = false;
+        
+        privateChatAudioBtn.addEventListener('click', async () => {
+            if (!userPermissions.allowAudio) {
+                alert('您没有发送语音的权限');
+                return;
+            }
+            
+            if (!privateChatIsRecording) {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    privateChatMediaRecorder = new MediaRecorder(stream);
+                    privateChatAudioChunks = [];
+                    
+                    privateChatMediaRecorder.ondataavailable = (event) => {
+                        privateChatAudioChunks.push(event.data);
+                    };
+                    
+                    privateChatMediaRecorder.onstop = async () => {
+                        const audioBlob = new Blob(privateChatAudioChunks, { type: 'audio/webm' });
+                        
+                        try {
+                            const response = await fetch('/upload-audio', {
+                                method: 'POST',
+                                body: audioBlob,
+                                headers: {
+                                    'Content-Type': 'audio/webm'
+                                }
+                            });
+                            
+                            if (!response.ok) {
+                                throw new Error(`网络响应错误: ${response.statusText}`);
+                            }
+                            
+                            const data = await response.json();
+                            
+                            if (data.audioUrl) {
+                                socket.emit('private-message', {
+                                    targetSocketId: currentPrivateChatTarget,
+                                    message: data.audioUrl,
+                                    type: 'audio'
+                                });
+                            }
+                        } catch (error) {
+                            console.error('上传语音失败:', error);
+                            alert('上传语音失败，请重试');
+                        }
+                        
+                        stream.getTracks().forEach(track => track.stop());
+                    };
+                    
+                    privateChatMediaRecorder.start();
+                    privateChatIsRecording = true;
+                    privateChatAudioBtn.classList.add('recording');
+                    privateChatAudioBtn.title = '停止录制';
+                } catch (error) {
+                    console.error('无法访问麦克风:', error);
+                    alert('无法访问麦克风，请检查权限设置');
+                }
+            } else {
+                privateChatMediaRecorder.stop();
+                privateChatIsRecording = false;
+                privateChatAudioBtn.classList.remove('recording');
+                privateChatAudioBtn.title = '发送语音';
+            }
+        });
+        
         // 打开私聊
         function openPrivateChat(friendSocketId, friendUsername) {
             currentPrivateChatTarget = friendSocketId;
@@ -1580,9 +1753,15 @@
             alert(`${data.friendUsername} 拒绝了你的好友请求`);
         });
         
+        // 好友被添加
+        socket.on('friend-added', (data) => {
+            alert(`${data.friendUsername} 已添加你为好友`);
+            socket.emit('get-friends');
+        });
+        
         // 好友被删除
         socket.on('friend-removed', (data) => {
-            alert(`你已删除好友 ${data.friendUsername}`);
+            alert(`你已删除好友 ${data.friendUsername || '对方'}`);
             socket.emit('get-friends');
         });
         
@@ -1660,11 +1839,20 @@
             const messageDiv = document.createElement('div');
             messageDiv.className = 'private-chat-message' + (data.fromSocketId === socket.id ? ' sent' : '');
             
+            let contentHtml;
+            if (data.type === 'image') {
+                contentHtml = `<img src="${data.message}" alt="图片" style="max-width: 100%; max-height: 200px; border-radius: 5px;">`;
+            } else if (data.type === 'audio') {
+                contentHtml = `<audio controls style="width: 100%; border-radius: 5px;"><source src="${data.message}" type="audio/webm">您的浏览器不支持音频播放</audio>`;
+            } else {
+                contentHtml = escapeHtml(data.message);
+            }
+            
             messageDiv.innerHTML = `
                 <div class="private-chat-message-header">
                     ${data.fromSocketId === socket.id ? '我' : data.fromUsername} - ${data.timestamp}
                 </div>
-                <div class="message-content">${escapeHtml(data.message)}</div>
+                <div class="message-content">${contentHtml}</div>
             `;
             
             privateChatMessagesDiv.appendChild(messageDiv);
@@ -2491,27 +2679,80 @@
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                             <div>
                                 <span>发送语音:</span>
-                                <input type="checkbox" ${permissions.allowAudio ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowAudio', this.checked)">
+                                <label class="switch">
+                                    <input type="checkbox" ${permissions.allowAudio ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowAudio', this.checked)">
+                                    <span class="slider"></span>
+                                </label>
                             </div>
                             <div>
                                 <span>发送图片:</span>
-                                <input type="checkbox" ${permissions.allowImage ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowImage', this.checked)">
+                                <label class="switch">
+                                    <input type="checkbox" ${permissions.allowImage ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowImage', this.checked)">
+                                    <span class="slider"></span>
+                                </label>
                             </div>
                             <div>
                                 <span>发送文件:</span>
-                                <input type="checkbox" ${permissions.allowFile ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowFile', this.checked)">
+                                <label class="switch">
+                                    <input type="checkbox" ${permissions.allowFile ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowFile', this.checked)">
+                                    <span class="slider"></span>
+                                </label>
                             </div>
                             <div>
                                 <span>发送消息:</span>
-                                <input type="checkbox" ${permissions.allowSendMessages ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowSendMessages', this.checked)">
+                                <label class="switch">
+                                    <input type="checkbox" ${permissions.allowSendMessages ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowSendMessages', this.checked)">
+                                    <span class="slider"></span>
+                                </label>
                             </div>
                             <div>
                                 <span>查看消息:</span>
-                                <input type="checkbox" ${permissions.allowViewMessages ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowViewMessages', this.checked)">
+                                <label class="switch">
+                                    <input type="checkbox" ${permissions.allowViewMessages ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowViewMessages', this.checked)">
+                                    <span class="slider"></span>
+                                </label>
                             </div>
                             <div>
                                 <span>通话:</span>
-                                <input type="checkbox" ${permissions.allowCall ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowCall', this.checked)">
+                                <label class="switch">
+                                    <input type="checkbox" ${permissions.allowCall ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowCall', this.checked)">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div>
+                                <span>添加好友:</span>
+                                <label class="switch">
+                                    <input type="checkbox" ${permissions.allowAddFriends ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowAddFriends', this.checked)">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div>
+                                <span>查看用户列表:</span>
+                                <label class="switch">
+                                    <input type="checkbox" ${permissions.allowViewUsers ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowViewUsers', this.checked)">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div>
+                                <span>允许私聊:</span>
+                                <label class="switch">
+                                    <input type="checkbox" ${permissions.allowPrivateChat ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowPrivateChat', this.checked)">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div>
+                                <span>允许打开好友页面:</span>
+                                <label class="switch">
+                                    <input type="checkbox" ${permissions.allowOpenFriendsPage ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowOpenFriendsPage', this.checked)">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div>
+                                <span>允许撤回消息:</span>
+                                <label class="switch">
+                                    <input type="checkbox" ${permissions.allowRecallMessage ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowRecallMessage', this.checked)">
+                                    <span class="slider"></span>
+                                </label>
                             </div>
                         </div>
                     </div>
