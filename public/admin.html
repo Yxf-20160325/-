@@ -106,11 +106,12 @@
             display: none;
             padding: 20px;
             flex: 1;
-            overflow-y: auto;
+            flex-direction: column;
+            overflow: hidden;
         }
-
+        
         .admin-panel.active {
-            display: block;
+            display: flex;
         }
 
         .stats {
@@ -252,6 +253,15 @@
             background: #218838;
         }
 
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
         .btn-info {
             background: #17a2b8;
             color: white;
@@ -320,11 +330,48 @@
             border-radius: 15px;
             width: 90%;
             max-width: 400px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
         }
 
         .modal-content h3 {
             margin-bottom: 20px;
             color: #333;
+            flex-shrink: 0;
+        }
+
+        #permissionsForm {
+            flex: 1;
+            overflow-y: auto;
+            padding-right: 10px;
+            margin-bottom: 20px;
+        }
+
+        #permissionsForm::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #permissionsForm::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        #permissionsForm::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        #permissionsForm::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            flex-shrink: 0;
+            margin-top: auto;
         }
 
         .modal-content input {
@@ -373,16 +420,66 @@
             background: #f8f9fa;
         }
 
-        .permission-item label {
+        .permission-item > label {
             display: flex;
+            justify-content: space-between;
             align-items: center;
             cursor: pointer;
             font-weight: normal;
+            width: 100%;
         }
 
         .permission-item input[type="checkbox"] {
-            margin-right: 10px;
-            transform: scale(1.2);
+            display: none;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #667eea;
+        }
+
+        input:focus + .slider {
+            box-shadow: 0 0 1px #667eea;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
         }
 
         .input-group {
@@ -491,6 +588,51 @@
             background: #e9ecef;
         }
 
+        .files-container {
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 10px;
+            background: white;
+        }
+
+        .files-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .files-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        .files-container::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        .files-container::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        .path-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+
+        .current-path {
+            flex: 1;
+            font-family: 'Courier New', monospace;
+            color: #666;
+            font-size: 14px;
+            word-break: break-all;
+        }
+
         .upload-area input {
             display: none;
         }
@@ -582,6 +724,7 @@
             display: flex;
             gap: 10px;
             margin-bottom: 20px;
+            flex-shrink: 0;
         }
 
         .tab {
@@ -592,6 +735,8 @@
             cursor: pointer;
             font-size: 14px;
             transition: all 0.2s;
+            flex-shrink: 0;
+            white-space: nowrap;
         }
 
         .tab.active {
@@ -601,6 +746,9 @@
 
         .tab-content {
             display: none;
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
         }
 
         .tab-content.active {
@@ -680,6 +828,7 @@
                 <button class="tab" onclick="switchTab('rooms')">房间管理</button>
                 <button class="tab" onclick="switchTab('roomDetails')">房间详细</button>
                 <button class="tab" onclick="switchTab('friends')">好友管理</button>
+                <button class="tab" onclick="switchTab('globalSettings')">全体设置</button>
             </div>
 
             <div class="tab-content active" id="usersTab">
@@ -697,7 +846,45 @@
                         </form>
                     </div>
                 </div>
+                <div class="section">
+                    <h2>修改管理员密码</h2>
+                    <form onsubmit="event.preventDefault(); changeAdminPassword();">
+                        <div class="input-group">
+                            <input type="password" id="oldPassword" placeholder="旧密码" required>
+                        </div>
+                        <div class="input-group">
+                            <input type="password" id="newPassword" placeholder="新密码" required>
+                        </div>
+                        <div class="input-group">
+                            <button type="submit" class="btn btn-primary">修改密码</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
 
+            <div class="tab-content" id="filesTab">
+                <div class="section">
+                    <h2>文件管理</h2>
+                    <div class="path-bar">
+                        <button class="btn btn-secondary" onclick="goBack()" id="backButton" disabled>← 返回上一级</button>
+                        <span class="current-path" id="currentPath">/</span>
+                    </div>
+                    <div class="input-group">
+                        <button class="btn btn-primary" onclick="loadFiles()">刷新文件列表</button>
+                        <button class="btn btn-success" onclick="openUploadModal()">上传文件</button>
+                        <button class="btn btn-primary" onclick="openCreateFileModal()">创建文件</button>
+                        <button class="btn btn-primary" onclick="openCreateDirectoryModal()">创建目录</button>
+                    </div>
+                    <div class="files-container" id="filesContainer">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📁</div>
+                            <div>暂无文件</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="messagesTab">
                 <div class="section">
                     <h2>消息管理</h2>
                     <button class="btn btn-danger" onclick="clearMessages()">清空所有消息</button>
@@ -707,19 +894,7 @@
                     <h2>伪装发送消息</h2>
                     <button class="btn btn-primary" onclick="openAdminMessageModal()">伪装发送消息</button>
                 </div>
-            </div>
 
-            <div class="tab-content" id="filesTab">
-                <div class="section">
-                    <h2>文件管理</h2>
-                    <div class="empty-state">
-                        <div class="empty-state-icon">�</div>
-                        <div>文件上传功能已关闭</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="tab-content" id="messagesTab">
                 <div class="section">
                     <h2>所有消息</h2>
                     <div class="input-group">
@@ -744,6 +919,10 @@
                         <div class="input-group">
                             <input type="text" id="roomName" placeholder="房间名" required>
                             <input type="password" id="roomPassword" placeholder="房间密码（可选）">
+                        </div>
+                        <div class="input-group">
+                            <label>最大用户数：</label>
+                            <input type="number" id="roomMaxUsers" placeholder="默认100" min="1" max="1000" value="100">
                         </div>
                         <div class="input-group">
                             <button type="submit" class="btn btn-primary">创建房间</button>
@@ -811,12 +990,125 @@
                     <h2>好友管理</h2>
                     <div class="input-group" style="margin-bottom: 15px;">
                         <input type="text" id="friendSearch" placeholder="搜索用户名..." oninput="filterFriends()">
+                        <button class="btn btn-primary" onclick="openAddFriendModal()">添加好友</button>
                     </div>
                     <div class="user-list" id="friendsTabList">
                         <div class="empty-state">
                             <div class="empty-state-icon">👥</div>
                             <div>暂无用户</div>
                         </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tab-content" id="globalSettingsTab">
+                <div class="section">
+                    <h2>全体权限设置</h2>
+                    <p style="margin-bottom: 15px; color: #666;">设置所有用户的默认权限，新用户将使用这些权限</p>
+                    <div id="globalPermissionsForm">
+                        <div class="permission-item">
+                            <label>
+                                <span>允许发送语音</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowAudio" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item">
+                            <label>
+                                <span>允许发送图片</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowImage" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item">
+                            <label>
+                                <span>允许发送文件</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowFile" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item">
+                            <label>
+                                <span>允许发送消息</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowSendMessages" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item">
+                            <label>
+                                <span>允许查看消息</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowViewMessages" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item">
+                            <label>
+                                <span>允许通话</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowCall" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item">
+                            <label>
+                                <span>允许添加好友</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowAddFriends" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item">
+                            <label>
+                                <span>允许查看用户列表</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowViewUsers" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item">
+                            <label>
+                                <span>允许私聊</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowPrivateChat" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item">
+                            <label>
+                                <span>允许打开好友页面</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowOpenFriendsPage" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item">
+                            <label>
+                                <span>允许撤回消息</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowRecallMessage" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                    </div>
+                    <div style="margin-top: 20px;">
+                        <button class="btn btn-primary" onclick="applyGlobalPermissions()">应用到所有用户</button>
+                        <button class="btn btn-info" onclick="applyToNewUsers()">仅应用到新用户</button>
                     </div>
                 </div>
             </div>
@@ -860,44 +1152,107 @@
             <div id="permissionsForm">
                 <div class="permission-item">
                     <label>
-                        <input type="checkbox" id="allowAudio" checked>
-                        允许发送语音
+                        <span>允许发送语音</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowAudio" checked>
+                            <span class="slider"></span>
+                        </label>
                     </label>
                 </div>
                 <div class="permission-item">
                     <label>
-                        <input type="checkbox" id="allowImage" checked>
-                        允许发送图片
+                        <span>允许发送图片</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowImage" checked>
+                            <span class="slider"></span>
+                        </label>
                     </label>
                 </div>
                 <div class="permission-item">
                     <label>
-                        <input type="checkbox" id="allowFile" checked>
-                        允许发送文件
+                        <span>允许发送文件</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowFile" checked>
+                            <span class="slider"></span>
+                        </label>
                     </label>
                 </div>
                 <div class="permission-item">
                     <label>
-                        <input type="checkbox" id="allowSendMessages" checked>
-                        允许发送消息
+                        <span>允许发送消息</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowSendMessages" checked>
+                            <span class="slider"></span>
+                        </label>
                     </label>
                 </div>
                 <div class="permission-item">
                     <label>
-                        <input type="checkbox" id="allowViewMessages" checked>
-                        允许查看消息
+                        <span>允许查看消息</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowViewMessages" checked>
+                            <span class="slider"></span>
+                        </label>
                     </label>
                 </div>
                 <div class="permission-item">
                     <label>
-                        <input type="checkbox" id="allowCall" checked>
-                        允许通话
+                        <span>允许通话</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowCall" checked>
+                            <span class="slider"></span>
+                        </label>
                     </label>
                 </div>
-                <div class="modal-buttons">
-                    <button type="button" class="btn btn-cancel" onclick="closePermissionsModal()">取消</button>
-                    <button type="button" class="btn btn-confirm" onclick="confirmPermissions()">确认</button>
+                <div class="permission-item">
+                    <label>
+                        <span>允许添加好友</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowAddFriends" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </label>
                 </div>
+                <div class="permission-item">
+                    <label>
+                        <span>允许查看用户列表</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowViewUsers" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </label>
+                </div>
+                <div class="permission-item">
+                    <label>
+                        <span>允许私聊</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowPrivateChat" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </label>
+                </div>
+                <div class="permission-item">
+                    <label>
+                        <span>允许打开好友页面</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowOpenFriendsPage" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </label>
+                </div>
+                <div class="permission-item">
+                    <label>
+                        <span>允许撤回消息</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowRecallMessage" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </label>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-cancel" onclick="closePermissionsModal()">取消</button>
+                <button type="button" class="btn btn-confirm" onclick="confirmPermissions()">确认</button>
             </div>
         </div>
     </div>
@@ -928,6 +1283,78 @@
                 <div class="modal-buttons">
                     <button type="button" class="btn btn-cancel" onclick="closeAdminMessageModal()">取消</button>
                     <button type="submit" class="btn btn-confirm">发送</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="uploadFileModal">
+        <div class="modal-content">
+            <h3>上传文件</h3>
+            <form onsubmit="event.preventDefault(); uploadFile();">
+                <div class="input-group">
+                    <label>选择文件</label>
+                    <input type="file" id="fileInput" required>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeUploadModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">上传</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="createFileModal">
+        <div class="modal-content">
+            <h3>创建文件</h3>
+            <form onsubmit="event.preventDefault(); createFile();">
+                <div class="input-group">
+                    <label>文件名</label>
+                    <input type="text" id="createFileName" placeholder="例如: test.txt" required>
+                </div>
+                <div class="input-group">
+                    <label>文件内容</label>
+                    <textarea id="createFileContent" placeholder="输入文件内容" rows="5"></textarea>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeCreateFileModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">创建</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="createDirectoryModal">
+        <div class="modal-content">
+            <h3>创建目录</h3>
+            <form onsubmit="event.preventDefault(); createDirectory();">
+                <div class="input-group">
+                    <label>目录名</label>
+                    <input type="text" id="createDirectoryName" placeholder="例如: images" required>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeCreateDirectoryModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">创建</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="editFileModal">
+        <div class="modal-content">
+            <h3>编辑文件</h3>
+            <form onsubmit="event.preventDefault(); saveFileEdit();">
+                <div class="input-group">
+                    <label>文件名</label>
+                    <input type="text" id="editFileName" readonly>
+                </div>
+                <div class="input-group">
+                    <label>文件内容</label>
+                    <textarea id="editFileContent" rows="10"></textarea>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeEditFileModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">保存</button>
                 </div>
             </form>
         </div>
@@ -983,12 +1410,37 @@
         </div>
     </div>
     
+    <div class="modal" id="addFriendModal">
+        <div class="modal-content" style="max-width: 600px;">
+            <h3>添加好友</h3>
+            <form onsubmit="event.preventDefault(); confirmAddFriend();">
+                <div class="input-group">
+                    <label>选择用户A</label>
+                    <select id="userA" required>
+                        <option value="">请选择用户</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>选择用户B</label>
+                    <select id="userB" required>
+                        <option value="">请选择用户</option>
+                    </select>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeAddFriendModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">添加</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
         let users = [];
         let originalUsers = []; // 存储原始用户列表，用于搜索过滤
         let selectedSocketId = null;
+        let originalFriendships = []; // 存储原始好友列表，用于搜索过滤
 
         const loginContainer = document.getElementById('loginContainer');
         const adminPanel = document.getElementById('adminPanel');
@@ -1009,6 +1461,11 @@
         const allowSendMessages = document.getElementById('allowSendMessages');
         const allowViewMessages = document.getElementById('allowViewMessages');
         const allowCall = document.getElementById('allowCall');
+        const allowAddFriends = document.getElementById('allowAddFriends');
+        const allowViewUsers = document.getElementById('allowViewUsers');
+        const allowPrivateChat = document.getElementById('allowPrivateChat');
+        const allowOpenFriendsPage = document.getElementById('allowOpenFriendsPage');
+        const allowRecallMessage = document.getElementById('allowRecallMessage');
         const adminMessageModal = document.getElementById('adminMessageModal');
         const disguiseUsername = document.getElementById('disguiseUsername');
         const disguiseMessageType = document.getElementById('disguiseMessageType');
@@ -1020,6 +1477,7 @@
         // 房间管理相关元素
         const roomName = document.getElementById('roomName');
         const roomPassword = document.getElementById('roomPassword');
+        const roomMaxUsers = document.getElementById('roomMaxUsers');
         const roomList = document.getElementById('roomList');
         
         // 编辑房间相关元素
@@ -1044,7 +1502,6 @@
         const friendSearch = document.getElementById('friendSearch');
         const friendsTabList = document.getElementById('friendsTabList');
         const friendsModal = document.getElementById('friendsModal');
-        originalUsers = []; // 存储原始用户列表，用于搜索过滤
         
         // 房间详细页相关元素
         const roomDetailsTitle = document.getElementById('roomDetailsTitle');
@@ -1096,6 +1553,7 @@
                 adminPanel.classList.add('active');
                 loadMessages();
                 loadRooms();
+                loadFiles();
                 // 主动请求最新的用户列表
                 socket.emit('admin-get-users');
                 
@@ -1211,6 +1669,14 @@
             displayMessages(roomMessages, true);
         });
         
+        socket.on('admin-password-success', (data) => {
+            alert(data.message);
+        });
+        
+        socket.on('admin-password-error', (data) => {
+            alert(data.message);
+        });
+        
         socket.on('friends-list', (friends) => {
             updateFriendsList(friends);
         });
@@ -1258,11 +1724,13 @@
         function createRoom() {
             const name = roomName.value.trim();
             const password = roomPassword.value.trim() || null;
+            const maxUsers = parseInt(roomMaxUsers.value) || 100;
             
             if (name) {
-                socket.emit('admin-create-room', { roomName: name, password: password });
+                socket.emit('admin-create-room', { roomName: name, password: password, settings: { maxUsers: maxUsers } });
                 roomName.value = '';
                 roomPassword.value = '';
+                roomMaxUsers.value = '100';
             }
         }
         
@@ -1502,6 +1970,8 @@
                 }
             } else if (tabName === 'friends') {
                 loadFriends();
+            } else if (tabName === 'globalSettings') {
+                // 全体设置标签页不需要特殊处理
             } else {
                 // 如果切换到其他标签页，停止房间详细页的自动刷新
                 if (roomDetailsRefreshInterval) {
@@ -1553,6 +2023,11 @@
                 allowSendMessages.checked = user.permissions.allowSendMessages;
                 allowViewMessages.checked = user.permissions.allowViewMessages;
                 allowCall.checked = user.permissions.allowCall;
+                allowAddFriends.checked = user.permissions.allowAddFriends ?? true;
+                allowViewUsers.checked = user.permissions.allowViewUsers ?? true;
+                allowPrivateChat.checked = user.permissions.allowPrivateChat ?? true;
+                allowOpenFriendsPage.checked = user.permissions.allowOpenFriendsPage ?? true;
+                allowRecallMessage.checked = user.permissions.allowRecallMessage ?? true;
             }
             permissionsModal.classList.add('active');
         }
@@ -1567,6 +2042,11 @@
                 allowSendMessages.checked = user.permissions.allowSendMessages;
                 allowViewMessages.checked = user.permissions.allowViewMessages;
                 allowCall.checked = user.permissions.allowCall;
+                allowAddFriends.checked = user.permissions.allowAddFriends ?? true;
+                allowViewUsers.checked = user.permissions.allowViewUsers ?? true;
+                allowPrivateChat.checked = user.permissions.allowPrivateChat ?? true;
+                allowOpenFriendsPage.checked = user.permissions.allowOpenFriendsPage ?? true;
+                allowRecallMessage.checked = user.permissions.allowRecallMessage ?? true;
             }
             permissionsModal.classList.add('active');
         }
@@ -1589,7 +2069,12 @@
                             allowFile: allowFile.checked,
                             allowSendMessages: allowSendMessages.checked,
                             allowViewMessages: allowViewMessages.checked,
-                            allowCall: allowCall.checked
+                            allowCall: allowCall.checked,
+                            allowAddFriends: allowAddFriends.checked,
+                            allowViewUsers: allowViewUsers.checked,
+                            allowPrivateChat: allowPrivateChat.checked,
+                            allowOpenFriendsPage: allowOpenFriendsPage.checked,
+                            allowRecallMessage: allowRecallMessage.checked
                         }
                     });
                     
@@ -1605,7 +2090,12 @@
                             allowFile: allowFile.checked,
                             allowSendMessages: allowSendMessages.checked,
                             allowViewMessages: allowViewMessages.checked,
-                            allowCall: allowCall.checked
+                            allowCall: allowCall.checked,
+                            allowAddFriends: allowAddFriends.checked,
+                            allowViewUsers: allowViewUsers.checked,
+                            allowPrivateChat: allowPrivateChat.checked,
+                            allowOpenFriendsPage: allowOpenFriendsPage.checked,
+                            allowRecallMessage: allowRecallMessage.checked
                         }
                     });
                 }
@@ -1721,44 +2211,54 @@
         
         // 好友管理功能
         function loadFriends() {
-            socket.emit('admin-get-users');
+            console.log('正在加载好友列表...');
+            socket.emit('admin-get-friends');
         }
+        
+        socket.on('admin-friends-list', (friendships) => {
+            console.log('收到好友列表:', friendships);
+            updateFriendsList(friendships);
+        });
         
         function filterFriends() {
             const searchTerm = friendSearch.value.trim().toLowerCase();
             if (!searchTerm) {
-                updateFriendsList(users);
+                updateFriendsList(originalFriendships);
                 return;
             }
             
-            const filteredUsers = users.filter(user => 
-                user.username.toLowerCase().includes(searchTerm)
+            const filteredFriendships = originalFriendships.filter(friendship => 
+                friendship.username.toLowerCase().includes(searchTerm) || 
+                friendship.friendUsername.toLowerCase().includes(searchTerm)
             );
-            updateFriendsList(filteredUsers);
+            updateFriendsList(filteredFriendships);
         }
         
-        function updateFriendsList(users) {
-            if (users.length === 0) {
+        function updateFriendsList(friendships) {
+            originalFriendships = friendships;
+            
+            if (friendships.length === 0) {
                 friendsTabList.innerHTML = `
                     <div class="empty-state">
                         <div class="empty-state-icon">👥</div>
-                        <div>暂无用户</div>
+                        <div>暂无好友关系</div>
                     </div>`;
                 return;
             }
             
-            friendsTabList.innerHTML = users.map(user => `
+            friendsTabList.innerHTML = friendships.map(friendship => `
                 <div class="user-item">
                     <div class="user-info">
-                        <div class="user-color" style="background: ${user.color}"></div>
+                        <div class="user-color" style="background: ${friendship.userColor}"></div>
                         <div>
-                            <div class="user-name">${escapeHtml(user.username)}</div>
-                            <small style="color: #666;">房间: ${escapeHtml(user.roomName || 'main')}</small>
+                            <div class="user-name">${escapeHtml(friendship.username)}</div>
+                            <small style="color: #666;">好友: ${escapeHtml(friendship.friendUsername)}</small>
                         </div>
                     </div>
                     <div class="user-actions">
-                        <button class="btn btn-primary btn-sm" onclick="adminPrivateChat('${user.socketId}', '${user.username}')">私聊</button>
-                        <button class="btn btn-info btn-sm" onclick="viewPrivateChat('${user.socketId}', '${user.username}')">查看私聊</button>
+                        <button class="btn btn-primary btn-sm" onclick="adminPrivateChat('${friendship.userSocketId}', '${friendship.username}')">私聊</button>
+                        <button class="btn btn-info btn-sm" onclick="viewPrivateChat('${friendship.userSocketId}', '${friendship.username}')">查看私聊</button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteFriendship('${friendship.userSocketId}', '${friendship.friendSocketId}')">删除好友关系</button>
                     </div>
                 </div>
             `).join('');
@@ -1815,6 +2315,104 @@
         function closeFriendsModal() {
             friendsModal.classList.remove('active');
         }
+        
+        function openAddFriendModal() {
+            const userASelect = document.getElementById('userA');
+            const userBSelect = document.getElementById('userB');
+            
+            // 清空选项
+            userASelect.innerHTML = '<option value="">请选择用户</option>';
+            userBSelect.innerHTML = '<option value="">请选择用户</option>';
+            
+            // 添加用户选项
+            users.forEach(user => {
+                userASelect.innerHTML += `<option value="${user.socketId}">${escapeHtml(user.username)}</option>`;
+                userBSelect.innerHTML += `<option value="${user.socketId}">${escapeHtml(user.username)}</option>`;
+            });
+            
+            document.getElementById('addFriendModal').classList.add('active');
+        }
+        
+        function closeAddFriendModal() {
+            document.getElementById('addFriendModal').classList.remove('active');
+        }
+        
+        function confirmAddFriend() {
+            const userA = document.getElementById('userA').value;
+            const userB = document.getElementById('userB').value;
+            
+            if (!userA || !userB) {
+                alert('请选择两个用户');
+                return;
+            }
+            
+            if (userA === userB) {
+                alert('不能添加自己为好友');
+                return;
+            }
+            
+            const userAName = users.find(u => u.socketId === userA)?.username;
+            const userBName = users.find(u => u.socketId === userB)?.username;
+            
+            if (confirm(`确定要让 ${userAName} 和 ${userBName} 成为好友吗？`)) {
+                socket.emit('admin-add-friendship', {
+                    userSocketId: userA,
+                    friendSocketId: userB
+                });
+                closeAddFriendModal();
+            }
+        }
+        
+        function applyGlobalPermissions() {
+            if (confirm('确定要将这些权限应用到所有用户吗？此操作将覆盖所有用户的现有权限！')) {
+                const permissions = {
+                    allowAudio: document.getElementById('globalAllowAudio').checked,
+                    allowImage: document.getElementById('globalAllowImage').checked,
+                    allowFile: document.getElementById('globalAllowFile').checked,
+                    allowSendMessages: document.getElementById('globalAllowSendMessages').checked,
+                    allowViewMessages: document.getElementById('globalAllowViewMessages').checked,
+                    allowCall: document.getElementById('globalAllowCall').checked,
+                    allowAddFriends: document.getElementById('globalAllowAddFriends').checked,
+                    allowViewUsers: document.getElementById('globalAllowViewUsers').checked,
+                    allowPrivateChat: document.getElementById('globalAllowPrivateChat').checked,
+                    allowOpenFriendsPage: document.getElementById('globalAllowOpenFriendsPage').checked,
+                    allowRecallMessage: document.getElementById('globalAllowRecallMessage').checked
+                };
+                
+                socket.emit('admin-set-global-permissions', permissions);
+            }
+        }
+        
+        function applyToNewUsers() {
+            const permissions = {
+                allowAudio: document.getElementById('globalAllowAudio').checked,
+                allowImage: document.getElementById('globalAllowImage').checked,
+                allowFile: document.getElementById('globalAllowFile').checked,
+                allowSendMessages: document.getElementById('globalAllowSendMessages').checked,
+                allowViewMessages: document.getElementById('globalAllowViewMessages').checked,
+                allowCall: document.getElementById('globalAllowCall').checked,
+                allowAddFriends: document.getElementById('globalAllowAddFriends').checked,
+                allowViewUsers: document.getElementById('globalAllowViewUsers').checked,
+                allowPrivateChat: document.getElementById('globalAllowPrivateChat').checked,
+                allowOpenFriendsPage: document.getElementById('globalAllowOpenFriendsPage').checked,
+                allowRecallMessage: document.getElementById('globalAllowRecallMessage').checked
+            };
+            
+            socket.emit('admin-set-default-permissions', permissions);
+            alert('默认权限已设置，新用户将使用这些权限');
+        }
+        
+        function deleteFriendship(userSocketId, friendSocketId) {
+            const usernames = originalFriendships.find(f => 
+                f.userSocketId === userSocketId && f.friendSocketId === friendSocketId
+            );
+            if (usernames && confirm(`确定要删除 ${usernames.username} 和 ${usernames.friendUsername} 的好友关系吗？`)) {
+                socket.emit('admin-delete-friendship', {
+                    userSocketId: userSocketId,
+                    friendSocketId: friendSocketId
+                });
+            }
+        }
 
         function clearMessages() {
             if (confirm('确定要清空所有消息吗？此操作不可恢复！')) {
@@ -1826,9 +2424,296 @@
             const selectedRoom = roomSelect.value || 'main';
             loadRoomMessages(selectedRoom);
         }
+
+        let currentPath = '';
+
+        function loadFiles() {
+            const url = currentPath ? `/api/files?path=${encodeURIComponent(currentPath)}` : '/api/files';
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    displayFiles(data.files);
+                    updatePathBar(data.currentPath);
+                })
+                .catch(error => {
+                    console.error('加载文件列表失败:', error);
+                    alert('加载文件列表失败');
+                });
+        }
+
+        function updatePathBar(path) {
+            currentPath = path;
+            document.getElementById('currentPath').textContent = '/' + (path || '');
+            document.getElementById('backButton').disabled = !path;
+        }
+
+        function goBack() {
+            if (!currentPath) return;
+            const pathParts = currentPath.split('/').filter(p => p);
+            pathParts.pop();
+            currentPath = pathParts.join('/');
+            loadFiles();
+        }
+
+        function enterDirectory(dirname) {
+            currentPath = currentPath ? `${currentPath}/${dirname}` : dirname;
+            loadFiles();
+        }
+
+        function displayFiles(files) {
+            const filesContainer = document.getElementById('filesContainer');
+            
+            if (files.length === 0) {
+                filesContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📁</div>
+                        <div>暂无文件</div>
+                    </div>`;
+                return;
+            }
+
+            filesContainer.innerHTML = files.map(file => `
+                <div class="file-item">
+                    <div class="file-info" onclick="${file.isDirectory ? `enterDirectory('${file.name}')` : `viewFile('${file.name}')`}" style="cursor: ${file.isDirectory ? 'pointer' : 'default'}">
+                        <div class="file-icon">${file.isDirectory ? '📁' : '📄'}</div>
+                        <div class="file-details">
+                            <div class="file-name">${file.name}</div>
+                            <div class="file-meta">
+                                <span>${file.isDirectory ? '目录' : formatFileSize(file.size)}</span>
+                                <span>${formatDate(file.createdAt)}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="file-actions">
+                        ${file.isDirectory ? 
+                            `<button class="btn btn-danger" onclick="deleteFile('${file.name}')">删除</button>` :
+                            `<button class="btn btn-primary" onclick="viewFile('${file.name}')">查看</button>
+                             <button class="btn btn-primary" onclick="editFile('${file.name}')">编辑</button>
+                             <button class="btn btn-danger" onclick="deleteFile('${file.name}')">删除</button>`
+                        }
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        function formatDate(date) {
+            const d = new Date(date);
+            return d.toLocaleString('zh-CN');
+        }
+
+        function openUploadModal() {
+            document.getElementById('uploadFileModal').classList.add('active');
+        }
+
+        function closeUploadModal() {
+            document.getElementById('uploadFileModal').classList.remove('active');
+            document.getElementById('fileInput').value = '';
+        }
+
+        function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('请选择文件');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            fetch('/api/files/upload', {
+                method: 'POST',
+                headers: {
+                    'X-Filename': file.name,
+                    'X-Path': currentPath
+                },
+                body: file
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert('文件上传成功');
+                closeUploadModal();
+                loadFiles();
+            })
+            .catch(error => {
+                console.error('上传文件失败:', error);
+                alert('上传文件失败');
+            });
+        }
+
+        function openCreateFileModal() {
+            document.getElementById('createFileModal').classList.add('active');
+        }
+
+        function closeCreateFileModal() {
+            document.getElementById('createFileModal').classList.remove('active');
+            document.getElementById('createFileName').value = '';
+            document.getElementById('createFileContent').value = '';
+        }
+
+        function createFile() {
+            const filename = document.getElementById('createFileName').value;
+            const content = document.getElementById('createFileContent').value;
+
+            if (!filename) {
+                alert('请输入文件名');
+                return;
+            }
+
+            fetch('/api/files/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ filename, content, path: currentPath })
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert('文件创建成功');
+                closeCreateFileModal();
+                loadFiles();
+            })
+            .catch(error => {
+                console.error('创建文件失败:', error);
+                alert('创建文件失败');
+            });
+        }
+
+        function openCreateDirectoryModal() {
+            document.getElementById('createDirectoryModal').classList.add('active');
+        }
+
+        function closeCreateDirectoryModal() {
+            document.getElementById('createDirectoryModal').classList.remove('active');
+            document.getElementById('createDirectoryName').value = '';
+        }
+
+        function createDirectory() {
+            const dirname = document.getElementById('createDirectoryName').value;
+
+            if (!dirname) {
+                alert('请输入目录名');
+                return;
+            }
+
+            fetch('/api/files/create-directory', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ dirname, path: currentPath })
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert('目录创建成功');
+                closeCreateDirectoryModal();
+                loadFiles();
+            })
+            .catch(error => {
+                console.error('创建目录失败:', error);
+                alert('创建目录失败');
+            });
+        }
+
+        function editFile(filename) {
+            const fullPath = currentPath ? `${currentPath}/${filename}` : filename;
+            fetch(`/api/files/${encodeURIComponent(fullPath)}/content`)
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('editFileName').value = filename;
+                    document.getElementById('editFileContent').value = data.content;
+                    document.getElementById('editFileModal').classList.add('active');
+                })
+                .catch(error => {
+                    console.error('获取文件内容失败:', error);
+                    alert('获取文件内容失败');
+                });
+        }
+
+        function closeEditFileModal() {
+            document.getElementById('editFileModal').classList.remove('active');
+            document.getElementById('editFileName').value = '';
+            document.getElementById('editFileContent').value = '';
+        }
+
+        function saveFileEdit() {
+            const filename = document.getElementById('editFileName').value;
+            const content = document.getElementById('editFileContent').value;
+            const fullPath = currentPath ? `${currentPath}/${filename}` : filename;
+
+            fetch(`/api/files/${encodeURIComponent(fullPath)}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ content })
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert('文件保存成功');
+                closeEditFileModal();
+                loadFiles();
+            })
+            .catch(error => {
+                console.error('保存文件失败:', error);
+                alert('保存文件失败');
+            });
+        }
+
+        function viewFile(filename) {
+            const fullPath = currentPath ? `${currentPath}/${filename}` : filename;
+            window.open(`/uploads/${fullPath}`, '_blank');
+        }
+
+        function deleteFile(filename) {
+            if (confirm(`确定要删除 "${filename}" 吗？此操作不可恢复！`)) {
+                const fullPath = currentPath ? `${currentPath}/${filename}` : filename;
+                fetch(`/api/files/${encodeURIComponent(fullPath)}`, {
+                    method: 'DELETE'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    alert('文件删除成功');
+                    loadFiles();
+                })
+                .catch(error => {
+                    console.error('删除文件失败:', error);
+                    alert('删除文件失败');
+                });
+            }
+        }
         
         function loadRoomMessages(roomName) {
             socket.emit('admin-get-room-messages', roomName);
+        }
+        
+        function changeAdminPassword() {
+            const oldPassword = document.getElementById('oldPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            
+            if (!oldPassword || !newPassword) {
+                alert('请输入旧密码和新密码');
+                return;
+            }
+            
+            if (oldPassword === newPassword) {
+                alert('新密码不能与旧密码相同');
+                return;
+            }
+            
+            socket.emit('admin-change-password', {
+                oldPassword: oldPassword,
+                newPassword: newPassword
+            });
         }
         
         function displayMessages(data, isRoomMessages = false) {
