@@ -372,7 +372,8 @@ io.on('connection', (socket) => {
             socketId: socket.id,
             roomName: roomName,
             role: 'user', // 默认角色为user
-            permissions: { ...defaultPermissions }
+            permissions: { ...defaultPermissions },
+            status: 'online' // 添加在线状态
         });
         
         // 获取当前用户对象
@@ -484,7 +485,8 @@ io.on('connection', (socket) => {
                 message: data.message,
                 type: data.type || 'text',
                 timestamp: new Date().toLocaleTimeString(),
-                senderSocketId: socket.id
+                senderSocketId: socket.id,
+                readBy: [socket.id] // 初始时只有发送者已读
             };
             
             // 检查消息中是否包含@{用户名}
@@ -1493,7 +1495,6 @@ io.on('connection', (socket) => {
         
         const chatId = [socket.id, data.targetSocketId].sort().join('-');
         const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-        
         const messageData = {
             id: messageId,
             chatId: chatId,
@@ -1503,7 +1504,8 @@ io.on('connection', (socket) => {
             toSocketId: data.targetSocketId,
             message: data.message,
             type: data.type || 'text',
-            timestamp: new Date().toLocaleTimeString()
+            timestamp: new Date().toLocaleTimeString(),
+            readBy: [socket.id] // 初始时只有发送者已读
         };
         
         // 存储私聊消息
@@ -1553,7 +1555,6 @@ io.on('connection', (socket) => {
             
             const chatId = [socket.id, data.targetSocketId].sort().join('-');
             const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-            
             const messageData = {
                 id: messageId,
                 chatId: chatId,
@@ -1563,7 +1564,8 @@ io.on('connection', (socket) => {
                 toSocketId: data.targetSocketId,
                 message: data.message,
                 type: data.type || 'text',
-                timestamp: new Date().toLocaleTimeString()
+                timestamp: new Date().toLocaleTimeString(),
+                readBy: [socket.id] // 初始时只有发送者已读
             };
             
             // 存储私聊消息
@@ -1582,6 +1584,64 @@ io.on('connection', (socket) => {
             io.to(data.targetSocketId).emit('private-message', messageData);
             
             console.log(`[管理员私聊] admin -> ${targetUser.username}: ${data.type === 'text' ? data.message : data.type}`);
+        }
+    });
+    
+    // 消息已读回执处理
+    socket.on('message-read', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+        
+        const { messageId, roomName, chatId } = data;
+        
+        // 更新房间消息的已读状态
+        if (roomName && rooms.has(roomName)) {
+            const room = rooms.get(roomName);
+            const messageIndex = room.messages.findIndex(msg => msg.id === messageId);
+            if (messageIndex > -1) {
+                const message = room.messages[messageIndex];
+                if (!message.readBy.includes(socket.id)) {
+                    message.readBy.push(socket.id);
+                    
+                    // 发送已读通知给发送者
+                    if (message.senderSocketId !== socket.id) {
+                        io.to(message.senderSocketId).emit('message-read-by-user', {
+                            messageId: messageId,
+                            readBy: message.readBy,
+                            roomName: roomName,
+                            readerSocketId: socket.id,
+                            readerUsername: user.username
+                        });
+                    }
+                    
+                    console.log(`[已读] ${user.username} 已读 ${message.username} 的消息: ${messageId}`);
+                }
+            }
+        }
+        
+        // 更新私聊消息的已读状态
+        if (chatId && privateMessages.has(chatId)) {
+            const chatMessages = privateMessages.get(chatId);
+            const messageIndex = chatMessages.findIndex(msg => msg.id === messageId);
+            if (messageIndex > -1) {
+                const message = chatMessages[messageIndex];
+                if (!message.readBy.includes(socket.id)) {
+                    message.readBy.push(socket.id);
+                    
+                    // 发送已读通知给发送者
+                    if (message.fromSocketId !== socket.id) {
+                        io.to(message.fromSocketId).emit('private-message-read', {
+                            messageId: messageId,
+                            chatId: chatId,
+                            readBy: message.readBy,
+                            readerSocketId: socket.id,
+                            readerUsername: user.username
+                        });
+                    }
+                    
+                    console.log(`[私聊已读] ${user.username} 已读 ${message.fromUsername} 的消息: ${messageId}`);
+                }
+            }
         }
     });
 
@@ -1605,6 +1665,16 @@ io.on('connection', (socket) => {
                     });
                 });
                 
+                // 发送用户离线状态通知
+                room.users.forEach(userId => {
+                    io.to(userId).emit('user-status-changed', {
+                        username: user.username,
+                        socketId: socket.id,
+                        status: 'offline',
+                        roomName: user.roomName
+                    });
+                });
+                
                 console.log(`[房间 ${user.roomName}] ${user.username} 离开聊天室，当前在线: ${roomUsers.length} 人`);
             }
             
@@ -1624,7 +1694,7 @@ function getRandomColor() {
     return colors[Math.floor(Math.random() * colors.length)];
 }
 
-const PORT = process.env.PORT || 146;
+const PORT = process.env.PORT || 147;
 server.listen(PORT, () => {
     console.log(`\n========================================`);
     console.log(`聊天室服务器已启动`);
