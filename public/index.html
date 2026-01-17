@@ -1847,13 +1847,13 @@
             { code: 'ru', name: 'Русский' }
         ];
         
-        let currentTargetLanguage = 'zh-CN'; // 默认翻译为中文
+        let currentTargetLanguage = 'zh'; // 默认翻译为中文，LibreTranslate使用'zh'而不是'zh-CN'
         
         // 简单的语言检测函数（基于字符集和常见词汇）
         function detectLanguage(text) {
             // 检测中文
             if (/[\u4e00-\u9fa5]/.test(text)) {
-                return 'zh-CN';
+                return 'zh'; // LibreTranslate使用'zh'而不是'zh-CN'
             }
             // 检测日文
             if (/[\u3040-\u30ff]/.test(text)) {
@@ -1883,14 +1883,8 @@
             return 'en';
         }
         
-        // 模拟翻译函数（实际项目中应替换为真实的翻译API）
+        // 使用免费翻译API的翻译函数
         async function translateText(text, targetLanguage) {
-            // 这里使用模拟翻译，实际项目中应调用真实的翻译API
-            // 例如：Google Translate API, DeepL API, 百度翻译API等
-            
-            // 模拟翻译延迟
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
             // 检测源语言
             const sourceLanguage = detectLanguage(text);
             
@@ -1899,75 +1893,34 @@
                 return text;
             }
             
-            // 简单的模拟翻译（仅用于演示）
-            const mockTranslations = {
-                // 中文到其他语言
-                '你好': {
-                    'en': 'Hello',
-                    'ja': 'こんにちは',
-                    'ko': '안녕하세요',
-                    'fr': 'Bonjour',
-                    'de': 'Hallo',
-                    'es': 'Hola',
-                    'ru': 'Привет'
-                },
-                '谢谢': {
-                    'en': 'Thank you',
-                    'ja': 'ありがとう',
-                    'ko': '감사합니다',
-                    'fr': 'Merci',
-                    'de': 'Danke',
-                    'es': 'Gracias',
-                    'ru': 'Спасибо'
-                },
-                '再见': {
-                    'en': 'Goodbye',
-                    'ja': 'さようなら',
-                    'ko': '안녕히 가세요',
-                    'fr': 'Au revoir',
-                    'de': 'Auf Wiedersehen',
-                    'es': 'Adiós',
-                    'ru': 'До свидания'
-                },
-                // 英文到中文
-                'Hello': {
-                    'zh-CN': '你好'
-                },
-                'Thank you': {
-                    'zh-CN': '谢谢'
-                },
-                'Goodbye': {
-                    'zh-CN': '再见'
-                },
-                // 日文到中文
-                'こんにちは': {
-                    'zh-CN': '你好'
-                },
-                'ありがとう': {
-                    'zh-CN': '谢谢'
-                },
-                'さようなら': {
-                    'zh-CN': '再见'
-                },
-                // 韩文到中文
-                '안녕하세요': {
-                    'zh-CN': '你好'
-                },
-                '감사합니다': {
-                    'zh-CN': '谢谢'
-                },
-                '안녕히 가세요': {
-                    'zh-CN': '再见'
+            try {
+                // 使用LibreTranslate免费API（公共实例，有使用限制）
+                // 注意：公共API可能不稳定，实际项目中建议使用自己部署的实例或申请API密钥
+                const response = await fetch('https://libretranslate.de/translate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        q: text,
+                        source: sourceLanguage,
+                        target: targetLanguage,
+                        format: 'text',
+                        api_key: '' // 公共实例不需要API密钥
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('翻译API请求失败');
                 }
-            };
-            
-            // 如果有匹配的模拟翻译，返回翻译结果
-            if (mockTranslations[text] && mockTranslations[text][targetLanguage]) {
-                return mockTranslations[text][targetLanguage];
+                
+                const data = await response.json();
+                return data.translatedText;
+            } catch (error) {
+                console.error('翻译失败:', error);
+                // 如果API调用失败，返回原文加上错误标记
+                return `[翻译失败] ${text}`;
             }
-            
-            // 否则返回原文加上翻译标记（仅用于演示）
-            return `[${sourceLanguage} → ${targetLanguage}]: ${text}`;
         }
         
         // 翻译消息
