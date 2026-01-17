@@ -2046,6 +2046,12 @@
             if (!messageDiv) return;
             
             const contentElement = messageDiv.querySelector('.message-content');
+            
+            // 检查是否为语音消息（如果内容包含audio标签，则为语音消息）
+            if (contentElement.innerHTML.includes('<audio')) {
+                return;
+            }
+            
             let originalText = contentElement.textContent;
             
             // 检查是否已经是翻译状态或正在翻译
@@ -2414,10 +2420,13 @@
             // 检查消息是否已收藏
             const isFavorited = isMessageFavorited(data.id);
             
+            // 只有文本消息才显示翻译按钮
+            let translateBtnHtml = data.type === 'text' ? `<button class="translate-btn" onclick="translateMessage('${data.id}', currentTargetLanguage)" title="翻译消息">🌐</button>` : '';
+            
             let actionsHtml = `
                 <div class="message-actions">
                     <button class="favorite-btn ${isFavorited ? 'favorited' : ''}" onclick="toggleFavorite('${data.id}')" title="${isFavorited ? '取消收藏' : '收藏消息'}">⭐</button>
-                    <button class="translate-btn" onclick="translateMessage('${data.id}', currentTargetLanguage)" title="翻译消息">🌐</button>
+                    ${translateBtnHtml}
                 </div>
             `;
             
@@ -2530,10 +2539,13 @@
             // 检查消息是否已收藏
             const isFavorited = isMessageFavorited(data.id);
             
+            // 只有文本消息才显示翻译按钮
+            let translateBtnHtml = data.type === 'text' ? `<button class="translate-btn" onclick="translateMessage('${data.id}', currentTargetLanguage)" title="翻译消息">🌐</button>` : '';
+            
             let actionsHtml = `
                 <div class="message-actions">
                     <button class="favorite-btn ${isFavorited ? 'favorited' : ''}" onclick="toggleFavorite('${data.id}')" title="${isFavorited ? '取消收藏' : '收藏消息'}">⭐</button>
-                    <button class="translate-btn" onclick="translateMessage('${data.id}', currentTargetLanguage)" title="翻译消息">🌐</button>
+                    ${translateBtnHtml}
                     ${data.username === username ? `<button class="recall-btn" onclick="recallMessage('${data.id}')">撤回</button>` : ''}
                 </div>
             `;
@@ -2645,12 +2657,20 @@
             }
             
             isSearching = true;
-            const searchResults = allMessages.filter(message => {
-                if (message.type === 'text') {
-                    return message.message.toLowerCase().includes(keyword.toLowerCase());
-                }
-                return false;
-            });
+            let searchResults;
+            
+            // 当关键词是"audio"时，搜索所有语音消息
+            if (keyword.toLowerCase() === 'audio') {
+                searchResults = allMessages.filter(message => message.type === 'audio');
+            } else {
+                // 否则搜索文本消息
+                searchResults = allMessages.filter(message => {
+                    if (message.type === 'text') {
+                        return message.message.toLowerCase().includes(keyword.toLowerCase());
+                    }
+                    return false;
+                });
+            }
             
             // 清空消息区域
             messagesDiv.innerHTML = `<div class="system-message">搜索结果: ${searchResults.length} 条</div>`;
