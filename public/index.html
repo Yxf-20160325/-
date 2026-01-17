@@ -1158,7 +1158,7 @@
                 <div class="online-count">在线人数: <span id="userCount">0</span></div>
                 <button class="header-btn" id="usersBtn" title="用户列表">👥</button>
                 <button class="header-btn" id="friendsBtn" title="好友列表">👥</button>
-                <button class="header-btn" id="adminPanelBtn" title="管理员面板">⚙️</button>
+                <button class="header-btn" id="settingsBtn" title="设置">⚙️</button>
             </div>
         </div>
         
@@ -1289,37 +1289,59 @@
         </div>
     </div>
     
-    <div class="modal" id="adminPanelModal">
-        <div class="modal-content" style="max-width: 900px; max-height: 90vh; overflow-y: auto;">
-            <h3>管理员面板</h3>
+    <div class="modal" id="settingsModal">
+        <div class="modal-content" style="max-width: 600px; max-height: 90vh; overflow-y: auto;">
+            <h3>设置</h3>
             <div class="admin-panel-tabs">
-                <button class="admin-tab active" data-tab="users">用户管理</button>
-                <button class="admin-tab" data-tab="rooms">房间管理</button>
-                <button class="admin-tab" data-tab="messages">消息管理</button>
-                <button class="admin-tab" data-tab="friends">好友管理</button>
+                <button class="admin-tab active" data-tab="translation">翻译设置</button>
+                <button class="admin-tab" data-tab="notifications">通知设置</button>
             </div>
             <div class="admin-panel-content">
-                <div class="admin-tab-content active" id="usersTab">
-                    <div id="adminUsersList"></div>
-                </div>
-                <div class="admin-tab-content" id="roomsTab">
-                    <div id="adminRoomsList"></div>
-                </div>
-                <div class="admin-tab-content" id="messagesTab">
+                <div class="admin-tab-content active" id="translationTab">
                     <div style="margin-bottom: 20px;">
-                        <label>
-                            <input type="checkbox" id="allowMentionsCheckbox" checked>
-                            允许@功能
-                        </label>
+                        <h4>翻译目标语言</h4>
+                        <div style="margin-top: 15px;">
+                            <label for="targetLanguageSelect" style="display: block; margin-bottom: 8px;">选择翻译目标语言：</label>
+                            <select id="targetLanguageSelect" style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 5px; font-size: 14px;">
+                                <option value="zh">中文</option>
+                                <option value="en">English</option>
+                                <option value="ja">日本語</option>
+                                <option value="ko">한국어</option>
+                                <option value="fr">Français</option>
+                                <option value="de">Deutsch</option>
+                                <option value="es">Español</option>
+                                <option value="ru">Русский</option>
+                            </select>
+                        </div>
+                        <div style="margin-top: 20px;">
+                            <label>
+                                <input type="checkbox" id="autoTranslateCheckbox">
+                                自动翻译所有消息（仅翻译别人的消息）
+                            </label>
+                        </div>
                     </div>
-                    <div id="adminMessagesList"></div>
                 </div>
-                <div class="admin-tab-content" id="friendsTab">
-                    <div id="adminFriendsList"></div>
+                <div class="admin-tab-content" id="notificationsTab">
+                    <div style="margin-bottom: 20px;">
+                        <h4>通知设置</h4>
+                        <div style="margin-top: 15px;">
+                            <label>
+                                <input type="checkbox" id="soundNotificationCheckbox" checked>
+                                声音通知
+                            </label>
+                        </div>
+                        <div style="margin-top: 10px;">
+                            <label>
+                                <input type="checkbox" id="mentionNotificationCheckbox" checked>
+                                @提及通知
+                            </label>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="modal-buttons">
-                <button type="button" class="btn btn-cancel" onclick="closeAdminPanelModal()">关闭</button>
+                <button type="button" class="btn btn-cancel" onclick="closeSettingsModal()">取消</button>
+                <button type="button" class="btn btn-confirm" onclick="saveSettings()">保存设置</button>
             </div>
         </div>
     </div>
@@ -1449,15 +1471,56 @@
             }
         }
         
-        // 管理员面板相关变量
-        const adminPanelBtn = document.getElementById('adminPanelBtn');
-        const adminPanelModal = document.getElementById('adminPanelModal');
-        const adminUsersListDiv = document.getElementById('adminUsersList');
-        const adminRoomsListDiv = document.getElementById('adminRoomsList');
-        const adminMessagesListDiv = document.getElementById('adminMessagesList');
-        const adminFriendsListDiv = document.getElementById('adminFriendsList');
+        // 设置页面相关变量
+        const settingsBtn = document.getElementById('settingsBtn');
+        const settingsModal = document.getElementById('settingsModal');
+        const targetLanguageSelect = document.getElementById('targetLanguageSelect');
+        const autoTranslateCheckbox = document.getElementById('autoTranslateCheckbox');
         
-        let userRole = 'user'; // 当前用户的角色：user, admin, superadmin
+        // 用户设置
+        let userSettings = {
+            targetLanguage: 'zh', // 默认翻译为中文
+            autoTranslate: false
+        };
+        
+        // 初始化设置
+        function initSettings() {
+            // 从localStorage加载设置
+            const savedSettings = localStorage.getItem('userSettings');
+            if (savedSettings) {
+                userSettings = { ...userSettings, ...JSON.parse(savedSettings) };
+            }
+            
+            // 更新UI
+            targetLanguageSelect.value = userSettings.targetLanguage;
+            autoTranslateCheckbox.checked = userSettings.autoTranslate;
+            
+            // 更新当前翻译目标语言
+            currentTargetLanguage = userSettings.targetLanguage;
+        }
+        
+        // 保存设置
+        function saveSettings() {
+            userSettings.targetLanguage = targetLanguageSelect.value;
+            userSettings.autoTranslate = autoTranslateCheckbox.checked;
+            
+            // 更新当前翻译目标语言
+            currentTargetLanguage = userSettings.targetLanguage;
+            
+            // 保存到localStorage
+            localStorage.setItem('userSettings', JSON.stringify(userSettings));
+            
+            // 关闭设置模态框
+            closeSettingsModal();
+            
+            // 显示保存成功提示
+            alert('设置已保存');
+        }
+        
+        // 关闭设置模态框
+        function closeSettingsModal() {
+            settingsModal.classList.remove('active');
+        }
         
         let friends = [];
         let currentPrivateChatTarget = null;
@@ -1572,8 +1635,11 @@
             hideEmojiPanel();
         }
 
-        // 页面加载完成后初始化表情系统
-        document.addEventListener('DOMContentLoaded', initEmojiSystem);
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            initEmojiSystem();
+            initSettings();
+        });
 
         // 从URL路径获取房间名
         function getRoomFromUrl() {
@@ -1975,31 +2041,36 @@
         }
         
         // 翻译消息
-        async function translateMessage(messageId, targetLanguage = currentTargetLanguage) {
+        async function translateMessage(messageId, targetLanguage = currentTargetLanguage, forceTranslate = false) {
             const messageDiv = document.querySelector(`[data-message-id="${messageId}"]`);
             if (!messageDiv) return;
             
             const contentElement = messageDiv.querySelector('.message-content');
-            const originalText = contentElement.textContent;
+            let originalText = contentElement.textContent;
             
-            // 检查是否已经是翻译状态
-            if (originalText.startsWith('[')) {
-                // 恢复原文（需要存储原文，这里简化处理）
-                contentElement.textContent = originalText.replace(/\[[^\]]+\]: /, '');
+            // 检查是否已经是翻译状态或正在翻译
+            if (!forceTranslate && (originalText.startsWith('正在翻译') || originalText.startsWith('[') || originalText === '正在翻译...')) {
                 return;
+            }
+            
+            // 保存原文到元素属性，以便后续恢复
+            if (!messageDiv.dataset.originalText && !originalText.startsWith('正在翻译')) {
+                messageDiv.dataset.originalText = originalText;
+            } else if (messageDiv.dataset.originalText) {
+                originalText = messageDiv.dataset.originalText;
             }
             
             // 显示翻译中状态
             contentElement.textContent = '正在翻译...';
             
             try {
-                // 调用翻译函数，自动检测源语言，翻译为中文
+                // 调用翻译函数，自动检测源语言
                 const translatedText = await translateText(originalText, targetLanguage);
                 contentElement.textContent = translatedText;
             } catch (error) {
                 console.error('翻译失败:', error);
                 contentElement.textContent = originalText;
-                alert('翻译失败，请重试');
+                // 不需要显示警报，因为自动翻译失败不应打扰用户
             }
         }
         
@@ -2373,31 +2444,22 @@
                     chatId: data.chatId
                 });
             }
+            
+            // 自动翻译消息（仅文本消息，且不是自己发送的消息）
+            if (userSettings.autoTranslate && data.type === 'text' && data.fromSocketId !== socket.id && data.id) {
+                // 延迟执行翻译，确保DOM已渲染
+                setTimeout(() => {
+                    translateMessage(data.id, currentTargetLanguage);
+                }, 100);
+            }
         }
         
         // 管理员面板功能
         
-        // 打开管理员面板
-        adminPanelBtn.addEventListener('click', () => {
-            // 只有admin和superadmin角色才能打开管理员面板
-            if (userRole === 'user') {
-                alert('您没有权限访问管理员面板');
-                return;
-            }
-            
-            adminPanelModal.classList.add('active');
-            
-            // 获取用户列表
-            socket.emit('admin-get-users');
-            
-            // 获取房间列表
-            socket.emit('admin-get-rooms');
+        // 打开设置页面
+        settingsBtn.addEventListener('click', () => {
+            settingsModal.classList.add('active');
         });
-        
-        // 关闭管理员面板
-        function closeAdminPanelModal() {
-            adminPanelModal.classList.remove('active');
-        }
         
         // 标签页切换
         document.querySelectorAll('.admin-tab').forEach(tab => {
@@ -2410,140 +2472,10 @@
                 tab.classList.add('active');
                 const tabName = tab.dataset.tab;
                 document.getElementById(tabName + 'Tab').classList.add('active');
-                
-                // 根据标签页加载相应数据
-                if (tabName === 'rooms') {
-                    socket.emit('admin-get-rooms');
-                } else if (tabName === 'messages') {
-                    socket.emit('admin-get-messages');
-                } else if (tabName === 'friends') {
-                    socket.emit('admin-get-users');
-                }
             });
         });
         
-        // @功能开关
-        document.getElementById('allowMentionsCheckbox').addEventListener('change', (e) => {
-            socket.emit('admin-set-mentions', {
-                allow: e.target.checked
-            });
-        });
-        
-        // Socket事件处理 - 管理员面板
-        
-        // 用户角色变更
-        socket.on('user-role-changed', (data) => {
-            if (data.socketId === socket.id) {
-                userRole = data.newRole;
-                
-                // 如果角色变为user，隐藏管理员面板按钮
-                if (userRole === 'user') {
-                    adminPanelBtn.style.display = 'none';
-                } else {
-                    adminPanelBtn.style.display = 'block';
-                }
-            }
-            
-            // 更新管理员面板中的用户列表
-            updateAdminUsersList(data.users);
-        });
-        
-        // 获取用户列表（用于管理员面板的好友管理标签页）
-        socket.on('admin-get-users', (data) => {
-            updateAdminFriendsList(data.users);
-        });
-        
-        // 更新管理员用户列表
-        function updateAdminUsersList(users) {
-            adminUsersListDiv.innerHTML = '';
-            
-            users.forEach(user => {
-                const userDiv = document.createElement('div');
-                userDiv.className = 'admin-user-item';
-                
-                userDiv.innerHTML = `
-                    <div class="admin-user-info">
-                        <div class="admin-user-name">${escapeHtml(user.username)}</div>
-                        <span class="admin-user-role ${user.role}">${user.role}</span>
-                    </div>
-                    <div class="admin-user-actions">
-                        <select class="admin-select" onchange="changeUserRole('${user.socketId}', this.value)">
-                            <option value="user" ${user.role === 'user' ? 'selected' : ''}>user</option>
-                            <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>admin</option>
-                            <option value="superadmin" ${user.role === 'superadmin' ? 'selected' : ''}>superadmin</option>
-                        </select>
-                        <button class="admin-action-btn" onclick="adminPrivateChat('${user.socketId}', '${user.username}')">私聊</button>
-                        <button class="admin-action-btn danger" onclick="kickUser('${user.socketId}')">踢出</button>
-                    </div>
-                `;
-                
-                adminUsersListDiv.appendChild(userDiv);
-            });
-        }
-        
-        // 更新管理员好友列表（显示所有用户）
-        function updateAdminFriendsList(users) {
-            adminFriendsListDiv.innerHTML = '';
-            
-            users.forEach(user => {
-                const userDiv = document.createElement('div');
-                userDiv.className = 'admin-user-item';
-                
-                userDiv.innerHTML = `
-                    <div class="admin-user-info">
-                        <div class="admin-user-name">${escapeHtml(user.username)}</div>
-                        <span class="admin-user-role ${user.role}">${user.role}</span>
-                    </div>
-                    <div class="admin-user-actions">
-                        <button class="admin-action-btn" onclick="adminPrivateChat('${user.socketId}', '${user.username}')">私聊</button>
-                        <button class="admin-action-btn" onclick="openPrivateChat('${user.socketId}', '${user.username}')">查看私聊</button>
-                    </div>
-                `;
-                
-                adminFriendsListDiv.appendChild(userDiv);
-            });
-        }
-        
-        // 更改用户角色
-        function changeUserRole(socketId, newRole) {
-            socket.emit('admin-set-role', {
-                socketId: socketId,
-                role: newRole
-            });
-        }
-        
-        // 修改用户权限
-        function changeUserPermissions(socketId, permissionKey, value) {
-            const user = allUsers.find(u => u.socketId === socketId);
-            if (user) {
-                const newPermissions = { ...user.permissions };
-                newPermissions[permissionKey] = value;
-                
-                socket.emit('admin-set-permissions', {
-                    socketId: socketId,
-                    permissions: newPermissions
-                });
-            }
-        }
-        
-        // 踢出用户
-        function kickUser(socketId) {
-            if (confirm('确定要踢出这个用户吗？')) {
-                socket.emit('admin-kick-user', socketId);
-            }
-        }
-        
-        // 管理员私聊
-        function adminPrivateChat(socketId, username) {
-            const message = prompt(`发送私聊消息给 ${username}：`);
-            if (message) {
-                socket.emit('admin-private-message', {
-                    targetSocketId: socketId,
-                    message: message,
-                    type: 'text'
-                });
-            }
-        }
+
         
         // 房间加入失败
         socket.on('join-error', (data) => {
@@ -2628,6 +2560,14 @@
                     messageId: data.id,
                     roomName: currentRoom || 'main'
                 });
+            }
+            
+            // 自动翻译消息（仅文本消息，且不是自己发送的消息）
+            if (userSettings.autoTranslate && data.type === 'text' && data.username !== username && data.id) {
+                // 延迟执行翻译，确保DOM已渲染
+                setTimeout(() => {
+                    translateMessage(data.id, currentTargetLanguage);
+                }, 100);
             }
         }
 
