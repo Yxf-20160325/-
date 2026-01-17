@@ -169,6 +169,49 @@
             background: #c82333;
         }
 
+        .favorite-btn {
+            background: transparent;
+            color: #ffc107;
+            border: none;
+            padding: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: transform 0.2s;
+        }
+
+        .favorite-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .favorite-btn.favorited {
+            color: #ff9800;
+            transform: scale(1.2);
+        }
+
+        .read-status {
+            color: #6c757d;
+            font-size: 12px;
+            margin-left: 5px;
+            font-weight: bold;
+        }
+
+        .translate-btn {
+            background: transparent;
+            color: #17a2b8;
+            border: none;
+            padding: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: transform 0.2s;
+            margin-left: 5px;
+        }
+
+        .translate-btn:hover {
+            transform: scale(1.1);
+        }
+
         .call-btn {
             background: #28a745;
             color: white;
@@ -415,6 +458,24 @@
             text-align: left;
             position: relative;
             overflow: hidden;
+        }
+        
+        /* 在线状态样式 */
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        
+        .status-online {
+            background-color: #28a745;
+        }
+        
+        .status-offline {
+            background-color: #6c757d;
         }
 
         .user-item:hover {
@@ -1013,6 +1074,80 @@
         input:checked + .slider:before {
             transform: translateX(26px);
         }
+
+        /* 表情选择器样式 */
+        .emoji-panel {
+            position: absolute;
+            bottom: 70px;
+            right: 20px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
+            width: 320px;
+            max-height: 300px;
+            display: flex;
+            flex-direction: column;
+            z-index: 1000;
+        }
+
+        .emoji-categories {
+            display: flex;
+            padding: 10px;
+            border-bottom: 1px solid #dee2e6;
+            background: #f8f9fa;
+            border-radius: 10px 10px 0 0;
+        }
+
+        .emoji-category {
+            background: none;
+            border: none;
+            font-size: 20px;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-right: 5px;
+            transition: all 0.2s;
+        }
+
+        .emoji-category:hover {
+            background: #e9ecef;
+        }
+
+        .emoji-category.active {
+            background: #667eea;
+            color: white;
+        }
+
+        .emoji-grid {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 5px;
+            padding: 10px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .emoji-item {
+            background: none;
+            border: none;
+            font-size: 24px;
+            padding: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+        }
+
+        .emoji-item:hover {
+            background: #e9ecef;
+            transform: scale(1.2);
+        }
+
+        /* 表情消息样式 */
+        .emoji-message {
+            font-size: 24px;
+            margin: 0;
+        }
     </style>
 </head>
 <body>
@@ -1025,6 +1160,11 @@
                 <button class="header-btn" id="friendsBtn" title="好友列表">👥</button>
                 <button class="header-btn" id="adminPanelBtn" title="管理员面板">⚙️</button>
             </div>
+        </div>
+        
+        <!-- 消息搜索框 -->
+        <div class="search-container" style="padding: 10px; background: white; border-bottom: 1px solid #dee2e6;">
+            <input type="text" id="messageSearchInput" placeholder="搜索消息..." style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 20px; font-size: 14px; outline: none;">
         </div>
 
         <div class="chat-container">
@@ -1041,6 +1181,7 @@
             <div id="chatForm" class="hidden">
                 <input type="file" id="imageInput" accept="image/*">
                 <div class="action-buttons">
+·                    <button class="action-btn" id="emojiBtn" title="发送表情">😀</button>
                     <button class="action-btn disabled" id="imageBtn" title="发送图片">📷</button>
                     <button class="action-btn disabled" id="audioBtn" title="发送语音">🎤</button>
                     <button class="action-btn disabled" id="videoCallBtn" title="视频通话">📹</button>
@@ -1048,6 +1189,22 @@
                 </div>
                 <input type="text" id="messageInput" placeholder="输入消息..." maxlength="500">
                 <button id="sendBtn">发送</button>
+            </div>
+        </div>
+        
+        <!-- 表情选择面板 -->
+        <div class="emoji-panel" id="emojiPanel" style="display: none;">
+            <div class="emoji-categories">
+                <button class="emoji-category active" data-category="smileys">😊</button>
+                <button class="emoji-category" data-category="animals">🐶</button>
+                <button class="emoji-category" data-category="food">🍎</button>
+                <button class="emoji-category" data-category="activities">⚽</button>
+                <button class="emoji-category" data-category="travel">✈️</button>
+                <button class="emoji-category" data-category="objects">💡</button>
+                <button class="emoji-category" data-category="flags">🇨🇳</button>
+            </div>
+            <div class="emoji-grid" id="emojiGrid">
+                <!-- 表情将通过JavaScript动态加载 -->
             </div>
         </div>
     </div>
@@ -1248,6 +1405,50 @@
         const privateChatImageBtn = document.getElementById('privateChatImageBtn');
         const privateChatAudioBtn = document.getElementById('privateChatAudioBtn');
         
+        // 消息搜索相关变量
+        const messageSearchInput = document.getElementById('messageSearchInput');
+        let allMessages = []; // 保存所有历史消息
+        let isSearching = false; // 是否正在搜索状态
+        let searchKeyword = '';
+        
+        // 消息收藏相关变量
+        let favoritedMessages = JSON.parse(localStorage.getItem('favoritedMessages') || '[]');
+        
+        // 检查消息是否已收藏
+        function isMessageFavorited(messageId) {
+            return favoritedMessages.includes(messageId);
+        }
+        
+        // 切换消息收藏状态
+        function toggleFavorite(messageId) {
+            const index = favoritedMessages.indexOf(messageId);
+            if (index > -1) {
+                // 取消收藏
+                favoritedMessages.splice(index, 1);
+            } else {
+                // 添加收藏
+                favoritedMessages.push(messageId);
+            }
+            
+            // 保存到本地存储
+            localStorage.setItem('favoritedMessages', JSON.stringify(favoritedMessages));
+            
+            // 更新UI
+            const messageDiv = document.querySelector(`[data-message-id="${messageId}"]`);
+            if (messageDiv) {
+                const favoriteBtn = messageDiv.querySelector('.favorite-btn');
+                if (favoriteBtn) {
+                    if (favoritedMessages.includes(messageId)) {
+                        favoriteBtn.classList.add('favorited');
+                        favoriteBtn.title = '取消收藏';
+                    } else {
+                        favoriteBtn.classList.remove('favorited');
+                        favoriteBtn.title = '收藏消息';
+                    }
+                }
+            }
+        }
+        
         // 管理员面板相关变量
         const adminPanelBtn = document.getElementById('adminPanelBtn');
         const adminPanelModal = document.getElementById('adminPanelModal');
@@ -1275,6 +1476,104 @@
         let selectedVideoDeviceId = null;
         let selectedAudioDeviceId = null;
         let pendingCallAction = null;
+
+        // 表情数据
+        const emojiData = {
+            smileys: ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😙', '🥲', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶', '🥴', '😵', '🤯', '🤠', '🥳', '😎', '🤓', '🧐', '😕', '😟', '🙁', '☹️', '😮', '😯', '😲', '😳', '🥺', '😦', '😧', '😨', '😰', '😥', '😢', '😭', '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡', '😠', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺', '👻', '👽', '👾', '🤖', '💋', '👄', '👅', '👂', '👃', '🧠', '🫀', '🫁', '🦷', '🦴', '👀', '👁️', '👅', '👄', '🫶', '🤲', '🤝', '🙏', '👏', '🤝', '👍', '👎', '👌', '✌️', '🤞', '🤟', '🤘', '🤙', '👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤏', '✊', '👊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝', '🙏', '💪', '🦾', '🦿', '🦵', '🦶', '👂', '🦻', '👃', '🧠', '🫀', '🫁', '🦷', '🦴', '👀', '👁️', '👅', '👄', '💋', '🩸'],
+            animals: ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐽', '🐸', '🐵', '🙈', '🙉', '🙊', '🐒', '🐔', '🐧', '🐦', '🐤', '🐣', '🐥', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🐛', '🦋', '🐌', '🐞', '🐜', '🦟', '🦗', '🕷️', '🕸️', '🦂', '🐢', '🐍', '🦎', '🦖', '🦕', '🐙', '🦑', '🦐', '🦞', '🦀', '🐡', '🐠', '🐟', '🐬', '🐳', '🐋', '🦈', '🐊', '🐅', '🐆', '🦓', '🦍', '🦧', '🐘', '🦛', '🦏', '🐪', '🐫', '🦒', '🦘', '🐃', '🐂', '🐄', '🐎', '🐖', '🐏', '🐑', '🦙', '🐐', '🦌', '🐕', '🐩', '🦮', '🐕‍🦺', '🐈', '🐓', '🦃', '🦚', '🦜', '🦢', '🦩', '🕊️', '🐇', '🦝', '🦨', '🦡', '🦦', '🦥', '🐁', '🐀', '🐿️', '🦔', '🐾', '🐉', '🐲', '🌵', '🎄', '🌲', '🌳', '🌴', '🌱', '🌿', '☘️', '🍀', '🎍', '🎋', '🍃', '🍂', '🍁', '🍄', '🌾', '💐', '🌷', '🌹', '🥀', '🌺', '🌸', '🌼', '🌻', '🌞', '🌝', '🌛', '🌜', '🌚', '🌕', '🌖', '🌗', '🌘', '🌑', '🌒', '🌓', '🌔', '🌙', '🌎', '🌍', '🌏', '🌐', '💫', '⭐', '🌟', '✨', '⚡', '🔥', '💥', '💦', '💨', '🌪️', '🌈', '☀️', '🌤️', '⛅', '🌦️', '🌧️', '⛈️', '🌨️', '❄️', '☃️', '⛄', '🌊', '🌫️', '🌬️'],
+            food: ['🍎', '🍐', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🫐', '🍈', '🍒', '🍑', '🥭', '🍍', '🥥', '🥝', '🍅', '🍆', '🥑', '🥦', '🥬', '🥒', '🌶️', '🫑', '🌽', '🥕', '🫒', '🧄', '🧅', '🥔', '🍠', '🥐', '🥖', '🍞', '🥨', '🥯', '🧀', '🍗', '🍖', '🥩', '🥓', '🍔', '🍟', '🍕', '🌭', '🥪', '🌮', '🌯', '🫔', '🥙', '🧆', '🥚', '🍳', '🧈', '🥞', '🧇', '🥓', '🥩', '🍗', '🍖', '🦴', '🍜', '🍝', '🍲', '🍛', '🍣', '🍱', '🥟', '🦪', '🍤', '🍙', '🍚', '🍘', '🍥', '🥠', '🥮', '🍢', '🍡', '🍧', '🍨', '🍦', '🥧', '🧁', '🍰', '🎂', '🍮', '🍭', '🍬', '🍫', '🍿', '🍩', '🍪', '🌰', '🥜', '🍯', '🥛', '🍼', '🫖', '☕', '🍵', '🍶', '🍺', '🍻', '🥂', '🍷', '🥃', '🫗', '🧊', '🥤', '🧋', '🧃', '🧉', '🧊', '🍹', '🍸', '🍾', '🥄', '🍴', '🍽️', '🥣', '🥡', '🦪', '🍣', '🍤', '🍱', '🥟', '🍙', '🍚', '🍘', '🍥', '🥠', '🥮', '🍢', '🍡'],
+            activities: ['⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱', '🪀', '🏓', '🏸', '🏒', '🏑', '🥍', '🏏', '🪃', '🥅', '⛳', '🪁', '🏹', '🎣', '🤿', '🥊', '🥋', '🎽', '🛹', '🛼', '🛷', '⛸️', '🥌', '🎿', '⛷️', '🏂', '🪂', '🏋️‍♂️', '🏋️‍♀️', '🤼‍♂️', '🤼‍♀️', '🤸‍♂️', '🤸‍♀️', '🤺', '🤾‍♂️', '🤾‍♀️', '🏌️‍♂️', '🏌️‍♀️', '🏇', '🧘‍♂️', '🧘‍♀️', '🚴‍♂️', '🚴‍♀️', '🚵‍♂️', '🚵‍♀️', '🧗‍♂️', '🧗‍♀️', '🚣‍♂️', '🚣‍♀️', '🏊‍♂️', '🏊‍♀️', '🏄‍♂️', '🏄‍♀️', '🏆', '🥇', '🥈', '🥉', '🏅', '🎖️', '🥋', '🎗️', '🏵️', '🎫', '🎟️', '🎪', '🤹‍♂️', '🤹‍♀️', '🎭', '🩰', '🎨', '🎬', '🎤', '🎧', '🎼', '🎵', '🎶', '🥁', '🪘', '🎷', '🪗', '🎸', '🪕', '🎺', '🪇', '🎹', '🎻', '🎲', '♠️', '♥️', '♦️', '♣️', '🃏', '🎴', '🀄', '🎯', '🎮', '🎰', '🎳', '🏓', '🏸', '🏒', '🏑', '🥍', '🏏', '🪃'],
+            travel: ['🚗', '🚕', '🚙', '🚌', '🚎', '🏎️', '🚓', '🚑', '🚒', '🚐', '🚚', '🚛', '🚜', '🏍️', '🛵', '🚲', '🛴', '🚏', '🛣️', '🛤️', '🛢️', '⛽', '🚨', '🚥', '🚦', '🛑', '🚧', '⚓', '🚢', '🛥️', '🛳️', '⛴️', '🚤', '🛩️', '🛫', '🛬', '✈️', '💺', '🚁', '🚟', '🚠', '🚡', '🛰️', '🚀', '🛸', '🗺️', '🗾', '🗿', '🗽', '🏰', '🏯', '🏟️', '🎡', '🎢', '🎠', '🏖️', '🏝️', '🏜️', '🏕️', '⛺', '🏠', '🏡', '🏘️', '🏚️', '🏗️', '🏭', '🏬', '🏣', '🏤', '🏥', '🏦', '🏨', '🏪', '🏫', '🏩', '💒', '⛪', '🕌', '🕍', '🕋', '⛩️', '🛕', '🕉️', '⛲', '🌁', '🌉', '🏙️', '🌃', '🌌', '📮', '📪', '📫', '📬', '📭', '📦', '🏤', '🏥', '🏦', '🏨', '🏪', '🏫', '🏩', '💒', '⛪', '🕌', '🕍', '🕋', '⛩️', '🛕'],
+            objects: ['💡', '🔦', '🏮', '🪔', '🕯️', '🪙', '💰', '💴', '💵', '💶', '💷', '💸', '💳', '🧾', '💎', '⚖️', '🔧', '🔨', '⚒️', '🛠️', '🪓', '🔩', '⚙️', '🗜️', '🧰', '🔫', '💣', '🧨', '🚬', '🪤', '🔪', '🗡️', '⚔️', '🛡️', '🚪', '🚬', '🧯', '🪒', '🧴', '🧷', '🧹', '🪣', '🧺', '🧻', '🚿', '🛁', '🪤', '🧽', '🧴', '🚽', '🪠', '🧴', '🧷', '🧹', '🪣', '🧺', '🧻', '🚿', '🛁', '🪤', '🧽', '🧴', '🚽', '🪠', '📱', '📲', '💻', '⌨️', '🖥️', '🖨️', '🖱️', '🖲️', '💽', '💾', '💿', '📀', '📼', '📷', '📸', '📹', '🎥', '📽️', '🎞️', '📞', '☎️', '📟', '📠', '📺', '📻', '🎙️', '🎚️', '🎛️', '🧭', '⏰', '⏲️', '⏳', '⌛', '📡', '🔋', '🔌', '📚', '📖', '📕', '📗', '📘', '📙', '📓', '📔', '📒', '📃', '📜', '📄', '📰', '🗞️', '📑', '📊', '📈', '📉', '📋', '📌', '📍', '📎', '📏', '📐', '✂️', '🖇️', '📎', '🗂️', '🗃️', '🗄️', '🗑️', '📁', '📂', '🗓️', '📅', '📆', '📇', '🗒️', '🗓️', '📝', '✏️', '🖊️', '🖋️', '📝', '📄', '📃', '📜', '📋', '📊', '📈', '📉', '📈', '📉', '📊', '📋', '📌', '📍', '📎', '📏', '📐', '✂️', '🖇️'],
+            flags: ['🇨🇳', '🇺🇸', '🇬🇧', '🇯🇵', '🇰🇷', '🇫🇷', '🇩🇪', '🇪🇸', '🇷🇺', '🇮🇳', '🇧🇷', '🇨🇦', '🇦🇺', '🇮🇹', '🇳🇱', '🇧🇪', '🇧🇹', '🇧🇬', '🇨🇿', '🇨🇭', '🇩🇰', '🇫🇮', '🇬🇷', '🇭🇺', '🇮🇸', '🇮🇪', '🇱🇹', '🇱🇺', '🇱🇻', '🇲🇹', '🇳🇴', '🇵🇱', '🇵🇹', '🇷🇴', '🇸🇪', '🇸🇮', '🇸🇰', '🇹🇷', '🇦🇹', '🇬🇷', '🇮🇱', '🇸🇦', '🇦🇪', '🇧🇭', '🇰🇼', '🇴🇲', '🇶🇦', '🇸🇬', '🇹🇭', '🇻🇳', '🇲🇾', '🇮🇩', '🇵🇭', '🇳🇿', '🇿🇦', '🇪🇬', '🇲🇦', '🇦🇷', '🇨🇱', '🇨🇴', '🇲🇽', '🇵🇪', '🇦🇺', '🇳🇿', '🇹🇷', '🇸🇾', '🇮🇷', '🇮🇷', '🇲🇦', '🇲🇱', '🇹🇬', '🇳🇬', '🇿🇲', '🇿🇼', '🇿🇦', '🇧🇼', '🇳🇦', '🇲🇸', '🇧🇹', '🇳🇵', '🇲🇳', '🇲🇴', '🇭🇰', '🇲🇹', '🇸🇲', '🇻🇦', '🇨🇰', '🇬🇮', '🇯🇪', '🇬🇬', '🇮🇲', '🇲🇨', '🇸🇧', '🇻🇺', '🇫🇲', '🇹🇴', '🇵🇼', '🇰🇮', '🇰🇲', '🇹🇰', '🇫🇰', '🇳🇺', '🇫🇴', '🇸🇹', '🇻🇨', '🇬🇩', '🇲🇸', '🇦🇬', '🇧🇧', '🇧🇸', '🇧🇿', '🇨🇱', '🇨🇴', '🇨🇷', '🇩🇴', '🇪🇨', '🇸🇻', '🇬🇹', '🇭🇳', '🇲🇽', '🇳🇮', '🇵🇦', '🇵🇾', '🇵🇪', '🇹🇹', '🇻🇪', '🇦🇷', '🇧🇴', '🇧🇷', '🇨🇱', '🇨🇴', '🇪🇨', '🇫🇮', '🇬🇫', '🇬🇶', '🇬🇾', '🇭🇹', '🇱🇨', '🇲🇶', '🇲🇷', '🇲🇺', '🇵🇲', '🇷🇪', '🇷🇺', '🇸🇷', '🇹🇹', '🇺🇾', '🇻🇨', '🇻🇮', '🇻🇪']
+        };
+
+        // 表情系统相关变量
+        let currentEmojiCategory = 'smileys';
+
+        // 初始化表情系统
+        function initEmojiSystem() {
+            // 加载默认表情
+            loadEmojis(currentEmojiCategory);
+            
+            // 表情按钮点击事件
+            emojiBtn.addEventListener('click', toggleEmojiPanel);
+            
+            // 获取表情分类按钮
+            const emojiCategories = document.querySelectorAll('.emoji-category');
+            
+            // 表情分类点击事件
+            emojiCategories.forEach(category => {
+                category.addEventListener('click', () => {
+                    const categoryName = category.dataset.category;
+                    switchEmojiCategory(categoryName, emojiCategories);
+                });
+            });
+            
+            // 点击外部关闭表情面板
+            document.addEventListener('click', (e) => {
+                if (!emojiPanel.contains(e.target) && e.target !== emojiBtn) {
+                    hideEmojiPanel();
+                }
+            });
+        }
+
+        // 切换表情面板显示
+        function toggleEmojiPanel() {
+            emojiPanel.style.display = emojiPanel.style.display === 'none' || emojiPanel.style.display === '' ? 'flex' : 'none';
+        }
+
+        // 隐藏表情面板
+        function hideEmojiPanel() {
+            emojiPanel.style.display = 'none';
+        }
+
+        // 切换表情分类
+        function switchEmojiCategory(categoryName, emojiCategories) {
+            currentEmojiCategory = categoryName;
+            
+            // 更新分类按钮状态
+            emojiCategories.forEach(category => {
+                category.classList.remove('active');
+            });
+            document.querySelector(`[data-category="${categoryName}"]`).classList.add('active');
+            
+            // 加载对应分类的表情
+            loadEmojis(categoryName);
+        }
+
+        // 加载表情
+        function loadEmojis(categoryName) {
+            const emojis = emojiData[categoryName] || [];
+            emojiGrid.innerHTML = '';
+            
+            emojis.forEach(emoji => {
+                const emojiBtn = document.createElement('button');
+                emojiBtn.className = 'emoji-item';
+                emojiBtn.textContent = emoji;
+                emojiBtn.addEventListener('click', () => {
+                    insertEmoji(emoji);
+                });
+                emojiGrid.appendChild(emojiBtn);
+            });
+        }
+
+        // 插入表情到输入框
+        function insertEmoji(emoji) {
+            const cursorPosition = messageInput.selectionStart;
+            const textBefore = messageInput.value.substring(0, cursorPosition);
+            const textAfter = messageInput.value.substring(cursorPosition);
+            messageInput.value = textBefore + emoji + textAfter;
+            
+            // 设置光标位置到表情后面
+            messageInput.selectionStart = messageInput.selectionEnd = cursorPosition + emoji.length;
+            messageInput.focus();
+            
+            hideEmojiPanel();
+        }
+
+        // 页面加载完成后初始化表情系统
+        document.addEventListener('DOMContentLoaded', initEmojiSystem);
 
         // 从URL路径获取房间名
         function getRoomFromUrl() {
@@ -1511,6 +1810,194 @@
                 `;
             }
         });
+        
+        // 消息已读通知（普通聊天）
+        socket.on('message-read-by-user', (data) => {
+            const messageDiv = document.querySelector(`[data-message-id="${data.messageId}"]`);
+            if (messageDiv) {
+                const readStatusElement = messageDiv.querySelector('.read-status');
+                if (readStatusElement) {
+                    readStatusElement.textContent = '✓✓';
+                    readStatusElement.title = '已读';
+                }
+            }
+        });
+        
+        // 消息已读通知（私聊）
+        socket.on('private-message-read', (data) => {
+            const messageDiv = document.querySelector(`[data-message-id="${data.messageId}"]`);
+            if (messageDiv) {
+                const readStatusElement = messageDiv.querySelector('.read-status');
+                if (readStatusElement) {
+                    readStatusElement.textContent = '✓✓';
+                    readStatusElement.title = '已读';
+                }
+            }
+        });
+        
+        // 实时翻译功能
+        const supportedLanguages = [
+            { code: 'zh-CN', name: '中文' },
+            { code: 'en', name: 'English' },
+            { code: 'ja', name: '日本語' },
+            { code: 'ko', name: '한국어' },
+            { code: 'fr', name: 'Français' },
+            { code: 'de', name: 'Deutsch' },
+            { code: 'es', name: 'Español' },
+            { code: 'ru', name: 'Русский' }
+        ];
+        
+        let currentTargetLanguage = 'zh-CN'; // 默认翻译为中文
+        
+        // 简单的语言检测函数（基于字符集和常见词汇）
+        function detectLanguage(text) {
+            // 检测中文
+            if (/[\u4e00-\u9fa5]/.test(text)) {
+                return 'zh-CN';
+            }
+            // 检测日文
+            if (/[\u3040-\u30ff]/.test(text)) {
+                return 'ja';
+            }
+            // 检测韩文
+            if (/[\uac00-\ud7af]/.test(text)) {
+                return 'ko';
+            }
+            // 检测俄文
+            if (/[\u0400-\u04ff]/.test(text)) {
+                return 'ru';
+            }
+            // 检测法文
+            if (/[àâçéèêëîïôùûüÿñæœ]/.test(text)) {
+                return 'fr';
+            }
+            // 检测德文
+            if (/[äöüß]/.test(text)) {
+                return 'de';
+            }
+            // 检测西班牙文
+            if (/[áéíóúüñ]/.test(text)) {
+                return 'es';
+            }
+            // 默认英文
+            return 'en';
+        }
+        
+        // 模拟翻译函数（实际项目中应替换为真实的翻译API）
+        async function translateText(text, targetLanguage) {
+            // 这里使用模拟翻译，实际项目中应调用真实的翻译API
+            // 例如：Google Translate API, DeepL API, 百度翻译API等
+            
+            // 模拟翻译延迟
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // 检测源语言
+            const sourceLanguage = detectLanguage(text);
+            
+            // 如果源语言和目标语言相同，直接返回原文
+            if (sourceLanguage === targetLanguage) {
+                return text;
+            }
+            
+            // 简单的模拟翻译（仅用于演示）
+            const mockTranslations = {
+                // 中文到其他语言
+                '你好': {
+                    'en': 'Hello',
+                    'ja': 'こんにちは',
+                    'ko': '안녕하세요',
+                    'fr': 'Bonjour',
+                    'de': 'Hallo',
+                    'es': 'Hola',
+                    'ru': 'Привет'
+                },
+                '谢谢': {
+                    'en': 'Thank you',
+                    'ja': 'ありがとう',
+                    'ko': '감사합니다',
+                    'fr': 'Merci',
+                    'de': 'Danke',
+                    'es': 'Gracias',
+                    'ru': 'Спасибо'
+                },
+                '再见': {
+                    'en': 'Goodbye',
+                    'ja': 'さようなら',
+                    'ko': '안녕히 가세요',
+                    'fr': 'Au revoir',
+                    'de': 'Auf Wiedersehen',
+                    'es': 'Adiós',
+                    'ru': 'До свидания'
+                },
+                // 英文到中文
+                'Hello': {
+                    'zh-CN': '你好'
+                },
+                'Thank you': {
+                    'zh-CN': '谢谢'
+                },
+                'Goodbye': {
+                    'zh-CN': '再见'
+                },
+                // 日文到中文
+                'こんにちは': {
+                    'zh-CN': '你好'
+                },
+                'ありがとう': {
+                    'zh-CN': '谢谢'
+                },
+                'さようなら': {
+                    'zh-CN': '再见'
+                },
+                // 韩文到中文
+                '안녕하세요': {
+                    'zh-CN': '你好'
+                },
+                '감사합니다': {
+                    'zh-CN': '谢谢'
+                },
+                '안녕히 가세요': {
+                    'zh-CN': '再见'
+                }
+            };
+            
+            // 如果有匹配的模拟翻译，返回翻译结果
+            if (mockTranslations[text] && mockTranslations[text][targetLanguage]) {
+                return mockTranslations[text][targetLanguage];
+            }
+            
+            // 否则返回原文加上翻译标记（仅用于演示）
+            return `[${sourceLanguage} → ${targetLanguage}]: ${text}`;
+        }
+        
+        // 翻译消息
+        async function translateMessage(messageId, targetLanguage = currentTargetLanguage) {
+            const messageDiv = document.querySelector(`[data-message-id="${messageId}"]`);
+            if (!messageDiv) return;
+            
+            const contentElement = messageDiv.querySelector('.message-content');
+            const originalText = contentElement.textContent;
+            
+            // 检查是否已经是翻译状态
+            if (originalText.startsWith('[')) {
+                // 恢复原文（需要存储原文，这里简化处理）
+                contentElement.textContent = originalText.replace(/\[[^\]]+\]: /, '');
+                return;
+            }
+            
+            // 显示翻译中状态
+            contentElement.textContent = '正在翻译...';
+            
+            try {
+                // 调用翻译函数，自动检测源语言，翻译为中文
+                const translatedText = await translateText(originalText, targetLanguage);
+                contentElement.textContent = translatedText;
+            } catch (error) {
+                console.error('翻译失败:', error);
+                contentElement.textContent = originalText;
+                alert('翻译失败，请重试');
+            }
+        }
         
         // 搜索功能
         searchInput.addEventListener('input', (e) => {
@@ -1838,6 +2325,7 @@
         function addPrivateMessage(data) {
             const messageDiv = document.createElement('div');
             messageDiv.className = 'private-chat-message' + (data.fromSocketId === socket.id ? ' sent' : '');
+            messageDiv.dataset.messageId = data.id;
             
             let contentHtml;
             if (data.type === 'image') {
@@ -1848,15 +2336,39 @@
                 contentHtml = escapeHtml(data.message);
             }
             
+            // 检查消息是否已收藏
+            const isFavorited = isMessageFavorited(data.id);
+            
+            let actionsHtml = `
+                <div class="message-actions">
+                    <button class="favorite-btn ${isFavorited ? 'favorited' : ''}" onclick="toggleFavorite('${data.id}')" title="${isFavorited ? '取消收藏' : '收藏消息'}">⭐</button>
+                    <button class="translate-btn" onclick="translateMessage('${data.id}', currentTargetLanguage)" title="翻译消息">🌐</button>
+                </div>
+            `;
+            
+            // 添加已读状态显示
+            const isRead = data.readBy && data.readBy.length > 1;
+            const readStatusHtml = `<span class="read-status" ${isRead ? 'title="已读"' : 'title="未读"'}>${isRead ? '✓✓' : '✓'}</span>`;
+            
             messageDiv.innerHTML = `
                 <div class="private-chat-message-header">
                     ${data.fromSocketId === socket.id ? '我' : data.fromUsername} - ${data.timestamp}
+                    ${data.fromSocketId === socket.id ? readStatusHtml : ''}
                 </div>
                 <div class="message-content">${contentHtml}</div>
+                ${actionsHtml}
             `;
             
             privateChatMessagesDiv.appendChild(messageDiv);
             privateChatMessagesDiv.scrollTop = privateChatMessagesDiv.scrollHeight;
+            
+            // 发送已读通知（非自己发送的消息）
+            if (data.fromSocketId !== socket.id && data.id) {
+                socket.emit('message-read', {
+                    messageId: data.id,
+                    chatId: data.chatId
+                });
+            }
         }
         
         // 管理员面板功能
@@ -2058,6 +2570,9 @@
         }
 
         function addMessage(data) {
+            // 保存消息到历史记录数组
+            allMessages.push(data);
+            
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message';
             messageDiv.dataset.messageId = data.id;
@@ -2066,28 +2581,50 @@
             if (data.type === 'image') {
                 contentHtml = `<img src="${data.message}" alt="图片" style="max-width: 100%; max-height: 200px; border-radius: 5px;">`;
             } else if (data.type === 'audio') {
-                contentHtml = `<audio controls style="width: 100%; border-radius: 5px;"><source src="${data.message}" type="audio/webm">您的浏览器不支持音频播放</audio>`;
+                contentHtml = `<audio controls style="width: 100%; border-radius: 5px;"><source src="${data.message}" type="audio/webm">您的浏览器不支持音频播放</think_never_used_51bce0c785ca2f68081bfa7d91973934>`;
             } else {
+                // 如果正在搜索，高亮显示搜索关键词
                 contentHtml = escapeHtml(data.message);
+                if (isSearching && searchKeyword) {
+                    const regex = new RegExp(`(${escapeRegExp(searchKeyword)})`, 'gi');
+                    contentHtml = contentHtml.replace(regex, '<span style="background-color: #ffeb3b; font-weight: bold;">$1</span>');
+                }
             }
             
-            let actionsHtml = '';
-            if (data.username === username) {
-                actionsHtml = `<div class="message-actions">
-                    <button class="recall-btn" onclick="recallMessage('${data.id}')">撤回</button>
-                </div>`;
-            }
+            // 检查消息是否已收藏
+            const isFavorited = isMessageFavorited(data.id);
+            
+            let actionsHtml = `
+                <div class="message-actions">
+                    <button class="favorite-btn ${isFavorited ? 'favorited' : ''}" onclick="toggleFavorite('${data.id}')" title="${isFavorited ? '取消收藏' : '收藏消息'}">⭐</button>
+                    <button class="translate-btn" onclick="translateMessage('${data.id}', currentTargetLanguage)" title="翻译消息">🌐</button>
+                    ${data.username === username ? `<button class="recall-btn" onclick="recallMessage('${data.id}')">撤回</button>` : ''}
+                </div>
+            `;
+            
+            // 添加已读状态显示
+            const isRead = data.readBy && data.readBy.length > 1;
+            const readStatusHtml = `<span class="read-status" ${isRead ? 'title="已读"' : 'title="未读"'}>${isRead ? '✓✓' : '✓'}</span>`;
             
             messageDiv.innerHTML = `
                 <div class="message-header">
                     <span class="username" style="color: ${data.color}">${data.username}</span>
                     <span class="timestamp">${data.timestamp}</span>
+                    ${data.username === username ? readStatusHtml : ''}
                 </div>
                 <div class="message-content">${contentHtml}</div>
                 ${actionsHtml}
             `;
             messagesDiv.appendChild(messageDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            
+            // 发送已读通知（非自己发送的消息）
+            if (data.username !== username && data.id) {
+                socket.emit('message-read', {
+                    messageId: data.id,
+                    roomName: currentRoom || 'main'
+                });
+            }
         }
 
         function addSystemMessage(text, isAdmin = false) {
@@ -2109,6 +2646,7 @@
             }
             
             users.forEach(user => {
+                const status = user.status || 'online'; // 默认在线
                 const userDiv = document.createElement('div');
                 userDiv.className = 'user-item';
                 userDiv.onclick = () => {
@@ -2116,6 +2654,7 @@
                 };
                 
                 userDiv.innerHTML = `
+                    <div class="status-indicator status-${status}"></div>
                     <div class="user-color" style="background: ${user.color}"></div>
                     <div class="user-name">${escapeHtml(user.username)}</div>
                 `;
@@ -2124,11 +2663,64 @@
             });
         }
 
+        // 处理用户状态变化
+        socket.on('user-status-changed', (data) => {
+            // 更新用户列表
+            if (data.roomName === currentRoom) {
+                // 如果是当前房间的用户状态变化，更新用户列表
+                const updatedUser = allUsers.find(user => user.socketId === data.socketId);
+                if (updatedUser) {
+                    updatedUser.status = data.status;
+                    updateUserList(allUsers);
+                }
+            }
+        });
+
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
         }
+        
+        // 转义正则表达式特殊字符
+        function escapeRegExp(string) {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+        
+        // 搜索消息
+        function searchMessages(keyword) {
+            searchKeyword = keyword;
+            if (!keyword) {
+                isSearching = false;
+                // 清空搜索状态，重新显示所有消息
+                messagesDiv.innerHTML = '<div class="system-message">欢迎来到聊天室！请输入昵称加入。</div>';
+                allMessages.forEach(message => {
+                    addMessage(message);
+                });
+                return;
+            }
+            
+            isSearching = true;
+            const searchResults = allMessages.filter(message => {
+                if (message.type === 'text') {
+                    return message.message.toLowerCase().includes(keyword.toLowerCase());
+                }
+                return false;
+            });
+            
+            // 清空消息区域
+            messagesDiv.innerHTML = `<div class="system-message">搜索结果: ${searchResults.length} 条</div>`;
+            
+            // 显示搜索结果
+            searchResults.forEach(message => {
+                addMessage(message);
+            });
+        }
+        
+        // 消息搜索输入事件监听
+        messageSearchInput.addEventListener('input', (e) => {
+            searchMessages(e.target.value);
+        });
 
         // 媒体录制器
         mediaRecorder = null;
@@ -2774,7 +3366,7 @@
         // Socket事件处理
         let currentCallerSocketId = null;
         let currentTargetSocketId = null;
-        let remoteVideoBuffer = [];
+        remoteVideoBuffer = [];
 
         // 接收通话请求
         socket.on('call-request', (data) => {
