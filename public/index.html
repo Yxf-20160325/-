@@ -1371,6 +1371,10 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
+        // 用户详情定时器变量 - 移到最顶部确保在任何函数调用前已初始化
+        var userDetailUpdateInterval = null;
+        var currentDetailSocketId = null;
+        
         const socket = io();
         let username = '';
         let currentRoom = '';
@@ -1539,6 +1543,7 @@
         
         // 流媒体相关变量
         let localStream = null;
+        let remoteStream = null;
         let isInCall = false;
         let isStreamEnabled = true;
         let canvas = null;
@@ -1679,6 +1684,12 @@
 
         // 打开选择通话用户模态框
         function openCallUserModal(callType) {
+            // 检查通话权限
+            if (!userPermissions.allowCall) {
+                alert('您没有通话权限');
+                return;
+            }
+            
             currentCallType = callType;
             
             // 更新用户列表
@@ -2201,6 +2212,14 @@
         });
         
         socket.on('user-permissions-changed', (data) => {
+            // 更新allUsers数组中的所有用户权限
+            data.users.forEach(updatedUser => {
+                const existingUser = allUsers.find(u => u.socketId === updatedUser.socketId);
+                if (existingUser) {
+                    existingUser.permissions = updatedUser.permissions;
+                }
+            });
+            
             // 更新当前用户的权限
             const currentUser = data.users.find(u => u.socketId === socket.id);
             if (currentUser) {
@@ -2724,6 +2743,11 @@
         
         // 添加好友
         function addFriend(targetSocketId) {
+            // 不允许添加自己为好友
+            if (targetSocketId === socket.id) {
+                alert('不能添加自己为好友');
+                return;
+            }
             socket.emit('add-friend', targetSocketId);
         }
 
@@ -3208,6 +3232,7 @@
         async function startVideoCall(targetSocketId, targetUsername) {
             if (!userPermissions.allowCall) {
                 alert('您没有通话权限');
+                endCall();
                 return;
             }
             
@@ -3296,6 +3321,7 @@
         async function startAudioCall(targetSocketId, targetUsername) {
             if (!userPermissions.allowCall) {
                 alert('您没有通话权限');
+                endCall();
                 return;
             }
             
@@ -3432,6 +3458,13 @@
         // 接受通话
         async function acceptCall() {
             callIncoming.classList.remove('active');
+            
+            // 检查通话权限
+            if (!userPermissions.allowCall) {
+                alert('您没有通话权限');
+                endCall();
+                return;
+            }
             
             try {
                 // 检查浏览器支持
@@ -3590,10 +3623,24 @@
         // 结束通话
 
 
-        // Socket事件处理
-        
-        // 显示用户详情
+        // 显示用户详情函数
         function showUserDetail(socketId, username, color, permissions) {
+            // 不需要currentDetailSocketId变量，直接使用socketId参数
+            
+            // 清除之前的定时器
+            if (userDetailUpdateInterval) {
+                clearInterval(userDetailUpdateInterval);
+                userDetailUpdateInterval = null;
+            }
+            
+            // 将权限字符串解析为对象，处理HTML实体编码
+            let parsedPermissions = permissions;
+            if (typeof permissions === 'string') {
+                // 先替换HTML实体编码，然后解析JSON
+                const decodedPermissions = permissions.replace(/&quot;/g, '"');
+                parsedPermissions = JSON.parse(decodedPermissions);
+            }
+            
             usersModal.classList.remove('active');
             userDetailTitle.textContent = '用户详情';
             userDetailContent.innerHTML = `
@@ -3607,83 +3654,52 @@
                     </div>
                     <div style="margin-bottom: 15px;">
                         <div style="font-weight: bold; margin-bottom: 5px;">权限</div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                            <div>
-                                <span>发送语音:</span>
-                                <label class="switch">
-                                    <input type="checkbox" ${permissions.allowAudio ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowAudio', this.checked)">
-                                    <span class="slider"></span>
-                                </label>
-                            </div>
-                            <div>
-                                <span>发送图片:</span>
-                                <label class="switch">
-                                    <input type="checkbox" ${permissions.allowImage ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowImage', this.checked)">
-                                    <span class="slider"></span>
-                                </label>
-                            </div>
-                            <div>
-                                <span>发送文件:</span>
-                                <label class="switch">
-                                    <input type="checkbox" ${permissions.allowFile ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowFile', this.checked)">
-                                    <span class="slider"></span>
-                                </label>
-                            </div>
-                            <div>
-                                <span>发送消息:</span>
-                                <label class="switch">
-                                    <input type="checkbox" ${permissions.allowSendMessages ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowSendMessages', this.checked)">
-                                    <span class="slider"></span>
-                                </label>
-                            </div>
-                            <div>
-                                <span>查看消息:</span>
-                                <label class="switch">
-                                    <input type="checkbox" ${permissions.allowViewMessages ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowViewMessages', this.checked)">
-                                    <span class="slider"></span>
-                                </label>
-                            </div>
-                            <div>
-                                <span>通话:</span>
-                                <label class="switch">
-                                    <input type="checkbox" ${permissions.allowCall ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowCall', this.checked)">
-                                    <span class="slider"></span>
-                                </label>
-                            </div>
-                            <div>
-                                <span>添加好友:</span>
-                                <label class="switch">
-                                    <input type="checkbox" ${permissions.allowAddFriends ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowAddFriends', this.checked)">
-                                    <span class="slider"></span>
-                                </label>
-                            </div>
-                            <div>
-                                <span>查看用户列表:</span>
-                                <label class="switch">
-                                    <input type="checkbox" ${permissions.allowViewUsers ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowViewUsers', this.checked)">
-                                    <span class="slider"></span>
-                                </label>
-                            </div>
-                            <div>
-                                <span>允许私聊:</span>
-                                <label class="switch">
-                                    <input type="checkbox" ${permissions.allowPrivateChat ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowPrivateChat', this.checked)">
-                                    <span class="slider"></span>
-                                </label>
-                            </div>
-                            <div>
-                                <span>允许打开好友页面:</span>
-                                <label class="switch">
-                                    <input type="checkbox" ${permissions.allowOpenFriendsPage ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowOpenFriendsPage', this.checked)">
-                                    <span class="slider"></span>
-                                </label>
-                            </div>
-                            <div>
-                                <span>允许撤回消息:</span>
-                                <label class="switch">
-                                    <input type="checkbox" ${permissions.allowRecallMessage ? 'checked' : ''} onchange="changeUserPermissions('${socketId}', 'allowRecallMessage', this.checked)">
-                                    <span class="slider"></span>
-                                </label>
+                        <div class="permissions-container">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div>
+                                    <span>发送语音:</span>
+                                    <span style="margin-left: 10px; color: ${parsedPermissions.allowAudio ? '#28a745' : '#dc3545'}">${parsedPermissions.allowAudio ? '允许' : '禁止'}</span>
+                                </div>
+                                <div>
+                                    <span>发送图片:</span>
+                                    <span style="margin-left: 10px; color: ${parsedPermissions.allowImage ? '#28a745' : '#dc3545'}">${parsedPermissions.allowImage ? '允许' : '禁止'}</span>
+                                </div>
+                                <div>
+                                    <span>发送文件:</span>
+                                    <span style="margin-left: 10px; color: ${parsedPermissions.allowFile ? '#28a745' : '#dc3545'}">${parsedPermissions.allowFile ? '允许' : '禁止'}</span>
+                                </div>
+                                <div>
+                                    <span>发送消息:</span>
+                                    <span style="margin-left: 10px; color: ${parsedPermissions.allowSendMessages ? '#28a745' : '#dc3545'}">${parsedPermissions.allowSendMessages ? '允许' : '禁止'}</span>
+                                </div>
+                                <div>
+                                    <span>查看消息:</span>
+                                    <span style="margin-left: 10px; color: ${parsedPermissions.allowViewMessages ? '#28a745' : '#dc3545'}">${parsedPermissions.allowViewMessages ? '允许' : '禁止'}</span>
+                                </div>
+                                <div>
+                                    <span>通话:</span>
+                                    <span style="margin-left: 10px; color: ${parsedPermissions.allowCall ? '#28a745' : '#dc3545'}">${parsedPermissions.allowCall ? '允许' : '禁止'}</span>
+                                </div>
+                                <div>
+                                    <span>添加好友:</span>
+                                    <span style="margin-left: 10px; color: ${parsedPermissions.allowAddFriends ? '#28a745' : '#dc3545'}">${parsedPermissions.allowAddFriends ? '允许' : '禁止'}</span>
+                                </div>
+                                <div>
+                                    <span>查看用户列表:</span>
+                                    <span style="margin-left: 10px; color: ${parsedPermissions.allowViewUsers ? '#28a745' : '#dc3545'}">${parsedPermissions.allowViewUsers ? '允许' : '禁止'}</span>
+                                </div>
+                                <div>
+                                    <span>允许私聊:</span>
+                                    <span style="margin-left: 10px; color: ${parsedPermissions.allowPrivateChat ? '#28a745' : '#dc3545'}">${parsedPermissions.allowPrivateChat ? '允许' : '禁止'}</span>
+                                </div>
+                                <div>
+                                    <span>允许打开好友页面:</span>
+                                    <span style="margin-left: 10px; color: ${parsedPermissions.allowOpenFriendsPage ? '#28a745' : '#dc3545'}">${parsedPermissions.allowOpenFriendsPage ? '允许' : '禁止'}</span>
+                                </div>
+                                <div>
+                                    <span>允许撤回消息:</span>
+                                    <span style="margin-left: 10px; color: ${parsedPermissions.allowRecallMessage ? '#28a745' : '#dc3545'}">${parsedPermissions.allowRecallMessage ? '允许' : '禁止'}</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -3694,12 +3710,82 @@
             `;
             
             userDetailModal.classList.add('active');
+            
+            // 定义更新权限显示的函数
+            function updatePermissionsDisplay() {
+                // 从allUsers数组中获取最新的用户数据
+                const latestUser = allUsers.find(user => user.socketId === socketId);
+                if (latestUser) {
+                    const permissionsContainer = userDetailContent.querySelector('.permissions-container');
+                    if (permissionsContainer) {
+                        // 更新权限显示
+                        permissionsContainer.innerHTML = `
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                <div>
+                                    <span>发送语音:</span>
+                                    <span style="margin-left: 10px; color: ${latestUser.permissions.allowAudio ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowAudio ? '允许' : '禁止'}</span>
+                                </div>
+                                <div>
+                                    <span>发送图片:</span>
+                                    <span style="margin-left: 10px; color: ${latestUser.permissions.allowImage ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowImage ? '允许' : '禁止'}</span>
+                                </div>
+                                <div>
+                                    <span>发送文件:</span>
+                                    <span style="margin-left: 10px; color: ${latestUser.permissions.allowFile ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowFile ? '允许' : '禁止'}</span>
+                                </div>
+                                <div>
+                                    <span>发送消息:</span>
+                                    <span style="margin-left: 10px; color: ${latestUser.permissions.allowSendMessages ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowSendMessages ? '允许' : '禁止'}</span>
+                                </div>
+                                <div>
+                                    <span>查看消息:</span>
+                                    <span style="margin-left: 10px; color: ${latestUser.permissions.allowViewMessages ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowViewMessages ? '允许' : '禁止'}</span>
+                                </div>
+                                <div>
+                                    <span>通话:</span>
+                                    <span style="margin-left: 10px; color: ${latestUser.permissions.allowCall ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowCall ? '允许' : '禁止'}</span>
+                                </div>
+                                <div>
+                                    <span>添加好友:</span>
+                                    <span style="margin-left: 10px; color: ${latestUser.permissions.allowAddFriends ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowAddFriends ? '允许' : '禁止'}</span>
+                                </div>
+                                <div>
+                                    <span>查看用户列表:</span>
+                                    <span style="margin-left: 10px; color: ${latestUser.permissions.allowViewUsers ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowViewUsers ? '允许' : '禁止'}</span>
+                                </div>
+                                <div>
+                                    <span>允许私聊:</span>
+                                    <span style="margin-left: 10px; color: ${latestUser.permissions.allowPrivateChat ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowPrivateChat ? '允许' : '禁止'}</span>
+                                </div>
+                                <div>
+                                    <span>允许打开好友页面:</span>
+                                    <span style="margin-left: 10px; color: ${latestUser.permissions.allowOpenFriendsPage ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowOpenFriendsPage ? '允许' : '禁止'}</span>
+                                </div>
+                                <div>
+                                    <span>允许撤回消息:</span>
+                                    <span style="margin-left: 10px; color: ${latestUser.permissions.allowRecallMessage ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowRecallMessage ? '允许' : '禁止'}</span>
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+            }
+            
+            // 启动每2秒更新权限的定时器
+            userDetailUpdateInterval = setInterval(updatePermissionsDisplay, 2000);
         }
         
         // 关闭用户详情模态框
         function closeUserDetailModal() {
             userDetailModal.classList.remove('active');
             usersModal.classList.add('active');
+            
+            // 清除定时器
+            if (userDetailUpdateInterval) {
+                clearInterval(userDetailUpdateInterval);
+                userDetailUpdateInterval = null;
+            }
+            // 不需要设置currentDetailSocketId，因为不再使用该变量
         }
         
         // Socket事件处理（旧通话功能，已被新功能替代）
@@ -4144,6 +4230,7 @@
         async function startVideoCallWithDevice(targetSocketId, targetUsername, deviceId) {
             if (!userPermissions.allowCall) {
                 alert('您没有通话权限');
+                endCall();
                 return;
             }
             
@@ -4191,6 +4278,7 @@
         async function startAudioCallWithDevice(targetSocketId, targetUsername, deviceId) {
             if (!userPermissions.allowCall) {
                 alert('您没有通话权限');
+                endCall();
                 return;
             }
             
