@@ -2512,16 +2512,38 @@
             const searchTerm = e.target.value.trim().toLowerCase();
             currentSearchTerm = searchTerm;
             
-            if (searchTerm === '') {
-                updateUserList(allUsers);
+            let displayUsers = allUsers;
+            
+            if (searchTerm !== '') {
+                displayUsers = allUsers.filter(user => 
+                    user.username.toLowerCase().includes(searchTerm)
+                );
+            }
+            
+            // 直接更新用户列表显示，不调用updateUserList，避免覆盖allUsers
+            usersListDiv.innerHTML = '';
+            
+            if (displayUsers.length === 0) {
+                usersListDiv.innerHTML = '<div style="text-align: center; color: #999; padding: 20px;">暂无在线用户</div>';
                 return;
             }
             
-            const filteredUsers = allUsers.filter(user => 
-                user.username.toLowerCase().includes(searchTerm)
-            );
-            
-            updateUserList(filteredUsers);
+            displayUsers.forEach(user => {
+                const status = user.status || 'online'; // 默认在线
+                const userDiv = document.createElement('div');
+                userDiv.className = 'user-item';
+                userDiv.onclick = () => {
+                    showUserDetail(user.socketId, user.username, user.color, JSON.stringify(user.permissions).replace(/"/g, '&quot;'));
+                };
+                
+                userDiv.innerHTML = `
+                    <div class="status-indicator status-${status}"></div>
+                    <div class="user-color" style="background: ${user.color}"></div>
+                    <div class="user-name">${escapeHtml(user.username)}</div>
+                `;
+                
+                usersListDiv.appendChild(userDiv);
+            });
         });
         
         // 用户列表功能
@@ -3058,7 +3080,8 @@
         }
 
         function updateUserList(users) {
-            // 只更新搜索结果，不更新allUsers，allUsers始终保存完整的用户列表
+            // 保存完整的用户列表到allUsers，只在从服务器获取完整用户列表时更新
+            allUsers = users;
             searchResults = users;
             usersListDiv.innerHTML = '';
             
