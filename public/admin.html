@@ -614,6 +614,88 @@
             background: #555;
         }
 
+        .requests-container {
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 10px;
+            background: white;
+            margin-top: 15px;
+        }
+
+        .requests-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .requests-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        .requests-container::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        .requests-container::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        .request-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 15px;
+            border-bottom: 1px solid #dee2e6;
+            background: white;
+        }
+
+        .request-item:last-child {
+            border-bottom: none;
+        }
+
+        .request-info {
+            flex: 1;
+        }
+
+        .request-info h4 {
+            margin: 0 0 8px 0;
+            color: #333;
+        }
+
+        .request-reason {
+            margin: 0 0 10px 0;
+            color: #666;
+        }
+
+        .request-meta {
+            display: flex;
+            gap: 15px;
+            font-size: 12px;
+            color: #999;
+        }
+
+        .request-actions {
+            display: flex;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
+        .status-pending {
+            color: #ffc107;
+            font-weight: bold;
+        }
+
+        .status-approved {
+            color: #28a745;
+            font-weight: bold;
+        }
+
+        .status-rejected {
+            color: #dc3545;
+            font-weight: bold;
+        }
+
         .path-bar {
             display: flex;
             align-items: center;
@@ -828,6 +910,7 @@
                 <button class="tab" onclick="switchTab('rooms')">房间管理</button>
                 <button class="tab" onclick="switchTab('roomDetails')">房间详细</button>
                 <button class="tab" onclick="switchTab('friends')">好友管理</button>
+                <button class="tab" onclick="switchTab('requests')">申请管理</button>
                 <button class="tab" onclick="switchTab('globalSettings')">全体设置</button>
             </div>
 
@@ -1001,6 +1084,19 @@
                 </div>
             </div>
             
+            <div class="tab-content" id="requestsTab">
+                <div class="section">
+                    <h2>好友扩容申请</h2>
+                    <button class="btn btn-primary" onclick="loadFriendLimitRequests()">刷新申请列表</button>
+                    <div class="requests-container" id="friendLimitRequestsContainer">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📋</div>
+                            <div>暂无好友扩容申请</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="tab-content" id="globalSettingsTab">
                 <div class="section">
                     <h2>全体权限设置</h2>
@@ -1359,6 +1455,27 @@
             </form>
         </div>
     </div>
+
+    <div class="modal" id="setMaxFriendsModal">
+        <div class="modal-content">
+            <h3>设置好友数量上限</h3>
+            <form onsubmit="event.preventDefault(); saveMaxFriends();">
+                <div class="input-group">
+                    <label>用户名</label>
+                    <input type="text" id="setMaxFriendsUsername" readonly>
+                </div>
+                <div class="input-group">
+                    <label>好友数量上限</label>
+                    <input type="number" id="setMaxFriendsValue" placeholder="输入-1表示无限" min="-1" value="5">
+                    <small style="color: #666; display: block; margin-top: 5px;">输入-1表示无限好友数量</small>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeSetMaxFriendsModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
     
     <div class="modal" id="editRoomModal">
         <div class="modal-content">
@@ -1473,6 +1590,12 @@
         const disguiseColor = document.getElementById('disguiseColor');
         const usersModal = document.getElementById('usersModal');
         let selectedPermissionsSocketId = null;
+        
+        // 设置好友上限相关元素
+        const setMaxFriendsModal = document.getElementById('setMaxFriendsModal');
+        const setMaxFriendsUsername = document.getElementById('setMaxFriendsUsername');
+        const setMaxFriendsValue = document.getElementById('setMaxFriendsValue');
+        let selectedMaxFriendsSocketId = null;
         
         // 房间管理相关元素
         const roomName = document.getElementById('roomName');
@@ -2129,6 +2252,7 @@
                         <button class="btn btn-rename" onclick="openRenameModal('${user.socketId}')">重命名</button>
                         <button class="btn btn-kick" onclick="kickUser('${user.socketId}')">踢出</button>
                         <button class="btn btn-permissions" onclick="openPermissionsModal('${user.socketId}')">权限</button>
+                        <button class="btn btn-primary" onclick="openSetMaxFriendsModal('${user.socketId}', '${escapeHtml(user.username)}')">好友上限</button>
                     </div>
                 </div>
             `).join('');
@@ -2170,6 +2294,30 @@
         
         function closeUsersModal() {
             usersModal.classList.remove('active');
+        }
+
+        // 设置好友上限相关函数
+        function openSetMaxFriendsModal(socketId, username) {
+            selectedMaxFriendsSocketId = socketId;
+            setMaxFriendsUsername.value = username;
+            setMaxFriendsValue.value = '5'; // 默认值
+            setMaxFriendsModal.classList.add('active');
+        }
+
+        function closeSetMaxFriendsModal() {
+            setMaxFriendsModal.classList.remove('active');
+            selectedMaxFriendsSocketId = null;
+        }
+
+        function saveMaxFriends() {
+            const maxFriends = parseInt(setMaxFriendsValue.value);
+            if (selectedMaxFriendsSocketId && !isNaN(maxFriends)) {
+                socket.emit('admin-set-user-max-friends', {
+                    userId: selectedMaxFriendsSocketId,
+                    maxFriends: maxFriends
+                });
+                closeSetMaxFriendsModal();
+            }
         }
 
         function sendDisguisedMessage() {
@@ -2413,6 +2561,76 @@
                 });
             }
         }
+
+        // 好友扩容申请相关函数
+        function loadFriendLimitRequests() {
+            socket.emit('admin-get-friend-limit-requests');
+        }
+
+        function displayFriendLimitRequests(requests) {
+            const container = document.getElementById('friendLimitRequestsContainer');
+            
+            if (requests.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📋</div>
+                        <div>暂无好友扩容申请</div>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = requests.map(request => `
+                <div class="request-item">
+                    <div class="request-info">
+                        <h4>${request.username}</h4>
+                        <p class="request-reason">${request.reason}</p>
+                        <div class="request-meta">
+                            <span>申请时间: ${new Date(request.createdAt).toLocaleString()}</span>
+                            <span>状态: <span class="status-${request.status}">${request.status === 'pending' ? '待处理' : request.status === 'approved' ? '已批准' : '已拒绝'}</span></span>
+                        </div>
+                    </div>
+                    ${request.status === 'pending' ? `
+                        <div class="request-actions">
+                            <button class="btn btn-success" onclick="approveFriendLimitRequest(${request.id})">批准</button>
+                            <button class="btn btn-danger" onclick="rejectFriendLimitRequest(${request.id})">拒绝</button>
+                        </div>` : ''}
+                </div>
+            `).join('');
+        }
+
+        function approveFriendLimitRequest(requestId) {
+            const newLimit = prompt('请输入新的好友数量上限（输入-1表示无限）:', '10');
+            const limit = parseInt(newLimit);
+            if (newLimit !== null && !isNaN(limit)) {
+                socket.emit('admin-approve-friend-limit-request', {
+                    requestId: requestId,
+                    newLimit: limit
+                });
+            }
+        }
+
+        function rejectFriendLimitRequest(requestId) {
+            const reason = prompt('请输入拒绝理由（可选）:');
+            socket.emit('admin-reject-friend-limit-request', {
+                requestId: requestId,
+                reason: reason
+            });
+        }
+
+        // 监听新的好友扩容申请
+        socket.on('new-friend-limit-request', (request) => {
+            loadFriendLimitRequests();
+        });
+
+        // 监听好友扩容申请列表
+        socket.on('admin-friend-limit-requests', (requests) => {
+            displayFriendLimitRequests(requests);
+        });
+
+        // 监听好友扩容申请状态更新
+        socket.on('admin-friend-limit-request-updated', (request) => {
+            loadFriendLimitRequests();
+        });
 
         function clearMessages() {
             if (confirm('确定要清空所有消息吗？此操作不可恢复！')) {
