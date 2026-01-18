@@ -20,8 +20,8 @@ app.use((req, res, next) => {
     next();
 });
 app.use(express.static(path.join(__dirname, 'public')));
-app.use(express.json());
-app.use(express.raw({ type: ['image/*', 'audio/*'], limit: '10mb' }));
+app.use(express.json({ limit: '30mb' }));
+app.use(express.raw({ type: ['image/*', 'audio/*'], limit: '30mb' }));
 
 // 确保 uploads 目录存在
 if (!fs.existsSync(path.join(__dirname, 'uploads'))) {
@@ -292,6 +292,15 @@ const rooms = new Map();
 const friendships = new Map(); // 存储好友关系: Map<socketId, Set<friendSocketId>>
 const privateMessages = new Map(); // 存储私聊消息: Map<chatId, Array<message>>
 
+// 好友数量限制系统
+const userMaxFriends = new Map(); // 存储用户的好友数量上限: Map<socketId, number>
+const friendLimitRequests = new Map(); // 存储好友扩容申请: Map<requestId, request>
+let requestIdCounter = 1; // 申请ID计数器
+
+// 默认好友数量上限
+const DEFAULT_MAX_FRIENDS = 5;
+const INFINITE_FRIENDS = -1; // 无限好友数量
+
 // @功能开关
 let allowMentions = true; // 默认开启@功能
 
@@ -302,7 +311,7 @@ let defaultPermissions = {
     allowFile: true,
     allowSendMessages: true,
     allowViewMessages: true,
-    allowCall: true,
+    allowCall: false, // 默认禁用通话功能，需要管理员同意
     allowAddFriends: true,
     allowViewUsers: true,
     allowPrivateChat: true,
@@ -818,6 +827,91 @@ io.on('connection', (socket) => {
         }
     });
     
+    // 管理员获取好友扩容申请列表
+    socket.on('admin-get-friend-limit-requests', () => {
+        if (socket.id === adminSocketId) {
+            const requests = Array.from(friendLimitRequests.values());
+            socket.emit('admin-friend-limit-requests', requests);
+        }
+    });
+
+    // 管理员批准好友扩容申请
+    socket.on('admin-approve-friend-limit-request', (data) => {
+        if (socket.id === adminSocketId) {
+            const { requestId, newLimit } = data;
+            const request = friendLimitRequests.get(requestId);
+            
+            if (request) {
+                // 更新申请状态
+                request.status = 'approved';
+                request.newLimit = newLimit;
+                request.updatedAt = new Date();
+                friendLimitRequests.set(requestId, request);
+                
+                // 设置用户的好友数量上限
+                userMaxFriends.set(request.userId, newLimit);
+                
+                // 通知用户申请已批准
+                if (users.has(request.userId)) {
+                    io.to(request.userId).emit('friend-limit-request-approved', {
+                        message: `好友扩容申请已批准，好友数量上限已升级至${newLimit === INFINITE_FRIENDS ? '无限' : newLimit}个`,
+                        newLimit: newLimit
+                    });
+                }
+                
+                // 通知管理员申请已处理
+                socket.emit('admin-friend-limit-request-updated', request);
+            }
+        }
+    });
+
+    // 管理员拒绝好友扩容申请
+    socket.on('admin-reject-friend-limit-request', (data) => {
+        if (socket.id === adminSocketId) {
+            const { requestId, reason } = data;
+            const request = friendLimitRequests.get(requestId);
+            
+            if (request) {
+                // 更新申请状态
+                request.status = 'rejected';
+                request.updatedAt = new Date();
+                request.rejectReason = reason;
+                friendLimitRequests.set(requestId, request);
+                
+                // 通知用户申请已拒绝
+                if (users.has(request.userId)) {
+                    io.to(request.userId).emit('friend-limit-request-rejected', {
+                        message: '好友扩容申请已拒绝' + (reason ? `，理由：${reason}` : '')
+                    });
+                }
+                
+                // 通知管理员申请已处理
+                socket.emit('admin-friend-limit-request-updated', request);
+            }
+        }
+    });
+
+    // 管理员直接设置用户好友数量上限
+    socket.on('admin-set-user-max-friends', (data) => {
+        if (socket.id === adminSocketId) {
+            const { userId, maxFriends } = data;
+            
+            // 设置用户的好友数量上限
+            userMaxFriends.set(userId, maxFriends);
+            
+            // 通知用户好友数量上限已更新
+            if (users.has(userId)) {
+                io.to(userId).emit('max-friends-updated', {
+                    message: `管理员已将您的好友数量上限调整为${maxFriends === INFINITE_FRIENDS ? '无限' : maxFriends}个`,
+                    maxFriends: maxFriends
+                });
+            }
+            
+            // 通知管理员操作成功
+            socket.emit('admin-set-max-friends-success', { userId, maxFriends });
+        }
+    });
+
     socket.on('admin-get-friends', () => {
         if (socket.id === adminSocketId) {
             console.log('管理员请求获取好友列表');
@@ -1232,7 +1326,7 @@ io.on('connection', (socket) => {
     socket.on('call-accept', (data) => {
         const user = users.get(socket.id);
         if (user && user.permissions.allowCall) {
-            io.to(data.callerSocketId).emit('call-accepted', {
+            io.to(data.targetSocketId).emit('call-accepted', {
                 from: socket.id,
                 fromUsername: user.username,
                 callId: data.callId
@@ -1246,7 +1340,7 @@ io.on('connection', (socket) => {
     socket.on('call-reject', (data) => {
         const user = users.get(socket.id);
         if (user && user.permissions.allowCall) {
-            io.to(data.callerSocketId).emit('call-rejected', {
+            io.to(data.targetSocketId).emit('call-rejected', {
                 from: socket.id,
                 fromUsername: user.username,
                 callId: data.callId
@@ -1263,6 +1357,21 @@ io.on('connection', (socket) => {
                 callId: data.callId
             });
             console.log(`${user.username} 结束了通话`);
+        }
+    });
+
+    // WebRTC信令转发
+    socket.on('webrtc-signal', (data) => {
+        const user = users.get(socket.id);
+        if (user && user.permissions.allowCall) {
+            io.to(data.targetSocketId).emit('webrtc-signal', {
+                from: socket.id,
+                type: data.type,
+                callId: data.callId,
+                offer: data.offer,
+                answer: data.answer,
+                candidate: data.candidate
+            });
         }
     });
 
@@ -1307,6 +1416,33 @@ io.on('connection', (socket) => {
     // 好友系统功能
     
     // 添加好友
+    socket.on('friend-limit-request', (reason) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+        
+        // 创建申请
+        const request = {
+            id: requestIdCounter++,
+            userId: socket.id,
+            username: user.username,
+            reason: reason,
+            status: 'pending',
+            createdAt: new Date(),
+            updatedAt: new Date()
+        };
+        
+        // 存储申请
+        friendLimitRequests.set(request.id, request);
+        
+        // 通知管理员
+        if (adminSocketId) {
+            io.to(adminSocketId).emit('new-friend-limit-request', request);
+        }
+        
+        // 通知用户申请已提交
+        socket.emit('friend-limit-request-submitted', { message: '好友扩容申请已提交，请等待管理员批准' });
+    });
+
     socket.on('add-friend', (targetSocketId) => {
         const user = users.get(socket.id);
         const targetUser = users.get(targetSocketId);
@@ -1331,6 +1467,25 @@ io.on('connection', (socket) => {
             return;
         }
         
+        // 检查好友数量限制
+        // 计算已确认的双向好友数量
+        let confirmedFriends = 0;
+        if (friendships.has(socket.id)) {
+            friendships.get(socket.id).forEach(friendSocketId => {
+                // 检查对方是否也将当前用户添加为好友（双向关系）
+                if (friendships.has(friendSocketId) && friendships.get(friendSocketId).has(socket.id)) {
+                    confirmedFriends++;
+                }
+            });
+        }
+        
+        // 获取用户的好友数量上限
+        const maxFriends = userMaxFriends.get(socket.id) || DEFAULT_MAX_FRIENDS;
+        if (maxFriends !== INFINITE_FRIENDS && confirmedFriends >= maxFriends) {
+            socket.emit('friend-error', { message: `好友数量已达上限（${maxFriends}个），需要管理员同意才能添加更多好友` });
+            return;
+        }
+        
         // 添加好友关系
         friendships.get(socket.id).add(targetSocketId);
         
@@ -1342,6 +1497,85 @@ io.on('connection', (socket) => {
         });
         
         console.log(`${user.username} 请求添加 ${targetUser.username} 为好友`);
+    });
+
+    // 快速添加好友（直接成为好友，跳过请求）
+    socket.on('quick-add-friend', (targetSocketId) => {
+        const user = users.get(socket.id);
+        const targetUser = users.get(targetSocketId);
+        
+        if (!user || !targetUser) {
+            socket.emit('friend-error', { message: '用户不存在' });
+            return;
+        }
+        
+        // 检查添加好友权限
+        if (!user.permissions.allowAddFriends) {
+            socket.emit('friend-error', { message: '您没有添加好友的权限' });
+            return;
+        }
+        
+        // 检查是否已经是好友
+        if (!friendships.has(socket.id)) {
+            friendships.set(socket.id, new Set());
+        }
+        if (!friendships.has(targetSocketId)) {
+            friendships.set(targetSocketId, new Set());
+        }
+        
+        if (friendships.get(socket.id).has(targetSocketId)) {
+            socket.emit('friend-error', { message: '已经是好友了' });
+            return;
+        }
+        
+        // 检查当前用户的好友数量限制
+        let userConfirmedFriends = 0;
+        friendships.get(socket.id).forEach(friendSocketId => {
+            if (friendships.has(friendSocketId) && friendships.get(friendSocketId).has(socket.id)) {
+                userConfirmedFriends++;
+            }
+        });
+        
+        // 获取用户的好友数量上限
+        const userMaxFriendsValue = userMaxFriends.get(socket.id) || DEFAULT_MAX_FRIENDS;
+        if (userMaxFriendsValue !== INFINITE_FRIENDS && userConfirmedFriends >= userMaxFriendsValue) {
+            socket.emit('friend-error', { message: `好友数量已达上限（${userMaxFriendsValue}个），需要管理员同意才能添加更多好友` });
+            return;
+        }
+        
+        // 检查目标用户的好友数量限制
+        let targetConfirmedFriends = 0;
+        friendships.get(targetSocketId).forEach(friendSocketId => {
+            if (friendships.has(friendSocketId) && friendships.get(friendSocketId).has(targetSocketId)) {
+                targetConfirmedFriends++;
+            }
+        });
+        
+        // 获取目标用户的好友数量上限
+        const targetMaxFriendsValue = userMaxFriends.get(targetSocketId) || DEFAULT_MAX_FRIENDS;
+        if (targetMaxFriendsValue !== INFINITE_FRIENDS && targetConfirmedFriends >= targetMaxFriendsValue) {
+            socket.emit('friend-error', { message: `对方好友数量已达上限（${targetMaxFriendsValue}个）` });
+            return;
+        }
+        
+        // 直接添加双向好友关系
+        friendships.get(socket.id).add(targetSocketId);
+        friendships.get(targetSocketId).add(socket.id);
+        
+        // 通知双方
+        io.to(socket.id).emit('friend-accepted', {
+            friendSocketId: targetSocketId,
+            friendUsername: targetUser.username,
+            friendColor: targetUser.color
+        });
+        
+        io.to(targetSocketId).emit('friend-accepted', {
+            friendSocketId: socket.id,
+            friendUsername: user.username,
+            friendColor: user.color
+        });
+        
+        console.log(`${user.username} 和 ${targetUser.username} 直接成为好友`);
     });
     
     // 接受好友请求
