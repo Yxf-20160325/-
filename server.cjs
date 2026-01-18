@@ -1447,6 +1447,12 @@ io.on('connection', (socket) => {
         const user = users.get(socket.id);
         const targetUser = users.get(targetSocketId);
         
+        // 不允许添加自己为好友
+        if (socket.id === targetSocketId) {
+            socket.emit('friend-error', { message: '不能添加自己为好友' });
+            return;
+        }
+        
         if (!user || !targetUser) {
             socket.emit('friend-error', { message: '用户不存在' });
             return;
@@ -1503,6 +1509,12 @@ io.on('connection', (socket) => {
     socket.on('quick-add-friend', (targetSocketId) => {
         const user = users.get(socket.id);
         const targetUser = users.get(targetSocketId);
+        
+        // 不允许添加自己为好友
+        if (socket.id === targetSocketId) {
+            socket.emit('friend-error', { message: '不能添加自己为好友' });
+            return;
+        }
         
         if (!user || !targetUser) {
             socket.emit('friend-error', { message: '用户不存在' });
