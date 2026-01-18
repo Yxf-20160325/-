@@ -3058,7 +3058,7 @@
         }
 
         function updateUserList(users) {
-            allUsers = users;
+            // 只更新搜索结果，不更新allUsers，allUsers始终保存完整的用户列表
             searchResults = users;
             usersListDiv.innerHTML = '';
             
