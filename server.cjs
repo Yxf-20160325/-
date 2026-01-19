@@ -250,23 +250,45 @@ app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.ht
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 
 // 房间访问路由
-app.get('/:roomName', (req, res) => {
+app.get('/:roomName', (req, res, next) => {
     const roomName = req.params.roomName;
-    // 检查房间是否存在
-    if (rooms.has(roomName) || roomName === 'admin') {
-        if (roomName === 'admin') {
-            res.sendFile(path.join(__dirname, 'public', 'admin.html'));
-        } else {
-            res.sendFile(path.join(__dirname, 'public', 'index.html'));
-        }
+    if (roomName === 'admin') {
+        res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+    } else if (rooms.has(roomName)) {
+        // 只有当房间存在时才返回index.html
+        res.sendFile(path.join(__dirname, 'public', 'index.html'));
     } else {
-        // 如果房间不存在，重定向到首页
-        res.redirect('/');
+        // 如果房间不存在，调用next()让请求继续向下匹配到404中间件
+        next();
     }
 });
 
 let ADMIN_PASSWORD = 'admin123';
 let adminSocketId = null;
+
+// 将所有非admin请求解析到404页面 - 注意：这个中间件必须放在所有其他路由之后
+app.use((req, res, next) => {
+    // 检查404功能是否启用
+    if (!enable404Redirect) {
+        next();
+        return;
+    }
+    
+    // 直接返回404页面给所有非根路径、非admin路径和非静态资源路径
+    if (req.url !== '/' && 
+        !req.url.startsWith('/admin') && 
+        !req.url.startsWith('/socket.io/') && 
+        !req.url.startsWith('/public/') && 
+        !req.url.startsWith('/uploads/') && 
+        !req.url.startsWith('/api/') && 
+        !req.url.startsWith('/upload-image') && 
+        !req.url.startsWith('/upload-audio')) {
+        // 返回404页面
+        res.status(404).send('404 Not Found');
+    } else {
+        next();
+    }
+});
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -303,6 +325,27 @@ const INFINITE_FRIENDS = -1; // 无限好友数量
 
 // @功能开关
 let allowMentions = true; // 默认开启@功能
+
+// 脏话屏蔽系统
+const BAD_WORDS = [
+    '傻逼', '操你妈', '草泥马', '滚蛋', '去死', '垃圾', '废物', '杂种',
+    'sb', 'cnm', 'fuck', 'shit', 'damn', 'bitch', 'asshole', 'dick'
+];
+
+// 禁言系统数据结构
+const mutedUsers = new Map(); // 存储被禁言用户: Map<socketId, { endTime: number, reason: string }>
+const badWordCount = new Map(); // 存储用户脏话计数: Map<socketId, number>
+
+// 禁言时间常量
+const TEMP_MUTE_TIME = 5 * 60 * 1000; // 5分钟
+const PERMANENT_MUTE = -1; // 永久禁言
+
+// 禁言数量阈值
+const BAD_WORD_WARNING_THRESHOLD = 5; // 5次脏话警告并禁言5分钟
+const BAD_WORD_PERMANENT_THRESHOLD = 25; // 25次脏话永久禁言
+
+// 404重定向功能控制
+let enable404Redirect = true; // 默认启用404重定向
 
 // 默认权限
 let defaultPermissions = {
@@ -468,6 +511,23 @@ io.on('connection', (socket) => {
                 };
             }
             
+            // 禁言检查
+            const mutedInfo = mutedUsers.get(socket.id);
+            if (mutedInfo) {
+                if (mutedInfo.endTime === PERMANENT_MUTE) {
+                    socket.emit('permission-denied', { message: `您已被永久禁言，原因: ${mutedInfo.reason}` });
+                    return;
+                } else if (Date.now() < mutedInfo.endTime) {
+                    const remainingTime = Math.ceil((mutedInfo.endTime - Date.now()) / 1000 / 60);
+                    socket.emit('permission-denied', { message: `您已被禁言，剩余时间: ${remainingTime}分钟，原因: ${mutedInfo.reason}` });
+                    return;
+                } else {
+                    // 禁言时间已过，解除禁言
+                    mutedUsers.delete(socket.id);
+                    socket.emit('system-message', { message: '您的禁言时间已过，现在可以正常发言了' });
+                }
+            }
+            
             // 权限检查
             if (!user.permissions.allowSendMessages) {
                 socket.emit('permission-denied', { message: '您没有发送消息的权限' });
@@ -484,6 +544,57 @@ io.on('connection', (socket) => {
             if (data.type === 'file' && !user.permissions.allowFile) {
                 socket.emit('permission-denied', { message: '您没有发送文件的权限' });
                 return;
+            }
+            
+            // 脏话检测（仅针对文本消息）
+            if (data.type === 'text') {
+                let hasBadWords = false;
+                let cleanMessage = data.message;
+                
+                // 检测并替换脏话
+                BAD_WORDS.forEach(word => {
+                    const regex = new RegExp(word, 'gi');
+                    if (regex.test(cleanMessage)) {
+                        hasBadWords = true;
+                        cleanMessage = cleanMessage.replace(regex, '*'.repeat(word.length));
+                    }
+                });
+                
+                if (hasBadWords) {
+                    // 更新脏话计数
+                    const count = badWordCount.get(socket.id) || 0;
+                    const newCount = count + 1;
+                    badWordCount.set(socket.id, newCount);
+                    
+                    // 替换消息内容
+                    data.message = cleanMessage;
+                    
+                    // 发送警告给用户
+                    socket.emit('system-message', { message: `您的消息包含不当内容，已被过滤。脏话次数: ${newCount}/${BAD_WORD_WARNING_THRESHOLD}，达到阈值将被禁言` });
+                    
+                    // 检查是否达到禁言阈值
+                    if (newCount === BAD_WORD_WARNING_THRESHOLD) {
+                        // 禁言5分钟
+                        mutedUsers.set(socket.id, {
+                            endTime: Date.now() + TEMP_MUTE_TIME,
+                            reason: `累计发送${BAD_WORD_WARNING_THRESHOLD}次脏话`
+                        });
+                        // 重置脏话计数
+                        badWordCount.set(socket.id, 0);
+                        socket.emit('system-message', { message: `您已累计发送${BAD_WORD_WARNING_THRESHOLD}次脏话，被禁言5分钟，脏话次数已重置` });
+                        console.log(`[禁言] ${user.username} 累计发送${BAD_WORD_WARNING_THRESHOLD}次脏话，被禁言5分钟，脏话次数已重置`);
+                    } else if (newCount === BAD_WORD_PERMANENT_THRESHOLD) {
+                        // 永久禁言
+                        mutedUsers.set(socket.id, {
+                            endTime: PERMANENT_MUTE,
+                            reason: `累计发送${BAD_WORD_PERMANENT_THRESHOLD}次脏话`
+                        });
+                        // 重置脏话计数
+                        badWordCount.set(socket.id, 0);
+                        socket.emit('system-message', { message: `您已累计发送${BAD_WORD_PERMANENT_THRESHOLD}次脏话，被永久禁言，脏话次数已重置` });
+                        console.log(`[禁言] ${user.username} 累计发送${BAD_WORD_PERMANENT_THRESHOLD}次脏话，被永久禁言，脏话次数已重置`);
+                    }
+                }
             }
             
             const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
@@ -911,6 +1022,37 @@ io.on('connection', (socket) => {
             socket.emit('admin-set-max-friends-success', { userId, maxFriends });
         }
     });
+    
+    // 管理员控制404功能开关
+    socket.on('admin-toggle-404', (data) => {
+        if (socket.id === adminSocketId) {
+            const { enable } = data;
+            enable404Redirect = enable;
+            console.log(`管理员将404功能设置为 ${enable404Redirect ? '开启' : '关闭'}`);
+            // 通知管理员操作成功
+            socket.emit('admin-404-toggled', { enable: enable404Redirect });
+        }
+    });
+
+    // 处理管理员发送弹窗请求
+    socket.on('admin-popup', (data) => {
+        if (socket.id === adminSocketId) {
+            const { socketId, message } = data;
+            if (socketId && message) {
+                io.to(socketId).emit('popup-message', { message });
+            }
+        }
+    });
+
+    // 处理管理员更改页面标题请求
+    socket.on('admin-change-title', (data) => {
+        if (socket.id === adminSocketId) {
+            const { socketId, title } = data;
+            if (socketId && title) {
+                io.to(socketId).emit('change-title', { title });
+            }
+        }
+    });
 
     socket.on('admin-get-friends', () => {
         if (socket.id === adminSocketId) {
@@ -970,6 +1112,84 @@ io.on('connection', (socket) => {
             
             // 重新发送好友列表
             socket.emit('admin-get-friends');
+        }
+    });
+
+    // 禁言系统相关事件
+    socket.on('admin-get-muted-users', () => {
+        console.log('admin-get-muted-users called, adminSocketId:', adminSocketId);
+        console.log('Current socket id:', socket.id);
+        console.log('Is admin:', socket.id === adminSocketId);
+        console.log('Muted users count:', mutedUsers.size);
+        
+        if (socket.id === adminSocketId) {
+            const mutedUsersList = [];
+            
+            // 遍历所有被禁言用户
+            mutedUsers.forEach((muteInfo, socketId) => {
+                const user = users.get(socketId);
+                if (user) {
+                    mutedUsersList.push({
+                        socketId: socketId,
+                        username: user.username,
+                        color: user.color,
+                        endTime: muteInfo.endTime,
+                        reason: muteInfo.reason
+                    });
+                }
+            });
+            
+            console.log('Sending muted users list:', mutedUsersList);
+            // 发送禁言用户列表给管理员
+            io.to(adminSocketId).emit('admin-muted-users', mutedUsersList);
+        }
+    });
+
+    socket.on('admin-mute-user', (data) => {
+        if (socket.id === adminSocketId) {
+            const { socketId, duration, reason } = data;
+            const user = users.get(socketId);
+            
+            if (user) {
+                let endTime;
+                if (duration === -1) {
+                    // 永久禁言
+                    endTime = PERMANENT_MUTE;
+                    console.log(`[管理员禁言] ${user.username} 被永久禁言，原因: ${reason}`);
+                } else {
+                    // 临时禁言
+                    endTime = Date.now() + duration * 60 * 1000;
+                    console.log(`[管理员禁言] ${user.username} 被禁言 ${duration} 分钟，原因: ${reason}`);
+                }
+                
+                // 更新禁言信息
+                mutedUsers.set(socketId, {
+                    endTime: endTime,
+                    reason: reason
+                });
+                
+                // 发送禁言通知给用户
+                io.to(socketId).emit('system-message', {
+                    message: endTime === PERMANENT_MUTE ? `您已被管理员永久禁言，原因: ${reason}` : `您已被管理员禁言 ${duration} 分钟，原因: ${reason}`
+                });
+            }
+        }
+    });
+
+    socket.on('admin-unmute-user', (socketId) => {
+        if (socket.id === adminSocketId) {
+            const user = users.get(socketId);
+            if (user) {
+                // 解除禁言
+                mutedUsers.delete(socketId);
+                
+                // 发送解除禁言通知给用户
+                io.to(socketId).emit('system-message', {
+                    message: '您已被管理员解除禁言，可以正常发言了'
+                });
+                
+                console.log(`[管理员解除禁言] ${user.username} 被解除禁言`);
+            }
         }
     });
 
