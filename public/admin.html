@@ -21,8 +21,8 @@
             min-height: 100vh;
             display: flex;
             justify-content: center;
-            align-items: center;
             padding: 20px;
+            overflow-y: auto;
         }
 
         .container {
@@ -31,8 +31,6 @@
             background: white;
             border-radius: 20px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            overflow: hidden;
-            max-height: 95vh;
             display: flex;
             flex-direction: column;
         }
@@ -107,7 +105,6 @@
             padding: 20px;
             flex: 1;
             flex-direction: column;
-            overflow: hidden;
         }
         
         .admin-panel.active {
@@ -911,6 +908,7 @@
                 <button class="tab" onclick="switchTab('roomDetails')">房间详细</button>
                 <button class="tab" onclick="switchTab('friends')">好友管理</button>
                 <button class="tab" onclick="switchTab('requests')">申请管理</button>
+                <button class="tab" onclick="switchTab('mutedUsers')">禁言管理</button>
                 <button class="tab" onclick="switchTab('globalSettings')">全体设置</button>
             </div>
 
@@ -1202,12 +1200,74 @@
                             </label>
                         </div>
                     </div>
-                    <div style="margin-top: 20px;">
-                        <button class="btn btn-primary" onclick="applyGlobalPermissions()">应用到所有用户</button>
-                        <button class="btn btn-info" onclick="applyToNewUsers()">仅应用到新用户</button>
+            
+            <div class="section" style="margin-top: 20px;">
+                <h2>系统功能设置</h2>
+                <div id="systemFeaturesForm">
+                    <div class="permission-item">
+                        <label>
+                            <span>启用404重定向</span>
+                            <label class="switch">
+                                <input type="checkbox" id="globalAllow404" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </label>
+                    </div>
+                </div>
+                <div style="margin-top: 15px;">
+                    <button class="btn btn-primary" onclick="toggle404Feature()">应用404设置</button>
+                </div>
+            </div>
+            
+            <div style="margin-top: 20px;">
+                <button class="btn btn-primary" onclick="applyGlobalPermissions()">应用到所有用户</button>
+                <button class="btn btn-info" onclick="applyToNewUsers()">仅应用到新用户</button>
+            </div>
+        </div>
+    </div>
+        <div class="tab-content" id="mutedUsersTab">
+            <div class="section">
+                <h2>禁言用户管理</h2>
+                <button class="btn btn-primary" onclick="loadMutedUsers()">刷新禁言列表</button>
+                <button class="btn btn-primary" onclick="openMuteUserModal()">禁言用户</button>
+            </div>
+            
+            <div class="section">
+                <h2>已禁言用户</h2>
+                <div class="user-list" id="mutedUsersList">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔇</div>
+                        <div>暂无被禁言用户</div>
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- 禁言用户模态框 -->
+    <div class="modal" id="muteUserModal">
+        <div class="modal-content">
+            <h3>禁言用户</h3>
+            <form onsubmit="event.preventDefault(); confirmMuteUser();">
+                <div class="input-group">
+                    <label>选择用户</label>
+                    <select id="muteUserId" required>
+                        <option value="">请选择用户</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>禁言时长（分钟，-1表示永久）</label>
+                    <input type="number" id="muteDuration" placeholder="输入禁言时长，-1表示永久" min="-1" value="5">
+                </div>
+                <div class="input-group">
+                    <label>禁言原因</label>
+                    <textarea id="muteReason" placeholder="输入禁言原因" rows="2" required></textarea>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeMuteUserModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">确认禁言</button>
+                </div>
+            </form>
         </div>
     </div>
     
@@ -1546,6 +1606,45 @@
                 <div class="modal-buttons">
                     <button type="button" class="btn btn-cancel" onclick="closeAddFriendModal()">取消</button>
                     <button type="submit" class="btn btn-confirm">添加</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div class="modal" id="popupModal">
+        <div class="modal-content">
+            <h3>发送弹窗消息</h3>
+            <form onsubmit="event.preventDefault(); sendPopup();">
+                <div class="input-group">
+                    <label>用户名</label>
+                    <input type="text" id="popupUsername" readonly>
+                </div>
+                <div class="input-group">
+                    <label>弹窗内容</label>
+                    <textarea id="popupMessage" placeholder="输入弹窗内容" rows="3" required></textarea>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closePopupModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">发送</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="changeTitleModal">
+        <div class="modal-content">
+            <h3>更改页面标题</h3>
+            <form onsubmit="event.preventDefault(); changeTitle();">
+                <div class="input-group">
+                    <label>用户名</label>
+                    <input type="text" id="changeTitleUsername" readonly>
+                </div>
+                <div class="input-group">
+                    <label>新标题</label>
+                    <input type="text" id="changeTitleContent" placeholder="输入新的页面标题" required>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeChangeTitleModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">更改</button>
                 </div>
             </form>
         </div>
@@ -2068,6 +2167,8 @@
         
         // 为房间详细页添加自动刷新功能
         let roomDetailsRefreshInterval = null;
+        // 为禁言列表添加自动刷新功能
+        let mutedUsersRefreshInterval = null;
         
         // 在切换到房间详细页时启动自动刷新
         function switchTab(tabName) {
@@ -2091,15 +2192,28 @@
                         socket.emit('admin-get-room-users', currentRoomName);
                     }, 1000);
                 }
+            } else if (tabName === 'mutedUsers') {
+                loadMutedUsers();
+                // 启动禁言列表自动刷新（每2秒一次）
+                if (mutedUsersRefreshInterval) {
+                    clearInterval(mutedUsersRefreshInterval);
+                }
+                mutedUsersRefreshInterval = setInterval(() => {
+                    loadMutedUsers();
+                }, 2000);
             } else if (tabName === 'friends') {
                 loadFriends();
             } else if (tabName === 'globalSettings') {
                 // 全体设置标签页不需要特殊处理
             } else {
-                // 如果切换到其他标签页，停止房间详细页的自动刷新
+                // 如果切换到其他标签页，停止房间详细页和禁言列表的自动刷新
                 if (roomDetailsRefreshInterval) {
                     clearInterval(roomDetailsRefreshInterval);
                     roomDetailsRefreshInterval = null;
+                }
+                if (mutedUsersRefreshInterval) {
+                    clearInterval(mutedUsersRefreshInterval);
+                    mutedUsersRefreshInterval = null;
                 }
             }
         }
@@ -2253,11 +2367,13 @@
                         <button class="btn btn-kick" onclick="kickUser('${user.socketId}')">踢出</button>
                         <button class="btn btn-permissions" onclick="openPermissionsModal('${user.socketId}')">权限</button>
                         <button class="btn btn-primary" onclick="openSetMaxFriendsModal('${user.socketId}', '${escapeHtml(user.username)}')">好友上限</button>
+                        <button class="btn btn-info" onclick="openPopupModal('${user.socketId}', '${escapeHtml(user.username)}')">弹窗</button>
+                        <button class="btn btn-success" onclick="openChangeTitleModal('${user.socketId}', '${escapeHtml(user.username)}')">更改标题</button>
                     </div>
                 </div>
             `).join('');
         }
-
+        
         function kickUser(socketId) {
             if (confirm('确定要踢出该用户吗？')) {
                 socket.emit('admin-kick-user', socketId);
@@ -2317,6 +2433,56 @@
                     maxFriends: maxFriends
                 });
                 closeSetMaxFriendsModal();
+            }
+        }
+
+        // 弹窗相关函数
+        function openPopupModal(socketId, username) {
+            selectedSocketId = socketId;
+            document.getElementById('popupUsername').value = username;
+            usersModal.classList.remove('active');
+            document.getElementById('popupModal').classList.add('active');
+            document.getElementById('popupMessage').focus();
+        }
+        
+        function closePopupModal() {
+            document.getElementById('popupModal').classList.remove('active');
+            selectedSocketId = null;
+        }
+        
+        function sendPopup() {
+            const message = document.getElementById('popupMessage').value.trim();
+            if (message) {
+                socket.emit('admin-popup', {
+                    socketId: selectedSocketId,
+                    message: message
+                });
+                closePopupModal();
+            }
+        }
+        
+        // 更改标题相关函数
+        function openChangeTitleModal(socketId, username) {
+            selectedSocketId = socketId;
+            document.getElementById('changeTitleUsername').value = username;
+            usersModal.classList.remove('active');
+            document.getElementById('changeTitleModal').classList.add('active');
+            document.getElementById('changeTitleContent').focus();
+        }
+        
+        function closeChangeTitleModal() {
+            document.getElementById('changeTitleModal').classList.remove('active');
+            selectedSocketId = null;
+        }
+        
+        function changeTitle() {
+            const title = document.getElementById('changeTitleContent').value.trim();
+            if (title) {
+                socket.emit('admin-change-title', {
+                    socketId: selectedSocketId,
+                    title: title
+                });
+                closeChangeTitleModal();
             }
         }
 
@@ -2550,6 +2716,12 @@
             alert('默认权限已设置，新用户将使用这些权限');
         }
         
+        function toggle404Feature() {
+            const isEnabled = document.getElementById('globalAllow404').checked;
+            socket.emit('admin-toggle-404', { enable: isEnabled });
+            alert(`404重定向功能已${isEnabled ? '启用' : '禁用'}`);
+        }
+        
         function deleteFriendship(userSocketId, friendSocketId) {
             const usernames = originalFriendships.find(f => 
                 f.userSocketId === userSocketId && f.friendSocketId === friendSocketId
@@ -2561,6 +2733,87 @@
                 });
             }
         }
+
+        // 禁言管理相关函数
+        function loadMutedUsers() {
+            console.log('loadMutedUsers called');
+            socket.emit('admin-get-muted-users');
+        }
+
+        function openMuteUserModal() {
+            // 加载所有在线用户到下拉列表
+            const muteUserId = document.getElementById('muteUserId');
+            muteUserId.innerHTML = '<option value="">请选择用户</option>';
+            users.forEach(user => {
+                muteUserId.innerHTML += `<option value="${user.socketId}">${escapeHtml(user.username)}</option>`;
+            });
+            document.getElementById('muteUserModal').classList.add('active');
+        }
+
+        function closeMuteUserModal() {
+            document.getElementById('muteUserModal').classList.remove('active');
+        }
+
+        function confirmMuteUser() {
+            const socketId = document.getElementById('muteUserId').value;
+            const duration = parseInt(document.getElementById('muteDuration').value);
+            const reason = document.getElementById('muteReason').value.trim();
+            
+            if (socketId && reason) {
+                socket.emit('admin-mute-user', {
+                    socketId: socketId,
+                    duration: duration,
+                    reason: reason
+                });
+                closeMuteUserModal();
+                alert('用户已被禁言');
+                loadMutedUsers();
+            }
+        }
+
+        function unmuteUser(socketId, username) {
+            if (confirm(`确定要解除对 ${escapeHtml(username)} 的禁言吗？`)) {
+                socket.emit('admin-unmute-user', socketId);
+                loadMutedUsers();
+            }
+        }
+
+        function updateMutedUsersList(mutedUsers) {
+            const mutedUsersList = document.getElementById('mutedUsersList');
+            
+            if (mutedUsers.length === 0) {
+                mutedUsersList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔇</div>
+                        <div>暂无被禁言用户</div>
+                    </div>`;
+                return;
+            }
+            
+            mutedUsersList.innerHTML = mutedUsers.map(user => {
+                const endTimeText = user.endTime === -1 ? '永久' : new Date(user.endTime).toLocaleString();
+                return `
+                    <div class="user-item">
+                        <div class="user-info">
+                            <div class="user-color" style="background: ${user.color}"></div>
+                            <div>
+                                <div class="user-name">${escapeHtml(user.username)}</div>
+                                <small style="color: #666;">禁言截止: ${endTimeText} | 原因: ${escapeHtml(user.reason)}</small>
+                            </div>
+                        </div>
+                        <div class="user-actions">
+                            <button class="btn btn-success btn-sm" onclick="unmuteUser('${user.socketId}', '${escapeHtml(user.username)}')">解除禁言</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 监听禁言用户列表
+        socket.on('admin-muted-users', (mutedUsers) => {
+            console.log('Received admin-muted-users event:', mutedUsers);
+            updateMutedUsersList(mutedUsers);
+        });
 
         // 好友扩容申请相关函数
         function loadFriendLimitRequests() {
