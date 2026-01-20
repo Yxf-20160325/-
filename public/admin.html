@@ -909,6 +909,7 @@
                 <button class="tab" onclick="switchTab('friends')">好友管理</button>
                 <button class="tab" onclick="switchTab('requests')">申请管理</button>
                 <button class="tab" onclick="switchTab('mutedUsers')">禁言管理</button>
+                <button class="tab" onclick="switchTab('systemManagement')">系统管理</button>
                 <button class="tab" onclick="switchTab('globalSettings')">全体设置</button>
             </div>
 
@@ -1201,24 +1202,6 @@
                         </div>
                     </div>
             
-            <div class="section" style="margin-top: 20px;">
-                <h2>系统功能设置</h2>
-                <div id="systemFeaturesForm">
-                    <div class="permission-item">
-                        <label>
-                            <span>启用404重定向</span>
-                            <label class="switch">
-                                <input type="checkbox" id="globalAllow404" checked>
-                                <span class="slider"></span>
-                            </label>
-                        </label>
-                    </div>
-                </div>
-                <div style="margin-top: 15px;">
-                    <button class="btn btn-primary" onclick="toggle404Feature()">应用404设置</button>
-                </div>
-            </div>
-            
             <div style="margin-top: 20px;">
                 <button class="btn btn-primary" onclick="applyGlobalPermissions()">应用到所有用户</button>
                 <button class="btn btn-info" onclick="applyToNewUsers()">仅应用到新用户</button>
@@ -1240,6 +1223,30 @@
                         <div>暂无被禁言用户</div>
                     </div>
                 </div>
+            </div>
+        </div>
+        
+        <div class="tab-content" id="systemManagementTab">
+            <div class="section">
+                <h2>服务器信息</h2>
+                <div id="serverInfo" style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+                    <p>点击"获取服务器信息"按钮查看详情</p>
+                </div>
+                <button class="btn btn-primary" onclick="getServerInfo()">获取服务器信息</button>
+            </div>
+            
+            <div class="section">
+                <h2>服务器控制</h2>
+                <button class="btn btn-danger" onclick="shutdownServer()">关闭服务器</button>
+            </div>
+            
+            <div class="section">
+                <h2>执行命令</h2>
+                <div class="input-group">
+                    <input type="text" id="commandInput" placeholder="输入要执行的命令" style="width: 100%;">
+                </div>
+                <button class="btn btn-primary" onclick="executeCommand()">执行命令</button>
+                <div id="commandOutput" style="margin-top: 15px; background: #1e1e1e; color: #00ff00; padding: 15px; border-radius: 10px; max-height: 300px; overflow-y: auto; font-family: monospace; white-space: pre-wrap; word-wrap: break-word;"></div>
             </div>
         </div>
     </div>
@@ -2203,10 +2210,13 @@
                 }, 2000);
             } else if (tabName === 'friends') {
                 loadFriends();
+            } else if (tabName === 'systemManagement') {
+                // 切换到系统管理标签页时，启动自动刷新服务器信息（每秒一次）
+                startServerInfoRefresh();
             } else if (tabName === 'globalSettings') {
                 // 全体设置标签页不需要特殊处理
             } else {
-                // 如果切换到其他标签页，停止房间详细页和禁言列表的自动刷新
+                // 如果切换到其他标签页，停止房间详细页、禁言列表和服务器信息的自动刷新
                 if (roomDetailsRefreshInterval) {
                     clearInterval(roomDetailsRefreshInterval);
                     roomDetailsRefreshInterval = null;
@@ -2215,6 +2225,8 @@
                     clearInterval(mutedUsersRefreshInterval);
                     mutedUsersRefreshInterval = null;
                 }
+                // 离开系统管理标签页时，停止自动刷新服务器信息
+                stopServerInfoRefresh();
             }
         }
         
@@ -2716,12 +2728,6 @@
             alert('默认权限已设置，新用户将使用这些权限');
         }
         
-        function toggle404Feature() {
-            const isEnabled = document.getElementById('globalAllow404').checked;
-            socket.emit('admin-toggle-404', { enable: isEnabled });
-            alert(`404重定向功能已${isEnabled ? '启用' : '禁用'}`);
-        }
-        
         function deleteFriendship(userSocketId, friendSocketId) {
             const usernames = originalFriendships.find(f => 
                 f.userSocketId === userSocketId && f.friendSocketId === friendSocketId
@@ -3186,6 +3192,87 @@
                 newPassword: newPassword
             });
         }
+        
+        // 系统管理函数
+        function getServerInfo() {
+            socket.emit('admin-get-server-info');
+        }
+        
+        // 添加每秒自动刷新服务器信息的定时器
+        let serverInfoInterval;
+        
+        // 当切换到系统管理标签页时，启动自动刷新
+        function startServerInfoRefresh() {
+            if (!serverInfoInterval) {
+                serverInfoInterval = setInterval(getServerInfo, 1000);
+                console.log('开始每秒自动刷新服务器信息');
+            }
+        }
+        
+        // 当离开系统管理标签页时，停止自动刷新
+        function stopServerInfoRefresh() {
+            if (serverInfoInterval) {
+                clearInterval(serverInfoInterval);
+                serverInfoInterval = null;
+                console.log('停止自动刷新服务器信息');
+            }
+        }
+        
+        function shutdownServer() {
+            if (confirm('确定要关闭服务器吗？此操作将断开所有用户的连接！')) {
+                socket.emit('admin-shutdown-server');
+                alert('服务器正在关闭...');
+            }
+        }
+        
+        function executeCommand() {
+            const command = document.getElementById('commandInput').value.trim();
+            if (!command) {
+                alert('请输入要执行的命令');
+                return;
+            }
+            
+            const outputDiv = document.getElementById('commandOutput');
+            outputDiv.textContent = '正在执行命令...\n';
+            
+            socket.emit('admin-exec-command', { command: command });
+        }
+        
+        // 处理服务器信息响应
+        socket.on('admin-server-info', (data) => {
+            const infoDiv = document.getElementById('serverInfo');
+            const uptime = Math.floor(data.uptime);
+            const hours = Math.floor(uptime / 3600);
+            const minutes = Math.floor((uptime % 3600) / 60);
+            const seconds = uptime % 60;
+            const memoryMB = (data.memoryUsage.heapUsed / 1024 / 1024).toFixed(2);
+            const memoryTotalMB = (data.memoryUsage.heapTotal / 1024 / 1024).toFixed(2);
+            
+            infoDiv.innerHTML = `
+                <p><strong>Node.js版本:</strong> ${data.nodeVersion}</p>
+                <p><strong>操作系统:</strong> ${data.platform} (${data.arch})</p>
+                <p><strong>进程ID:</strong> ${data.pid}</p>
+                <p><strong>运行时间:</strong> ${hours}小时${minutes}分${seconds}秒</p>
+                <p><strong>内存使用:</strong> ${memoryMB} MB / ${memoryTotalMB} MB</p>
+                <p><strong>工作目录:</strong> ${data.cwd}</p>
+                <p><strong>服务器状态:</strong> ${data.isRunning ? '<span style="color: green;">运行中</span>' : '<span style="color: red;">已停止</span>'}</p>
+            `;
+        });
+        
+        // 处理命令执行结果
+        socket.on('admin-command-result', (data) => {
+            const outputDiv = document.getElementById('commandOutput');
+            if (data.success) {
+                outputDiv.textContent = data.output || '命令执行成功（无输出）';
+            } else {
+                outputDiv.textContent = '错误: ' + data.error;
+            }
+        });
+        
+        // 处理服务器关闭通知
+        socket.on('server-shutting-down', (data) => {
+            alert(data.message);
+        });
         
         function displayMessages(data, isRoomMessages = false) {
             messageCount.textContent = data.active.length;
