@@ -1856,6 +1856,7 @@
                 this.currentCallTargetSocketId = null;
                 this.currentCallMethod = 'webrtc';
                 this.pendingOffer = null;
+                this.pendingIceCandidates = null;
             }
             
             // 处理通话结束
@@ -1879,6 +1880,9 @@
                 // 关闭来电界面
                 const callIncoming = document.getElementById('callIncoming');
                 callIncoming.classList.remove('active');
+                
+                // 隐藏等待提示（接收方也可能有等待提示）
+                this.hideWaitingPrompt();
                 
                 // 设置为通话中状态
                 this.isInCall = true;
@@ -1982,6 +1986,16 @@
                         // 如果是发起方，创建并发送offer
                         if (this.isCallInitiator) {
                             this.createAndSendOffer();
+                        } else {
+                            // 作为接收方，如果有pendingOffer，立即处理
+                            if (this.pendingOffer) {
+                                // 处理之前保存的offer
+                                this.handleWebRTCMedia({ 
+                                    type: 'offer', 
+                                    data: this.pendingOffer 
+                                });
+                                this.pendingOffer = null;
+                            }
                         }
                     } else {
                         // Socket.io方式：开始发送媒体流
@@ -2009,6 +2023,16 @@
                             // 如果是发起方，创建并发送offer
                             if (this.isCallInitiator) {
                                 this.createAndSendOffer();
+                            } else {
+                                // 作为接收方，如果有pendingOffer，立即处理
+                                if (this.pendingOffer) {
+                                    // 处理之前保存的offer
+                                    this.handleWebRTCMedia({ 
+                                        type: 'offer', 
+                                        data: this.pendingOffer 
+                                    });
+                                    this.pendingOffer = null;
+                                }
                             }
                         } else {
                             // Socket.io方式：开始发送媒体流
