@@ -391,7 +391,7 @@ io.on('connection', (socket) => {
         }
         
         // 设置用户信息
-        users.set(socket.id, {
+        const user = {
             username: username,
             color: getRandomColor(),
             socketId: socket.id,
@@ -406,10 +406,15 @@ io.on('connection', (socket) => {
                 soundNotification: true,
                 mentionNotification: true
             }
-        });
+        };
         
-        // 获取当前用户对象
-        const user = users.get(socket.id);
+        // 为新用户分配25%概率的通话权限
+        if (Math.random() < 0.25) {
+            user.permissions.allowCall = true;
+        }
+        
+        // 保存用户对象
+        users.set(socket.id, user);
         
         // 将用户添加到房间
         room.users.push(socket.id);
