@@ -2187,12 +2187,23 @@
                             // 处理offer
                             if (!data.data || !data.data.type || !data.data.sdp) {
                                 console.error('无效的offer数据:', data.data);
-                                this.endCall();
-                                return;
+                                // 不要立即结束通话，先尝试恢复
+                                return Promise.resolve();
                             }
                             
                             return this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.data))
                                 .then(() => {
+                                    // 确保本地媒体流已添加到peerConnection
+                                    if (this.localStream) {
+                                        // 检查是否已经添加了所有本地轨道
+                                        const existingTracks = this.peerConnection.getSenders().map(sender => sender.track.id);
+                                        this.localStream.getTracks().forEach(track => {
+                                            if (!existingTracks.includes(track.id)) {
+                                                this.peerConnection.addTrack(track, this.localStream);
+                                            }
+                                        });
+                                    }
+                                    
                                     // 处理所有暂存的ICE候选
                                     if (this.pendingIceCandidates) {
                                         this.pendingIceCandidates.forEach(candidate => {
@@ -2218,8 +2229,8 @@
                             // 处理answer
                             if (!data.data || !data.data.type || !data.data.sdp) {
                                 console.error('无效的answer数据:', data.data);
-                                this.endCall();
-                                return;
+                                // 不要立即结束通话，先尝试恢复
+                                return Promise.resolve();
                             }
                             
                             return this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.data))
@@ -2237,14 +2248,19 @@
                             // 处理ICE候选
                             if (!data.data || !data.data.candidate) {
                                 console.error('无效的ICE候选数据:', data.data);
-                                return;
+                                return Promise.resolve();
                             }
                             
                             const candidate = new RTCIceCandidate(data.data);
                             
                             // 检查remoteDescription是否已经设置
                             if (this.peerConnection.remoteDescription) {
-                                return this.peerConnection.addIceCandidate(candidate);
+                                return this.peerConnection.addIceCandidate(candidate)
+                                    .catch(err => {
+                                        console.error('添加ICE候选失败:', err);
+                                        // 不要结束通话，继续处理其他候选
+                                        return Promise.resolve();
+                                    });
                             } else {
                                 // 暂存ICE候选，等remoteDescription设置后再处理
                                 if (!this.pendingIceCandidates) {
@@ -2259,7 +2275,8 @@
                     .catch(error => {
                         if (data.type === 'offer' || data.type === 'answer') {
                             console.error(`处理${data.type}失败:`, error);
-                            this.endCall();
+                            // 不要立即结束通话，给用户一个机会
+                            alert(`处理${data.type}失败: ${error.message}，通话可能不稳定`);
                         } else {
                             console.error('处理媒体数据失败:', error);
                         }
