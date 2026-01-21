@@ -1755,14 +1755,17 @@ io.on('connection', (socket) => {
         if (user && user.permissions.allowCall) {
             const targetUser = users.get(data.targetSocketId);
             if (targetUser && targetUser.permissions.allowCall) {
+                // 确定通话类型，支持两种字段名
+                const callType = data.callType || data.type;
                 io.to(data.targetSocketId).emit('call-request', {
                     from: socket.id,
                     fromUsername: user.username,
                     fromColor: user.color,
                     callId: data.callId,
-                    type: data.type // 确保通话类型被正确传递
+                    type: callType,
+                    callMethod: data.callMethod // 传递通话方式
                 });
-                console.log(`${user.username} 请求与 ${targetUser.username} ${data.type === 'video' ? '视频' : '语音'}通话`);
+                console.log(`${user.username} 请求与 ${targetUser.username} ${callType === 'video' ? '视频' : '语音'}通话，使用${data.callMethod === 'webrtc' ? 'WebRTC' : 'Socket.io'}方式`);
             } else {
                 socket.emit('permission-denied', { message: '目标用户没有通话权限或不存在' });
             }
@@ -1827,12 +1830,15 @@ io.on('connection', (socket) => {
     socket.on('call-media', (data) => {
         const user = users.get(socket.id);
         if (user && user.permissions.allowCall) {
-            io.to(data.targetSocketId).emit('call-media', {
-                from: socket.id,
-                callId: data.callId,
-                type: data.type,
-                data: data.data
-            });
+            // 检查目标用户是否在线，只向在线用户发送媒体流
+            if (io.sockets.sockets.has(data.targetSocketId)) {
+                io.to(data.targetSocketId).emit('call-media', {
+                    from: socket.id,
+                    callId: data.callId,
+                    type: data.type,
+                    data: data.data
+                });
+            }
         }
     });
     
