@@ -1293,6 +1293,10 @@
     <div class="modal" id="settingsModal">
         <div class="modal-content" style="max-width: 600px; max-height: 90vh; overflow-y: auto;">
             <h3>设置</h3>
+            <!-- 锁定提示区域 -->
+            <div id="settingsLockNotice" style="background-color: #fff3cd; color: #856404; padding: 10px; border-radius: 5px; margin-bottom: 15px; display: none;">
+                <strong>设置已锁定</strong>: <span id="lockNoticeText"></span>
+            </div>
             <div class="admin-panel-tabs">
                 <button class="admin-tab active" data-tab="translation">翻译设置</button>
                 <button class="admin-tab" data-tab="notifications">通知设置</button>
@@ -1498,6 +1502,10 @@
             autoTranslate: false
         };
         
+        // 用户设置锁定状态
+        let settingsLocked = false;
+        let settingsLockMessage = '设置已被管理员锁定';
+        
         // 初始化设置
         function initSettings() {
             // 从localStorage加载设置
@@ -1514,8 +1522,75 @@
             currentTargetLanguage = userSettings.targetLanguage;
         }
         
+        // 更新设置模态框状态
+        function updateSettingsModalStatus() {
+            // 获取所有设置相关的表单元素
+            const formElements = [
+                document.getElementById('targetLanguageSelect'),
+                document.getElementById('autoTranslateCheckbox'),
+                document.getElementById('soundNotificationCheckbox'),
+                document.getElementById('mentionNotificationCheckbox')
+            ];
+            
+            // 获取保存按钮和锁定提示元素
+            const saveButton = document.querySelector('#settingsModal .btn-confirm');
+            const lockNotice = document.getElementById('settingsLockNotice');
+            const lockNoticeText = document.getElementById('lockNoticeText');
+            
+            if (settingsLocked) {
+                // 锁定状态：禁用所有表单元素，显示锁定提示
+                formElements.forEach(element => {
+                    if (element) {
+                        element.disabled = true;
+                        element.style.opacity = '0.5';
+                        element.style.cursor = 'not-allowed';
+                    }
+                });
+                
+                // 禁用保存按钮
+                if (saveButton) {
+                    saveButton.disabled = true;
+                    saveButton.style.opacity = '0.5';
+                    saveButton.style.cursor = 'not-allowed';
+                }
+                
+                // 显示锁定提示
+                if (lockNotice) {
+                    lockNotice.style.display = 'block';
+                    lockNoticeText.textContent = settingsLockMessage;
+                }
+            } else {
+                // 未锁定状态：启用所有表单元素，隐藏锁定提示
+                formElements.forEach(element => {
+                    if (element) {
+                        element.disabled = false;
+                        element.style.opacity = '1';
+                        element.style.cursor = 'pointer';
+                    }
+                });
+                
+                // 启用保存按钮
+                if (saveButton) {
+                    saveButton.disabled = false;
+                    saveButton.style.opacity = '1';
+                    saveButton.style.cursor = 'pointer';
+                }
+                
+                // 隐藏锁定提示
+                if (lockNotice) {
+                    lockNotice.style.display = 'none';
+                }
+            }
+        }
+        
         // 保存设置
         function saveSettings() {
+            // 检查设置是否被锁定
+            if (settingsLocked) {
+                alert(settingsLockMessage);
+                return;
+            }
+            
             userSettings.targetLanguage = targetLanguageSelect.value;
             userSettings.autoTranslate = autoTranslateCheckbox.checked;
             
@@ -1531,6 +1606,48 @@
             // 显示保存成功提示
             alert('设置已保存');
         }
+        
+        // 监听设置更新事件
+        socket.on('user-settings-updated', (data) => {
+            // 更新锁定状态
+            settingsLocked = data.locked || false;
+            settingsLockMessage = data.lockMessage || '设置已被管理员锁定';
+            
+            // 如果包含用户具体设置，更新本地设置
+            if (data.userSettings) {
+                userSettings = {
+                    ...userSettings,
+                    ...data.userSettings
+                };
+                
+                // 更新UI
+                targetLanguageSelect.value = userSettings.targetLanguage;
+                autoTranslateCheckbox.checked = userSettings.autoTranslate;
+                
+                // 更新当前翻译目标语言
+                currentTargetLanguage = userSettings.targetLanguage;
+                
+                // 保存到localStorage
+                localStorage.setItem('userSettings', JSON.stringify(userSettings));
+            }
+            
+            // 更新设置模态框状态
+            updateSettingsModalStatus();
+            
+            // 如果设置被锁定，提示用户
+            if (settingsLocked) {
+                alert(settingsLockMessage);
+            }
+        });
+        
+        // 设置设置按钮点击事件
+        settingsBtn.addEventListener('click', () => {
+            // 打开设置模态框
+            settingsModal.classList.add('active');
+            
+            // 更新设置模态框状态
+            updateSettingsModalStatus();
+        });
         
         // 关闭设置模态框
         function closeSettingsModal() {
