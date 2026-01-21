@@ -1230,8 +1230,8 @@
     <div class="call-incoming" id="callIncoming">
         <h3 id="callIncomingText">来电</h3>
         <div class="call-incoming-buttons">
-            <button class="call-accept" onclick="acceptCall()">接听</button>
-            <button class="call-reject" onclick="rejectCall()">拒绝</button>
+            <button class="call-accept" onclick="callSystem?.acceptCall()">接听</button>
+            <button class="call-reject" onclick="callSystem?.rejectCall()">拒绝</button>
         </div>
     </div>
     
@@ -1374,7 +1374,6 @@
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
-    <script src="/call-system.js"></script>
     <script>
         // 用户详情定时器变量 - 移到最顶部确保在任何函数调用前已初始化
         var userDetailUpdateInterval = null;
@@ -1383,7 +1382,6 @@
         const socket = io();
         let username = '';
         let currentRoom = '';
-        let callSystem = null;
         let userPermissions = {
             allowAudio: true,
             allowImage: true,
@@ -1657,7 +1655,515 @@
         let friends = [];
         let currentPrivateChatTarget = null;
         
-        // 通话相关变量已移至CallSystem类中，不再直接在页面中定义
+        // 通话系统类 - 支持webrtc和socket.io两种通话方式
+        class CallSystem {
+            constructor(socket, username) {
+                this.socket = socket;
+                this.username = username;
+                this.isInCall = false;
+                this.isCallInitiator = false; // 标志当前是否为发起方
+                this.currentCallId = null;
+                this.currentCallType = null; // 'video' or 'audio'
+                this.currentCallTargetSocketId = null;
+                this.currentCallMethod = 'webrtc'; // 默认使用webrtc，可选'socket.io'
+                this.localStream = null;
+                this.remoteStream = null;
+                this.peerConnection = null;
+                this.iceServers = {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                };
+                this.socketMediaBuffer = [];
+                
+                this.init();
+            }
+            
+            init() {
+                this.setupSocketListeners();
+            }
+            
+            setupSocketListeners() {
+                // 监听通话请求
+                this.socket.on('call-request', (data) => {
+                    this.handleCallRequest(data);
+                });
+                
+                // 监听通话接受
+                this.socket.on('call-accepted', (data) => {
+                    this.handleCallAccepted(data);
+                });
+                
+                // 监听通话拒绝
+                this.socket.on('call-rejected', (data) => {
+                    this.handleCallRejected(data);
+                });
+                
+                // 监听通话结束
+                this.socket.on('call-ended', (data) => {
+                    this.handleCallEnded(data);
+                });
+                
+                // 监听媒体流数据
+                this.socket.on('call-media', (data) => {
+                    this.handleCallMedia(data);
+                });
+            }
+            
+            // 设置通话方式
+            setCallMethod(method) {
+                this.currentCallMethod = method;
+            }
+            
+            // 发起通话请求
+            startCall(targetSocketId, callType, callMethod) {
+                this.currentCallId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+                this.currentCallType = callType;
+                this.currentCallTargetSocketId = targetSocketId;
+                this.currentCallMethod = callMethod || this.currentCallMethod;
+                this.isInCall = true;
+                this.isCallInitiator = true; // 设置为发起方
+                
+                // 发送通话请求
+                this.socket.emit('call-request', {
+                    targetSocketId: targetSocketId,
+                    callId: this.currentCallId,
+                    callType: callType,
+                    callMethod: this.currentCallMethod,
+                    fromUsername: this.username
+                });
+            }
+            
+            // 处理通话请求
+            handleCallRequest(data) {
+                this.currentCallId = data.callId;
+                this.currentCallType = data.type;
+                this.currentCallTargetSocketId = data.from;
+                this.currentCallMethod = data.callMethod;
+                this.isInCall = true;
+                
+                // 显示来电界面，允许用户选择接听或拒绝
+                const callIncoming = document.getElementById('callIncoming');
+                const callIncomingText = document.getElementById('callIncomingText');
+                callIncomingText.textContent = `${data.fromUsername} 发起了${data.type === 'video' ? '视频' : '语音'}通话`;
+                callIncoming.classList.add('active');
+            }
+            
+            // 处理通话接受
+            handleCallAccepted(data) {
+                // 初始化媒体流
+                this.initMediaStream();
+                
+                // 显示视频容器，让用户能够看到双方的视频画面
+                const videoContainer = document.getElementById('videoContainer');
+                if (videoContainer) {
+                    videoContainer.classList.add('active');
+                }
+            }
+            
+            // 处理通话拒绝
+            handleCallRejected(data) {
+                this.resetCallState();
+                alert('通话被拒绝');
+            }
+            
+            // 处理通话结束
+            handleCallEnded(data) {
+                this.cleanupMedia();
+                this.resetCallState();
+                alert('通话已结束');
+            }
+            
+            // 接受通话
+            acceptCall() {
+                if (!this.currentCallId) return;
+                
+                // 关闭来电界面
+                const callIncoming = document.getElementById('callIncoming');
+                callIncoming.classList.remove('active');
+                
+                // 发送通话接受
+                this.socket.emit('call-accept', {
+                    targetSocketId: this.currentCallTargetSocketId,
+                    callId: this.currentCallId,
+                    callMethod: this.currentCallMethod
+                });
+                
+                // 显示视频容器
+                const videoContainer = document.getElementById('videoContainer');
+                if (videoContainer) {
+                    videoContainer.classList.add('active');
+                }
+                
+                // 初始化媒体流
+                this.initMediaStream();
+            }
+            
+            // 拒绝通话
+            rejectCall() {
+                if (!this.currentCallId) return;
+                
+                // 关闭来电界面
+                const callIncoming = document.getElementById('callIncoming');
+                callIncoming.classList.remove('active');
+                
+                // 发送通话拒绝
+                this.socket.emit('call-reject', {
+                    targetSocketId: this.currentCallTargetSocketId,
+                    callId: this.currentCallId
+                });
+                
+                this.resetCallState();
+            }
+            
+            // 结束通话
+            endCall() {
+                if (!this.currentCallId) return;
+                
+                // 发送通话结束
+                this.socket.emit('call-end', {
+                    targetSocketId: this.currentCallTargetSocketId,
+                    callId: this.currentCallId
+                });
+                
+                this.cleanupMedia();
+                this.resetCallState();
+                
+                // 隐藏视频容器
+                const videoContainer = document.getElementById('videoContainer');
+                if (videoContainer) {
+                    videoContainer.classList.remove('active');
+                }
+            }
+            
+            // 切换视频开关
+            toggleVideo() {
+                if (!this.localStream) return;
+                
+                // 切换视频轨道的enabled状态
+                const videoTracks = this.localStream.getVideoTracks();
+                videoTracks.forEach(track => {
+                    track.enabled = !track.enabled;
+                });
+                
+                // 更新按钮状态
+                const toggleVideoBtn = document.getElementById('toggleVideoBtn');
+                if (toggleVideoBtn) {
+                    // 可以添加视觉反馈，比如改变按钮样式
+                }
+            }
+            
+            // 切换音频开关
+            toggleAudio() {
+                if (!this.localStream) return;
+                
+                // 切换音频轨道的enabled状态
+                const audioTracks = this.localStream.getAudioTracks();
+                audioTracks.forEach(track => {
+                    track.enabled = !track.enabled;
+                });
+                
+                // 更新按钮状态
+                const toggleAudioBtn = document.getElementById('toggleAudioBtn');
+                if (toggleAudioBtn) {
+                    // 可以添加视觉反馈，比如改变按钮样式
+                }
+            }
+            
+            // 初始化媒体流
+            initMediaStream() {
+                const constraints = {
+                    audio: true,
+                    video: this.currentCallType === 'video'
+                };
+                
+                navigator.mediaDevices.getUserMedia(constraints)
+                    .then(stream => {
+                        this.localStream = stream;
+                        // 显示本地视频流
+                        this.showLocalStream(stream);
+                        
+                        if (this.currentCallMethod === 'webrtc') {
+                            // WebRTC方式：创建peer connection
+                            this.createPeerConnection();
+                            
+                            // 如果是发起方，创建并发送offer
+                            if (this.isCallInitiator) {
+                                this.createAndSendOffer();
+                            }
+                        } else {
+                            // Socket.io方式：开始发送媒体流
+                            this.startSocketMediaStream();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('获取媒体流失败:', error);
+                        alert('获取媒体流失败: ' + error.message);
+                        this.endCall();
+                    });
+            }
+            
+            // 创建WebRTC PeerConnection
+            createPeerConnection() {
+                this.peerConnection = new RTCPeerConnection(this.iceServers);
+                
+                // 添加本地媒体流
+                this.localStream.getTracks().forEach(track => {
+                    this.peerConnection.addTrack(track, this.localStream);
+                });
+                
+                // 监听远程媒体流
+                this.peerConnection.ontrack = (event) => {
+                    this.remoteStream = event.streams[0];
+                    this.showRemoteStream(this.remoteStream);
+                };
+                
+                // 监听ICE候选
+                this.peerConnection.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        this.socket.emit('call-media', {
+                            targetSocketId: this.currentCallTargetSocketId,
+                            callId: this.currentCallId,
+                            type: 'ice-candidate',
+                            data: event.candidate
+                        });
+                    }
+                };
+                
+                // 只有在作为发起方时才创建offer
+                // 作为接收方时，会在handleWebRTCMedia中处理收到的offer
+            }
+            
+            // 创建并发送offer
+            createAndSendOffer() {
+                if (!this.peerConnection) {
+                    console.error('peerConnection未创建');
+                    return;
+                }
+                
+                this.peerConnection.createOffer()
+                    .then(offer => {
+                        return this.peerConnection.setLocalDescription(offer);
+                    })
+                    .then(() => {
+                        this.socket.emit('call-media', {
+                            targetSocketId: this.currentCallTargetSocketId,
+                            callId: this.currentCallId,
+                            type: 'offer',
+                            data: this.peerConnection.localDescription
+                        });
+                    })
+                    .catch(error => {
+                        console.error('创建offer失败:', error);
+                        this.endCall();
+                    });
+            }
+            
+            // 开始Socket.io媒体流
+            startSocketMediaStream() {
+                // 使用Socket.io发送媒体流数据
+                const mediaRecorder = new MediaRecorder(this.localStream);
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        // 发送媒体数据
+                        this.socket.emit('call-media', {
+                            targetSocketId: this.currentCallTargetSocketId,
+                            callId: this.currentCallId,
+                            type: 'media-data',
+                            data: event.data
+                        });
+                    }
+                };
+                
+                mediaRecorder.start(100); // 每100ms发送一次数据
+                this.mediaRecorder = mediaRecorder;
+            }
+            
+            // 处理媒体流数据
+            handleCallMedia(data) {
+                if (this.currentCallMethod === 'webrtc') {
+                    // WebRTC方式处理媒体数据
+                    this.handleWebRTCMedia(data);
+                } else {
+                    // Socket.io方式处理媒体数据
+                    this.handleSocketMedia(data);
+                }
+            }
+            
+            // 处理WebRTC媒体数据
+            handleWebRTCMedia(data) {
+                // 确保媒体流和peerConnection已创建
+                const ensureMediaAndPeer = () => {
+                    if (this.localStream && this.peerConnection) {
+                        return Promise.resolve();
+                    } else if (this.localStream && !this.peerConnection) {
+                        this.createPeerConnection();
+                        return Promise.resolve();
+                    } else {
+                        // 还没有媒体流，先获取媒体流
+                        const constraints = {
+                            audio: true,
+                            video: this.currentCallType === 'video'
+                        };
+                        
+                        return navigator.mediaDevices.getUserMedia(constraints)
+                            .then(stream => {
+                                this.localStream = stream;
+                                this.showLocalStream(stream);
+                                this.createPeerConnection();
+                            })
+                            .catch(error => {
+                                console.error('获取媒体流失败:', error);
+                                alert('获取媒体流失败: ' + error.message);
+                                this.endCall();
+                                throw error;
+                            });
+                    }
+                };
+                
+                ensureMediaAndPeer()
+                    .then(() => {
+                        if (!this.peerConnection) {
+                            console.error('peerConnection创建失败');
+                            return;
+                        }
+                        
+                        if (data.type === 'offer') {
+                            // 处理offer
+                            if (!data.data || !data.data.type || !data.data.sdp) {
+                                console.error('无效的offer数据:', data.data);
+                                this.endCall();
+                                return;
+                            }
+                            
+                            return this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.data))
+                                .then(() => {
+                                    return this.peerConnection.createAnswer();
+                                })
+                                .then(answer => {
+                                    return this.peerConnection.setLocalDescription(answer);
+                                })
+                                .then(() => {
+                                    this.socket.emit('call-media', {
+                                        targetSocketId: this.currentCallTargetSocketId,
+                                        callId: this.currentCallId,
+                                        type: 'answer',
+                                        data: this.peerConnection.localDescription
+                                    });
+                                });
+                        } else if (data.type === 'answer') {
+                            // 处理answer
+                            if (!data.data || !data.data.type || !data.data.sdp) {
+                                console.error('无效的answer数据:', data.data);
+                                this.endCall();
+                                return;
+                            }
+                            
+                            return this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.data));
+                        } else if (data.type === 'ice-candidate') {
+                            // 处理ICE候选
+                            if (!data.data || !data.data.candidate) {
+                                console.error('无效的ICE候选数据:', data.data);
+                                return;
+                            }
+                            
+                            return this.peerConnection.addIceCandidate(new RTCIceCandidate(data.data));
+                        }
+                    })
+                    .catch(error => {
+                        if (data.type === 'offer' || data.type === 'answer') {
+                            console.error(`处理${data.type}失败:`, error);
+                            this.endCall();
+                        } else {
+                            console.error('处理媒体数据失败:', error);
+                        }
+                    });
+            }
+            
+            // 处理Socket.io媒体数据
+            handleSocketMedia(data) {
+                if (data.type === 'media-data') {
+                    // 播放媒体数据
+                    this.playSocketMedia(data.data);
+                }
+            }
+            
+            // 显示本地视频流
+            showLocalStream(stream) {
+                const localVideo = document.getElementById('localVideo');
+                if (localVideo) {
+                    localVideo.srcObject = stream;
+                }
+            }
+            
+            // 显示远程视频流
+            showRemoteStream(stream) {
+                const remoteVideo = document.getElementById('remoteVideo');
+                if (remoteVideo) {
+                    remoteVideo.srcObject = stream;
+                }
+            }
+            
+            // 播放Socket.io媒体数据
+            playSocketMedia(data) {
+                try {
+                    // 将数据转换为Blob
+                    const blob = new Blob([data], { type: 'video/webm' });
+                    
+                    // 创建Object URL
+                    const url = URL.createObjectURL(blob);
+                    
+                    // 获取远程视频元素
+                    const remoteVideo = document.getElementById('remoteVideo');
+                    if (remoteVideo) {
+                        // 设置视频源
+                        remoteVideo.src = url;
+                        // 开始播放
+                        remoteVideo.play();
+                    }
+                } catch (error) {
+                    console.error('播放Socket.io媒体数据失败:', error);
+                }
+            }
+            
+            // 清理媒体资源
+            cleanupMedia() {
+                if (this.localStream) {
+                    this.localStream.getTracks().forEach(track => track.stop());
+                    this.localStream = null;
+                }
+                
+                if (this.remoteStream) {
+                    this.remoteStream.getTracks().forEach(track => track.stop());
+                    this.remoteStream = null;
+                }
+                
+                if (this.peerConnection) {
+                    this.peerConnection.close();
+                    this.peerConnection = null;
+                }
+                
+                if (this.mediaRecorder) {
+                    this.mediaRecorder.stop();
+                    this.mediaRecorder = null;
+                }
+            }
+            
+            // 重置通话状态
+            resetCallState() {
+                this.currentCallId = null;
+                this.currentCallType = null;
+                this.currentCallTargetSocketId = null;
+                this.isInCall = false;
+            }
+        }
+        
+        // 通话相关变量
+        let callSystem = null;
+        let currentCallType = null;
+        
         // 仅保留必要的DOM元素引用
         const callUserModal = document.getElementById('callUserModal');
         const callUserList = document.getElementById('callUserList');
@@ -1812,6 +2318,26 @@
                 return;
             }
             
+            // 添加通话方式选择
+            const callMethodDiv = document.createElement('div');
+            callMethodDiv.style.cssText = 'margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px;';
+            callMethodDiv.innerHTML = `
+                <h4 style="margin-top: 0;">选择通话方式</h4>
+                <label style="margin-right: 20px;">
+                    <input type="radio" name="callMethod" value="webrtc" checked> WebRTC (推荐)
+                </label>
+                <label>
+                    <input type="radio" name="callMethod" value="socket.io"> Socket.io
+                </label>
+            `;
+            callUserList.appendChild(callMethodDiv);
+            
+            // 添加用户列表
+            const userListTitle = document.createElement('h4');
+            userListTitle.textContent = '选择通话对象';
+            userListTitle.style.margin = '15px 0';
+            callUserList.appendChild(userListTitle);
+            
             otherUsers.forEach(user => {
                 const userDiv = document.createElement('div');
                 userDiv.className = 'friend-item';
@@ -1828,6 +2354,21 @@
                 `;
                 callUserList.appendChild(userDiv);
             });
+        }
+        
+        // 开始通话函数
+        function startCall(callType, socketId, username) {
+            // 获取用户选择的通话方式
+            const callMethod = document.querySelector('input[name="callMethod"]:checked').value;
+            
+            // 关闭通话用户列表
+            closeCallUserModal();
+            
+            // 调用callSystem的startCall方法，传递通话方式
+            callSystem.startCall(socketId, callType, callMethod);
+            
+            // 显示通话中提示
+            alert(`正在与 ${username} 发起${callType === 'video' ? '视频' : '语音'}通话，使用${callMethod === 'webrtc' ? 'WebRTC' : 'Socket.io'}方式`);
         }
         
         // 开始通话功能已移至CallSystem类中，不再直接在页面中定义
@@ -3022,7 +3563,7 @@
         let mediaDataQueue = [];
         
         // 远程视频和音频缓冲区
-        remoteVideoBuffer = null;
+        let remoteVideoBuffer = null;
         let remoteAudioBuffer = null;
         let remoteAudioIsPlaying = false;
         
@@ -3258,168 +3799,7 @@
         }
 
         // 接受通话
-        async function acceptCall() {
-            callIncoming.classList.remove('active');
-            
-            // 检查通话权限
-            if (!userPermissions.allowCall) {
-                alert('您没有通话权限');
-                endCall();
-                return;
-            }
-            
-            try {
-                // 检查浏览器支持
-                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    throw new Error('您的浏览器不支持媒体设备访问');
-                }
-                
-                // 获取可用设备
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                
-                if (isVideoCall) {
-                    const videoDevices = devices.filter(device => device.kind === 'videoinput');
-                    const audioDevices = devices.filter(device => device.kind === 'audioinput');
-                    
-                    console.log('可用视频设备:', videoDevices);
-                    console.log('可用音频设备:', audioDevices);
-                    
-                    if (videoDevices.length === 0) {
-                        throw new Error('未检测到摄像头设备');
-                    }
-                    
-                    if (audioDevices.length === 0) {
-                        throw new Error('未检测到麦克风设备');
-                    }
-                    
-                    // 如果有多个设备，显示设备选择界面
-                    if (videoDevices.length > 1 || audioDevices.length > 1) {
-                        availableVideoDevices = videoDevices;
-                        availableAudioDevices = audioDevices;
-                        selectedVideoDeviceId = videoDevices[0].deviceId;
-                        selectedAudioDeviceId = audioDevices[0].deviceId;
-                        // 设置pendingCallAction，用于设备选择后的通话流程
-                        pendingCallAction = { 
-                            type: 'video', 
-                            isAcceptingCall: true,
-                            targetSocketId: currentCallerSocketId,
-                            targetUsername: '对方'
-                        };
-                        showDeviceSelectModal();
-                        return;
-                    }
-                    
-                    const stream = await navigator.mediaDevices.getUserMedia({
-                        audio: {
-                            echoCancellation: true,
-                            noiseSuppression: true
-                        },
-                        video: {
-                            width: { ideal: 640 },
-                            height: { ideal: 480 },
-                            facingMode: 'user'
-                        }
-                    });
-                    
-                    localStream = stream;
-                    localVideo.srcObject = stream;
-                    
-                    // 接受通话时立即开始录制并发送数据
-                    startMediaRecording(stream);
-                    
-                    // 设置目标Socket ID，确保能发送数据给对方
-                    currentTargetSocketId = currentCallerSocketId;
-                    
-                    socket.emit('call-accept', {
-                        callerSocketId: currentCallerSocketId,
-                        callId: currentCallId
-                    });
-                    
-                    videoContainer.classList.add('active');
-                    addSystemMessage('通话已接通');
-                } else {
-                    const audioDevices = devices.filter(device => device.kind === 'audioinput');
-                    
-                    console.log('可用音频设备:', audioDevices);
-                    
-                    if (audioDevices.length === 0) {
-                        throw new Error('未检测到麦克风设备');
-                    }
-                    
-                    // 如果有多个设备，显示设备选择界面
-                    if (audioDevices.length > 1) {
-                        availableVideoDevices = [];
-                        availableAudioDevices = audioDevices;
-                        selectedVideoDeviceId = null;
-                        selectedAudioDeviceId = audioDevices[0].deviceId;
-                        // 设置pendingCallAction，用于设备选择后的通话流程
-                        pendingCallAction = { 
-                            type: 'audio', 
-                            isAcceptingCall: true,
-                            targetSocketId: currentCallerSocketId,
-                            targetUsername: '对方'
-                        };
-                        showDeviceSelectModal();
-                        return;
-                    }
-                    
-                    const stream = await navigator.mediaDevices.getUserMedia({
-                        audio: {
-                            echoCancellation: true,
-                            noiseSuppression: true
-                        }
-                    });
-                    
-                    localStream = stream;
-                    
-                    // 接受通话时立即开始录制并发送数据
-                    // startMediaRecording(stream);
-                    
-                    // 设置目标Socket ID，确保能发送数据给对方
-                    currentTargetSocketId = currentCallerSocketId;
-                    
-                    socket.emit('call-accept', {
-                        callerSocketId: currentCallerSocketId,
-                        callId: currentCallId
-                    });
-                    
-                    videoContainer.classList.add('active');
-                    addSystemMessage('通话已接通');
-                }
-            } catch (error) {
-                console.error('获取媒体流失败:', error);
-                let errorMessage = '无法访问摄像头/麦克风，请检查权限设置';
-                
-                if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-                    errorMessage = '您拒绝了摄像头和麦克风权限，请在浏览器设置中允许访问';
-                } else if (error.name === 'NotFoundError') {
-                    errorMessage = '未找到摄像头或麦克风设备';
-                } else if (error.name === 'NotReadableError') {
-                    errorMessage = '无法读取摄像头或麦克风数据';
-                } else if (error.message) {
-                    errorMessage = error.message;
-                }
-                
-                alert(errorMessage);
-                // 重置来电状态
-                callIncoming.classList.remove('active');
-                currentCallId = null;
-            }
-        }
-
-        // 拒绝通话
-        function rejectCall() {
-            callIncoming.classList.remove('active');
-            
-                socket.emit('call-media', {
-                    targetSocketId: currentCallerSocketId,
-                    callId: currentCallId,
-                    type: 'reject'
-                });
-                
-                addSystemMessage('已拒绝通话');
-                currentCallId = null;
-            }   
+        // 通话相关的函数已移至CallSystem类中实现
         
 
         // 结束通话
@@ -3591,7 +3971,6 @@
         }
         
         // Socket事件处理（旧通话功能，已被新功能替代）
-        let remoteVideoBuffer = [];
 
         // 接收通话请求（旧功能，已被新功能替代）
         socket.on('call-request', (data) => {
@@ -3607,38 +3986,20 @@
 
         // 通话被拒绝（旧功能，已被新功能替代）
         socket.on('call-rejected', (data) => {
-            stopMediaRecording();
-            addSystemMessage('对方拒绝了通话');
-            currentCallId = null;
+            // 忽略旧的通话拒绝事件，只使用新的通话功能
+            console.log('忽略旧通话拒绝事件，使用新通话功能');
         });
 
-        // 通话结束
+        // 通话结束（旧功能，已被新功能替代）
         socket.on('call-ended', (data) => {
-            stopMediaRecording();
-            videoContainer.classList.remove('active');
-            currentCallId = null;
-            addSystemMessage('通话已结束');
+            // 忽略旧的通话结束事件，只使用新的通话功能
+            console.log('忽略旧通话结束事件，使用新通话功能');
         });
 
-        // 接收媒体数据
+        // 接收媒体数据（旧功能，已被新功能替代）
         socket.on('call-media', (data) => {
-            if (data.callId === currentCallId) {
-                try {
-                    // 将Uint8Array转换回Blob，使用接收到的 MIME 类型
-                    const uint8Array = new Uint8Array(data.data);
-                    let mimeType = data.mimeType || (isVideoCall ? 'video/webm' : 'audio/webm');
-                    
-                    // 将数据添加到队列
-                    receiveDataQueue.push({ uint8Array, mimeType });
-                    
-                    // 如果没有正在处理数据，开始处理队列
-                    if (!isAppending) {
-                        processReceiveQueue();
-                    }
-                } catch (error) {
-                    console.error('播放媒体数据失败:', error);
-                }
-            }
+            // 忽略旧的媒体数据事件，只使用新的通话功能
+            console.log('忽略旧媒体数据事件，使用新通话功能');
         });
         
         // 处理接收数据队列
@@ -3808,9 +4169,21 @@
         
         // // 视频控制按钮事件
         // 视频控制按钮事件监听
-        toggleVideoBtn.addEventListener('click', toggleVideo);
-        toggleAudioBtn.addEventListener('click', toggleAudio);
-        endCallBtn.addEventListener('click', endCall);
+        toggleVideoBtn.addEventListener('click', () => {
+            if (callSystem) {
+                callSystem.toggleVideo();
+            }
+        });
+        toggleAudioBtn.addEventListener('click', () => {
+            if (callSystem) {
+                callSystem.toggleAudio();
+            }
+        });
+        endCallBtn.addEventListener('click', () => {
+            if (callSystem) {
+                callSystem.endCall();
+            }
+        });
         
         // 显示设备选择模态框
         function showDeviceSelectModal() {
