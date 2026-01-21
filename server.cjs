@@ -398,7 +398,14 @@ io.on('connection', (socket) => {
             roomName: roomName,
             role: 'user', // 默认角色为user
             permissions: { ...defaultPermissions },
-            status: 'online' // 添加在线状态
+            status: 'online', // 添加在线状态
+            settings: { locked: false, lockMessage: '设置已被管理员锁定' },
+            userSettings: { // 用户具体设置
+                targetLanguage: 'zh',
+                autoTranslate: false,
+                soundNotification: true,
+                mentionNotification: true
+            }
         });
         
         // 获取当前用户对象
@@ -448,41 +455,60 @@ io.on('connection', (socket) => {
         const user = users.get(socket.id);
         if (user) {
             // 确保用户权限对象存在，如果不存在则设置默认权限
-            if (!user.permissions) {
-                user.permissions = {
-                    allowAudio: true,
-                    allowImage: true,
-                    allowFile: true,
-                    allowSendMessages: true,
-                    allowViewMessages: true,
-                    allowCall: true,
-                    allowAddFriends: true,
-                    allowViewUsers: true,
-                    allowPrivateChat: true,
-                    allowOpenFriendsPage: true,
-                    allowRecallMessage: true
-                };
-            } else {
-                // 确保所有权限字段都存在，如果不存在则设置默认值
-                const defaultPermissions = {
-                    allowAudio: true,
-                    allowImage: true,
-                    allowFile: true,
-                    allowSendMessages: true,
-                    allowViewMessages: true,
-                    allowCall: true,
-                    allowAddFriends: true,
-                    allowViewUsers: true,
-                    allowPrivateChat: true,
-                    allowOpenFriendsPage: true,
-                    allowRecallMessage: true
-                };
-                
-                user.permissions = {
-                    ...defaultPermissions,
-                    ...user.permissions
-                };
-            }
+        if (!user.permissions) {
+            user.permissions = {
+                allowAudio: true,
+                allowImage: true,
+                allowFile: true,
+                allowSendMessages: true,
+                allowViewMessages: true,
+                allowCall: true,
+                allowAddFriends: true,
+                allowViewUsers: true,
+                allowPrivateChat: true,
+                allowOpenFriendsPage: true,
+                allowRecallMessage: true
+            };
+        } else {
+            // 确保所有权限字段都存在，如果不存在则设置默认值
+            const defaultPermissions = {
+                allowAudio: true,
+                allowImage: true,
+                allowFile: true,
+                allowSendMessages: true,
+                allowViewMessages: true,
+                allowCall: true,
+                allowAddFriends: true,
+                allowViewUsers: true,
+                allowPrivateChat: true,
+                allowOpenFriendsPage: true,
+                allowRecallMessage: true
+            };
+            
+            user.permissions = {
+                ...defaultPermissions,
+                ...user.permissions
+            };
+        }
+        
+        // 确保用户设置对象存在，如果不存在则设置默认设置
+        if (!user.settings) {
+            user.settings = {
+                locked: false,
+                lockMessage: '设置已被管理员锁定'
+            };
+        } else {
+            // 确保所有设置字段都存在，如果不存在则设置默认值
+            const defaultSettings = {
+                locked: false,
+                lockMessage: '设置已被管理员锁定'
+            };
+            
+            user.settings = {
+                ...defaultSettings,
+                ...user.settings
+            };
+        }
             
             // 权限检查
             if (!user.permissions.allowSendMessages) {
@@ -1073,6 +1099,70 @@ io.on('connection', (socket) => {
                 })));
                 
                 console.log(`管理员解除了对用户: ${mutedData.username} 的禁言，重置了脏话计数`);
+            }
+        }
+    });
+    
+    // 用户设置管理 - 获取用户设置
+    socket.on('admin-get-user-settings', (socketId) => {
+        if (socket.id === adminSocketId) {
+            const user = users.get(socketId);
+            if (user) {
+                // 确保用户设置对象存在
+                if (!user.settings) {
+                    user.settings = {
+                        locked: false,
+                        lockMessage: '设置已被管理员锁定'
+                    };
+                }
+                
+                // 确保用户具体设置对象存在
+                if (!user.userSettings) {
+                    user.userSettings = {
+                        targetLanguage: 'zh',
+                        autoTranslate: false,
+                        soundNotification: true,
+                        mentionNotification: true
+                    };
+                }
+                
+                socket.emit('admin-user-settings', {
+                    socketId: socketId,
+                    settings: user.settings,
+                    userSettings: user.userSettings
+                });
+            }
+        }
+    });
+    
+    // 用户设置管理 - 设置用户设置
+    socket.on('admin-set-user-settings', (data) => {
+        if (socket.id === adminSocketId) {
+            const { socketId, settings, userSettings } = data;
+            const user = users.get(socketId);
+            
+            if (user) {
+                // 更新用户设置（锁定状态等）
+                user.settings = {
+                    ...user.settings,
+                    ...settings
+                };
+                
+                // 更新用户具体设置值
+                if (userSettings) {
+                    user.userSettings = {
+                        ...user.userSettings,
+                        ...userSettings
+                    };
+                }
+                
+                // 发送设置更新通知给用户，包含所有设置信息
+                io.to(socketId).emit('user-settings-updated', {
+                    ...user.settings,
+                    userSettings: user.userSettings
+                });
+                
+                console.log(`管理员更新了用户 ${user.username} 的设置: ${JSON.stringify(user.settings)}，具体设置: ${JSON.stringify(user.userSettings)}`);
             }
         }
     });
