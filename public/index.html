@@ -1742,6 +1742,7 @@
                 this.currentCallTargetSocketId = data.from;
                 this.currentCallMethod = data.callMethod;
                 this.isInCall = true;
+                this.isCallInitiator = false; // 设置为接收方
                 
                 // 显示来电界面，允许用户选择接听或拒绝
                 const callIncoming = document.getElementById('callIncoming');
@@ -1772,6 +1773,13 @@
             handleCallEnded(data) {
                 this.cleanupMedia();
                 this.resetCallState();
+                
+                // 隐藏视频容器
+                const videoContainer = document.getElementById('videoContainer');
+                if (videoContainer) {
+                    videoContainer.classList.remove('active');
+                }
+                
                 alert('通话已结束');
             }
             
@@ -2157,6 +2165,7 @@
                 this.currentCallType = null;
                 this.currentCallTargetSocketId = null;
                 this.isInCall = false;
+                this.isCallInitiator = false;
             }
         }
         
