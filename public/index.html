@@ -1924,6 +1924,20 @@
             alert(data.message);
         });
 
+        // 禁言相关事件处理
+        socket.on('muted-error', (data) => {
+            alert(data.message);
+        });
+
+        socket.on('muted', (data) => {
+            const durationText = data.duration === -1 ? '永久' : `${data.duration}分钟`;
+            alert(`您已被禁言${durationText}，原因：${data.reason}`);
+        });
+
+        socket.on('unmuted', () => {
+            alert('您已被解除禁言');
+        });
+
         socket.on('message', (data) => {
             addMessage(data);
         });
