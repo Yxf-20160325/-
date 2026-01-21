@@ -1676,6 +1676,8 @@
                     ]
                 };
                 this.socketMediaBuffer = [];
+                this.pendingIceCandidates = null;
+                this.pendingOffer = null;
                 
                 this.init();
             }
@@ -1725,6 +1727,18 @@
                 this.isInCall = true;
                 this.isCallInitiator = true; // 设置为发起方
                 
+                // 显示视频容器
+                const videoContainer = document.getElementById('videoContainer');
+                if (videoContainer) {
+                    videoContainer.classList.add('active');
+                }
+                
+                // 显示等待提示
+                this.showWaitingPrompt();
+                
+                // 获取本地媒体流（这样发起端就能看到自己的画面）
+                this.initLocalMediaStream();
+                
                 // 发送通话请求
                 this.socket.emit('call-request', {
                     targetSocketId: targetSocketId,
@@ -1735,14 +1749,68 @@
                 });
             }
             
+            // 初始化本地媒体流（只显示自己的画面，不开始通话）
+            initLocalMediaStream() {
+                const constraints = {
+                    audio: true,
+                    video: this.currentCallType === 'video'
+                };
+                
+                navigator.mediaDevices.getUserMedia(constraints)
+                    .then(stream => {
+                        this.localStream = stream;
+                        // 显示本地视频流
+                        this.showLocalStream(stream);
+                    })
+                    .catch(error => {
+                        console.error('获取本地媒体流失败:', error);
+                        alert('获取本地媒体流失败: ' + error.message);
+                        this.endCall();
+                    });
+            }
+            
+            // 显示等待提示
+            showWaitingPrompt() {
+                // 创建等待提示元素
+                const waitingPrompt = document.createElement('div');
+                waitingPrompt.id = 'waitingPrompt';
+                waitingPrompt.style.cssText = `
+                    position: fixed;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    background: rgba(0, 0, 0, 0.8);
+                    color: white;
+                    padding: 20px 40px;
+                    border-radius: 10px;
+                    font-size: 18px;
+                    z-index: 1001;
+                `;
+                waitingPrompt.textContent = '正在等待对方接听...';
+                document.body.appendChild(waitingPrompt);
+            }
+            
+            // 隐藏等待提示
+            hideWaitingPrompt() {
+                const waitingPrompt = document.getElementById('waitingPrompt');
+                if (waitingPrompt) {
+                    waitingPrompt.remove();
+                }
+            }
+            
             // 处理通话请求
             handleCallRequest(data) {
+                // 保存通话信息，但不立即进入通话状态
                 this.currentCallId = data.callId;
                 this.currentCallType = data.type;
                 this.currentCallTargetSocketId = data.from;
                 this.currentCallMethod = data.callMethod;
-                this.isInCall = true;
                 this.isCallInitiator = false; // 设置为接收方
+                
+                // 保存offer，如果有的话（可能通过WebRTC信令先到达）
+                if (data.offer) {
+                    this.pendingOffer = data.offer;
+                }
                 
                 // 显示来电界面，允许用户选择接听或拒绝
                 const callIncoming = document.getElementById('callIncoming');
@@ -1753,20 +1821,41 @@
             
             // 处理通话接受
             handleCallAccepted(data) {
-                // 初始化媒体流
-                this.initMediaStream();
+                // 隐藏等待提示
+                this.hideWaitingPrompt();
                 
-                // 显示视频容器，让用户能够看到双方的视频画面
+                // 确保设置为通话中状态
+                this.isInCall = true;
+                
+                // 显示视频容器（如果还没显示）
                 const videoContainer = document.getElementById('videoContainer');
                 if (videoContainer) {
                     videoContainer.classList.add('active');
                 }
+                
+                // 初始化媒体流
+                this.initMediaStream();
             }
             
             // 处理通话拒绝
             handleCallRejected(data) {
+                // 隐藏等待提示
+                this.hideWaitingPrompt();
+                
+                // 重置通话状态
                 this.resetCallState();
                 alert('通话被拒绝');
+            }
+            
+            // 重置通话状态
+            resetCallState() {
+                this.isInCall = false;
+                this.isCallInitiator = false;
+                this.currentCallId = null;
+                this.currentCallType = null;
+                this.currentCallTargetSocketId = null;
+                this.currentCallMethod = 'webrtc';
+                this.pendingOffer = null;
             }
             
             // 处理通话结束
@@ -1790,6 +1879,9 @@
                 // 关闭来电界面
                 const callIncoming = document.getElementById('callIncoming');
                 callIncoming.classList.remove('active');
+                
+                // 设置为通话中状态
+                this.isInCall = true;
                 
                 // 发送通话接受
                 this.socket.emit('call-accept', {
@@ -1881,6 +1973,24 @@
             
             // 初始化媒体流
             initMediaStream() {
+                // 如果已经有本地媒体流，直接使用
+                if (this.localStream) {
+                    if (this.currentCallMethod === 'webrtc') {
+                        // WebRTC方式：创建peer connection
+                        this.createPeerConnection();
+                        
+                        // 如果是发起方，创建并发送offer
+                        if (this.isCallInitiator) {
+                            this.createAndSendOffer();
+                        }
+                    } else {
+                        // Socket.io方式：开始发送媒体流
+                        this.startSocketMediaStream();
+                    }
+                    return;
+                }
+                
+                // 没有本地媒体流，获取媒体流
                 const constraints = {
                     audio: true,
                     video: this.currentCallType === 'video'
@@ -1921,10 +2031,15 @@
                     this.peerConnection.addTrack(track, this.localStream);
                 });
                 
-                // 监听远程媒体流
+                // 监听远程媒体流 - 修正WebRTC ontrack事件处理
                 this.peerConnection.ontrack = (event) => {
-                    this.remoteStream = event.streams[0];
-                    this.showRemoteStream(this.remoteStream);
+                    // 根据WebRTC规范，正确处理ontrack事件
+                    if (!this.remoteStream) {
+                        this.remoteStream = new MediaStream();
+                        this.showRemoteStream(this.remoteStream);
+                    }
+                    // 将远程track添加到远程流中
+                    this.remoteStream.addTrack(event.track);
                 };
                 
                 // 监听ICE候选
@@ -2002,6 +2117,12 @@
             
             // 处理WebRTC媒体数据
             handleWebRTCMedia(data) {
+                // 只有在通话中状态才处理媒体数据
+                if (!this.isInCall) {
+                    console.log('未在通话中，忽略媒体数据:', data.type);
+                    return;
+                }
+                
                 // 确保媒体流和peerConnection已创建
                 const ensureMediaAndPeer = () => {
                     if (this.localStream && this.peerConnection) {
@@ -2048,6 +2169,14 @@
                             
                             return this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.data))
                                 .then(() => {
+                                    // 处理所有暂存的ICE候选
+                                    if (this.pendingIceCandidates) {
+                                        this.pendingIceCandidates.forEach(candidate => {
+                                            this.peerConnection.addIceCandidate(candidate)
+                                                .catch(err => console.error('处理暂存ICE候选失败:', err));
+                                        });
+                                        this.pendingIceCandidates = null;
+                                    }
                                     return this.peerConnection.createAnswer();
                                 })
                                 .then(answer => {
@@ -2069,7 +2198,17 @@
                                 return;
                             }
                             
-                            return this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.data));
+                            return this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.data))
+                                .then(() => {
+                                    // 处理所有暂存的ICE候选
+                                    if (this.pendingIceCandidates) {
+                                        this.pendingIceCandidates.forEach(candidate => {
+                                            this.peerConnection.addIceCandidate(candidate)
+                                                .catch(err => console.error('处理暂存ICE候选失败:', err));
+                                        });
+                                        this.pendingIceCandidates = null;
+                                    }
+                                });
                         } else if (data.type === 'ice-candidate') {
                             // 处理ICE候选
                             if (!data.data || !data.data.candidate) {
@@ -2077,7 +2216,20 @@
                                 return;
                             }
                             
-                            return this.peerConnection.addIceCandidate(new RTCIceCandidate(data.data));
+                            const candidate = new RTCIceCandidate(data.data);
+                            
+                            // 检查remoteDescription是否已经设置
+                            if (this.peerConnection.remoteDescription) {
+                                return this.peerConnection.addIceCandidate(candidate);
+                            } else {
+                                // 暂存ICE候选，等remoteDescription设置后再处理
+                                if (!this.pendingIceCandidates) {
+                                    this.pendingIceCandidates = [];
+                                }
+                                this.pendingIceCandidates.push(candidate);
+                                console.log('ICE候选暂存，等待remoteDescription设置');
+                                return Promise.resolve();
+                            }
                         }
                     })
                     .catch(error => {
