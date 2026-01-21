@@ -909,6 +909,7 @@
                 <button class="tab" onclick="switchTab('friends')">好友管理</button>
                 <button class="tab" onclick="switchTab('requests')">申请管理</button>
                 <button class="tab" onclick="switchTab('mutedUsers')">禁言管理</button>
+                <button class="tab" onclick="switchTab('settingsManagement')">用户设置管理</button>
                 <button class="tab" onclick="switchTab('systemManagement')">系统管理</button>
                 <button class="tab" onclick="switchTab('globalSettings')">全体设置</button>
             </div>
@@ -1221,6 +1222,66 @@
                     <div class="empty-state">
                         <div class="empty-state-icon">🔇</div>
                         <div>暂无被禁言用户</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="tab-content" id="settingsManagementTab">
+            <h2>用户设置管理</h2>
+            <div class="section">
+                <h3>用户列表</h3>
+                <button class="btn btn-primary" onclick="loadUsersForSettings()">刷新用户列表</button>
+                <div class="user-list" id="settingsUsersList">
+                    <div class="empty-state">
+                        <div>暂无用户数据</div>
+                    </div>
+                </div>
+            </div>
+            <div class="section">
+                <h3>用户设置控制</h3>
+                <div id="userSettingsForm" style="display: none;">
+                    <h4>编辑用户设置 - <span id="selectedUsername"></span></h4>
+                    <div class="input-group">
+                        <label>锁定用户设置</label>
+                        <input type="checkbox" id="lockUserSettings">
+                        <span class="help-text">锁定后用户将无法修改自己的设置</span>
+                    </div>
+                    <div class="input-group">
+                        <label>自定义锁定提示</label>
+                        <input type="text" id="customLockMessage" placeholder="设置已被管理员锁定">
+                    </div>
+                    
+                    <h4 style="margin-top: 20px;">直接修改用户设置</h4>
+                    <div class="input-group">
+                        <label>翻译目标语言</label>
+                        <select id="userTargetLanguage">
+                            <option value="zh">中文</option>
+                            <option value="en">English</option>
+                            <option value="ja">日本語</option>
+                            <option value="ko">한국어</option>
+                            <option value="fr">Français</option>
+                            <option value="de">Deutsch</option>
+                            <option value="es">Español</option>
+                            <option value="ru">Русский</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label>自动翻译所有消息</label>
+                        <input type="checkbox" id="userAutoTranslate">
+                    </div>
+                    <div class="input-group">
+                        <label>声音通知</label>
+                        <input type="checkbox" id="userSoundNotification">
+                    </div>
+                    <div class="input-group">
+                        <label>@提及通知</label>
+                        <input type="checkbox" id="userMentionNotification">
+                    </div>
+                    
+                    <div class="input-group" style="margin-top: 20px;">
+                        <button class="btn btn-primary" onclick="saveUserSettings()">保存设置</button>
+                        <button class="btn btn-secondary" onclick="closeUserSettingsForm()">取消</button>
                     </div>
                 </div>
             </div>
@@ -2210,6 +2271,9 @@
                 }, 2000);
             } else if (tabName === 'friends') {
                 loadFriends();
+            } else if (tabName === 'settingsManagement') {
+                // 切换到用户设置管理标签页时，加载用户列表
+                loadUsersForSettings();
             } else if (tabName === 'systemManagement') {
                 // 切换到系统管理标签页时，启动自动刷新服务器信息（每秒一次）
                 startServerInfoRefresh();
@@ -3385,6 +3449,104 @@
             });
             
             updateRoomList(filteredRooms);
+        }
+        
+        // 用户设置管理相关函数
+        let selectedUserIdForSettings = null;
+        
+        function loadUsersForSettings() {
+            socket.emit('admin-get-users');
+        }
+        
+        // 监听用户列表更新
+        socket.on('user-joined', (data) => {
+            updateSettingsUsersList(data.users);
+        });
+        
+        function updateSettingsUsersList(users) {
+            const usersList = document.getElementById('settingsUsersList');
+            
+            if (users.length === 0) {
+                usersList.innerHTML = '<div class="empty-state"><div>暂无用户数据</div></div>';
+                return;
+            }
+            
+            usersList.innerHTML = users.map(user => `
+                <div class="user-item" onclick="openUserSettingsForm('${user.socketId}', '${escapeHtml(user.username)}')">
+                    <div class="user-info">
+                        <div class="username">${escapeHtml(user.username)}</div>
+                        <div class="socket-id">${user.socketId}</div>
+                        <div class="room-name">房间: ${user.roomName || 'main'}</div>
+                    </div>
+                    <div class="user-actions">
+                        <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); openUserSettingsForm('${user.socketId}', '${escapeHtml(user.username)}')">设置</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function openUserSettingsForm(socketId, username) {
+            selectedUserIdForSettings = socketId;
+            document.getElementById('selectedUsername').textContent = username;
+            
+            // 加载用户当前设置
+            socket.emit('admin-get-user-settings', socketId);
+            
+            document.getElementById('userSettingsForm').style.display = 'block';
+        }
+        
+        function closeUserSettingsForm() {
+            document.getElementById('userSettingsForm').style.display = 'none';
+            selectedUserIdForSettings = null;
+        }
+        
+        function saveUserSettings() {
+            if (!selectedUserIdForSettings) return;
+            
+            const lockUserSettings = document.getElementById('lockUserSettings').checked;
+            const customLockMessage = document.getElementById('customLockMessage').value.trim() || '设置已被管理员锁定';
+            
+            // 获取用户具体设置值
+            const userSettings = {
+                targetLanguage: document.getElementById('userTargetLanguage').value,
+                autoTranslate: document.getElementById('userAutoTranslate').checked,
+                soundNotification: document.getElementById('userSoundNotification').checked,
+                mentionNotification: document.getElementById('userMentionNotification').checked
+            };
+            
+            socket.emit('admin-set-user-settings', {
+                socketId: selectedUserIdForSettings,
+                settings: {
+                    locked: lockUserSettings,
+                    lockMessage: customLockMessage
+                },
+                userSettings: userSettings
+            });
+            
+            closeUserSettingsForm();
+        }
+        
+        // 监听用户设置响应
+        socket.on('admin-user-settings', (data) => {
+            document.getElementById('lockUserSettings').checked = data.settings.locked || false;
+            document.getElementById('customLockMessage').value = data.settings.lockMessage || '设置已被管理员锁定';
+            
+            // 设置用户具体设置值
+            document.getElementById('userTargetLanguage').value = data.userSettings?.targetLanguage || 'zh';
+            document.getElementById('userAutoTranslate').checked = data.userSettings?.autoTranslate || false;
+            document.getElementById('userSoundNotification').checked = data.userSettings?.soundNotification !== false;
+            document.getElementById('userMentionNotification').checked = data.userSettings?.mentionNotification !== false;
+        });
+        
+        // 用户设置管理相关函数 - 扩展获取用户设置，包含具体设置值
+        function openUserSettingsForm(socketId, username) {
+            selectedUserIdForSettings = socketId;
+            document.getElementById('selectedUsername').textContent = username;
+            
+            // 加载用户当前设置，包含具体设置值
+            socket.emit('admin-get-user-settings', socketId);
+            
+            document.getElementById('userSettingsForm').style.display = 'block';
         }
         
         // 页面卸载时清除定时器
