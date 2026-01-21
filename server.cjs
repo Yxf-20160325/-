@@ -304,6 +304,22 @@ const INFINITE_FRIENDS = -1; // 无限好友数量
 // @功能开关
 let allowMentions = true; // 默认开启@功能
 
+// 禁言系统数据结构
+const mutedUsers = new Map(); // 存储被禁言用户: Map<socketId, { username, endTime, reason }>
+
+// 脏话过滤系统
+const badWords = [
+    // 英文脏话
+    'fuck', 'shit', 'asshole', 'bitch', 'dick', 'pussy', 'cunt', 'nigger', 'faggot', 'damn', 'hell',
+    // 中文脏话
+    '傻逼', 'sb', '傻b', '煞笔', '操你妈', '去死', '垃圾', '废物', '脑残', '王八蛋', '滚蛋', '畜生', '贱人', '狗东西', '杂种',
+    '草泥马', '妈蛋', '二货', '智障', '白痴', '混蛋', '恶棍', '禽兽', '畜生不如',
+    '操蛋', '操你大爷', '你妈逼', '你妹', '你大爷', '草泥马', '草', '日', '靠', '操'
+];
+
+// 脏话计数系统
+const swearWordCount = new Map(); // 存储用户脏话计数: Map<socketId, number>
+
 // 默认权限
 let defaultPermissions = {
     allowAudio: true,
@@ -486,12 +502,92 @@ io.on('connection', (socket) => {
                 return;
             }
             
+            // 禁言检查
+            const now = Date.now();
+            const mutedData = mutedUsers.get(socket.id);
+            if (mutedData) {
+                if (mutedData.endTime === -1 || mutedData.endTime > now) {
+                    const remainingTime = mutedData.endTime === -1 ? '永久' : Math.ceil((mutedData.endTime - now) / (60 * 1000)) + '分钟';
+                    socket.emit('muted-error', {
+                        message: `您已被禁言，剩余时长：${remainingTime}，原因：${mutedData.reason}`
+                    });
+                    return;
+                } else {
+                    // 禁言已过期，自动移除
+                    mutedUsers.delete(socket.id);
+                }
+            }
+            
+            // 脏话过滤和计数功能
+            let processedMessage = data.message;
+            let containsSwearWord = false;
+            
+            if (data.type === 'text' && processedMessage) {
+                // 检测并替换脏话
+                badWords.forEach(badWord => {
+                    const regex = new RegExp(badWord, 'gi');
+                    if (regex.test(processedMessage)) {
+                        containsSwearWord = true;
+                    }
+                    processedMessage = processedMessage.replace(regex, '***');
+                });
+                
+                // 如果包含脏话，更新计数
+                if (containsSwearWord) {
+                    // 获取当前用户的脏话计数，默认0
+                    const currentCount = swearWordCount.get(socket.id) || 0;
+                    const newCount = currentCount + 1;
+                    
+                    // 更新计数
+                    swearWordCount.set(socket.id, newCount);
+                    
+                    // 检查是否达到禁言阈值
+                    if (newCount === 5) {
+                        // 发出5次脏话，禁言5分钟
+                        const now = Date.now();
+                        const endTime = now + (5 * 60 * 1000);
+                        
+                        // 添加到禁言列表
+                        mutedUsers.set(socket.id, {
+                            username: user.username,
+                            endTime: endTime,
+                            reason: '累计发送5次脏话'
+                        });
+                        
+                        // 发送禁言通知给用户
+                        io.to(socket.id).emit('muted', {
+                            duration: 5,
+                            reason: '累计发送5次脏话',
+                            endTime: endTime
+                        });
+                        
+                        console.log(`[自动禁言] 用户 ${user.username} 累计发送5次脏话，禁言5分钟`);
+                    } else if (newCount === 20) {
+                        // 发出20次脏话，永久禁言
+                        mutedUsers.set(socket.id, {
+                            username: user.username,
+                            endTime: -1,
+                            reason: '累计发送20次脏话，永久禁言'
+                        });
+                        
+                        // 发送禁言通知给用户
+                        io.to(socket.id).emit('muted', {
+                            duration: -1,
+                            reason: '累计发送20次脏话，永久禁言',
+                            endTime: -1
+                        });
+                        
+                        console.log(`[自动禁言] 用户 ${user.username} 累计发送20次脏话，永久禁言`);
+                    }
+                }
+            }
+            
             const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
             const messageData = {
                 id: messageId,
                 username: user.username,
                 color: user.color,
-                message: data.message,
+                message: processedMessage,
                 type: data.type || 'text',
                 timestamp: new Date().toLocaleTimeString(),
                 senderSocketId: socket.id,
@@ -890,6 +986,96 @@ io.on('connection', (socket) => {
             }
         }
     });
+    
+    // 禁言管理 - 获取禁言用户列表
+    socket.on('admin-get-muted-users', () => {
+        if (socket.id === adminSocketId) {
+            // 过滤掉已过期的禁言记录
+            const now = Date.now();
+            const validMutedUsers = [];
+            
+            mutedUsers.forEach((mutedData, socketId) => {
+                if (mutedData.endTime === -1 || mutedData.endTime > now) {
+                    validMutedUsers.push({
+                        socketId: socketId,
+                        username: mutedData.username,
+                        endTime: mutedData.endTime,
+                        reason: mutedData.reason
+                    });
+                } else {
+                    // 移除过期的禁言记录
+                    mutedUsers.delete(socketId);
+                }
+            });
+            
+            socket.emit('admin-muted-users', validMutedUsers);
+        }
+    });
+    
+    // 禁言管理 - 禁言用户
+    socket.on('admin-mute-user', (data) => {
+        if (socket.id === adminSocketId) {
+            const { socketId, duration, reason } = data;
+            const user = users.get(socketId);
+            
+            if (user) {
+                const now = Date.now();
+                const endTime = duration === -1 ? -1 : now + (duration * 60 * 1000);
+                
+                // 添加到禁言列表
+                mutedUsers.set(socketId, {
+                    username: user.username,
+                    endTime: endTime,
+                    reason: reason
+                });
+                
+                // 发送禁言通知给用户
+                io.to(socketId).emit('muted', {
+                    duration: duration,
+                    reason: reason,
+                    endTime: endTime
+                });
+                
+                // 更新管理员的禁言列表
+                socket.emit('admin-muted-users', Array.from(mutedUsers.entries()).map(([socketId, data]) => ({
+                    socketId: socketId,
+                    username: data.username,
+                    endTime: data.endTime,
+                    reason: data.reason
+                })));
+                
+                console.log(`管理员禁言了用户: ${user.username}，时长: ${duration}分钟，原因: ${reason}`);
+            }
+        }
+    });
+    
+    // 禁言管理 - 解除禁言
+    socket.on('admin-unmute-user', (socketId) => {
+        if (socket.id === adminSocketId) {
+            const mutedData = mutedUsers.get(socketId);
+            
+            if (mutedData) {
+                // 从禁言列表中移除
+                mutedUsers.delete(socketId);
+                
+                // 重置该用户的脏话计数
+                swearWordCount.delete(socketId);
+                
+                // 发送解除禁言通知给用户
+                io.to(socketId).emit('unmuted');
+                
+                // 更新管理员的禁言列表
+                socket.emit('admin-muted-users', Array.from(mutedUsers.entries()).map(([socketId, data]) => ({
+                    socketId: socketId,
+                    username: data.username,
+                    endTime: data.endTime,
+                    reason: data.reason
+                })));
+                
+                console.log(`管理员解除了对用户: ${mutedData.username} 的禁言，重置了脏话计数`);
+            }
+        }
+    });
 
     // 管理员直接设置用户好友数量上限
     socket.on('admin-set-user-max-friends', (data) => {
@@ -1162,7 +1348,7 @@ io.on('connection', (socket) => {
         socket.on('admin-popup', (data) => {
             if (socket.id === adminSocketId) {
                 const { socketId, message } = data;
-                io.to(socketId).emit('popup', { message });
+                io.to(socketId).emit('popup-message', { message });
                 console.log(`管理员向 ${socketId} 发送弹窗: ${message}`);
             }
         });
