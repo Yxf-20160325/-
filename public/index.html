@@ -1148,6 +1148,34 @@
             font-size: 24px;
             margin: 0;
         }
+        
+        /* 开发者模式日志样式 */
+        .developer-log {
+            position: absolute;
+            bottom: 80px;
+            left: 20px;
+            width: 300px;
+            max-height: 200px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #00ff00;
+            font-family: monospace;
+            font-size: 12px;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-y: auto;
+            z-index: 1001;
+        }
+        
+        .developer-log .log-entry {
+            margin-bottom: 5px;
+            padding: 2px 0;
+            border-bottom: 1px solid rgba(0, 255, 0, 0.2);
+        }
+        
+        .developer-log .log-entry:last-child {
+            margin-bottom: 0;
+            border-bottom: none;
+        }
     </style>
 </head>
 <body>
@@ -1225,6 +1253,8 @@
             <button class="video-control-btn" id="toggleAudioBtn">🎤</button>
             <button class="video-control-btn end" id="endCallBtn">📞</button>
         </div>
+        <!-- 开发者模式日志显示区域 -->
+        <div id="developerLog" class="developer-log" style="display: none;"></div>
     </div>
 
     <div class="call-incoming" id="callIncoming">
@@ -1339,6 +1369,12 @@
                             <label>
                                 <input type="checkbox" id="mentionNotificationCheckbox" checked>
                                 @提及通知
+                            </label>
+                        </div>
+                        <div style="margin-top: 10px;">
+                            <label>
+                                <input type="checkbox" id="developerModeCheckbox">
+                                开发者模式（通话时显示控制台日志）
                             </label>
                         </div>
                     </div>
@@ -1494,10 +1530,11 @@
         const targetLanguageSelect = document.getElementById('targetLanguageSelect');
         const autoTranslateCheckbox = document.getElementById('autoTranslateCheckbox');
         
-        // 用户设置
-        let userSettings = {
+        // 用户设置 - 定义在window对象中，确保全局可访问
+        window.userSettings = {
             targetLanguage: 'zh', // 默认翻译为中文
-            autoTranslate: false
+            autoTranslate: false,
+            developerMode: false // 默认关闭开发者模式
         };
         
         // 用户设置锁定状态
@@ -1509,15 +1546,21 @@
             // 从localStorage加载设置
             const savedSettings = localStorage.getItem('userSettings');
             if (savedSettings) {
-                userSettings = { ...userSettings, ...JSON.parse(savedSettings) };
+                window.userSettings = { ...window.userSettings, ...JSON.parse(savedSettings) };
             }
             
             // 更新UI
-            targetLanguageSelect.value = userSettings.targetLanguage;
-            autoTranslateCheckbox.checked = userSettings.autoTranslate;
+            targetLanguageSelect.value = window.userSettings.targetLanguage;
+            autoTranslateCheckbox.checked = window.userSettings.autoTranslate;
+            
+            // 初始化开发者模式复选框
+            const developerModeCheckbox = document.getElementById('developerModeCheckbox');
+            if (developerModeCheckbox) {
+                developerModeCheckbox.checked = window.userSettings.developerMode;
+            }
             
             // 更新当前翻译目标语言
-            currentTargetLanguage = userSettings.targetLanguage;
+            currentTargetLanguage = window.userSettings.targetLanguage;
         }
         
         // 更新设置模态框状态
@@ -1527,7 +1570,8 @@
                 document.getElementById('targetLanguageSelect'),
                 document.getElementById('autoTranslateCheckbox'),
                 document.getElementById('soundNotificationCheckbox'),
-                document.getElementById('mentionNotificationCheckbox')
+                document.getElementById('mentionNotificationCheckbox'),
+                document.getElementById('developerModeCheckbox')
             ];
             
             // 获取保存按钮和锁定提示元素
@@ -1589,14 +1633,20 @@
                 return;
             }
             
-            userSettings.targetLanguage = targetLanguageSelect.value;
-            userSettings.autoTranslate = autoTranslateCheckbox.checked;
+            window.userSettings.targetLanguage = targetLanguageSelect.value;
+            window.userSettings.autoTranslate = autoTranslateCheckbox.checked;
+            
+            // 保存开发者模式设置
+            const developerModeCheckbox = document.getElementById('developerModeCheckbox');
+            if (developerModeCheckbox) {
+                window.userSettings.developerMode = developerModeCheckbox.checked;
+            }
             
             // 更新当前翻译目标语言
-            currentTargetLanguage = userSettings.targetLanguage;
+            currentTargetLanguage = window.userSettings.targetLanguage;
             
             // 保存到localStorage
-            localStorage.setItem('userSettings', JSON.stringify(userSettings));
+            localStorage.setItem('userSettings', JSON.stringify(window.userSettings));
             
             // 关闭设置模态框
             closeSettingsModal();
@@ -1736,6 +1786,11 @@
                 // 显示等待提示
                 this.showWaitingPrompt();
                 
+                // 如果开发者模式开启，显示日志区域
+                if (window.userSettings && window.userSettings.developerMode) {
+                    window.DeveloperLogManager.showLog();
+                }
+                
                 // 获取本地媒体流（这样发起端就能看到自己的画面）
                 this.initLocalMediaStream();
                 
@@ -1870,6 +1925,9 @@
                     videoContainer.classList.remove('active');
                 }
                 
+                // 隐藏日志区域
+                window.DeveloperLogManager.hideLog();
+                
                 alert('通话已结束');
             }
             
@@ -1898,6 +1956,11 @@
                 const videoContainer = document.getElementById('videoContainer');
                 if (videoContainer) {
                     videoContainer.classList.add('active');
+                }
+                
+                // 如果开发者模式开启，显示日志区域
+                if (window.userSettings && window.userSettings.developerMode) {
+                    window.DeveloperLogManager.showLog();
                 }
                 
                 // 初始化媒体流
@@ -1939,6 +2002,9 @@
                 if (videoContainer) {
                     videoContainer.classList.remove('active');
                 }
+                
+                // 隐藏日志区域
+                window.DeveloperLogManager.hideLog();
             }
             
             // 切换视频开关
@@ -2050,10 +2116,15 @@
             createPeerConnection() {
                 this.peerConnection = new RTCPeerConnection(this.iceServers);
                 
-                // 添加本地媒体流
-                this.localStream.getTracks().forEach(track => {
-                    this.peerConnection.addTrack(track, this.localStream);
-                });
+                // 确保本地媒体流已添加到peerConnection
+                if (this.localStream) {
+                    this.localStream.getTracks().forEach(track => {
+                        this.peerConnection.addTrack(track, this.localStream);
+                        console.log('添加本地轨道到peerConnection:', track.kind, track.id);
+                    });
+                } else {
+                    console.error('创建peerConnection时本地媒体流不存在！');
+                }
                 
                 // 监听远程媒体流 - 增强ontrack事件处理
                 this.peerConnection.ontrack = (event) => {
@@ -2226,6 +2297,16 @@
                             
                             return this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.data))
                                 .then(() => {
+                                    // 再次确保本地媒体流已添加到peerConnection（针对接收方）
+                                    if (this.localStream) {
+                                        const existingTracks = this.peerConnection.getSenders().map(sender => sender.track.id);
+                                        this.localStream.getTracks().forEach(track => {
+                                            if (!existingTracks.includes(track.id)) {
+                                                console.log('处理offer时添加本地轨道到peerConnection:', track.kind, track.id);
+                                                this.peerConnection.addTrack(track, this.localStream);
+                                            }
+                                        });
+                                    }
                                     // 处理所有暂存的ICE候选
                                     if (this.pendingIceCandidates) {
                                         this.pendingIceCandidates.forEach(candidate => {
@@ -2380,6 +2461,115 @@
         // 通话相关变量
         let callSystem = null;
         let currentCallType = null;
+        
+        // 开发者日志管理器 - 定义在window对象中，确保全局可访问
+        window.DeveloperLogManager = {
+            originalConsole: {
+                log: console.log,
+                warn: console.warn,
+                error: console.error,
+                info: console.info,
+                debug: console.debug
+            },
+            
+            init() {
+                // 保存原始控制台方法
+                this.originalConsole = {
+                    log: console.log,
+                    warn: console.warn,
+                    error: console.error,
+                    info: console.info,
+                    debug: console.debug
+                };
+                
+                // 重定向控制台方法
+                this.redirectConsole();
+            },
+            
+            redirectConsole() {
+                // 重写控制台方法，将日志同时输出到控制台和界面
+                const self = this;
+                
+                ['log', 'warn', 'error', 'info', 'debug'].forEach(method => {
+                    console[method] = function(...args) {
+                        // 调用原始方法
+                        self.originalConsole[method].apply(console, args);
+                        
+                        // 将日志添加到界面
+                        self.addLog(method, ...args);
+                    };
+                });
+            },
+            
+            addLog(level, ...args) {
+                // 确保userSettings存在
+                if (typeof window.userSettings === 'undefined' || !window.userSettings.developerMode) return;
+                
+                const logElement = document.getElementById('developerLog');
+                if (!logElement || logElement.style.display === 'none') return;
+                
+                // 格式化日志
+                const timestamp = new Date().toLocaleTimeString();
+                const message = args.map(arg => {
+                    if (typeof arg === 'object') {
+                        try {
+                            return JSON.stringify(arg, null, 2);
+                        } catch (e) {
+                            return String(arg);
+                        }
+                    }
+                    return String(arg);
+                }).join(' ');
+                
+                // 创建日志条目
+                const logEntry = document.createElement('div');
+                logEntry.className = 'log-entry';
+                logEntry.innerHTML = `<strong>[${timestamp}] ${level.toUpperCase()}:</strong> ${message}`;
+                
+                // 添加到日志区域
+                logElement.appendChild(logEntry);
+                
+                // 滚动到底部
+                logElement.scrollTop = logElement.scrollHeight;
+                
+                // 限制日志条目数量，最多保留100条
+                const logEntries = logElement.querySelectorAll('.log-entry');
+                if (logEntries.length > 100) {
+                    logEntries[0].remove();
+                }
+            },
+            
+            showLog() {
+                const logElement = document.getElementById('developerLog');
+                if (logElement) {
+                    logElement.style.display = 'block';
+                }
+            },
+            
+            hideLog() {
+                const logElement = document.getElementById('developerLog');
+                if (logElement) {
+                    logElement.style.display = 'none';
+                    // 清空日志
+                    logElement.innerHTML = '';
+                }
+            },
+            
+            clearLog() {
+                const logElement = document.getElementById('developerLog');
+                if (logElement) {
+                    logElement.innerHTML = '';
+                }
+            },
+            
+            restoreConsole() {
+                // 恢复原始控制台方法
+                Object.assign(console, this.originalConsole);
+            }
+        };
+        
+        // 初始化日志管理器
+        window.DeveloperLogManager.init();
         
         // 仅保留必要的DOM元素引用
         const callUserModal = document.getElementById('callUserModal');
