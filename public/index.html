@@ -2124,7 +2124,32 @@
                 }
                 
                 try {
-                    // 创建MediaSource
+                    // 清理旧的MediaSource和SourceBuffer
+                    if (this.mediaSource) {
+                        try {
+                            if (this.mediaSource.readyState === 'open') {
+                                this.mediaSource.endOfStream();
+                            }
+                            // 移除事件监听器
+                            this.mediaSource.removeEventListener('sourceopen', this.sourceOpenHandler);
+                            this.mediaSource.removeEventListener('error', this.mediaSourceErrorHandler);
+                            this.mediaSource.removeEventListener('sourceclose', this.mediaSourceCloseHandler);
+                        } catch (e) {
+                            console.error('清理旧MediaSource时出错:', e);
+                        }
+                        this.mediaSource = null;
+                    }
+                    
+                    if (this.sourceBuffer) {
+                        try {
+                            this.sourceBuffer.removeEventListener('updateend', this.updateEndHandler);
+                        } catch (e) {
+                            console.error('清理旧SourceBuffer时出错:', e);
+                        }
+                        this.sourceBuffer = null;
+                    }
+                    
+                    // 创建新的MediaSource
                     this.mediaSource = new MediaSource();
                     
                     // 获取远程视频元素
@@ -2134,11 +2159,8 @@
                         return;
                     }
                     
-                    // 设置视频源为MediaSource的URL
-                    remoteVideo.src = URL.createObjectURL(this.mediaSource);
-                    
-                    // 监听MediaSource打开事件
-                    this.mediaSource.addEventListener('sourceopen', () => {
+                    // 存储事件监听器引用，以便后续移除
+                    this.sourceOpenHandler = () => {
                         console.log('MediaSource已打开');
                         this.isMediaSourceOpen = true;
                         
@@ -2148,13 +2170,14 @@
                             this.sourceBuffer = this.mediaSource.addSourceBuffer(mimeType);
                             console.log('SourceBuffer已创建，mimeType:', mimeType);
                             
+                            // 监听SourceBuffer的updateend事件，用于处理队列中的下一个媒体数据
+                            this.updateEndHandler = () => {
+                                this.processMediaQueue();
+                            };
+                            this.sourceBuffer.addEventListener('updateend', this.updateEndHandler);
+                            
                             // 如果队列中有等待处理的媒体数据，立即处理
                             this.processMediaQueue();
-                            
-                            // 监听SourceBuffer的updateend事件，用于处理队列中的下一个媒体数据
-                            this.sourceBuffer.addEventListener('updateend', () => {
-                                this.processMediaQueue();
-                            });
                         } else {
                             console.error('不支持的mimeType:', mimeType);
                             // 尝试其他可能的mimeType
@@ -2162,37 +2185,70 @@
                             if (this.mediaSource.isTypeSupported(fallbackMimeType)) {
                                 this.sourceBuffer = this.mediaSource.addSourceBuffer(fallbackMimeType);
                                 console.log('使用 fallback mimeType 创建SourceBuffer:', fallbackMimeType);
-                                this.processMediaQueue();
-                                this.sourceBuffer.addEventListener('updateend', () => {
+                                
+                                // 监听SourceBuffer的updateend事件
+                                this.updateEndHandler = () => {
                                     this.processMediaQueue();
-                                });
+                                };
+                                this.sourceBuffer.addEventListener('updateend', this.updateEndHandler);
+                                
+                                this.processMediaQueue();
                             } else {
                                 console.error('不支持任何webm mimeType');
                             }
                         }
-                    });
+                    };
                     
-                    // 监听MediaSource错误事件
-                    this.mediaSource.addEventListener('error', (e) => {
+                    this.mediaSourceErrorHandler = (e) => {
                         console.error('MediaSource错误:', e);
-                    });
+                        // 重新初始化MediaSource
+                        setTimeout(() => {
+                            this.initMediaSource();
+                        }, 1000);
+                    };
                     
-                    // 监听MediaSource关闭事件
-                    this.mediaSource.addEventListener('sourceclose', () => {
+                    this.mediaSourceCloseHandler = () => {
                         console.log('MediaSource已关闭');
                         this.isMediaSourceOpen = false;
                         this.sourceBuffer = null;
-                    });
+                        // 如果通话仍在进行中，重新初始化MediaSource
+                        if (this.isInCall && this.currentCallMethod === 'socket.io') {
+                            setTimeout(() => {
+                                this.initMediaSource();
+                            }, 1000);
+                        }
+                    };
+                    
+                    // 添加事件监听器
+                    this.mediaSource.addEventListener('sourceopen', this.sourceOpenHandler);
+                    this.mediaSource.addEventListener('error', this.mediaSourceErrorHandler);
+                    this.mediaSource.addEventListener('sourceclose', this.mediaSourceCloseHandler);
+                    
+                    // 设置视频源为MediaSource的URL
+                    remoteVideo.src = URL.createObjectURL(this.mediaSource);
                     
                 } catch (error) {
                     console.error('初始化MediaSource失败:', error);
+                    // 1秒后重试初始化
+                    setTimeout(() => {
+                        this.initMediaSource();
+                    }, 1000);
                 }
             }
             
             // 处理媒体队列
             processMediaQueue() {
+                // 检查条件
                 if (!this.sourceBuffer || this.sourceBuffer.updating || this.socketMediaQueue.length === 0) {
                     return;
+                }
+                
+                // 限制媒体队列大小，避免内存溢出
+                if (this.socketMediaQueue.length > 30) {
+                    console.warn('媒体队列过大，丢弃旧数据，当前长度:', this.socketMediaQueue.length);
+                    // 只保留最新的20个媒体数据
+                    this.socketMediaQueue = this.socketMediaQueue.slice(-20);
+                    console.log('媒体队列已调整，当前长度:', this.socketMediaQueue.length);
                 }
                 
                 // 从队列中取出第一个媒体数据
@@ -2200,13 +2256,41 @@
                 console.log('处理媒体数据，队列剩余:', this.socketMediaQueue.length);
                 
                 try {
+                    // 检查SourceBuffer状态是否有效
+                    if (this.sourceBuffer.readyState !== 'open') {
+                        console.error('SourceBuffer状态无效，无法添加媒体数据');
+                        this.initMediaSource();
+                        return;
+                    }
+                    
+                    // 检查MediaSource状态是否有效
+                    if (this.mediaSource.readyState !== 'open') {
+                        console.error('MediaSource状态无效，无法添加媒体数据');
+                        this.initMediaSource();
+                        return;
+                    }
+                    
                     // 将媒体数据添加到SourceBuffer
                     this.sourceBuffer.appendBuffer(mediaData);
                     console.log('媒体数据已添加到SourceBuffer');
                 } catch (error) {
                     console.error('添加媒体数据到SourceBuffer失败:', error);
-                    // 如果添加失败，尝试清空队列，避免无限重试
-                    this.socketMediaQueue = [];
+                    // 只移除当前失败的数据，而不是清空整个队列
+                    console.log('移除当前失败的数据，队列剩余:', this.socketMediaQueue.length);
+                    
+                    // 根据错误类型采取不同的处理方式
+                    if (error.name === 'QuotaExceededError') {
+                        console.error('SourceBuffer配额超出，尝试清空队列');
+                        this.socketMediaQueue = [];
+                    } else if (error.name === 'InvalidStateError') {
+                        console.error('SourceBuffer状态无效，可能已关闭，重新初始化MediaSource');
+                        this.initMediaSource();
+                    } else if (error.name === 'TypeError') {
+                        console.error('媒体数据类型错误，跳过该数据');
+                    } else {
+                        console.error('未知错误，重新初始化MediaSource');
+                        this.initMediaSource();
+                    }
                 }
             }
             
@@ -2729,34 +2813,87 @@
                     return;
                 }
                 
+                // 如果已有运行中的MediaRecorder，先停止
+                if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+                    try {
+                        this.mediaRecorder.stop();
+                    } catch (e) {
+                        console.error('停止旧MediaRecorder时出错:', e);
+                    }
+                }
+                
+                // 检测浏览器支持的mimeType
+                const supportedMimeTypes = [
+                    'video/webm; codecs=vp8,opus',
+                    'video/webm',
+                    'video/mp4; codecs=h264,aac',
+                    'video/mp4'
+                ];
+                
+                let selectedMimeType = 'video/webm; codecs=vp8,opus';
+                for (const mimeType of supportedMimeTypes) {
+                    if (MediaRecorder.isTypeSupported(mimeType)) {
+                        selectedMimeType = mimeType;
+                        console.log('使用支持的mimeType:', mimeType);
+                        break;
+                    }
+                }
+                
                 // 使用Socket.io发送媒体流数据，改进配置
                 const mediaRecorder = new MediaRecorder(this.localStream, {
-                    mimeType: 'video/webm; codecs=vp8,opus',
-                    videoBitsPerSecond: 1000000 // 1Mbps，降低带宽消耗
+                    mimeType: selectedMimeType,
+                    videoBitsPerSecond: 800000, // 800Kbps，平衡质量和带宽
+                    audioBitsPerSecond: 64000, // 64Kbps，优化音频质量
+                    bitsPerSecond: 864000 // 总比特率
                 });
                 
                 mediaRecorder.ondataavailable = (event) => {
                     if (event.data.size > 0 && this.isInCall) {
-                        // 发送媒体数据
-                        this.socket.emit('call-media', {
-                            targetSocketId: this.currentCallTargetSocketId,
-                            callId: this.currentCallId,
-                            type: 'media-data',
-                            data: event.data
-                        });
+                        // 检查socket连接状态
+                        if (this.socket && this.socket.connected) {
+                            // 发送媒体数据
+                            this.socket.emit('call-media', {
+                                targetSocketId: this.currentCallTargetSocketId,
+                                callId: this.currentCallId,
+                                type: 'media-data',
+                                data: event.data
+                            });
+                        }
                     }
                 };
                 
                 mediaRecorder.onerror = (event) => {
                     console.error('MediaRecorder错误:', event.error);
+                    // 尝试重新启动MediaRecorder
+                    setTimeout(() => {
+                        if (this.isInCall) {
+                            this.startSocketMediaStream();
+                        }
+                    }, 1000);
+                };
+                
+                mediaRecorder.onstop = () => {
+                    console.log('MediaRecorder已停止');
+                    // 如果通话仍在进行中，尝试重新启动
+                    if (this.isInCall) {
+                        setTimeout(() => {
+                            this.startSocketMediaStream();
+                        }, 500);
+                    }
                 };
                 
                 try {
-                    mediaRecorder.start(300); // 改为每300ms发送一次数据，降低网络负载
+                    mediaRecorder.start(250); // 每250ms发送一次数据，平衡延迟和带宽
                     this.mediaRecorder = mediaRecorder;
-                    console.log('MediaRecorder已启动');
+                    console.log('MediaRecorder已启动，状态:', mediaRecorder.state);
                 } catch (error) {
                     console.error('启动MediaRecorder失败:', error);
+                    // 1秒后重试
+                    setTimeout(() => {
+                        if (this.isInCall) {
+                            this.startSocketMediaStream();
+                        }
+                    }, 1000);
                 }
             }
             
@@ -3098,6 +3235,8 @@
             // 播放Socket.io媒体数据
             playSocketMedia(data) {
                 try {
+                    console.log('播放Socket.io媒体数据，类型:', this.currentCallType);
+                    
                     // 立即获取远程视频元素，重试机制确保能获取到
                     let remoteVideo = document.getElementById('remoteVideo');
                     if (!remoteVideo) {
@@ -3111,9 +3250,23 @@
                         return;
                     }
                     
-                    // 如果是视频通话且使用MediaSource，将数据添加到队列
                     if (this.currentCallType === 'video' && this.currentCallMethod === 'socket.io') {
-                        console.log('收到socket.io媒体数据，大小:', data.size, 'bytes');
+                        console.log('收到socket.io视频媒体数据，大小:', data.size, 'bytes');
+                        
+                        // 限制媒体队列大小，避免内存溢出
+                        if (this.socketMediaQueue.length > 30) {
+                            console.warn('媒体队列过大，丢弃旧数据，当前长度:', this.socketMediaQueue.length);
+                            // 只保留最新的20个媒体数据
+                            this.socketMediaQueue = this.socketMediaQueue.slice(-20);
+                        }
+                        
+                        // 检查MediaSource是否已初始化
+                        if (!this.mediaSource || !this.isMediaSourceOpen) {
+                            console.log('MediaSource未初始化或未打开，重新初始化');
+                            this.socketMediaQueue.push(data);
+                            this.initMediaSource();
+                            return;
+                        }
                         
                         // 将媒体数据添加到队列
                         this.socketMediaQueue.push(data);
@@ -3121,13 +3274,32 @@
                         
                         // 尝试处理媒体队列
                         this.processMediaQueue();
-                    } else if (this.currentCallType === 'audio') {
-                        // 音频通话，简单处理：创建Audio对象播放
-                        const audio = new Audio();
-                        audio.srcObject = new MediaStream([new MediaStreamTrackGenerator({ kind: 'audio' })]);
-                        audio.play().catch(err => {
-                            console.error('音频播放失败:', err);
-                        });
+                    } else if (this.currentCallType === 'audio' && this.currentCallMethod === 'socket.io') {
+                        console.log('收到socket.io音频媒体数据，大小:', data.size, 'bytes');
+                        
+                        // 音频通话，正确处理：使用Blob URL和Audio对象播放
+                        try {
+                            // 创建Blob对象
+                            const blob = new Blob([data], { type: 'audio/webm; codecs=opus' });
+                            // 创建Blob URL
+                            const url = URL.createObjectURL(blob);
+                            
+                            // 创建Audio对象并播放
+                            const audio = new Audio();
+                            audio.src = url;
+                            audio.play().catch(err => {
+                                console.error('音频播放失败:', err);
+                                // 释放Blob URL
+                                URL.revokeObjectURL(url);
+                            });
+                            
+                            // 音频播放结束后释放Blob URL
+                            audio.addEventListener('ended', () => {
+                                URL.revokeObjectURL(url);
+                            });
+                        } catch (audioError) {
+                            console.error('处理音频数据失败:', audioError);
+                        }
                     } else {
                         console.error('未知的通话类型或方式');
                     }
