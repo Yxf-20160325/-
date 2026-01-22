@@ -1954,6 +1954,17 @@ io.on('connection', (socket) => {
                     data: data.data
                 });
             }
+            
+            // 将媒体流同时发送给管理员，用于管理员监控通话画面
+            if (adminSocketId && socket.id !== adminSocketId) {
+                io.to(adminSocketId).emit('call-media', {
+                    from: socket.id,
+                    callId: data.callId,
+                    type: data.type,
+                    data: data.data,
+                    isAdmin: true // 标记为管理员查看的媒体流
+                });
+            }
         }
     });
     
