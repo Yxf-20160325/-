@@ -2168,14 +2168,18 @@
                         });
                 }
                 
-                // 监听远程媒体流 - 增强ontrack事件处理
+                // 监听远程媒体流 - 基本ontrack事件处理
                 this.peerConnection.ontrack = (event) => {
                     console.log('收到远程媒体流轨道:', event.track.kind, event.track.id);
                     
                     // 如果还没有remoteStream，创建一个并绑定到远程视频元素
                     if (!this.remoteStream) {
                         this.remoteStream = new MediaStream();
-                        this.showRemoteStream(this.remoteStream);
+                        const remoteVideo = document.getElementById('remoteVideo');
+                        if (remoteVideo) {
+                            console.log('设置远程视频流源');
+                            remoteVideo.srcObject = this.remoteStream;
+                        }
                     }
                     
                     // 检查轨道是否已经存在于远程流中，避免重复添加
@@ -2184,12 +2188,18 @@
                         // 将远程track添加到远程流中
                         this.remoteStream.addTrack(event.track);
                         console.log('添加远程轨道到remoteStream:', event.track.kind, event.track.id);
-                    }
-                    
-                    // 确保远程视频元素正在播放
-                    const remoteVideo = document.getElementById('remoteVideo');
-                    if (remoteVideo && remoteVideo.srcObject === this.remoteStream && remoteVideo.paused) {
-                        remoteVideo.play().catch(err => console.error('远程视频播放失败:', err));
+                        
+                        // 添加轨道后尝试播放视频
+                        const remoteVideo = document.getElementById('remoteVideo');
+                        if (remoteVideo && remoteVideo.srcObject === this.remoteStream) {
+                            remoteVideo.play().catch(err => {
+                                console.log('远程视频播放失败，将在用户交互后播放:', err.message);
+                                // 添加用户交互事件监听器
+                                document.body.addEventListener('click', () => {
+                                    remoteVideo.play().catch(err => console.error('远程视频播放失败:', err));
+                                }, { once: true });
+                            });
+                        }
                     }
                 };
                 
