@@ -1716,6 +1716,11 @@
                 this.currentCallId = null;
                 this.currentCallType = null; // 'video' or 'audio'
                 this.currentCallTargetSocketId = null;
+                /* 
+                 * 通话方式说明：
+                 * - webrtc：点对点直接通信，延迟低，质量高，但只能在局域网内使用
+                 * - socket.io：使用服务器转发数据，支持跨网段通话
+                 */
                 this.currentCallMethod = 'webrtc'; // 默认使用webrtc，可选'socket.io'
                 this.localStream = null;
                 this.remoteStream = null;
@@ -2228,77 +2233,16 @@
             
             // 创建WebRTC PeerConnection
             createPeerConnection() {
+                console.log('创建新的PeerConnection');
                 this.peerConnection = new RTCPeerConnection(this.iceServers);
                 
-                // 确保本地媒体流已添加到peerConnection
-                if (this.localStream) {
-                    // 获取所有本地轨道
-                    const tracks = this.localStream.getTracks();
-                    console.log('本地媒体流轨道:', tracks.map(track => track.kind));
-                    
-                    // 添加所有本地轨道到peerConnection
-                    tracks.forEach(track => {
-                        this.peerConnection.addTrack(track, this.localStream);
-                        console.log('添加本地轨道到peerConnection:', track.kind, track.id);
-                    });
-                } else {
-                    console.error('创建peerConnection时本地媒体流不存在！');
-                    // 如果本地媒体流不存在，尝试获取媒体流
-                    const constraints = {
-                        audio: true,
-                        video: this.currentCallType === 'video'
-                    };
-                    navigator.mediaDevices.getUserMedia(constraints)
-                        .then(stream => {
-                            this.localStream = stream;
-                            this.showLocalStream(stream);
-                            // 添加所有本地轨道到peerConnection
-                            stream.getTracks().forEach(track => {
-                                this.peerConnection.addTrack(track, stream);
-                                console.log('获取媒体流后添加本地轨道到peerConnection:', track.kind, track.id);
-                            });
-                        })
-                        .catch(error => {
-                            console.error('获取媒体流失败:', error);
-                        });
-                }
+                // 立即尝试添加本地媒体流，如果还没有，设置定时器重试
+                this.ensureLocalStreamAdded();
                 
-                // 监听远程媒体流 - 增强版ontrack事件处理，确保接收方能看到对方
-                this.peerConnection.ontrack = (event) => {
-                    console.log('收到远程媒体流轨道:', event.track.kind, event.track.id);
-                    
-                    // 立即获取远程视频元素
-                    const remoteVideo = document.getElementById('remoteVideo');
-                    if (!remoteVideo) {
-                        console.error('远程视频元素不存在');
-                        return;
-                    }
-                    
-                    // 如果还没有remoteStream，创建一个并绑定到远程视频元素
-                    if (!this.remoteStream) {
-                        this.remoteStream = new MediaStream();
-                        console.log('创建新的remoteStream并设置为远程视频源');
-                        remoteVideo.srcObject = this.remoteStream;
-                    }
-                    
-                    // 检查轨道是否已经存在于远程流中，避免重复添加
-                    const trackExists = this.remoteStream.getTracks().some(track => track.id === event.track.id);
-                    if (!trackExists) {
-                        // 将远程track添加到远程流中
-                        this.remoteStream.addTrack(event.track);
-                        console.log('添加远程轨道到remoteStream:', event.track.kind, event.track.id);
-                        
-                        // 立即尝试播放视频，不等待轨道添加完成
-                        this.showRemoteStream(this.remoteStream);
-                    }
-                    
-                    // 额外的稳定性检查：确保远程视频元素的srcObject始终指向正确的remoteStream
-                    if (remoteVideo.srcObject !== this.remoteStream) {
-                        console.log('修复远程视频源，重新设置为remoteStream');
-                        remoteVideo.srcObject = this.remoteStream;
-                        this.showRemoteStream(this.remoteStream);
-                    }
-                };
+                // 设置定时器，定期检查并确保本地媒体流已添加
+                this.streamCheckInterval = setInterval(() => {
+                    this.ensureLocalStreamAdded();
+                }, 2000);
                 
                 // 监听ICE候选
                 this.peerConnection.onicecandidate = (event) => {
@@ -2312,20 +2256,65 @@
                     }
                 };
                 
-                // 监听连接状态变化，用于调试
-                this.peerConnection.onconnectionstatechange = () => {
-                    console.log('PeerConnection状态变化:', this.peerConnection.connectionState);
-                    if (this.peerConnection.connectionState === 'connected') {
-                        console.log('WebRTC连接已建立');
-                    } else if (this.peerConnection.connectionState === 'failed') {
-                        console.error('WebRTC连接失败');
+                // 监听远程媒体流 - 超级增强版ontrack事件处理，确保拨通方能看到对方
+                this.peerConnection.ontrack = (event) => {
+                    console.log('收到远程媒体流轨道:', event.track.kind, event.track.id, '流:', event.streams.length);
+                    
+                    // 立即获取远程视频元素，重试机制确保能获取到
+                    let remoteVideo = document.getElementById('remoteVideo');
+                    if (!remoteVideo) {
+                        console.error('远程视频元素不存在，100ms后重试');
+                        setTimeout(() => {
+                            remoteVideo = document.getElementById('remoteVideo');
+                            if (remoteVideo) {
+                                console.log('重试后获取到远程视频元素');
+                                this.processRemoteTrack(event, remoteVideo);
+                            } else {
+                                console.error('重试后仍未获取到远程视频元素');
+                            }
+                        }, 100);
+                        return;
                     }
+                    
+                    // 处理远程轨道
+                    this.processRemoteTrack(event, remoteVideo);
                 };
+            }
+            
+            // 确保本地媒体流已添加到peerConnection
+            ensureLocalStreamAdded() {
+                if (!this.peerConnection) {
+                    console.error('ensureLocalStreamAdded: peerConnection不存在');
+                    return;
+                }
                 
-                // 监听ICE连接状态变化
-                this.peerConnection.oniceconnectionstatechange = () => {
-                    console.log('ICE连接状态变化:', this.peerConnection.iceConnectionState);
-                };
+                if (!this.localStream) {
+                    console.log('ensureLocalStreamAdded: 本地媒体流不存在，等待获取');
+                    return;
+                }
+                
+                console.log('确保本地媒体流已添加到peerConnection');
+                
+                // 获取所有本地轨道
+                const localTracks = this.localStream.getTracks();
+                console.log('本地媒体流轨道:', localTracks.map(track => track.kind));
+                
+                // 获取已添加到peerConnection的轨道ID
+                const addedTrackIds = this.peerConnection.getSenders()
+                    .map(sender => sender.track)
+                    .filter(track => track)
+                    .map(track => track.id);
+                console.log('已添加到peerConnection的轨道ID:', addedTrackIds);
+                
+                // 添加未添加的轨道
+                localTracks.forEach(track => {
+                    if (!addedTrackIds.includes(track.id)) {
+                        console.log('添加本地轨道到peerConnection:', track.kind, track.id);
+                        this.peerConnection.addTrack(track, this.localStream);
+                    } else {
+                        console.log('轨道已存在于peerConnection中，跳过:', track.kind, track.id);
+                    }
+                });
             }
             
             // 创建并发送offer
@@ -2387,55 +2376,67 @@
             
             // 处理WebRTC媒体数据
             handleWebRTCMedia(data) {
-                console.log('收到WebRTC媒体数据:', data.type, 'isInCall:', this.isInCall);
+                console.log('收到WebRTC媒体数据:', data.type, 'isInCall:', this.isInCall, 'peerConnection:', !!this.peerConnection);
                 
-                // 特殊处理：如果不是通话中状态，但收到了offer，保存到pendingOffer中
-                if (!this.isInCall && data.type === 'offer') {
-                    console.log('未在通话中，保存offer到pendingOffer');
-                    this.pendingOffer = data.data;
-                    return;
-                }
-                
-                // 只有在通话中状态才处理其他媒体数据
-                if (!this.isInCall) {
-                    console.log('未在通话中，忽略媒体数据:', data.type);
-                    return;
-                }
-                
-                // 确保peerConnection已创建
+                // 确保peerConnection已创建，无论是否在通话中状态
                 if (!this.peerConnection) {
-                    console.log('peerConnection不存在，创建peerConnection');
+                    console.log('peerConnection不存在，立即创建peerConnection');
                     this.createPeerConnection();
                 }
                 
-                // 处理ICE候选：即使没有remoteDescription，也要暂存
+                // 特殊处理：如果不是通话中状态，但收到了offer，保存到pendingOffer中
+                if (!this.isInCall) {
+                    if (data.type === 'offer') {
+                        console.log('未在通话中，保存offer到pendingOffer');
+                        this.pendingOffer = data.data;
+                        return;
+                    } else if (data.type === 'ice-candidate') {
+                        // 即使未在通话中，也暂存ICE候选
+                        if (!this.pendingIceCandidates) {
+                            this.pendingIceCandidates = [];
+                        }
+                        this.pendingIceCandidates.push(data.data);
+                        console.log('ICE候选暂存，当前暂存数量:', this.pendingIceCandidates.length);
+                        return;
+                    } else {
+                        console.log('未在通话中，忽略媒体数据:', data.type);
+                        return;
+                    }
+                }
+                
+                // 处理ICE候选：改进ICE候选处理逻辑，确保所有候选都能被正确处理
                 if (data.type === 'ice-candidate') {
-                    console.log('处理ICE候选');
+                    console.log('处理ICE候选，remoteDescription状态:', this.peerConnection.remoteDescription ? this.peerConnection.remoteDescription.type : 'none');
                     
                     if (!data.data || !data.data.candidate) {
                         console.error('无效的ICE候选数据:', data.data);
                         return;
                     }
                     
-                    const candidate = new RTCIceCandidate(data.data);
-                    
-                    // 检查remoteDescription是否已经设置
-                    if (this.peerConnection.remoteDescription) {
-                        console.log('添加ICE候选到peerConnection');
-                        this.peerConnection.addIceCandidate(candidate)
-                            .then(() => {
-                                console.log('添加ICE候选成功');
-                            })
-                            .catch(err => {
-                                console.error('添加ICE候选失败:', err);
-                            });
-                    } else {
-                        // 暂存ICE候选，等remoteDescription设置后再处理
-                        if (!this.pendingIceCandidates) {
-                            this.pendingIceCandidates = [];
+                    try {
+                        const candidate = new RTCIceCandidate(data.data);
+                        
+                        // 无论remoteDescription是否设置，都尝试添加ICE候选
+                        if (this.peerConnection.remoteDescription) {
+                            console.log('添加ICE候选到peerConnection');
+                            this.peerConnection.addIceCandidate(candidate)
+                                .then(() => {
+                                    console.log('添加ICE候选成功');
+                                })
+                                .catch(err => {
+                                    console.error('添加ICE候选失败:', err);
+                                    // 失败后不放弃，继续处理其他候选
+                                });
+                        } else {
+                            // 暂存ICE候选，等remoteDescription设置后再处理
+                            if (!this.pendingIceCandidates) {
+                                this.pendingIceCandidates = [];
+                            }
+                            this.pendingIceCandidates.push(data.data);
+                            console.log('ICE候选暂存，等待remoteDescription设置，当前暂存数量:', this.pendingIceCandidates.length);
                         }
-                        this.pendingIceCandidates.push(candidate);
-                        console.log('ICE候选暂存，等待remoteDescription设置，当前暂存数量:', this.pendingIceCandidates.length);
+                    } catch (error) {
+                        console.error('创建ICE候选对象失败:', error);
                     }
                     return;
                 }
@@ -2599,19 +2600,101 @@
                 }
             }
             
+            // 处理远程媒体轨道
+            processRemoteTrack(event, remoteVideo) {
+                console.log('处理远程媒体轨道:', event.track.kind, event.track.id);
+                
+                // 优先使用event.streams[0]，这是WebRTC推荐的方式
+                if (event.streams && event.streams.length > 0) {
+                    const stream = event.streams[0];
+                    console.log('使用event.streams[0]作为远程流，轨道数量:', stream.getTracks().length);
+                    
+                    // 更新remoteStream引用
+                    this.remoteStream = stream;
+                    
+                    // 直接设置视频源，这是最可靠的方式
+                    remoteVideo.srcObject = stream;
+                    console.log('已将远程流设置为视频源');
+                    
+                    // 立即尝试播放视频
+                    this.ensureVideoPlays(remoteVideo);
+                    
+                    return;
+                }
+                
+                // 备用方案：手动管理媒体流和轨道
+                if (!this.remoteStream) {
+                    this.remoteStream = new MediaStream();
+                    console.log('创建新的remoteStream');
+                    remoteVideo.srcObject = this.remoteStream;
+                }
+                
+                // 检查轨道是否已经存在于远程流中，避免重复添加
+                const trackExists = this.remoteStream.getTracks().some(track => track.id === event.track.id);
+                if (!trackExists) {
+                    // 将远程track添加到远程流中
+                    this.remoteStream.addTrack(event.track);
+                    console.log('添加远程轨道到remoteStream:', event.track.kind, event.track.id);
+                    
+                    // 立即尝试播放视频
+                    this.ensureVideoPlays(remoteVideo);
+                }
+                
+                // 额外的稳定性检查：确保远程视频元素的srcObject始终指向正确的remoteStream
+                if (remoteVideo.srcObject !== this.remoteStream) {
+                    console.log('修复远程视频源，重新设置为remoteStream');
+                    remoteVideo.srcObject = this.remoteStream;
+                    this.ensureVideoPlays(remoteVideo);
+                }
+            }
+            
+            // 确保视频播放的辅助方法
+            ensureVideoPlays(videoElement) {
+                if (!videoElement) return;
+                
+                // 确保视频播放，添加用户交互检查和重试机制
+                const playVideo = () => {
+                    videoElement.play()
+                        .then(() => {
+                            console.log('视频播放成功');
+                        })
+                        .catch(err => {
+                            console.log('视频自动播放失败，将在用户交互后播放:', err.message);
+                            // 添加用户交互事件监听器，确保只监听一次
+                            const handleUserInteraction = () => {
+                                videoElement.play().catch(e => console.error('用户交互后播放失败:', e));
+                                // 移除所有用户交互监听器
+                                document.removeEventListener('click', handleUserInteraction);
+                                document.removeEventListener('touchstart', handleUserInteraction);
+                                document.removeEventListener('keydown', handleUserInteraction);
+                            };
+                            
+                            // 添加多种用户交互事件监听器
+                            document.addEventListener('click', handleUserInteraction, { once: true });
+                            document.addEventListener('touchstart', handleUserInteraction, { once: true });
+                            document.addEventListener('keydown', handleUserInteraction, { once: true });
+                        });
+                };
+                
+                // 立即尝试播放
+                playVideo();
+                
+                // 1秒后重试一次，确保视频能播放
+                setTimeout(() => {
+                    if (videoElement.paused) {
+                        console.log('视频仍未播放，1秒后重试');
+                        playVideo();
+                    }
+                }, 1000);
+            }
+            
             // 显示远程视频流
             showRemoteStream(stream) {
                 const remoteVideo = document.getElementById('remoteVideo');
                 if (remoteVideo) {
                     remoteVideo.srcObject = stream;
-                    // 确保远程视频播放，添加用户交互检查
-                    remoteVideo.play().catch(err => {
-                        console.log('远程视频自动播放失败，将在用户交互后播放:', err.message);
-                        // 添加用户交互事件监听器
-                        document.body.addEventListener('click', () => {
-                            remoteVideo.play().catch(err => console.error('远程视频播放失败:', err));
-                        }, { once: true });
-                    });
+                    // 确保远程视频播放
+                    this.ensureVideoPlays(remoteVideo);
                 }
             }
             
@@ -2639,6 +2722,13 @@
             
             // 清理媒体资源
             cleanupMedia() {
+                // 清除定时器
+                if (this.streamCheckInterval) {
+                    clearInterval(this.streamCheckInterval);
+                    this.streamCheckInterval = null;
+                    console.log('已清除媒体流检查定时器');
+                }
+                
                 if (this.localStream) {
                     this.localStream.getTracks().forEach(track => track.stop());
                     this.localStream = null;
@@ -2936,7 +3026,7 @@
             callMethodDiv.innerHTML = `
                 <h4 style="margin-top: 0;">选择通话方式</h4>
                 <label style="margin-right: 20px;">
-                    <input type="radio" name="callMethod" value="webrtc" checked> WebRTC (推荐)
+                    <input type="radio" name="callMethod" value="webrtc" checked> WebRTC (推荐，仅可局域网)
                 </label>
                 <label>
                     <input type="radio" name="callMethod" value="socket.io"> Socket.io
