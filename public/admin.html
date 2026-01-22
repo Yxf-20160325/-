@@ -909,6 +909,7 @@
                 <button class="tab" onclick="switchTab('friends')">好友管理</button>
                 <button class="tab" onclick="switchTab('requests')">申请管理</button>
                 <button class="tab" onclick="switchTab('mutedUsers')">禁言管理</button>
+                <button class="tab" onclick="switchTab('calls')">通话管理</button>
                 <button class="tab" onclick="switchTab('settingsManagement')">用户设置管理</button>
                 <button class="tab" onclick="switchTab('systemManagement')">系统管理</button>
                 <button class="tab" onclick="switchTab('globalSettings')">全体设置</button>
@@ -1222,6 +1223,39 @@
                     <div class="empty-state">
                         <div class="empty-state-icon">🔇</div>
                         <div>暂无被禁言用户</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="tab-content" id="callsTab">
+            <div class="section">
+                <h2>通话管理</h2>
+                <button class="btn btn-primary" onclick="loadOngoingCalls()">刷新通话列表</button>
+            </div>
+            
+            <div class="section">
+                <h2>正在进行的通话</h2>
+                <div class="user-list" id="ongoingCallsList">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📞</div>
+                        <div>暂无正在进行的通话</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 通话详情模态框 -->
+            <div class="modal" id="callDetailsModal">
+                <div class="modal-content" style="max-width: 800px;">
+                    <h3>通话详情</h3>
+                    <div id="callDetailsInfo">
+                        <!-- 通话详情将通过JavaScript动态加载 -->
+                    </div>
+                    <div style="margin-top: 20px; display: flex; gap: 10px;">
+                        <button class="btn btn-danger" onclick="endCall()">结束通话</button>
+                        <button class="btn btn-primary" onclick="toggleCallControl('video')">切换视频控制</button>
+                        <button class="btn btn-primary" onclick="toggleCallControl('audio')">切换音频控制</button>
+                        <button class="btn btn-cancel" onclick="closeCallDetailsModal()">关闭</button>
                     </div>
                 </div>
             </div>
@@ -3547,6 +3581,179 @@
             socket.emit('admin-get-user-settings', socketId);
             
             document.getElementById('userSettingsForm').style.display = 'block';
+        }
+        
+        // 通话管理功能
+        let currentCallId = null;
+        
+        // 加载正在进行的通话列表
+        async function loadOngoingCalls() {
+            try {
+                const response = await fetch('/api/admin/calls');
+                const data = await response.json();
+                
+                const callsList = document.getElementById('ongoingCallsList');
+                
+                if (data.calls.length === 0) {
+                    callsList.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📞</div>
+                            <div>暂无正在进行的通话</div>
+                        </div>`;
+                    return;
+                }
+                
+                callsList.innerHTML = data.calls.map(call => {
+                    const startTime = new Date(call.startTime).toLocaleString('zh-CN');
+                    return `
+                        <div class="user-item">
+                            <div class="user-info">
+                                <div class="user-name">${escapeHtml(call.initiatorUsername)} → ${escapeHtml(call.recipientUsername)}</div>
+                                <small style="color: #666;">${call.callType}通话 | 开始于: ${startTime} | 通话ID: ${call.callId}</small>
+                            </div>
+                            <div class="user-actions">
+                                <button class="btn btn-info" onclick="viewCallDetails('${call.callId}')">查看详情</button>
+                                <button class="btn btn-danger" onclick="endCall('${call.callId}')">结束通话</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error('加载通话列表失败:', error);
+                alert('加载通话列表失败');
+            }
+        }
+        
+        // 查看通话详情
+        async function viewCallDetails(callId) {
+            try {
+                const response = await fetch(`/api/admin/calls/${callId}`);
+                const data = await response.json();
+                
+                currentCallId = callId;
+                const call = data.call;
+                const startTime = new Date(call.startTime).toLocaleString('zh-CN');
+                
+                const callDetailsInfo = document.getElementById('callDetailsInfo');
+                callDetailsInfo.innerHTML = `
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div>
+                            <strong>通话ID:</strong> ${call.callId}
+                        </div>
+                        <div>
+                            <strong>通话类型:</strong> ${call.callType}
+                        </div>
+                        <div>
+                            <strong>发起方:</strong> ${escapeHtml(call.initiatorUsername)}
+                        </div>
+                        <div>
+                            <strong>接收方:</strong> ${escapeHtml(call.recipientUsername)}
+                        </div>
+                        <div>
+                            <strong>开始时间:</strong> ${startTime}
+                        </div>
+                        <div>
+                            <strong>状态:</strong> ${call.status}
+                        </div>
+                        <div>
+                            <strong>视频控制:</strong> ${call.controls.videoEnabled ? '启用' : '禁用'}
+                        </div>
+                        <div>
+                            <strong>音频控制:</strong> ${call.controls.audioEnabled ? '启用' : '禁用'}
+                        </div>
+                    </div>
+                    <div style="margin-top: 20px;">
+                        <h4>通话双方</h4>
+                        <div style="display: flex; gap: 20px;">
+                            <div style="flex: 1; background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                                <strong>发起方:</strong> ${escapeHtml(call.initiatorUsername)}
+                                <br>
+                                <small>Socket ID: ${call.initiator}</small>
+                            </div>
+                            <div style="flex: 1; background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                                <strong>接收方:</strong> ${escapeHtml(call.recipientUsername)}
+                                <br>
+                                <small>Socket ID: ${call.recipient}</small>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('callDetailsModal').classList.add('active');
+            } catch (error) {
+                console.error('获取通话详情失败:', error);
+                alert('获取通话详情失败');
+            }
+        }
+        
+        // 关闭通话详情模态框
+        function closeCallDetailsModal() {
+            document.getElementById('callDetailsModal').classList.remove('active');
+            currentCallId = null;
+        }
+        
+        // 结束通话
+        async function endCall(callId) {
+            const id = callId || currentCallId;
+            if (!id) {
+                alert('请选择一个通话');
+                return;
+            }
+            
+            if (confirm('确定要结束这个通话吗？')) {
+                try {
+                    const response = await fetch(`/api/admin/calls/${id}/end`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        alert('通话已结束');
+                        loadOngoingCalls();
+                        closeCallDetailsModal();
+                    } else {
+                        alert('结束通话失败: ' + data.error);
+                    }
+                } catch (error) {
+                    console.error('结束通话失败:', error);
+                    alert('结束通话失败');
+                }
+            }
+        }
+        
+        // 切换通话控制
+        async function toggleCallControl(type) {
+            if (!currentCallId) {
+                alert('请选择一个通话');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/admin/calls/${currentCallId}/control`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        type: type,
+                        enabled: false // 切换为禁用，管理员可以随时切换
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    alert(`已切换${type}控制`);
+                    viewCallDetails(currentCallId); // 刷新通话详情
+                } else {
+                    alert('切换控制失败: ' + data.error);
+                }
+            } catch (error) {
+                console.error('切换通话控制失败:', error);
+                alert('切换通话控制失败');
+            }
         }
         
         // 页面卸载时清除定时器
