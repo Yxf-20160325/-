@@ -2137,59 +2137,59 @@
                 
                 // 确保本地媒体流已添加到peerConnection
                 if (this.localStream) {
-                    this.localStream.getTracks().forEach(track => {
+                    // 获取所有本地轨道
+                    const tracks = this.localStream.getTracks();
+                    console.log('本地媒体流轨道:', tracks.map(track => track.kind));
+                    
+                    // 添加所有本地轨道到peerConnection
+                    tracks.forEach(track => {
                         this.peerConnection.addTrack(track, this.localStream);
                         console.log('添加本地轨道到peerConnection:', track.kind, track.id);
                     });
                 } else {
                     console.error('创建peerConnection时本地媒体流不存在！');
+                    // 如果本地媒体流不存在，尝试获取媒体流
+                    const constraints = {
+                        audio: true,
+                        video: this.currentCallType === 'video'
+                    };
+                    navigator.mediaDevices.getUserMedia(constraints)
+                        .then(stream => {
+                            this.localStream = stream;
+                            this.showLocalStream(stream);
+                            // 添加所有本地轨道到peerConnection
+                            stream.getTracks().forEach(track => {
+                                this.peerConnection.addTrack(track, stream);
+                                console.log('获取媒体流后添加本地轨道到peerConnection:', track.kind, track.id);
+                            });
+                        })
+                        .catch(error => {
+                            console.error('获取媒体流失败:', error);
+                        });
                 }
                 
                 // 监听远程媒体流 - 增强ontrack事件处理
                 this.peerConnection.ontrack = (event) => {
                     console.log('收到远程媒体流轨道:', event.track.kind, event.track.id);
                     
-                    // 获取远程视频元素
-                    const remoteVideo = document.getElementById('remoteVideo');
-                    if (!remoteVideo) {
-                        console.error('远程视频元素不存在！');
-                        return;
+                    // 如果还没有remoteStream，创建一个并绑定到远程视频元素
+                    if (!this.remoteStream) {
+                        this.remoteStream = new MediaStream();
+                        this.showRemoteStream(this.remoteStream);
                     }
                     
-                    // 使用event.streams中的流（如果有的话），这是WebRTC规范推荐的方式
-                    if (event.streams && event.streams.length > 0) {
-                        console.log('使用event.streams中的媒体流，流ID:', event.streams[0].id);
-                        this.remoteStream = event.streams[0];
-                        this.showRemoteStream(this.remoteStream);
-                    } else {
-                        // 兼容处理：如果event.streams为空，使用手动创建的流
-                        if (!this.remoteStream) {
-                            this.remoteStream = new MediaStream();
-                            this.showRemoteStream(this.remoteStream);
-                        }
-                        
-                        // 检查轨道是否已经存在于远程流中，避免重复添加
-                        const trackExists = this.remoteStream.getTracks().some(track => track.id === event.track.id);
-                        if (!trackExists) {
-                            // 将远程track添加到远程流中
-                            this.remoteStream.addTrack(event.track);
-                            console.log('添加远程轨道到remoteStream:', event.track.kind, event.track.id);
-                        }
+                    // 检查轨道是否已经存在于远程流中，避免重复添加
+                    const trackExists = this.remoteStream.getTracks().some(track => track.id === event.track.id);
+                    if (!trackExists) {
+                        // 将远程track添加到远程流中
+                        this.remoteStream.addTrack(event.track);
+                        console.log('添加远程轨道到remoteStream:', event.track.kind, event.track.id);
                     }
                     
                     // 确保远程视频元素正在播放
-                    if (remoteVideo && remoteVideo.srcObject === this.remoteStream) {
-                        remoteVideo.play().catch(err => {
-                            console.error('远程视频播放失败:', err);
-                            // 尝试在元数据加载后播放
-                            remoteVideo.onloadedmetadata = () => {
-                                remoteVideo.play().catch(err => console.error('远程视频播放失败（元数据加载后）:', err));
-                            };
-                            // 尝试使用setTimeout延迟播放
-                            setTimeout(() => {
-                                remoteVideo.play().catch(err => console.error('远程视频播放失败（延迟后）:', err));
-                            }, 100);
-                        });
+                    const remoteVideo = document.getElementById('remoteVideo');
+                    if (remoteVideo && remoteVideo.srcObject === this.remoteStream && remoteVideo.paused) {
+                        remoteVideo.play().catch(err => console.error('远程视频播放失败:', err));
                     }
                 };
                 
@@ -2478,6 +2478,14 @@
                 const localVideo = document.getElementById('localVideo');
                 if (localVideo) {
                     localVideo.srcObject = stream;
+                    // 确保本地视频播放，添加用户交互检查
+                    localVideo.play().catch(err => {
+                        console.log('本地视频自动播放失败，将在用户交互后播放:', err.message);
+                        // 添加用户交互事件监听器
+                        document.body.addEventListener('click', () => {
+                            localVideo.play().catch(err => console.error('本地视频播放失败:', err));
+                        }, { once: true });
+                    });
                 }
             }
             
@@ -2485,23 +2493,15 @@
             showRemoteStream(stream) {
                 const remoteVideo = document.getElementById('remoteVideo');
                 if (remoteVideo) {
-                    console.log('设置远程视频流:', stream);
                     remoteVideo.srcObject = stream;
-                    
-                    // 确保视频元素正在播放
+                    // 确保远程视频播放，添加用户交互检查
                     remoteVideo.play().catch(err => {
-                        console.error('远程视频播放失败:', err);
-                        // 尝试在元数据加载后播放
-                        remoteVideo.onloadedmetadata = () => {
-                            remoteVideo.play().catch(err => console.error('远程视频播放失败（元数据加载后）:', err));
-                        };
+                        console.log('远程视频自动播放失败，将在用户交互后播放:', err.message);
+                        // 添加用户交互事件监听器
+                        document.body.addEventListener('click', () => {
+                            remoteVideo.play().catch(err => console.error('远程视频播放失败:', err));
+                        }, { once: true });
                     });
-                    
-                    // 显示视频容器
-                    const videoContainer = document.getElementById('videoContainer');
-                    if (videoContainer) {
-                        videoContainer.classList.add('active');
-                    }
                 }
             }
             
