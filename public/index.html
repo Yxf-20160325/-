@@ -2283,8 +2283,13 @@
             
             // 确保本地媒体流已添加到peerConnection
             ensureLocalStreamAdded() {
+                // 如果peerConnection不存在，立即清除定时器并返回
                 if (!this.peerConnection) {
-                    console.error('ensureLocalStreamAdded: peerConnection不存在');
+                    console.log('ensureLocalStreamAdded: peerConnection不存在，清理定时器');
+                    if (this.streamCheckInterval) {
+                        clearInterval(this.streamCheckInterval);
+                        this.streamCheckInterval = null;
+                    }
                     return;
                 }
                 
@@ -2344,11 +2349,19 @@
             
             // 开始Socket.io媒体流
             startSocketMediaStream() {
-                // 使用Socket.io发送媒体流数据
-                const mediaRecorder = new MediaRecorder(this.localStream);
+                if (!this.localStream) {
+                    console.error('startSocketMediaStream: 本地媒体流不存在');
+                    return;
+                }
+                
+                // 使用Socket.io发送媒体流数据，改进配置
+                const mediaRecorder = new MediaRecorder(this.localStream, {
+                    mimeType: 'video/webm; codecs=vp8,opus',
+                    videoBitsPerSecond: 1000000 // 1Mbps，降低带宽消耗
+                });
                 
                 mediaRecorder.ondataavailable = (event) => {
-                    if (event.data.size > 0) {
+                    if (event.data.size > 0 && this.isInCall) {
                         // 发送媒体数据
                         this.socket.emit('call-media', {
                             targetSocketId: this.currentCallTargetSocketId,
@@ -2359,8 +2372,17 @@
                     }
                 };
                 
-                mediaRecorder.start(100); // 每100ms发送一次数据
-                this.mediaRecorder = mediaRecorder;
+                mediaRecorder.onerror = (event) => {
+                    console.error('MediaRecorder错误:', event.error);
+                };
+                
+                try {
+                    mediaRecorder.start(300); // 改为每300ms发送一次数据，降低网络负载
+                    this.mediaRecorder = mediaRecorder;
+                    console.log('MediaRecorder已启动');
+                } catch (error) {
+                    console.error('启动MediaRecorder失败:', error);
+                }
             }
             
             // 处理媒体流数据
@@ -2701,20 +2723,33 @@
             // 播放Socket.io媒体数据
             playSocketMedia(data) {
                 try {
+                    // 立即获取远程视频元素，重试机制确保能获取到
+                    let remoteVideo = document.getElementById('remoteVideo');
+                    if (!remoteVideo) {
+                        console.error('playSocketMedia: 远程视频元素不存在，100ms后重试');
+                        setTimeout(() => {
+                            remoteVideo = document.getElementById('remoteVideo');
+                            if (remoteVideo) {
+                                this.playSocketMedia(data);
+                            }
+                        }, 100);
+                        return;
+                    }
+                    
                     // 将数据转换为Blob
                     const blob = new Blob([data], { type: 'video/webm' });
                     
                     // 创建Object URL
                     const url = URL.createObjectURL(blob);
                     
-                    // 获取远程视频元素
-                    const remoteVideo = document.getElementById('remoteVideo');
-                    if (remoteVideo) {
-                        // 设置视频源
-                        remoteVideo.src = url;
-                        // 开始播放
-                        remoteVideo.play();
-                    }
+                    // 设置视频源
+                    remoteVideo.src = url;
+                    
+                    // 确保视频播放，使用之前创建的ensureVideoPlays方法
+                    this.ensureVideoPlays(remoteVideo);
+                    
+                    // 标记视频正在播放，避免重复调用
+                    remoteVideo._socketIoPlaying = true;
                 } catch (error) {
                     console.error('播放Socket.io媒体数据失败:', error);
                 }
