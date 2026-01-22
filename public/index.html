@@ -1249,10 +1249,11 @@
             </div>
         </div>
         <div class="video-controls">
-            <button class="video-control-btn" id="toggleVideoBtn">📹</button>
-            <button class="video-control-btn" id="toggleAudioBtn">🎤</button>
-            <button class="video-control-btn end" id="endCallBtn">📞</button>
-        </div>
+                <button class="video-control-btn" id="toggleVideoBtn">📹</button>
+                <button class="video-control-btn" id="toggleAudioBtn">🎤</button>
+                <button class="video-control-btn" id="switchCameraBtn">🔄</button>
+                <button class="video-control-btn end" id="endCallBtn">📞</button>
+            </div>
         <!-- 开发者模式日志显示区域 -->
         <div id="developerLog" class="developer-log" style="display: none;"></div>
     </div>
@@ -1743,6 +1744,8 @@
                 this.socketMediaBuffer = [];
                 this.pendingIceCandidates = null;
                 this.pendingOffer = null;
+                this.currentFacingMode = 'user'; // 当前摄像头方向：'user'（前置）或'environment'（后置）
+                this.videoDevices = []; // 存储所有视频设备
                 
                 this.init();
             }
@@ -1819,11 +1822,29 @@
                 });
             }
             
+            // 获取视频设备列表
+            async getVideoDevices() {
+                try {
+                    const devices = await navigator.mediaDevices.enumerateDevices();
+                    this.videoDevices = devices.filter(device => device.kind === 'videoinput');
+                    console.log('视频设备列表:', this.videoDevices);
+                    return this.videoDevices;
+                } catch (error) {
+                    console.error('获取视频设备失败:', error);
+                    return [];
+                }
+            }
+            
             // 初始化本地媒体流（只显示自己的画面，不开始通话）
             initLocalMediaStream() {
+                // 先获取视频设备列表
+                this.getVideoDevices();
+                
                 const constraints = {
                     audio: true,
-                    video: this.currentCallType === 'video'
+                    video: this.currentCallType === 'video' ? {
+                        facingMode: this.currentFacingMode
+                    } : false
                 };
                 
                 navigator.mediaDevices.getUserMedia(constraints)
@@ -2060,6 +2081,9 @@
             initMediaStream() {
                 console.log('initMediaStream: isCallInitiator=', this.isCallInitiator, 'currentCallMethod=', this.currentCallMethod);
                 
+                // 先获取视频设备列表
+                this.getVideoDevices();
+                
                 // 如果已经有本地媒体流，直接使用
                 if (this.localStream) {
                     if (this.currentCallMethod === 'webrtc') {
@@ -2098,7 +2122,9 @@
                 // 没有本地媒体流，获取媒体流
                 const constraints = {
                     audio: true,
-                    video: this.currentCallType === 'video'
+                    video: this.currentCallType === 'video' ? {
+                        facingMode: this.currentFacingMode
+                    } : false
                 };
                 
                 navigator.mediaDevices.getUserMedia(constraints)
@@ -2144,6 +2170,60 @@
                         alert('获取媒体流失败: ' + error.message);
                         this.endCall();
                     });
+            }
+            
+            // 切换摄像头
+            async switchCamera() {
+                if (!this.localStream) {
+                    console.error('本地媒体流不存在，无法切换摄像头');
+                    return;
+                }
+                
+                try {
+                    // 切换摄像头方向
+                    this.currentFacingMode = this.currentFacingMode === 'user' ? 'environment' : 'user';
+                    console.log('切换摄像头方向:', this.currentFacingMode);
+                    
+                    // 获取当前视频轨道
+                    const videoTracks = this.localStream.getVideoTracks();
+                    if (videoTracks.length === 0) {
+                        console.error('没有视频轨道，无法切换摄像头');
+                        return;
+                    }
+                    
+                    // 停止当前视频轨道
+                    videoTracks.forEach(track => track.stop());
+                    
+                    // 获取新的媒体流
+                    const constraints = {
+                        audio: true,
+                        video: this.currentCallType === 'video' ? {
+                            facingMode: this.currentFacingMode
+                        } : false
+                    };
+                    
+                    const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+                    this.localStream = newStream;
+                    
+                    // 更新本地视频显示
+                    this.showLocalStream(newStream);
+                    
+                    // 如果已经创建了peerConnection，更新视频轨道
+                    if (this.peerConnection) {
+                        const senders = this.peerConnection.getSenders();
+                        const videoSender = senders.find(sender => sender.track && sender.track.kind === 'video');
+                        if (videoSender) {
+                            const newVideoTrack = newStream.getVideoTracks()[0];
+                            if (newVideoTrack) {
+                                videoSender.replaceTrack(newVideoTrack);
+                                console.log('已更新peerConnection中的视频轨道');
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('切换摄像头失败:', error);
+                    alert('切换摄像头失败: ' + error.message);
+                }
             }
             
             // 创建WebRTC PeerConnection
@@ -4706,11 +4786,21 @@
                 callSystem.toggleVideo();
             }
         });
+
         toggleAudioBtn.addEventListener('click', () => {
             if (callSystem) {
                 callSystem.toggleAudio();
             }
         });
+
+        // 切换摄像头按钮事件监听器
+        const switchCameraBtn = document.getElementById('switchCameraBtn');
+        switchCameraBtn.addEventListener('click', () => {
+            if (callSystem) {
+                callSystem.switchCamera();
+            }
+        });
+
         endCallBtn.addEventListener('click', () => {
             if (callSystem) {
                 callSystem.endCall();
