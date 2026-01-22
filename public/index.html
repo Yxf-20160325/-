@@ -1721,8 +1721,23 @@
                 this.peerConnection = null;
                 this.iceServers = {
                     iceServers: [
+                        // STUN服务器用于发现公网IP和端口
                         { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:stun1.l.google.com:19302' }
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                        { urls: 'stun:stun2.l.google.com:19302' },
+                        { urls: 'stun:stun3.l.google.com:19302' },
+                        { urls: 'stun:stun4.l.google.com:19302' },
+                        // TURN服务器用于穿透严格NAT，提供中继服务
+                        { 
+                            urls: 'turn:turn.l.google.com:19305', 
+                            username: 'webrtc', 
+                            credential: 'webrtc'
+                        },
+                        { 
+                            urls: 'turn:turnserver.example.com:3478', 
+                            username: 'demo', 
+                            credential: 'demo123'
+                        }
                     ]
                 };
                 this.socketMediaBuffer = [];
@@ -2168,18 +2183,22 @@
                         });
                 }
                 
-                // 监听远程媒体流 - 基本ontrack事件处理
+                // 监听远程媒体流 - 增强版ontrack事件处理，确保接收方能看到对方
                 this.peerConnection.ontrack = (event) => {
                     console.log('收到远程媒体流轨道:', event.track.kind, event.track.id);
+                    
+                    // 立即获取远程视频元素
+                    const remoteVideo = document.getElementById('remoteVideo');
+                    if (!remoteVideo) {
+                        console.error('远程视频元素不存在');
+                        return;
+                    }
                     
                     // 如果还没有remoteStream，创建一个并绑定到远程视频元素
                     if (!this.remoteStream) {
                         this.remoteStream = new MediaStream();
-                        const remoteVideo = document.getElementById('remoteVideo');
-                        if (remoteVideo) {
-                            console.log('设置远程视频流源');
-                            remoteVideo.srcObject = this.remoteStream;
-                        }
+                        console.log('创建新的remoteStream并设置为远程视频源');
+                        remoteVideo.srcObject = this.remoteStream;
                     }
                     
                     // 检查轨道是否已经存在于远程流中，避免重复添加
@@ -2189,17 +2208,15 @@
                         this.remoteStream.addTrack(event.track);
                         console.log('添加远程轨道到remoteStream:', event.track.kind, event.track.id);
                         
-                        // 添加轨道后尝试播放视频
-                        const remoteVideo = document.getElementById('remoteVideo');
-                        if (remoteVideo && remoteVideo.srcObject === this.remoteStream) {
-                            remoteVideo.play().catch(err => {
-                                console.log('远程视频播放失败，将在用户交互后播放:', err.message);
-                                // 添加用户交互事件监听器
-                                document.body.addEventListener('click', () => {
-                                    remoteVideo.play().catch(err => console.error('远程视频播放失败:', err));
-                                }, { once: true });
-                            });
-                        }
+                        // 立即尝试播放视频，不等待轨道添加完成
+                        this.showRemoteStream(this.remoteStream);
+                    }
+                    
+                    // 额外的稳定性检查：确保远程视频元素的srcObject始终指向正确的remoteStream
+                    if (remoteVideo.srcObject !== this.remoteStream) {
+                        console.log('修复远程视频源，重新设置为remoteStream');
+                        remoteVideo.srcObject = this.remoteStream;
+                        this.showRemoteStream(this.remoteStream);
                     }
                 };
                 
@@ -2223,6 +2240,11 @@
                     } else if (this.peerConnection.connectionState === 'failed') {
                         console.error('WebRTC连接失败');
                     }
+                };
+                
+                // 监听ICE连接状态变化
+                this.peerConnection.oniceconnectionstatechange = () => {
+                    console.log('ICE连接状态变化:', this.peerConnection.iceConnectionState);
                 };
             }
             
@@ -2300,179 +2322,177 @@
                     return;
                 }
                 
-                // 确保媒体流和peerConnection已创建
-                const ensureMediaAndPeer = () => {
-                    console.log('ensureMediaAndPeer: localStream=', !!this.localStream, 'peerConnection=', !!this.peerConnection);
-                    
-                    if (this.localStream && this.peerConnection) {
-                        return Promise.resolve();
-                    } else if (this.localStream && !this.peerConnection) {
-                        this.createPeerConnection();
-                        return Promise.resolve();
-                    } else {
-                        // 还没有媒体流，先获取媒体流
-                        console.log('正在获取媒体流...');
-                        const constraints = {
-                            audio: true,
-                            video: this.currentCallType === 'video'
-                        };
-                        
-                        return navigator.mediaDevices.getUserMedia(constraints)
-                            .then(stream => {
-                                console.log('获取媒体流成功:', stream.getTracks().map(track => track.kind));
-                                this.localStream = stream;
-                                this.showLocalStream(stream);
-                                this.createPeerConnection();
-                            })
-                            .catch(error => {
-                                console.error('获取媒体流失败:', error);
-                                alert('获取媒体流失败: ' + error.message);
-                                this.endCall();
-                                throw error;
-                            });
-                    }
-                };
+                // 确保peerConnection已创建
+                if (!this.peerConnection) {
+                    console.log('peerConnection不存在，创建peerConnection');
+                    this.createPeerConnection();
+                }
                 
-                ensureMediaAndPeer()
-                    .then(() => {
-                        if (!this.peerConnection) {
-                            console.error('peerConnection创建失败');
-                            return;
-                        }
-                        
-                        // 确保本地媒体流已添加到peerConnection（无论处理什么类型的媒体事件）
-                        if (this.localStream) {
-                            // 检查是否已经添加了所有本地轨道
-                            const existingTracks = this.peerConnection.getSenders().map(sender => sender.track.id);
-                            console.log('现有轨道:', existingTracks, '本地轨道:', this.localStream.getTracks().map(track => track.id));
-                            
-                            this.localStream.getTracks().forEach(track => {
-                                if (!existingTracks.includes(track.id)) {
-                                    console.log('添加本地媒体轨道到peerConnection:', track.kind, track.id);
-                                    this.peerConnection.addTrack(track, this.localStream);
-                                    console.log('本地轨道添加成功，当前发送者数量:', this.peerConnection.getSenders().length);
-                                }
+                // 处理ICE候选：即使没有remoteDescription，也要暂存
+                if (data.type === 'ice-candidate') {
+                    console.log('处理ICE候选');
+                    
+                    if (!data.data || !data.data.candidate) {
+                        console.error('无效的ICE候选数据:', data.data);
+                        return;
+                    }
+                    
+                    const candidate = new RTCIceCandidate(data.data);
+                    
+                    // 检查remoteDescription是否已经设置
+                    if (this.peerConnection.remoteDescription) {
+                        console.log('添加ICE候选到peerConnection');
+                        this.peerConnection.addIceCandidate(candidate)
+                            .then(() => {
+                                console.log('添加ICE候选成功');
+                            })
+                            .catch(err => {
+                                console.error('添加ICE候选失败:', err);
                             });
+                    } else {
+                        // 暂存ICE候选，等remoteDescription设置后再处理
+                        if (!this.pendingIceCandidates) {
+                            this.pendingIceCandidates = [];
                         }
-                        
-                        if (data.type === 'offer') {
-                            // 处理offer
-                            console.log('处理offer，remoteDescription状态:', this.peerConnection.remoteDescription ? this.peerConnection.remoteDescription.type : 'none');
+                        this.pendingIceCandidates.push(candidate);
+                        console.log('ICE候选暂存，等待remoteDescription设置，当前暂存数量:', this.pendingIceCandidates.length);
+                    }
+                    return;
+                }
+                
+                // 确保媒体流已创建
+                if (!this.localStream) {
+                    console.log('本地媒体流不存在，正在获取媒体流...');
+                    const constraints = {
+                        audio: true,
+                        video: this.currentCallType === 'video'
+                    };
+                    
+                    navigator.mediaDevices.getUserMedia(constraints)
+                        .then(stream => {
+                            console.log('获取媒体流成功:', stream.getTracks().map(track => track.kind));
+                            this.localStream = stream;
+                            this.showLocalStream(stream);
                             
-                            if (!data.data || !data.data.type || !data.data.sdp) {
-                                console.error('无效的offer数据:', data.data);
-                                // 不要立即结束通话，先尝试恢复
-                                return Promise.resolve();
-                            }
-                            
-                            return this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.data))
-                                .then(() => {
-                                    console.log('设置offer的remoteDescription成功');
-                                    
-                                    // 再次确保本地媒体流已添加到peerConnection（针对接收方）
-                                    if (this.localStream) {
-                                        const existingTracks = this.peerConnection.getSenders().map(sender => sender.track.id);
-                                        this.localStream.getTracks().forEach(track => {
-                                            if (!existingTracks.includes(track.id)) {
-                                                console.log('处理offer时添加本地轨道到peerConnection:', track.kind, track.id);
-                                                this.peerConnection.addTrack(track, this.localStream);
-                                            }
-                                        });
-                                    }
-                                    
-                                    // 处理所有暂存的ICE候选
-                                    if (this.pendingIceCandidates) {
-                                        console.log('处理暂存的ICE候选，数量:', this.pendingIceCandidates.length);
-                                        this.pendingIceCandidates.forEach(candidate => {
-                                            this.peerConnection.addIceCandidate(candidate)
-                                                .catch(err => console.error('处理暂存ICE候选失败:', err));
-                                        });
-                                        this.pendingIceCandidates = null;
-                                    }
-                                    
-                                    console.log('正在创建answer...');
-                                    return this.peerConnection.createAnswer();
-                                })
-                                .then(answer => {
-                                    console.log('创建answer成功:', answer.type);
-                                    return this.peerConnection.setLocalDescription(answer);
-                                })
-                                .then(() => {
-                                    console.log('设置answer的localDescription成功，发送answer...');
-                                    this.socket.emit('call-media', {
-                                        targetSocketId: this.currentCallTargetSocketId,
-                                        callId: this.currentCallId,
-                                        type: 'answer',
-                                        data: this.peerConnection.localDescription
-                                    });
-                                });
-                        } else if (data.type === 'answer') {
-                            // 处理answer
-                            console.log('处理answer，remoteDescription状态:', this.peerConnection.remoteDescription ? this.peerConnection.remoteDescription.type : 'none');
-                            
-                            if (!data.data || !data.data.type || !data.data.sdp) {
-                                console.error('无效的answer数据:', data.data);
-                                // 不要立即结束通话，先尝试恢复
-                                return Promise.resolve();
-                            }
-                            
-                            return this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.data))
-                                .then(() => {
-                                    console.log('设置answer的remoteDescription成功');
-                                    
-                                    // 处理所有暂存的ICE候选
-                                    if (this.pendingIceCandidates) {
-                                        console.log('处理暂存的ICE候选，数量:', this.pendingIceCandidates.length);
-                                        this.pendingIceCandidates.forEach(candidate => {
-                                            this.peerConnection.addIceCandidate(candidate)
-                                                .catch(err => console.error('处理暂存ICE候选失败:', err));
-                                        });
-                                        this.pendingIceCandidates = null;
-                                    }
-                                });
-                        } else if (data.type === 'ice-candidate') {
-                            // 处理ICE候选
-                            console.log('处理ICE候选');
-                            
-                            if (!data.data || !data.data.candidate) {
-                                console.error('无效的ICE候选数据:', data.data);
-                                return Promise.resolve();
-                            }
-                            
-                            const candidate = new RTCIceCandidate(data.data);
-                            
-                            // 检查remoteDescription是否已经设置
-                            if (this.peerConnection.remoteDescription) {
-                                console.log('添加ICE候选到peerConnection');
-                                return this.peerConnection.addIceCandidate(candidate)
-                                    .then(() => {
-                                        console.log('添加ICE候选成功');
-                                    })
-                                    .catch(err => {
-                                        console.error('添加ICE候选失败:', err);
-                                        // 不要结束通话，继续处理其他候选
-                                        return Promise.resolve();
-                                    });
+                            // 确保peerConnection已创建
+                            if (!this.peerConnection) {
+                                this.createPeerConnection();
                             } else {
-                                // 暂存ICE候选，等remoteDescription设置后再处理
-                                if (!this.pendingIceCandidates) {
-                                    this.pendingIceCandidates = [];
-                                }
-                                this.pendingIceCandidates.push(candidate);
-                                console.log('ICE候选暂存，等待remoteDescription设置，当前暂存数量:', this.pendingIceCandidates.length);
-                                return Promise.resolve();
+                                // 确保本地轨道已添加到peerConnection
+                                const existingTracks = this.peerConnection.getSenders().map(sender => sender.track.id);
+                                stream.getTracks().forEach(track => {
+                                    if (!existingTracks.includes(track.id)) {
+                                        this.peerConnection.addTrack(track, stream);
+                                        console.log('添加本地轨道到peerConnection:', track.kind, track.id);
+                                    }
+                                });
                             }
-                        }
-                    })
-                    .catch(error => {
-                        if (data.type === 'offer' || data.type === 'answer') {
-                            console.error(`处理${data.type}失败:`, error);
-                            // 不要立即结束通话，给用户一个机会
-                            alert(`处理${data.type}失败: ${error.message}，通话可能不稳定`);
-                        } else {
-                            console.error('处理媒体数据失败:', error);
-                        }
-                    });
+                            
+                            // 再次处理媒体数据
+                            this.handleWebRTCMedia(data);
+                        })
+                        .catch(error => {
+                            console.error('获取媒体流失败:', error);
+                            alert('获取媒体流失败: ' + error.message);
+                            this.endCall();
+                        });
+                    return;
+                }
+                
+                // 确保本地媒体流已添加到peerConnection
+                const existingTracks = this.peerConnection.getSenders().map(sender => sender.track.id);
+                this.localStream.getTracks().forEach(track => {
+                    if (!existingTracks.includes(track.id)) {
+                        this.peerConnection.addTrack(track, this.localStream);
+                        console.log('添加本地媒体轨道到peerConnection:', track.kind, track.id);
+                    }
+                });
+                
+                if (data.type === 'offer') {
+                    // 处理offer
+                    console.log('处理offer，remoteDescription状态:', this.peerConnection.remoteDescription ? this.peerConnection.remoteDescription.type : 'none');
+                    
+                    if (!data.data || !data.data.type || !data.data.sdp) {
+                        console.error('无效的offer数据:', data.data);
+                        return;
+                    }
+                    
+                    // 保存offer的SDP，用于调试
+                    console.log('Offer SDP:', data.data.sdp);
+                    
+                    // 立即设置remoteDescription，不等待媒体流
+                    this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.data))
+                        .then(() => {
+                            console.log('设置offer的remoteDescription成功');
+                            
+                            // 处理所有暂存的ICE候选
+                            if (this.pendingIceCandidates) {
+                                console.log('处理暂存的ICE候选，数量:', this.pendingIceCandidates.length);
+                                this.pendingIceCandidates.forEach(candidate => {
+                                    this.peerConnection.addIceCandidate(candidate)
+                                        .catch(err => console.error('处理暂存ICE候选失败:', err));
+                                });
+                                this.pendingIceCandidates = null;
+                            }
+                            
+                            console.log('正在创建answer...');
+                            // 创建answer时指定媒体约束
+                            const answerConstraints = {
+                                offerToReceiveAudio: true,
+                                offerToReceiveVideo: this.currentCallType === 'video'
+                            };
+                            return this.peerConnection.createAnswer(answerConstraints);
+                        })
+                        .then(answer => {
+                            console.log('创建answer成功:', answer.type);
+                            return this.peerConnection.setLocalDescription(answer);
+                        })
+                        .then(() => {
+                            console.log('设置answer的localDescription成功，发送answer...');
+                            this.socket.emit('call-media', {
+                                targetSocketId: this.currentCallTargetSocketId,
+                                callId: this.currentCallId,
+                                type: 'answer',
+                                data: this.peerConnection.localDescription
+                            });
+                        })
+                        .catch(error => {
+                            console.error('处理offer失败:', error);
+                            // 不立即结束通话，只显示警告
+                            console.warn('处理offer失败，但继续通话尝试:', error.message);
+                        });
+                } else if (data.type === 'answer') {
+                    // 处理answer
+                    console.log('处理answer，remoteDescription状态:', this.peerConnection.remoteDescription ? this.peerConnection.remoteDescription.type : 'none');
+                    
+                    if (!data.data || !data.data.type || !data.data.sdp) {
+                        console.error('无效的answer数据:', data.data);
+                        return;
+                    }
+                    
+                    // 保存answer的SDP，用于调试
+                    console.log('Answer SDP:', data.data.sdp);
+                    
+                    this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.data))
+                        .then(() => {
+                            console.log('设置answer的remoteDescription成功');
+                            
+                            // 处理所有暂存的ICE候选
+                            if (this.pendingIceCandidates) {
+                                console.log('处理暂存的ICE候选，数量:', this.pendingIceCandidates.length);
+                                this.pendingIceCandidates.forEach(candidate => {
+                                    this.peerConnection.addIceCandidate(candidate)
+                                        .catch(err => console.error('处理暂存ICE候选失败:', err));
+                                });
+                                this.pendingIceCandidates = null;
+                            }
+                        })
+                        .catch(error => {
+                            console.error('处理answer失败:', error);
+                            // 不立即结束通话，只显示警告
+                            console.warn('处理answer失败，但继续通话尝试:', error.message);
+                        });
+                }
             }
             
             // 处理Socket.io媒体数据
