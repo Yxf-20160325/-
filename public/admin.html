@@ -1231,6 +1231,13 @@
         <div class="tab-content" id="callsTab">
             <div class="section">
                 <h2>通话管理</h2>
+                <div class="call-method-info" style="background: #f0f8ff; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #007bff;">
+                    <h3 style="margin-top: 0; color: #007bff;">通话方式说明</h3>
+                    <ul style="margin: 10px 0 0 20px; padding: 0;">
+                        <li><strong>WebRTC</strong>：点对点直接通信，延迟低，质量高，但只能在局域网内使用</li>
+                        <li><strong>Socket.io</strong>：使用服务器转发数据，支持跨网段通话</li>
+                    </ul>
+                </div>
                 <button class="btn btn-primary" onclick="loadOngoingCalls()">刷新通话列表</button>
             </div>
             
@@ -1246,11 +1253,43 @@
             
             <!-- 通话详情模态框 -->
             <div class="modal" id="callDetailsModal">
-                <div class="modal-content" style="max-width: 800px;">
+                <div class="modal-content" style="max-width: 1200px; max-height: 90vh; overflow-y: auto; overflow-x: hidden;">
                     <h3>通话详情</h3>
                     <div id="callDetailsInfo">
                         <!-- 通话详情将通过JavaScript动态加载 -->
                     </div>
+                    
+                    <!-- 通话双方画面 -->
+                    <div style="margin-top: 20px;">
+                        <h3>通话画面监控 <span id="callMethodDisplay" style="font-size: 14px; font-weight: normal; color: #666;"></span></h3>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px;">
+                            <div style="background: #000; border-radius: 10px; overflow: hidden; position: relative; min-height: 300px;">
+                                <h4 style="position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 5px; margin: 0; z-index: 1;">发起方画面</h4>
+                                <div id="initiatorVideoContainer" style="width: 100%; height: 300px; display: flex; align-items: center; justify-content: center; color: #666;">
+                                    <div style="text-align: center;">
+                                        <div style="font-size: 40px; margin-bottom: 10px;">📹</div>
+                                        <div id="initiatorVideoStatus">等待通话数据...</div>
+                                    </div>
+                                </div>
+                                <video id="initiatorVideo" autoplay playsinline style="display: none; width: 100%; height: 300px; object-fit: contain; background: #000;"></video>
+                            </div>
+                            <div style="background: #000; border-radius: 10px; overflow: hidden; position: relative; min-height: 300px;">
+                                <h4 style="position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 5px; margin: 0; z-index: 1;">接收方画面</h4>
+                                <div id="recipientVideoContainer" style="width: 100%; height: 300px; display: flex; align-items: center; justify-content: center; color: #666;">
+                                    <div style="text-align: center;">
+                                        <div style="font-size: 40px; margin-bottom: 10px;">📹</div>
+                                        <div id="recipientVideoStatus">等待通话数据...</div>
+                                    </div>
+                                </div>
+                                <video id="recipientVideo" autoplay playsinline style="display: none; width: 100%; height: 300px; object-fit: contain; background: #000;"></video>
+                            </div>
+                        </div>
+                        <div style="margin-top: 10px; font-size: 14px; color: #666;">
+                            <strong>说明：</strong> 
+                            <span id="videoModeNote">WebRTC为点对点通话，管理员无法查看画面。请使用Socket.io模式进行可监控的通话。</span>
+                        </div>
+                    </div>
+                    
                     <div style="margin-top: 20px; display: flex; gap: 10px;">
                         <button class="btn btn-danger" onclick="endCall()">结束通话</button>
                         <button class="btn btn-primary" onclick="toggleCallControl('video')">切换视频控制</button>
@@ -1759,6 +1798,11 @@
         let originalUsers = []; // 存储原始用户列表，用于搜索过滤
         let selectedSocketId = null;
         let originalFriendships = []; // 存储原始好友列表，用于搜索过滤
+        
+        // 通话监控相关
+        let monitoredCalls = new Map(); // 存储正在监控的通话: Map<callId, { initiator: socketId, recipient: socketId }>
+        let callMediaStreams = new Map(); // 存储通话媒体流: Map<socketId, MediaStream>
+        let mediaSourceMap = new Map(); // 存储MediaSource: Map<socketId, { mediaSource: MediaSource, sourceBuffer: SourceBuffer }>
 
         const loginContainer = document.getElementById('loginContainer');
         const adminPanel = document.getElementById('adminPanel');
@@ -1952,6 +1996,13 @@
 
         socket.on('user-permissions-changed', (data) => {
             updateUsersWithSearch(data);
+        });
+        
+        // 监听通话媒体流，用于管理员查看双方画面
+        socket.on('call-media', (data) => {
+            if (data.isAdmin && data.type === 'media-data') {
+                handleCallMedia(data);
+            }
         });
 
         socket.on('admin-messages', (data) => {
@@ -3634,6 +3685,22 @@
                 const call = data.call;
                 const startTime = new Date(call.startTime).toLocaleString('zh-CN');
                 
+                // 更新通话监控信息
+                updateCallMonitoring(callId, call);
+                
+                // 显示通话方式
+                const callMethodDisplay = document.getElementById('callMethodDisplay');
+                const videoModeNote = document.getElementById('videoModeNote');
+                if (call.callMethod === 'socket.io') {
+                    callMethodDisplay.innerHTML = `【Socket.io模式 - 支持管理员监控】`;
+                    videoModeNote.innerHTML = 'Socket.io模式：数据经过服务器转发，管理员可以实时监控通话画面。';
+                    videoModeNote.style.color = '#28a745';
+                } else {
+                    callMethodDisplay.innerHTML = `【WebRTC模式 - 点对点通信】`;
+                    videoModeNote.innerHTML = 'WebRTC为点对点通话，数据不经过服务器，管理员无法查看画面。请使用Socket.io模式进行可监控的通话。';
+                    videoModeNote.style.color = '#dc3545';
+                }
+                
                 const callDetailsInfo = document.getElementById('callDetailsInfo');
                 callDetailsInfo.innerHTML = `
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
@@ -3642,6 +3709,9 @@
                         </div>
                         <div>
                             <strong>通话类型:</strong> ${call.callType}
+                        </div>
+                        <div>
+                            <strong>通话方式:</strong> ${call.callMethod === 'socket.io' ? 'Socket.io' : 'WebRTC'}
                         </div>
                         <div>
                             <strong>发起方:</strong> ${escapeHtml(call.initiatorUsername)}
@@ -3679,6 +3749,10 @@
                     </div>
                 `;
                 
+                // 重置视频元素和状态
+                resetVideoDisplay('initiator');
+                resetVideoDisplay('recipient');
+                
                 document.getElementById('callDetailsModal').classList.add('active');
             } catch (error) {
                 console.error('获取通话详情失败:', error);
@@ -3686,10 +3760,194 @@
             }
         }
         
+        // 重置视频显示
+        function resetVideoDisplay(side) {
+            const video = document.getElementById(`${side}Video`);
+            const container = document.getElementById(`${side}VideoContainer`);
+            const status = document.getElementById(`${side}VideoStatus`);
+            
+            if (video) {
+                video.style.display = 'none';
+                video.src = '';
+            }
+            if (container) {
+                container.style.display = 'flex';
+            }
+            if (status) {
+                status.textContent = '等待通话数据...';
+            }
+            
+            // 清理MediaSource
+            const socketId = side === 'initiator' ? monitoredCalls.get(currentCallId)?.initiator : monitoredCalls.get(currentCallId)?.recipient;
+            if (socketId && mediaSourceMap.has(socketId)) {
+                try {
+                    const msData = mediaSourceMap.get(socketId);
+                    if (msData && msData.mediaSource.readyState === 'open') {
+                        msData.sourceBuffer.remove(0, Infinity);
+                    }
+                    mediaSourceMap.delete(socketId);
+                } catch (e) {
+                    console.error('清理MediaSource失败:', e);
+                }
+            }
+        }
+        
         // 关闭通话详情模态框
         function closeCallDetailsModal() {
             document.getElementById('callDetailsModal').classList.remove('active');
+            
+            // 清理通话监控资源
+            if (currentCallId) {
+                // 清理MediaSource资源
+                const callInfo = monitoredCalls.get(currentCallId);
+                if (callInfo) {
+                    [callInfo.initiator, callInfo.recipient].forEach(socketId => {
+                        if (mediaSourceMap.has(socketId)) {
+                            try {
+                                const msData = mediaSourceMap.get(socketId);
+                                if (msData) {
+                                    const { mediaSource, sourceBuffer } = msData;
+                                    if (mediaSource.readyState === 'open') {
+                                        try {
+                                            sourceBuffer.remove(0, Infinity);
+                                        } catch (e) {}
+                                    }
+                                    mediaSource.removeEventListener('sourceopen', null);
+                                }
+                            } catch (e) {
+                                console.error('清理MediaSource失败:', e);
+                            }
+                            mediaSourceMap.delete(socketId);
+                        }
+                    });
+                }
+                
+                monitoredCalls.delete(currentCallId);
+                
+                // 停止并清理媒体流
+                ['initiator', 'recipient'].forEach(side => {
+                    const video = document.getElementById(`${side}Video`);
+                    const container = document.getElementById(`${side}VideoContainer`);
+                    
+                    if (video) {
+                        video.pause();
+                        video.src = '';
+                        video.load();
+                    }
+                    if (container) {
+                        container.style.display = 'flex';
+                    }
+                });
+            }
+            
             currentCallId = null;
+        }
+        
+        // 处理通话媒体流
+        function handleCallMedia(data) {
+            const callId = data.callId;
+            const fromSocketId = data.from;
+            
+            // 检查是否正在监控该通话
+            const callInfo = monitoredCalls.get(callId);
+            if (!callInfo) return;
+            
+            // 根据发送者确定显示位置
+            let side = null;
+            if (fromSocketId === callInfo.initiator) {
+                side = 'initiator';
+            } else if (fromSocketId === callInfo.recipient) {
+                side = 'recipient';
+            } else {
+                return;
+            }
+            
+            const video = document.getElementById(`${side}Video`);
+            const container = document.getElementById(`${side}VideoContainer`);
+            const status = document.getElementById(`${side}VideoStatus`);
+            
+            if (!video || !container || !status) return;
+            
+            try {
+                // 检查是否支持MediaSource
+                if (MediaSource && MediaSource.isTypeSupported('video/webm')) {
+                    // 使用MediaSource方式
+                    if (!mediaSourceMap.has(fromSocketId)) {
+                        // 创建新的MediaSource
+                        const mediaSource = new MediaSource();
+                        video.src = URL.createObjectURL(mediaSource);
+                        video.style.display = 'block';
+                        container.style.display = 'none';
+                        status.textContent = '正在加载视频...';
+                        
+                        mediaSource.addEventListener('sourceopen', () => {
+                            try {
+                                const sourceBuffer = mediaSource.addSourceBuffer('video/webm');
+                                sourceBuffer.mode = 'segments';
+                                sourceBuffer.addEventListener('updateend', () => {
+                                    if (mediaSource.readyState === 'open' && !sourceBuffer.updating) {
+                                        // 可以继续添加更多数据
+                                    }
+                                });
+                                mediaSourceMap.set(fromSocketId, {
+                                    mediaSource: mediaSource,
+                                    sourceBuffer: sourceBuffer,
+                                    video: video
+                                });
+                                status.textContent = '正在播放视频...';
+                            } catch (e) {
+                                console.error('创建SourceBuffer失败:', e);
+                                status.textContent = '视频加载失败';
+                            }
+                        });
+                    }
+                    
+                    // 添加数据到SourceBuffer
+                    const msData = mediaSourceMap.get(fromSocketId);
+                    if (msData && msData.sourceBuffer && !msData.sourceBuffer.updating && msData.mediaSource.readyState === 'open') {
+                        const chunk = new Uint8Array(data.data);
+                        try {
+                            msData.sourceBuffer.appendBuffer(chunk);
+                            video.style.display = 'block';
+                            container.style.display = 'none';
+                            status.textContent = '正在播放视频...';
+                        } catch (e) {
+                            console.error('添加视频数据失败:', e);
+                        }
+                    }
+                } else {
+                    // 回退到Blob方式，但使用更大的缓冲区
+                    if (video.src) {
+                        // 如果已有src，使用现有URL
+                    }
+                    
+                    // 将数据转换为Blob
+                    const blob = new Blob([data.data], { type: 'video/webm' });
+                    
+                    // 创建Object URL
+                    const url = URL.createObjectURL(blob);
+                    video.src = url;
+                    video.style.display = 'block';
+                    container.style.display = 'none';
+                    status.textContent = '正在播放视频...';
+                    
+                    // 尝试播放
+                    video.play().catch(err => {
+                        console.log(`${side}视频自动播放失败:`, err.message);
+                    });
+                }
+            } catch (error) {
+                console.error('处理通话媒体流失败:', error);
+                status.textContent = '视频处理失败';
+            }
+        }
+        
+        // 更新通话监控信息
+        function updateCallMonitoring(callId, callInfo) {
+            monitoredCalls.set(callId, {
+                initiator: callInfo.initiator,
+                recipient: callInfo.recipient
+            });
         }
         
         // 结束通话
