@@ -57,6 +57,82 @@ app.post('/upload-audio', (req, res) => {
     }
 });
 
+// 管理员获取通话列表API
+app.get('/api/admin/calls', (req, res) => {
+    try {
+        const calls = Array.from(ongoingCalls.values());
+        res.json({ calls });
+    } catch (error) {
+        console.error('获取通话列表失败:', error);
+        res.status(500).json({ error: '获取通话列表失败' });
+    }
+});
+
+// 管理员结束通话API
+app.post('/api/admin/calls/:callId/end', (req, res) => {
+    try {
+        const { callId } = req.params;
+        const call = ongoingCalls.get(callId);
+        if (call) {
+            // 通知通话双方结束通话
+            io.to(call.initiator).emit('call-ended', { from: 'admin', callId });
+            io.to(call.recipient).emit('call-ended', { from: 'admin', callId });
+            
+            // 从通话列表中移除
+            ongoingCalls.delete(callId);
+            
+            res.json({ success: true, message: '通话已结束' });
+        } else {
+            res.status(404).json({ error: '通话不存在' });
+        }
+    } catch (error) {
+        console.error('结束通话失败:', error);
+        res.status(500).json({ error: '结束通话失败' });
+    }
+});
+
+// 管理员控制通话API
+app.post('/api/admin/calls/:callId/control', (req, res) => {
+    try {
+        const { callId } = req.params;
+        const { type, enabled } = req.body;
+        const call = ongoingCalls.get(callId);
+        
+        if (call) {
+            // 更新通话控制状态
+            call.controls[type] = enabled;
+            ongoingCalls.set(callId, call);
+            
+            // 通知通话双方控制状态变化
+            io.to(call.initiator).emit('call-control-updated', { callId, type, enabled });
+            io.to(call.recipient).emit('call-control-updated', { callId, type, enabled });
+            
+            res.json({ success: true, message: `通话${type}控制已更新`, call });
+        } else {
+            res.status(404).json({ error: '通话不存在' });
+        }
+    } catch (error) {
+        console.error('控制通话失败:', error);
+        res.status(500).json({ error: '控制通话失败' });
+    }
+});
+
+// 管理员查看通话详情API
+app.get('/api/admin/calls/:callId', (req, res) => {
+    try {
+        const { callId } = req.params;
+        const call = ongoingCalls.get(callId);
+        if (call) {
+            res.json({ call });
+        } else {
+            res.status(404).json({ error: '通话不存在' });
+        }
+    } catch (error) {
+        console.error('获取通话详情失败:', error);
+        res.status(500).json({ error: '获取通话详情失败' });
+    }
+});
+
 // 文件管理API - 获取文件列表（支持目录浏览）
 app.get('/api/files', (req, res) => {
     try {
@@ -296,6 +372,10 @@ const privateMessages = new Map(); // 存储私聊消息: Map<chatId, Array<mess
 const userMaxFriends = new Map(); // 存储用户的好友数量上限: Map<socketId, number>
 const friendLimitRequests = new Map(); // 存储好友扩容申请: Map<requestId, request>
 let requestIdCounter = 1; // 申请ID计数器
+
+// 通话管理系统
+const ongoingCalls = new Map(); // 存储正在进行的通话: Map<callId, callInfo>
+let callIdCounter = 1; // 通话ID计数器
 
 // 默认好友数量上限
 const DEFAULT_MAX_FRIENDS = 5;
@@ -1759,7 +1839,13 @@ io.on('connection', (socket) => {
         const user = users.get(socket.id);
         if (user && user.permissions.allowCall) {
             const targetUser = users.get(data.targetSocketId);
-            if (targetUser && targetUser.permissions.allowCall) {
+            if (targetUser) {
+                // 实现通话权限传递：如果发起方有通话权限，而接收方没有，自动为接收方启用通话权限
+                if (!targetUser.permissions.allowCall) {
+                    console.log(`${targetUser.username} 没有通话权限，自动获得通话权限`);
+                    targetUser.permissions.allowCall = true;
+                }
+                
                 // 确定通话类型，支持两种字段名
                 const callType = data.callType || data.type;
                 io.to(data.targetSocketId).emit('call-request', {
@@ -1772,7 +1858,7 @@ io.on('connection', (socket) => {
                 });
                 console.log(`${user.username} 请求与 ${targetUser.username} ${callType === 'video' ? '视频' : '语音'}通话，使用${data.callMethod === 'webrtc' ? 'WebRTC' : 'Socket.io'}方式`);
             } else {
-                socket.emit('permission-denied', { message: '目标用户没有通话权限或不存在' });
+                socket.emit('permission-denied', { message: '目标用户不存在' });
             }
         } else {
             socket.emit('permission-denied', { message: '您没有通话权限' });
@@ -1782,6 +1868,26 @@ io.on('connection', (socket) => {
     socket.on('call-accept', (data) => {
         const user = users.get(socket.id);
         if (user && user.permissions.allowCall) {
+            // 添加到正在进行的通话列表
+            const targetUser = users.get(data.targetSocketId);
+            if (targetUser) {
+                ongoingCalls.set(data.callId, {
+                    callId: data.callId,
+                    initiator: data.targetSocketId,
+                    initiatorUsername: targetUser.username,
+                    recipient: socket.id,
+                    recipientUsername: user.username,
+                    callType: 'video', // 暂时默认为video，后续可以从数据中获取
+                    startTime: Date.now(),
+                    status: 'active',
+                    controls: {
+                        videoEnabled: true,
+                        audioEnabled: true
+                    }
+                });
+                console.log(`通话已开始，ID: ${data.callId}, 双方: ${targetUser.username} 和 ${user.username}`);
+            }
+            
             io.to(data.targetSocketId).emit('call-accepted', {
                 from: socket.id,
                 fromUsername: user.username,
@@ -1808,6 +1914,10 @@ io.on('connection', (socket) => {
     socket.on('call-end', (data) => {
         const user = users.get(socket.id);
         if (user && user.permissions.allowCall) {
+            // 从正在进行的通话列表中移除
+            ongoingCalls.delete(data.callId);
+            console.log(`通话已结束，ID: ${data.callId}`);
+            
             io.to(data.targetSocketId).emit('call-ended', {
                 from: socket.id,
                 callId: data.callId
