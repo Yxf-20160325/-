@@ -2243,14 +2243,6 @@
                     return;
                 }
                 
-                // 限制媒体队列大小，避免内存溢出
-                if (this.socketMediaQueue.length > 30) {
-                    console.warn('媒体队列过大，丢弃旧数据，当前长度:', this.socketMediaQueue.length);
-                    // 只保留最新的20个媒体数据
-                    this.socketMediaQueue = this.socketMediaQueue.slice(-20);
-                    console.log('媒体队列已调整，当前长度:', this.socketMediaQueue.length);
-                }
-                
                 // 从队列中取出第一个媒体数据
                 const mediaData = this.socketMediaQueue.shift();
                 console.log('处理媒体数据，队列剩余:', this.socketMediaQueue.length);
@@ -2259,6 +2251,8 @@
                     // 检查SourceBuffer状态是否有效
                     if (this.sourceBuffer.readyState !== 'open') {
                         console.error('SourceBuffer状态无效，无法添加媒体数据');
+                        // 将数据重新放回队列，等待SourceBuffer恢复
+                        this.socketMediaQueue.unshift(mediaData);
                         this.initMediaSource();
                         return;
                     }
@@ -2266,8 +2260,27 @@
                     // 检查MediaSource状态是否有效
                     if (this.mediaSource.readyState !== 'open') {
                         console.error('MediaSource状态无效，无法添加媒体数据');
+                        // 将数据重新放回队列，等待MediaSource恢复
+                        this.socketMediaQueue.unshift(mediaData);
                         this.initMediaSource();
                         return;
+                    }
+                    
+                    // 检查SourceBuffer是否已满
+                    if (this.sourceBuffer.buffered.length > 0) {
+                        const lastBufferEnd = this.sourceBuffer.buffered.end(this.sourceBuffer.buffered.length - 1);
+                        const currentTime = document.getElementById('remoteVideo').currentTime;
+                        // 如果缓冲数据超过10秒，暂停处理，避免过度缓冲
+                        if (lastBufferEnd - currentTime > 10) {
+                            console.log('缓冲数据过多，暂停处理，等待播放消耗');
+                            // 将数据重新放回队列
+                            this.socketMediaQueue.unshift(mediaData);
+                            // 1秒后重试
+                            setTimeout(() => {
+                                this.processMediaQueue();
+                            }, 1000);
+                            return;
+                        }
                     }
                     
                     // 将媒体数据添加到SourceBuffer
@@ -2275,20 +2288,27 @@
                     console.log('媒体数据已添加到SourceBuffer');
                 } catch (error) {
                     console.error('添加媒体数据到SourceBuffer失败:', error);
-                    // 只移除当前失败的数据，而不是清空整个队列
-                    console.log('移除当前失败的数据，队列剩余:', this.socketMediaQueue.length);
                     
                     // 根据错误类型采取不同的处理方式
                     if (error.name === 'QuotaExceededError') {
-                        console.error('SourceBuffer配额超出，尝试清空队列');
-                        this.socketMediaQueue = [];
+                        console.error('SourceBuffer配额超出，尝试清理旧数据');
+                        // 不清空队列，而是尝试重新初始化MediaSource
+                        this.initMediaSource();
+                        // 将数据重新放回队列
+                        this.socketMediaQueue.unshift(mediaData);
                     } else if (error.name === 'InvalidStateError') {
                         console.error('SourceBuffer状态无效，可能已关闭，重新初始化MediaSource');
+                        // 将数据重新放回队列
+                        this.socketMediaQueue.unshift(mediaData);
                         this.initMediaSource();
                     } else if (error.name === 'TypeError') {
                         console.error('媒体数据类型错误，跳过该数据');
+                        // 继续处理下一个数据
+                        this.processMediaQueue();
                     } else {
                         console.error('未知错误，重新初始化MediaSource');
+                        // 将数据重新放回队列
+                        this.socketMediaQueue.unshift(mediaData);
                         this.initMediaSource();
                     }
                 }
@@ -3251,14 +3271,15 @@
                     }
                     
                     if (this.currentCallType === 'video' && this.currentCallMethod === 'socket.io') {
-                        console.log('收到socket.io视频媒体数据，大小:', data.size, 'bytes');
-                        
-                        // 限制媒体队列大小，避免内存溢出
-                        if (this.socketMediaQueue.length > 30) {
-                            console.warn('媒体队列过大，丢弃旧数据，当前长度:', this.socketMediaQueue.length);
-                            // 只保留最新的20个媒体数据
-                            this.socketMediaQueue = this.socketMediaQueue.slice(-20);
+                        // 检查数据有效性
+                        if (!data || typeof data !== 'object') {
+                            console.error('收到无效的socket.io视频媒体数据:', data);
+                            return;
                         }
+                        
+                        // 安全获取数据大小
+                        const dataSize = data.size !== undefined ? data.size : '未知';
+                        console.log('收到socket.io视频媒体数据，大小:', dataSize, 'bytes');
                         
                         // 检查MediaSource是否已初始化
                         if (!this.mediaSource || !this.isMediaSourceOpen) {
@@ -3275,7 +3296,15 @@
                         // 尝试处理媒体队列
                         this.processMediaQueue();
                     } else if (this.currentCallType === 'audio' && this.currentCallMethod === 'socket.io') {
-                        console.log('收到socket.io音频媒体数据，大小:', data.size, 'bytes');
+                        // 检查数据有效性
+                        if (!data || typeof data !== 'object') {
+                            console.error('收到无效的socket.io音频媒体数据:', data);
+                            return;
+                        }
+                        
+                        // 安全获取数据大小
+                        const dataSize = data.size !== undefined ? data.size : '未知';
+                        console.log('收到socket.io音频媒体数据，大小:', dataSize, 'bytes');
                         
                         // 音频通话，正确处理：使用Blob URL和Audio对象播放
                         try {
@@ -3707,7 +3736,7 @@
             callMethodDiv.innerHTML = `
                 <h4 style="margin-top: 0;">选择通话方式</h4>
                 <label style="margin-right: 20px;">
-                    <input type="radio" name="callMethod" value="webrtc" checked> WebRTC (推荐，仅可局域网)
+                    <input type="radio" name="callMethod" value="webrtc" checked> WebRTC (推荐，仅可局域网，但也有可能跨网段成功)
                 </label>
                 <label>
                     <input type="radio" name="callMethod" value="socket.io"> Socket.io
