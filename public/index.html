@@ -2043,6 +2043,8 @@
             
             // 初始化媒体流
             initMediaStream() {
+                console.log('initMediaStream: isCallInitiator=', this.isCallInitiator, 'currentCallMethod=', this.currentCallMethod);
+                
                 // 如果已经有本地媒体流，直接使用
                 if (this.localStream) {
                     if (this.currentCallMethod === 'webrtc') {
@@ -2051,16 +2053,24 @@
                         
                         // 如果是发起方，创建并发送offer
                         if (this.isCallInitiator) {
+                            console.log('发起方：创建并发送offer');
                             this.createAndSendOffer();
                         } else {
                             // 作为接收方，如果有pendingOffer，立即处理
                             if (this.pendingOffer) {
+                                console.log('接收方：处理pendingOffer');
                                 // 处理之前保存的offer
                                 this.handleWebRTCMedia({ 
                                     type: 'offer', 
                                     data: this.pendingOffer 
                                 });
                                 this.pendingOffer = null;
+                            } else {
+                                console.log('接收方：等待offer...');
+                                // 即使没有pendingOffer，也要确保peerConnection已创建，以便接收后续的offer
+                                if (!this.peerConnection) {
+                                    this.createPeerConnection();
+                                }
                             }
                         }
                     } else {
@@ -2078,6 +2088,7 @@
                 
                 navigator.mediaDevices.getUserMedia(constraints)
                     .then(stream => {
+                        console.log('获取媒体流成功，轨道:', stream.getTracks().map(track => track.kind));
                         this.localStream = stream;
                         // 显示本地视频流
                         this.showLocalStream(stream);
@@ -2088,16 +2099,24 @@
                             
                             // 如果是发起方，创建并发送offer
                             if (this.isCallInitiator) {
+                                console.log('发起方：创建并发送offer');
                                 this.createAndSendOffer();
                             } else {
                                 // 作为接收方，如果有pendingOffer，立即处理
                                 if (this.pendingOffer) {
+                                    console.log('接收方：处理pendingOffer');
                                     // 处理之前保存的offer
                                     this.handleWebRTCMedia({ 
                                         type: 'offer', 
                                         data: this.pendingOffer 
                                     });
                                     this.pendingOffer = null;
+                                } else {
+                                    console.log('接收方：等待offer...');
+                                    // 即使没有pendingOffer，也要确保peerConnection已创建，以便接收后续的offer
+                                    if (!this.peerConnection) {
+                                        this.createPeerConnection();
+                                    }
                                 }
                             }
                         } else {
@@ -2233,7 +2252,16 @@
             
             // 处理WebRTC媒体数据
             handleWebRTCMedia(data) {
-                // 只有在通话中状态才处理媒体数据
+                console.log('收到WebRTC媒体数据:', data.type, 'isInCall:', this.isInCall);
+                
+                // 特殊处理：如果不是通话中状态，但收到了offer，保存到pendingOffer中
+                if (!this.isInCall && data.type === 'offer') {
+                    console.log('未在通话中，保存offer到pendingOffer');
+                    this.pendingOffer = data.data;
+                    return;
+                }
+                
+                // 只有在通话中状态才处理其他媒体数据
                 if (!this.isInCall) {
                     console.log('未在通话中，忽略媒体数据:', data.type);
                     return;
@@ -2241,6 +2269,8 @@
                 
                 // 确保媒体流和peerConnection已创建
                 const ensureMediaAndPeer = () => {
+                    console.log('ensureMediaAndPeer: localStream=', !!this.localStream, 'peerConnection=', !!this.peerConnection);
+                    
                     if (this.localStream && this.peerConnection) {
                         return Promise.resolve();
                     } else if (this.localStream && !this.peerConnection) {
@@ -2248,6 +2278,7 @@
                         return Promise.resolve();
                     } else {
                         // 还没有媒体流，先获取媒体流
+                        console.log('正在获取媒体流...');
                         const constraints = {
                             audio: true,
                             video: this.currentCallType === 'video'
@@ -2255,6 +2286,7 @@
                         
                         return navigator.mediaDevices.getUserMedia(constraints)
                             .then(stream => {
+                                console.log('获取媒体流成功:', stream.getTracks().map(track => track.kind));
                                 this.localStream = stream;
                                 this.showLocalStream(stream);
                                 this.createPeerConnection();
@@ -2279,16 +2311,21 @@
                         if (this.localStream) {
                             // 检查是否已经添加了所有本地轨道
                             const existingTracks = this.peerConnection.getSenders().map(sender => sender.track.id);
+                            console.log('现有轨道:', existingTracks, '本地轨道:', this.localStream.getTracks().map(track => track.id));
+                            
                             this.localStream.getTracks().forEach(track => {
                                 if (!existingTracks.includes(track.id)) {
                                     console.log('添加本地媒体轨道到peerConnection:', track.kind, track.id);
                                     this.peerConnection.addTrack(track, this.localStream);
+                                    console.log('本地轨道添加成功，当前发送者数量:', this.peerConnection.getSenders().length);
                                 }
                             });
                         }
                         
                         if (data.type === 'offer') {
                             // 处理offer
+                            console.log('处理offer，remoteDescription状态:', this.peerConnection.remoteDescription ? this.peerConnection.remoteDescription.type : 'none');
+                            
                             if (!data.data || !data.data.type || !data.data.sdp) {
                                 console.error('无效的offer数据:', data.data);
                                 // 不要立即结束通话，先尝试恢复
@@ -2297,6 +2334,8 @@
                             
                             return this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.data))
                                 .then(() => {
+                                    console.log('设置offer的remoteDescription成功');
+                                    
                                     // 再次确保本地媒体流已添加到peerConnection（针对接收方）
                                     if (this.localStream) {
                                         const existingTracks = this.peerConnection.getSenders().map(sender => sender.track.id);
@@ -2307,20 +2346,26 @@
                                             }
                                         });
                                     }
+                                    
                                     // 处理所有暂存的ICE候选
                                     if (this.pendingIceCandidates) {
+                                        console.log('处理暂存的ICE候选，数量:', this.pendingIceCandidates.length);
                                         this.pendingIceCandidates.forEach(candidate => {
                                             this.peerConnection.addIceCandidate(candidate)
                                                 .catch(err => console.error('处理暂存ICE候选失败:', err));
                                         });
                                         this.pendingIceCandidates = null;
                                     }
+                                    
+                                    console.log('正在创建answer...');
                                     return this.peerConnection.createAnswer();
                                 })
                                 .then(answer => {
+                                    console.log('创建answer成功:', answer.type);
                                     return this.peerConnection.setLocalDescription(answer);
                                 })
                                 .then(() => {
+                                    console.log('设置answer的localDescription成功，发送answer...');
                                     this.socket.emit('call-media', {
                                         targetSocketId: this.currentCallTargetSocketId,
                                         callId: this.currentCallId,
@@ -2330,6 +2375,8 @@
                                 });
                         } else if (data.type === 'answer') {
                             // 处理answer
+                            console.log('处理answer，remoteDescription状态:', this.peerConnection.remoteDescription ? this.peerConnection.remoteDescription.type : 'none');
+                            
                             if (!data.data || !data.data.type || !data.data.sdp) {
                                 console.error('无效的answer数据:', data.data);
                                 // 不要立即结束通话，先尝试恢复
@@ -2338,8 +2385,11 @@
                             
                             return this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.data))
                                 .then(() => {
+                                    console.log('设置answer的remoteDescription成功');
+                                    
                                     // 处理所有暂存的ICE候选
                                     if (this.pendingIceCandidates) {
+                                        console.log('处理暂存的ICE候选，数量:', this.pendingIceCandidates.length);
                                         this.pendingIceCandidates.forEach(candidate => {
                                             this.peerConnection.addIceCandidate(candidate)
                                                 .catch(err => console.error('处理暂存ICE候选失败:', err));
@@ -2349,6 +2399,8 @@
                                 });
                         } else if (data.type === 'ice-candidate') {
                             // 处理ICE候选
+                            console.log('处理ICE候选');
+                            
                             if (!data.data || !data.data.candidate) {
                                 console.error('无效的ICE候选数据:', data.data);
                                 return Promise.resolve();
@@ -2358,7 +2410,11 @@
                             
                             // 检查remoteDescription是否已经设置
                             if (this.peerConnection.remoteDescription) {
+                                console.log('添加ICE候选到peerConnection');
                                 return this.peerConnection.addIceCandidate(candidate)
+                                    .then(() => {
+                                        console.log('添加ICE候选成功');
+                                    })
                                     .catch(err => {
                                         console.error('添加ICE候选失败:', err);
                                         // 不要结束通话，继续处理其他候选
@@ -2370,7 +2426,7 @@
                                     this.pendingIceCandidates = [];
                                 }
                                 this.pendingIceCandidates.push(candidate);
-                                console.log('ICE候选暂存，等待remoteDescription设置');
+                                console.log('ICE候选暂存，等待remoteDescription设置，当前暂存数量:', this.pendingIceCandidates.length);
                                 return Promise.resolve();
                             }
                         }
