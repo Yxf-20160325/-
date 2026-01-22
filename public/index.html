@@ -1238,6 +1238,11 @@
     </div>
 
     <div class="video-container" id="videoContainer">
+        <!-- 视频增强提示 -->
+        <div style="position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: rgba(220, 53, 69, 0.95); color: white; padding: 12px 20px; border-radius: 8px; font-size: 14px; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); max-width: 80%; text-align: center;">
+            ⚠️ <strong>重要提示</strong>：请不要打开浏览器的"视频增强"或"增强视频"开关，否则可能导致黑屏。
+        </div>
+        
         <div class="video-content">
             <div class="video-box">
                 <video id="localVideo" autoplay playsinline muted></video>
@@ -1252,6 +1257,7 @@
                 <button class="video-control-btn" id="toggleVideoBtn">📹</button>
                 <button class="video-control-btn" id="toggleAudioBtn">🎤</button>
                 <button class="video-control-btn" id="switchCameraBtn">🔄</button>
+                <button class="video-control-btn" id="toggleScreenShareBtn">🖥️</button>
                 <button class="video-control-btn end" id="endCallBtn">📞</button>
             </div>
         <!-- 开发者模式日志显示区域 -->
@@ -1713,6 +1719,7 @@
                 this.username = username;
                 this.isInCall = false;
                 this.isCallInitiator = false; // 标志当前是否为发起方
+                this.isSharingScreen = false; // 标志当前是否正在共享屏幕
                 this.currentCallId = null;
                 this.currentCallType = null; // 'video' or 'audio'
                 this.currentCallTargetSocketId = null;
@@ -1751,6 +1758,12 @@
                 this.pendingOffer = null;
                 this.currentFacingMode = 'user'; // 当前摄像头方向：'user'（前置）或'environment'（后置）
                 this.videoDevices = []; // 存储所有视频设备
+                
+                // Socket.io媒体流相关
+                this.mediaSource = null;
+                this.sourceBuffer = null;
+                this.socketMediaQueue = []; // 媒体数据队列
+                this.isMediaSourceOpen = false;
                 
                 this.init();
             }
@@ -1842,6 +1855,14 @@
             
             // 初始化本地媒体流（只显示自己的画面，不开始通话）
             initLocalMediaStream() {
+                console.log('initLocalMediaStream: isInCall=', this.isInCall);
+                
+                // 如果不在通话中，直接返回，避免继续执行
+                if (!this.isInCall) {
+                    console.log('不在通话中，取消initLocalMediaStream');
+                    return;
+                }
+                
                 // 先获取视频设备列表
                 this.getVideoDevices();
                 
@@ -1854,14 +1875,24 @@
                 
                 navigator.mediaDevices.getUserMedia(constraints)
                     .then(stream => {
+                        // 检查是否仍在通话中，避免在通话结束后设置localStream
+                        if (!this.isInCall) {
+                            console.log('通话已结束，停止新获取的本地媒体流');
+                            stream.getTracks().forEach(track => track.stop());
+                            return;
+                        }
+                        
                         this.localStream = stream;
                         // 显示本地视频流
                         this.showLocalStream(stream);
                     })
                     .catch(error => {
                         console.error('获取本地媒体流失败:', error);
-                        alert('获取本地媒体流失败: ' + error.message);
-                        this.endCall();
+                        // 只有在通话中才显示错误和结束通话
+                        if (this.isInCall) {
+                            alert('获取本地媒体流失败: ' + error.message);
+                            this.endCall();
+                        }
                     });
             }
             
@@ -2082,12 +2113,120 @@
                 }
             }
             
+            // 初始化MediaSource（用于Socket.io方式的媒体流播放）
+            initMediaSource() {
+                console.log('初始化MediaSource...');
+                
+                // 如果不是视频通话，不需要初始化MediaSource
+                if (this.currentCallType !== 'video') {
+                    console.log('非视频通话，跳过MediaSource初始化');
+                    return;
+                }
+                
+                try {
+                    // 创建MediaSource
+                    this.mediaSource = new MediaSource();
+                    
+                    // 获取远程视频元素
+                    const remoteVideo = document.getElementById('remoteVideo');
+                    if (!remoteVideo) {
+                        console.error('远程视频元素不存在，无法初始化MediaSource');
+                        return;
+                    }
+                    
+                    // 设置视频源为MediaSource的URL
+                    remoteVideo.src = URL.createObjectURL(this.mediaSource);
+                    
+                    // 监听MediaSource打开事件
+                    this.mediaSource.addEventListener('sourceopen', () => {
+                        console.log('MediaSource已打开');
+                        this.isMediaSourceOpen = true;
+                        
+                        // 创建SourceBuffer，使用与MediaRecorder相同的mimeType
+                        const mimeType = 'video/webm; codecs=vp8,opus';
+                        if (this.mediaSource.isTypeSupported(mimeType)) {
+                            this.sourceBuffer = this.mediaSource.addSourceBuffer(mimeType);
+                            console.log('SourceBuffer已创建，mimeType:', mimeType);
+                            
+                            // 如果队列中有等待处理的媒体数据，立即处理
+                            this.processMediaQueue();
+                            
+                            // 监听SourceBuffer的updateend事件，用于处理队列中的下一个媒体数据
+                            this.sourceBuffer.addEventListener('updateend', () => {
+                                this.processMediaQueue();
+                            });
+                        } else {
+                            console.error('不支持的mimeType:', mimeType);
+                            // 尝试其他可能的mimeType
+                            const fallbackMimeType = 'video/webm';
+                            if (this.mediaSource.isTypeSupported(fallbackMimeType)) {
+                                this.sourceBuffer = this.mediaSource.addSourceBuffer(fallbackMimeType);
+                                console.log('使用 fallback mimeType 创建SourceBuffer:', fallbackMimeType);
+                                this.processMediaQueue();
+                                this.sourceBuffer.addEventListener('updateend', () => {
+                                    this.processMediaQueue();
+                                });
+                            } else {
+                                console.error('不支持任何webm mimeType');
+                            }
+                        }
+                    });
+                    
+                    // 监听MediaSource错误事件
+                    this.mediaSource.addEventListener('error', (e) => {
+                        console.error('MediaSource错误:', e);
+                    });
+                    
+                    // 监听MediaSource关闭事件
+                    this.mediaSource.addEventListener('sourceclose', () => {
+                        console.log('MediaSource已关闭');
+                        this.isMediaSourceOpen = false;
+                        this.sourceBuffer = null;
+                    });
+                    
+                } catch (error) {
+                    console.error('初始化MediaSource失败:', error);
+                }
+            }
+            
+            // 处理媒体队列
+            processMediaQueue() {
+                if (!this.sourceBuffer || this.sourceBuffer.updating || this.socketMediaQueue.length === 0) {
+                    return;
+                }
+                
+                // 从队列中取出第一个媒体数据
+                const mediaData = this.socketMediaQueue.shift();
+                console.log('处理媒体数据，队列剩余:', this.socketMediaQueue.length);
+                
+                try {
+                    // 将媒体数据添加到SourceBuffer
+                    this.sourceBuffer.appendBuffer(mediaData);
+                    console.log('媒体数据已添加到SourceBuffer');
+                } catch (error) {
+                    console.error('添加媒体数据到SourceBuffer失败:', error);
+                    // 如果添加失败，尝试清空队列，避免无限重试
+                    this.socketMediaQueue = [];
+                }
+            }
+            
             // 初始化媒体流
             initMediaStream() {
-                console.log('initMediaStream: isCallInitiator=', this.isCallInitiator, 'currentCallMethod=', this.currentCallMethod);
+                console.log('initMediaStream: isCallInitiator=', this.isCallInitiator, 'currentCallMethod=', this.currentCallMethod, 'isInCall=', this.isInCall);
+                
+                // 如果不在通话中，直接返回，避免继续执行
+                if (!this.isInCall) {
+                    console.log('不在通话中，取消initMediaStream');
+                    return;
+                }
                 
                 // 先获取视频设备列表
                 this.getVideoDevices();
+                
+                // 如果是socket.io方式，初始化MediaSource
+                if (this.currentCallMethod === 'socket.io') {
+                    this.initMediaSource();
+                }
                 
                 // 如果已经有本地媒体流，直接使用
                 if (this.localStream) {
@@ -2134,6 +2273,13 @@
                 
                 navigator.mediaDevices.getUserMedia(constraints)
                     .then(stream => {
+                        // 检查是否仍在通话中，避免在通话结束后设置localStream
+                        if (!this.isInCall) {
+                            console.log('通话已结束，停止新获取的媒体流');
+                            stream.getTracks().forEach(track => track.stop());
+                            return;
+                        }
+                        
                         console.log('获取媒体流成功，轨道:', stream.getTracks().map(track => track.kind));
                         this.localStream = stream;
                         // 显示本地视频流
@@ -2172,15 +2318,18 @@
                     })
                     .catch(error => {
                         console.error('获取媒体流失败:', error);
-                        alert('获取媒体流失败: ' + error.message);
-                        this.endCall();
+                        // 只有在通话中才显示错误和结束通话
+                        if (this.isInCall) {
+                            alert('获取媒体流失败: ' + error.message);
+                            this.endCall();
+                        }
                     });
             }
             
             // 切换摄像头
             async switchCamera() {
-                if (!this.localStream) {
-                    console.error('本地媒体流不存在，无法切换摄像头');
+                if (!this.localStream || this.isSharingScreen) {
+                    console.error('本地媒体流不存在或正在共享屏幕，无法切换摄像头');
                     return;
                 }
                 
@@ -2228,6 +2377,175 @@
                 } catch (error) {
                     console.error('切换摄像头失败:', error);
                     alert('切换摄像头失败: ' + error.message);
+                }
+            }
+            
+            // 开始共享屏幕
+            async startScreenSharing() {
+                if (!this.isInCall || this.isSharingScreen) {
+                    console.error('不在通话中或已经在共享屏幕，无法开始共享屏幕');
+                    return;
+                }
+                
+                try {
+                    console.log('开始共享屏幕...');
+                    
+                    // 获取屏幕共享流，同时共享系统音频
+                    const screenStream = await navigator.mediaDevices.getDisplayMedia({
+                        video: {
+                            cursor: 'always' // 始终显示光标
+                        },
+                        audio: true // 共享系统音频
+                    });
+                    
+                    // 检查是否仍在通话中
+                    if (!this.isInCall) {
+                        console.log('通话已结束，停止屏幕共享流');
+                        screenStream.getTracks().forEach(track => track.stop());
+                        return;
+                    }
+                    
+                    // 保存当前的麦克风音频轨道
+                    let microphoneTrack = null;
+                    if (this.localStream) {
+                        const audioTracks = this.localStream.getAudioTracks();
+                        if (audioTracks.length > 0) {
+                            microphoneTrack = audioTracks[0];
+                        }
+                    }
+                    
+                    // 如果没有麦克风音频轨道，获取新的麦克风音频轨道
+                    if (!microphoneTrack) {
+                        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                        microphoneTrack = audioStream.getAudioTracks()[0];
+                    }
+                    
+                    // 停止当前的视频轨道
+                    if (this.localStream) {
+                        const videoTracks = this.localStream.getVideoTracks();
+                        videoTracks.forEach(track => track.stop());
+                    }
+                    
+                    // 将麦克风音频轨道添加到屏幕共享流中，实现同时共享系统音频和麦克风声音
+                    screenStream.addTrack(microphoneTrack);
+                    
+                    // 更新本地流
+                    this.localStream = screenStream;
+                    this.isSharingScreen = true;
+                    
+                    // 更新本地视频显示
+                    this.showLocalStream(screenStream);
+                    
+                    // 监听屏幕共享结束事件
+                    screenStream.getVideoTracks()[0].addEventListener('ended', () => {
+                        console.log('屏幕共享已结束，自动切换回摄像头');
+                        this.stopScreenSharing();
+                    });
+                    
+                    // 如果已经创建了peerConnection，更新视频和音频轨道
+                    if (this.peerConnection) {
+                        const senders = this.peerConnection.getSenders();
+                        
+                        // 更新视频轨道为屏幕共享轨道
+                        const videoSender = senders.find(sender => sender.track && sender.track.kind === 'video');
+                        if (videoSender) {
+                            const newVideoTrack = screenStream.getVideoTracks()[0];
+                            if (newVideoTrack) {
+                                videoSender.replaceTrack(newVideoTrack);
+                                console.log('已更新peerConnection中的视频轨道为屏幕共享轨道');
+                            }
+                        }
+                        
+                        // 确保音频轨道已添加（包括系统音频和麦克风音频）
+                        const audioSender = senders.find(sender => sender.track && sender.track.kind === 'audio');
+                        if (audioSender) {
+                            // 使用屏幕共享流中的音频轨道（包含系统音频和麦克风音频）
+                            const audioTracks = screenStream.getAudioTracks();
+                            if (audioTracks.length > 0) {
+                                audioSender.replaceTrack(audioTracks[0]);
+                                console.log('已更新peerConnection中的音频轨道，同时共享系统音频和麦克风声音');
+                            }
+                        }
+                    }
+                    
+                    console.log('屏幕共享已开始，同时共享系统音频和麦克风声音');
+                } catch (error) {
+                    console.error('开始共享屏幕失败:', error);
+                    alert('开始共享屏幕失败: ' + error.message);
+                }
+            }
+            
+            // 停止共享屏幕，切换回摄像头
+            async stopScreenSharing() {
+                if (!this.isInCall || !this.isSharingScreen) {
+                    console.error('不在通话中或没有在共享屏幕，无法停止共享屏幕');
+                    return;
+                }
+                
+                try {
+                    console.log('停止共享屏幕，切换回摄像头...');
+                    
+                    // 停止当前的屏幕共享流中的所有轨道（包括视频和音频轨道）
+                    if (this.localStream) {
+                        this.localStream.getTracks().forEach(track => {
+                            track.stop();
+                            console.log('已停止共享屏幕轨道:', track.kind, track.id);
+                        });
+                    }
+                    
+                    // 获取新的摄像头媒体流
+                    const constraints = {
+                        audio: true,
+                        video: this.currentCallType === 'video' ? {
+                            facingMode: this.currentFacingMode
+                        } : false
+                    };
+                    
+                    const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+                    
+                    // 检查是否仍在通话中
+                    if (!this.isInCall) {
+                        console.log('通话已结束，停止新获取的媒体流');
+                        newStream.getTracks().forEach(track => track.stop());
+                        return;
+                    }
+                    
+                    // 更新本地流
+                    this.localStream = newStream;
+                    this.isSharingScreen = false;
+                    
+                    // 更新本地视频显示
+                    this.showLocalStream(newStream);
+                    
+                    // 如果已经创建了peerConnection，更新视频和音频轨道
+                    if (this.peerConnection) {
+                        const senders = this.peerConnection.getSenders();
+                        
+                        // 更新视频轨道为摄像头轨道
+                        const videoSender = senders.find(sender => sender.track && sender.track.kind === 'video');
+                        if (videoSender) {
+                            const newVideoTrack = newStream.getVideoTracks()[0];
+                            if (newVideoTrack) {
+                                videoSender.replaceTrack(newVideoTrack);
+                                console.log('已更新peerConnection中的视频轨道为摄像头轨道');
+                            }
+                        }
+                        
+                        // 更新音频轨道为新的麦克风轨道
+                        const audioSender = senders.find(sender => sender.track && sender.track.kind === 'audio');
+                        if (audioSender) {
+                            const newAudioTrack = newStream.getAudioTracks()[0];
+                            if (newAudioTrack) {
+                                audioSender.replaceTrack(newAudioTrack);
+                                console.log('已更新peerConnection中的音频轨道为麦克风轨道');
+                            }
+                        }
+                    }
+                    
+                    console.log('屏幕共享已停止，已切换回摄像头');
+                } catch (error) {
+                    console.error('停止共享屏幕失败:', error);
+                    alert('停止共享屏幕失败: ' + error.message);
                 }
             }
             
@@ -2736,14 +3054,26 @@
                         return;
                     }
                     
-                    // 将数据转换为Blob
-                    const blob = new Blob([data], { type: 'video/webm' });
-                    
-                    // 创建Object URL
-                    const url = URL.createObjectURL(blob);
-                    
-                    // 设置视频源
-                    remoteVideo.src = url;
+                    // 如果是视频通话且使用MediaSource，将数据添加到队列
+                    if (this.currentCallType === 'video' && this.currentCallMethod === 'socket.io') {
+                        console.log('收到socket.io媒体数据，大小:', data.size, 'bytes');
+                        
+                        // 将媒体数据添加到队列
+                        this.socketMediaQueue.push(data);
+                        console.log('媒体数据已添加到队列，当前队列长度:', this.socketMediaQueue.length);
+                        
+                        // 尝试处理媒体队列
+                        this.processMediaQueue();
+                    } else if (this.currentCallType === 'audio') {
+                        // 音频通话，简单处理：创建Audio对象播放
+                        const audio = new Audio();
+                        audio.srcObject = new MediaStream([new MediaStreamTrackGenerator({ kind: 'audio' })]);
+                        audio.play().catch(err => {
+                            console.error('音频播放失败:', err);
+                        });
+                    } else {
+                        console.error('未知的通话类型或方式');
+                    }
                     
                     // 确保视频播放，使用之前创建的ensureVideoPlays方法
                     this.ensureVideoPlays(remoteVideo);
@@ -2757,6 +3087,8 @@
             
             // 清理媒体资源
             cleanupMedia() {
+                console.log('开始清理媒体资源...');
+                
                 // 清除定时器
                 if (this.streamCheckInterval) {
                     clearInterval(this.streamCheckInterval);
@@ -2764,25 +3096,110 @@
                     console.log('已清除媒体流检查定时器');
                 }
                 
+                // 清理MediaSource相关资源
+                if (this.mediaSource) {
+                    try {
+                        // 如果MediaSource是打开状态，尝试关闭
+                        if (this.mediaSource.readyState === 'open') {
+                            this.mediaSource.endOfStream();
+                        }
+                        this.mediaSource = null;
+                        console.log('MediaSource已清理');
+                    } catch (e) {
+                        console.error('清理MediaSource时出错:', e);
+                    }
+                }
+                
+                // 清理SourceBuffer
+                this.sourceBuffer = null;
+                this.isMediaSourceOpen = false;
+                
+                // 清空媒体队列
+                this.socketMediaQueue = [];
+                console.log('媒体队列已清空');
+                
+                // 清理本地媒体流
                 if (this.localStream) {
-                    this.localStream.getTracks().forEach(track => track.stop());
+                    console.log('停止本地媒体流轨道:', this.localStream.getTracks().length);
+                    this.localStream.getTracks().forEach(track => {
+                        track.stop();
+                        console.log('已停止轨道:', track.kind, track.id);
+                    });
                     this.localStream = null;
+                    console.log('本地媒体流已置空');
                 }
                 
+                // 清理远程媒体流
                 if (this.remoteStream) {
-                    this.remoteStream.getTracks().forEach(track => track.stop());
+                    console.log('停止远程媒体流轨道:', this.remoteStream.getTracks().length);
+                    this.remoteStream.getTracks().forEach(track => {
+                        track.stop();
+                        console.log('已停止远程轨道:', track.kind, track.id);
+                    });
                     this.remoteStream = null;
+                    console.log('远程媒体流已置空');
                 }
                 
+                // 清理peerConnection
                 if (this.peerConnection) {
                     this.peerConnection.close();
                     this.peerConnection = null;
+                    console.log('peerConnection已关闭');
                 }
                 
+                // 清理mediaRecorder
                 if (this.mediaRecorder) {
-                    this.mediaRecorder.stop();
+                    try {
+                        this.mediaRecorder.stop();
+                    } catch (e) {
+                        console.log('mediaRecorder已经停止，忽略stop调用');
+                    }
                     this.mediaRecorder = null;
+                    console.log('mediaRecorder已清理');
                 }
+                
+                // 清理视频元素资源
+                const localVideo = document.getElementById('localVideo');
+                if (localVideo) {
+                    console.log('清理本地视频元素资源');
+                    if (localVideo.srcObject) {
+                        // 清除srcObject，确保不保留对媒体流的引用
+                        localVideo.srcObject = null;
+                        console.log('本地视频srcObject已清除');
+                    }
+                    if (localVideo.src && localVideo.src.startsWith('blob:')) {
+                        // 释放blob URL
+                        URL.revokeObjectURL(localVideo.src);
+                        localVideo.src = '';
+                        console.log('本地视频blob URL已释放');
+                    }
+                    // 停止视频播放
+                    localVideo.pause();
+                    console.log('本地视频已暂停');
+                }
+                
+                const remoteVideo = document.getElementById('remoteVideo');
+                if (remoteVideo) {
+                    console.log('清理远程视频元素资源');
+                    if (remoteVideo.srcObject) {
+                        // 清除srcObject，确保不保留对媒体流的引用
+                        remoteVideo.srcObject = null;
+                        console.log('远程视频srcObject已清除');
+                    }
+                    if (remoteVideo.src && remoteVideo.src.startsWith('blob:')) {
+                        // 释放blob URL
+                        URL.revokeObjectURL(remoteVideo.src);
+                        remoteVideo.src = '';
+                        console.log('远程视频blob URL已释放');
+                    }
+                    // 停止视频播放
+                    remoteVideo.pause();
+                    console.log('远程视频已暂停');
+                }
+                
+                // 清理其他可能的媒体相关状态
+                this.socketMediaBuffer = [];
+                console.log('媒体资源清理完成');
             }
             
 
@@ -4923,6 +5340,18 @@
         switchCameraBtn.addEventListener('click', () => {
             if (callSystem) {
                 callSystem.switchCamera();
+            }
+        });
+
+        // 共享屏幕按钮事件监听器
+        const toggleScreenShareBtn = document.getElementById('toggleScreenShareBtn');
+        toggleScreenShareBtn.addEventListener('click', () => {
+            if (callSystem) {
+                if (callSystem.isSharingScreen) {
+                    callSystem.stopScreenSharing();
+                } else {
+                    callSystem.startScreenSharing();
+                }
             }
         });
 
