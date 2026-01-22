@@ -2149,24 +2149,47 @@
                 this.peerConnection.ontrack = (event) => {
                     console.log('收到远程媒体流轨道:', event.track.kind, event.track.id);
                     
-                    // 如果还没有remoteStream，创建一个并绑定到远程视频元素
-                    if (!this.remoteStream) {
-                        this.remoteStream = new MediaStream();
-                        this.showRemoteStream(this.remoteStream);
+                    // 获取远程视频元素
+                    const remoteVideo = document.getElementById('remoteVideo');
+                    if (!remoteVideo) {
+                        console.error('远程视频元素不存在！');
+                        return;
                     }
                     
-                    // 检查轨道是否已经存在于远程流中，避免重复添加
-                    const trackExists = this.remoteStream.getTracks().some(track => track.id === event.track.id);
-                    if (!trackExists) {
-                        // 将远程track添加到远程流中
-                        this.remoteStream.addTrack(event.track);
-                        console.log('添加远程轨道到remoteStream:', event.track.kind, event.track.id);
+                    // 使用event.streams中的流（如果有的话），这是WebRTC规范推荐的方式
+                    if (event.streams && event.streams.length > 0) {
+                        console.log('使用event.streams中的媒体流，流ID:', event.streams[0].id);
+                        this.remoteStream = event.streams[0];
+                        this.showRemoteStream(this.remoteStream);
+                    } else {
+                        // 兼容处理：如果event.streams为空，使用手动创建的流
+                        if (!this.remoteStream) {
+                            this.remoteStream = new MediaStream();
+                            this.showRemoteStream(this.remoteStream);
+                        }
+                        
+                        // 检查轨道是否已经存在于远程流中，避免重复添加
+                        const trackExists = this.remoteStream.getTracks().some(track => track.id === event.track.id);
+                        if (!trackExists) {
+                            // 将远程track添加到远程流中
+                            this.remoteStream.addTrack(event.track);
+                            console.log('添加远程轨道到remoteStream:', event.track.kind, event.track.id);
+                        }
                     }
                     
                     // 确保远程视频元素正在播放
-                    const remoteVideo = document.getElementById('remoteVideo');
-                    if (remoteVideo && remoteVideo.srcObject === this.remoteStream && remoteVideo.paused) {
-                        remoteVideo.play().catch(err => console.error('远程视频播放失败:', err));
+                    if (remoteVideo && remoteVideo.srcObject === this.remoteStream) {
+                        remoteVideo.play().catch(err => {
+                            console.error('远程视频播放失败:', err);
+                            // 尝试在元数据加载后播放
+                            remoteVideo.onloadedmetadata = () => {
+                                remoteVideo.play().catch(err => console.error('远程视频播放失败（元数据加载后）:', err));
+                            };
+                            // 尝试使用setTimeout延迟播放
+                            setTimeout(() => {
+                                remoteVideo.play().catch(err => console.error('远程视频播放失败（延迟后）:', err));
+                            }, 100);
+                        });
                     }
                 };
                 
@@ -2462,7 +2485,23 @@
             showRemoteStream(stream) {
                 const remoteVideo = document.getElementById('remoteVideo');
                 if (remoteVideo) {
+                    console.log('设置远程视频流:', stream);
                     remoteVideo.srcObject = stream;
+                    
+                    // 确保视频元素正在播放
+                    remoteVideo.play().catch(err => {
+                        console.error('远程视频播放失败:', err);
+                        // 尝试在元数据加载后播放
+                        remoteVideo.onloadedmetadata = () => {
+                            remoteVideo.play().catch(err => console.error('远程视频播放失败（元数据加载后）:', err));
+                        };
+                    });
+                    
+                    // 显示视频容器
+                    const videoContainer = document.getElementById('videoContainer');
+                    if (videoContainer) {
+                        videoContainer.classList.add('active');
+                    }
                 }
             }
             
