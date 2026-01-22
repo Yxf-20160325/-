@@ -2387,6 +2387,26 @@
                     return;
                 }
                 
+                // 检查浏览器是否支持getDisplayMedia API
+                if (!navigator.mediaDevices) {
+                    console.error('浏览器不支持媒体设备访问');
+                    alert('您的浏览器不支持媒体设备访问，请使用现代浏览器');
+                    return;
+                }
+                
+                if (!navigator.mediaDevices.getDisplayMedia) {
+                    console.error('浏览器不支持屏幕共享功能');
+                    // 提供更友好的错误提示，根据浏览器类型给出建议
+                    let browserName = '您的浏览器';
+                    if (navigator.userAgent.indexOf('Safari') !== -1 && navigator.userAgent.indexOf('Chrome') === -1) {
+                        browserName = 'Safari浏览器';
+                        alert(`${browserName}不支持屏幕共享功能，请使用Chrome、Firefox或新版Edge浏览器，或更新到最新版本的${browserName}`);
+                    } else {
+                        alert(`${browserName}不支持屏幕共享功能，请使用Chrome、Firefox或新版Edge浏览器`);
+                    }
+                    return;
+                }
+                
                 try {
                     console.log('开始共享屏幕...');
                     
@@ -2416,8 +2436,13 @@
                     
                     // 如果没有麦克风音频轨道，获取新的麦克风音频轨道
                     if (!microphoneTrack) {
-                        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                        microphoneTrack = audioStream.getAudioTracks()[0];
+                        try {
+                            const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                            microphoneTrack = audioStream.getAudioTracks()[0];
+                        } catch (audioError) {
+                            console.error('获取麦克风音频轨道失败:', audioError);
+                            // 继续执行，即使没有麦克风也可以共享屏幕
+                        }
                     }
                     
                     // 停止当前的视频轨道
@@ -2427,7 +2452,9 @@
                     }
                     
                     // 将麦克风音频轨道添加到屏幕共享流中，实现同时共享系统音频和麦克风声音
-                    screenStream.addTrack(microphoneTrack);
+                    if (microphoneTrack) {
+                        screenStream.addTrack(microphoneTrack);
+                    }
                     
                     // 更新本地流
                     this.localStream = screenStream;
@@ -2471,7 +2498,37 @@
                     console.log('屏幕共享已开始，同时共享系统音频和麦克风声音');
                 } catch (error) {
                     console.error('开始共享屏幕失败:', error);
-                    alert('开始共享屏幕失败: ' + error.message);
+                    let errorMessage = '开始共享屏幕失败: ' + error.message;
+                    
+                    // 根据不同错误类型提供更友好的错误提示
+                    if (error.name === 'NotAllowedError') {
+                        errorMessage = '请允许浏览器访问屏幕共享权限';
+                    } else if (error.name === 'NotFoundError') {
+                        errorMessage = '未找到可用的屏幕共享源';
+                    } else if (error.name === 'NotReadableError') {
+                        errorMessage = '无法访问屏幕共享源，请检查是否有其他应用正在使用';
+                    } else if (error.name === 'OverconstrainedError') {
+                        errorMessage = '屏幕共享参数不符合要求';
+                    } else if (error.message.includes('is not a function')) {
+                        let browserName = '您的浏览器';
+                        if (navigator.userAgent.indexOf('Safari') !== -1 && navigator.userAgent.indexOf('Chrome') === -1) {
+                            browserName = 'Safari浏览器';
+                            errorMessage = `${browserName}不支持屏幕共享功能，请使用Chrome、Firefox或新版Edge浏览器，或更新到最新版本的${browserName}`;
+                        } else {
+                            errorMessage = '您的浏览器不支持屏幕共享功能，请使用Chrome、Firefox或新版Edge浏览器';
+                        }
+                    } else if (error.name === 'TypeError') {
+                        // 处理不同浏览器的TypeError
+                        let browserName = '您的浏览器';
+                        if (navigator.userAgent.indexOf('Safari') !== -1 && navigator.userAgent.indexOf('Chrome') === -1) {
+                            browserName = 'Safari浏览器';
+                            errorMessage = `${browserName}不支持屏幕共享功能，请使用Chrome、Firefox或新版Edge浏览器，或更新到最新版本的${browserName}`;
+                        } else {
+                            errorMessage = '您的浏览器不支持屏幕共享功能，请使用Chrome、Firefox或新版Edge浏览器';
+                        }
+                    }
+                    
+                    alert(errorMessage);
                 }
             }
             
@@ -5321,7 +5378,12 @@
         //         alert('未找到该用户或该用户没有通话权限');
         // });
         
-        // // 视频控制按钮事件
+        // 检查设备类型
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        
+        // 检查浏览器是否支持屏幕共享
+        const isScreenShareSupported = navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia;
+        
         // 视频控制按钮事件监听
         toggleVideoBtn.addEventListener('click', () => {
             if (callSystem) {
@@ -5345,15 +5407,22 @@
 
         // 共享屏幕按钮事件监听器
         const toggleScreenShareBtn = document.getElementById('toggleScreenShareBtn');
-        toggleScreenShareBtn.addEventListener('click', () => {
-            if (callSystem) {
-                if (callSystem.isSharingScreen) {
-                    callSystem.stopScreenSharing();
-                } else {
-                    callSystem.startScreenSharing();
+        
+        // 根据设备类型和浏览器支持情况，决定是否显示共享屏幕按钮
+        if (isMobile && !isScreenShareSupported) {
+            console.log('当前设备不支持屏幕共享，隐藏共享屏幕按钮');
+            toggleScreenShareBtn.style.display = 'none';
+        } else {
+            toggleScreenShareBtn.addEventListener('click', () => {
+                if (callSystem) {
+                    if (callSystem.isSharingScreen) {
+                        callSystem.stopScreenSharing();
+                    } else {
+                        callSystem.startScreenSharing();
+                    }
                 }
-            }
-        });
+            });
+        }
 
         endCallBtn.addEventListener('click', () => {
             if (callSystem) {
