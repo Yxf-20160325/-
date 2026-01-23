@@ -269,6 +269,11 @@
             height: 100%;
             object-fit: cover;
         }
+        
+        /* 修复本地视频镜像显示问题 */
+        #localVideo {
+            transform: scaleX(-1);
+        }
 
         .video-label {
             position: absolute;
@@ -1337,6 +1342,7 @@
             <div class="admin-panel-tabs">
                 <button class="admin-tab active" data-tab="translation">翻译设置</button>
                 <button class="admin-tab" data-tab="notifications">通知设置</button>
+                <button class="admin-tab" data-tab="video">视频设置</button>
             </div>
             <div class="admin-panel-content">
                 <div class="admin-tab-content active" id="translationTab">
@@ -1383,6 +1389,51 @@
                                 <input type="checkbox" id="developerModeCheckbox">
                                 开发者模式（通话时显示控制台日志）
                             </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="admin-tab-content" id="videoTab">
+                    <div style="margin-bottom: 20px;">
+                        <h4>视频设置</h4>
+                        <div style="margin-top: 15px;">
+                            <label>
+                                <input type="checkbox" id="mirrorVideoCheckbox" checked>
+                                本地视频镜像显示
+                            </label>
+                            <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">启用后，本地视频画面将显示为镜像效果，符合照镜子的直觉。</p>
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <label>
+                                <input type="checkbox" id="remoteMirrorVideoCheckbox">
+                                对方视频镜像显示
+                            </label>
+                            <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">启用后，对方视频画面将显示为镜像效果。</p>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <h4>视频参数调整（通话中可调整）</h4>
+                        <div style="margin-top: 15px;">
+                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                                <label for="myVideoBrightness" style="width: 80px; font-size: 14px;">亮度:</label>
+                                <input type="range" id="myVideoBrightness" min="0" max="3" step="0.1" value="1" style="flex: 1; margin: 0 10px;">
+                                <span id="myVideoBrightnessValue" style="width: 40px; text-align: right; font-size: 14px;">1.0</span>
+                            </div>
+                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                                <label for="myVideoContrast" style="width: 80px; font-size: 14px;">对比度:</label>
+                                <input type="range" id="myVideoContrast" min="0" max="2.5" step="0.1" value="1" style="flex: 1; margin: 0 10px;">
+                                <span id="myVideoContrastValue" style="width: 40px; text-align: right; font-size: 14px;">1.0</span>
+                            </div>
+                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                                <label for="myVideoSaturation" style="width: 80px; font-size: 14px;">饱和度:</label>
+                                <input type="range" id="myVideoSaturation" min="0" max="2" step="0.1" value="1" style="flex: 1; margin: 0 10px;">
+                                <span id="myVideoSaturationValue" style="width: 40px; text-align: right; font-size: 14px;">1.0</span>
+                            </div>
+                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                                <label for="myVideoExposure" style="width: 80px; font-size: 14px;">曝光:</label>
+                                <input type="range" id="myVideoExposure" min="0" max="2" step="0.05" value="1" style="flex: 1; margin: 0 10px;">
+                                <span id="myVideoExposureValue" style="width: 40px; text-align: right; font-size: 14px;">1.0</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1541,7 +1592,14 @@
         window.userSettings = {
             targetLanguage: 'zh', // 默认翻译为中文
             autoTranslate: false,
-            developerMode: false // 默认关闭开发者模式
+            developerMode: false, // 默认关闭开发者模式
+            mirrorVideo: true, // 默认开启本地视频镜像显示
+            remoteMirrorVideo: false, // 默认关闭对方视频镜像显示
+            // 视频参数调整
+            myVideoBrightness: 1, // 亮度，范围0-3，默认1
+            myVideoContrast: 1, // 对比度，范围0-2.5，默认1
+            myVideoSaturation: 1, // 饱和度，范围0-2，默认1
+            myVideoExposure: 1 // 曝光，范围0-2，默认1
         };
         
         // 用户设置锁定状态
@@ -1566,19 +1624,147 @@
                 developerModeCheckbox.checked = window.userSettings.developerMode;
             }
             
+            // 初始化本地视频镜像设置
+            const mirrorVideoCheckbox = document.getElementById('mirrorVideoCheckbox');
+            if (mirrorVideoCheckbox) {
+                mirrorVideoCheckbox.checked = window.userSettings.mirrorVideo;
+                // 立即应用镜像设置
+                updateVideoMirrorSetting();
+            }
+            
+            // 初始化对方视频镜像设置
+            const remoteMirrorVideoCheckbox = document.getElementById('remoteMirrorVideoCheckbox');
+            if (remoteMirrorVideoCheckbox) {
+                remoteMirrorVideoCheckbox.checked = window.userSettings.remoteMirrorVideo;
+                // 立即应用对方视频镜像设置
+                updateRemoteVideoMirrorSetting();
+            }
+            
             // 更新当前翻译目标语言
             currentTargetLanguage = window.userSettings.targetLanguage;
+            
+            // 初始化视频参数滑动条
+            initVideoParameterSliders();
+            // 立即应用视频参数设置
+            applyVideoSettings();
+        }
+        
+        // 初始化视频参数滑动条
+        function initVideoParameterSliders() {
+            // 我的视频参数滑动条
+            const myVideoBrightness = document.getElementById('myVideoBrightness');
+            const myVideoContrast = document.getElementById('myVideoContrast');
+            const myVideoSaturation = document.getElementById('myVideoSaturation');
+            const myVideoExposure = document.getElementById('myVideoExposure');
+            
+            // 更新滑动条值和显示值
+            if (myVideoBrightness) {
+                myVideoBrightness.value = window.userSettings.myVideoBrightness;
+                document.getElementById('myVideoBrightnessValue').textContent = window.userSettings.myVideoBrightness.toFixed(1);
+            }
+            if (myVideoContrast) {
+                myVideoContrast.value = window.userSettings.myVideoContrast;
+                document.getElementById('myVideoContrastValue').textContent = window.userSettings.myVideoContrast.toFixed(1);
+            }
+            if (myVideoSaturation) {
+                myVideoSaturation.value = window.userSettings.myVideoSaturation;
+                document.getElementById('myVideoSaturationValue').textContent = window.userSettings.myVideoSaturation.toFixed(1);
+            }
+            if (myVideoExposure) {
+                myVideoExposure.value = window.userSettings.myVideoExposure;
+                document.getElementById('myVideoExposureValue').textContent = window.userSettings.myVideoExposure.toFixed(2);
+            }
+            
+            // 为滑动条添加事件监听器
+            const addSliderEvent = (slider, valueElement, settingKey) => {
+                if (slider && valueElement) {
+                    slider.addEventListener('input', (e) => {
+                        const value = parseFloat(e.target.value);
+                        valueElement.textContent = value.toFixed(settingKey.includes('Exposure') ? 2 : 1);
+                        // 保存设置
+                        window.userSettings[settingKey] = value;
+                        // 立即应用设置
+                        applyVideoSettings();
+                    });
+                }
+            };
+            
+            // 绑定事件
+            addSliderEvent(myVideoBrightness, document.getElementById('myVideoBrightnessValue'), 'myVideoBrightness');
+            addSliderEvent(myVideoContrast, document.getElementById('myVideoContrastValue'), 'myVideoContrast');
+            addSliderEvent(myVideoSaturation, document.getElementById('myVideoSaturationValue'), 'myVideoSaturation');
+            addSliderEvent(myVideoExposure, document.getElementById('myVideoExposureValue'), 'myVideoExposure');
+        }
+        
+        // 应用视频参数设置
+        function applyVideoSettings() {
+            // 使用CSS filter属性来应用视频参数调整
+            const localVideo = document.getElementById('localVideo');
+            const remoteVideo = document.getElementById('remoteVideo');
+            
+            if (localVideo) {
+                const brightness = window.userSettings.myVideoBrightness;
+                const contrast = window.userSettings.myVideoContrast;
+                const saturation = window.userSettings.myVideoSaturation;
+                const exposure = window.userSettings.myVideoExposure;
+                
+                // 应用CSS filter，包含曝光效果（通过亮度和对比度的组合实现）
+                localVideo.style.filter = `brightness(${brightness}) contrast(${contrast}) saturate(${saturation}) brightness(${exposure})`;
+            }
+            
+            if (remoteVideo) {
+                const brightness = window.userSettings.myVideoBrightness;
+                const contrast = window.userSettings.myVideoContrast;
+                const saturation = window.userSettings.myVideoSaturation;
+                const exposure = window.userSettings.myVideoExposure;
+                
+                // 应用CSS filter，包含曝光效果（通过亮度和对比度的组合实现）
+                remoteVideo.style.filter = `brightness(${brightness}) contrast(${contrast}) saturate(${saturation}) brightness(${exposure})`;
+            }
+        }
+        
+        // 更新本地视频镜像设置
+        function updateVideoMirrorSetting() {
+            const localVideo = document.getElementById('localVideo');
+            if (localVideo) {
+                if (window.userSettings.mirrorVideo) {
+                    localVideo.style.transform = 'scaleX(-1)';
+                } else {
+                    localVideo.style.transform = '';
+                }
+            }
+        }
+        
+        // 更新对方视频镜像设置
+        function updateRemoteVideoMirrorSetting() {
+            const remoteVideo = document.getElementById('remoteVideo');
+            if (remoteVideo) {
+                if (window.userSettings.remoteMirrorVideo) {
+                    remoteVideo.style.transform = 'scaleX(-1)';
+                } else {
+                    remoteVideo.style.transform = '';
+                }
+            }
         }
         
         // 更新设置模态框状态
         function updateSettingsModalStatus() {
-            // 获取所有设置相关的表单元素
-            const formElements = [
+            // 获取所有非通话设置相关的表单元素
+            const generalFormElements = [
                 document.getElementById('targetLanguageSelect'),
                 document.getElementById('autoTranslateCheckbox'),
                 document.getElementById('soundNotificationCheckbox'),
                 document.getElementById('mentionNotificationCheckbox'),
-                document.getElementById('developerModeCheckbox')
+                document.getElementById('developerModeCheckbox'),
+                document.getElementById('mirrorVideoCheckbox')
+            ];
+            
+            // 获取视频参数调整相关的表单元素（通话中可调整）
+            const videoParamElements = [
+                document.getElementById('myVideoBrightness'),
+                document.getElementById('myVideoContrast'),
+                document.getElementById('myVideoSaturation'),
+                document.getElementById('myVideoExposure')
             ];
             
             // 获取保存按钮和锁定提示元素
@@ -1587,12 +1773,21 @@
             const lockNoticeText = document.getElementById('lockNoticeText');
             
             if (settingsLocked) {
-                // 锁定状态：禁用所有表单元素，显示锁定提示
-                formElements.forEach(element => {
+                // 锁定状态：禁用通用设置表单元素，显示锁定提示
+                generalFormElements.forEach(element => {
                     if (element) {
                         element.disabled = true;
                         element.style.opacity = '0.5';
                         element.style.cursor = 'not-allowed';
+                    }
+                });
+                
+                // 视频参数调整元素始终可用（通话中可调整）
+                videoParamElements.forEach(element => {
+                    if (element) {
+                        element.disabled = false;
+                        element.style.opacity = '1';
+                        element.style.cursor = 'pointer';
                     }
                 });
                 
@@ -1610,7 +1805,15 @@
                 }
             } else {
                 // 未锁定状态：启用所有表单元素，隐藏锁定提示
-                formElements.forEach(element => {
+                generalFormElements.forEach(element => {
+                    if (element) {
+                        element.disabled = false;
+                        element.style.opacity = '1';
+                        element.style.cursor = 'pointer';
+                    }
+                });
+                
+                videoParamElements.forEach(element => {
                     if (element) {
                         element.disabled = false;
                         element.style.opacity = '1';
@@ -1649,8 +1852,35 @@
                 window.userSettings.developerMode = developerModeCheckbox.checked;
             }
             
+            // 保存本地视频镜像设置
+            const mirrorVideoCheckbox = document.getElementById('mirrorVideoCheckbox');
+            if (mirrorVideoCheckbox) {
+                window.userSettings.mirrorVideo = mirrorVideoCheckbox.checked;
+                // 立即应用本地镜像设置
+                updateVideoMirrorSetting();
+            }
+            
+            // 保存对方视频镜像设置
+            const remoteMirrorVideoCheckbox = document.getElementById('remoteMirrorVideoCheckbox');
+            if (remoteMirrorVideoCheckbox) {
+                window.userSettings.remoteMirrorVideo = remoteMirrorVideoCheckbox.checked;
+                // 立即应用对方视频镜像设置
+                updateRemoteVideoMirrorSetting();
+            }
+            
             // 更新当前翻译目标语言
             currentTargetLanguage = window.userSettings.targetLanguage;
+            
+            // 保存视频参数设置（滑动条已经在input事件中实时保存，但这里再次确认）
+            const myVideoBrightness = document.getElementById('myVideoBrightness');
+            const myVideoContrast = document.getElementById('myVideoContrast');
+            const myVideoSaturation = document.getElementById('myVideoSaturation');
+            const myVideoExposure = document.getElementById('myVideoExposure');
+            
+            if (myVideoBrightness) window.userSettings.myVideoBrightness = parseFloat(myVideoBrightness.value);
+            if (myVideoContrast) window.userSettings.myVideoContrast = parseFloat(myVideoContrast.value);
+            if (myVideoSaturation) window.userSettings.myVideoSaturation = parseFloat(myVideoSaturation.value);
+            if (myVideoExposure) window.userSettings.myVideoExposure = parseFloat(myVideoExposure.value);
             
             // 保存到localStorage
             localStorage.setItem('userSettings', JSON.stringify(window.userSettings));
@@ -3143,6 +3373,14 @@
                 const localVideo = document.getElementById('localVideo');
                 if (localVideo) {
                     localVideo.srcObject = stream;
+                    
+                    // 应用视频镜像设置
+                    if (window.userSettings && window.userSettings.mirrorVideo) {
+                        localVideo.style.transform = 'scaleX(-1)';
+                    } else {
+                        localVideo.style.transform = '';
+                    }
+                    
                     // 确保本地视频播放，添加用户交互检查
                     localVideo.play().catch(err => {
                         console.log('本地视频自动播放失败，将在用户交互后播放:', err.message);
@@ -3157,6 +3395,13 @@
             // 处理远程媒体轨道
             processRemoteTrack(event, remoteVideo) {
                 console.log('处理远程媒体轨道:', event.track.kind, event.track.id);
+                
+                // 根据设置决定是否显示对方视频的镜像效果
+                if (window.userSettings && window.userSettings.remoteMirrorVideo) {
+                    remoteVideo.style.transform = 'scaleX(-1)';
+                } else {
+                    remoteVideo.style.transform = '';
+                }
                 
                 // 优先使用event.streams[0]，这是WebRTC推荐的方式
                 if (event.streams && event.streams.length > 0) {
@@ -3247,6 +3492,12 @@
                 const remoteVideo = document.getElementById('remoteVideo');
                 if (remoteVideo) {
                     remoteVideo.srcObject = stream;
+                    // 根据设置决定是否显示对方视频的镜像效果
+                    if (window.userSettings && window.userSettings.remoteMirrorVideo) {
+                        remoteVideo.style.transform = 'scaleX(-1)';
+                    } else {
+                        remoteVideo.style.transform = '';
+                    }
                     // 确保远程视频播放
                     this.ensureVideoPlays(remoteVideo);
                 }
@@ -3736,10 +3987,10 @@
             callMethodDiv.innerHTML = `
                 <h4 style="margin-top: 0;">选择通话方式</h4>
                 <label style="margin-right: 20px;">
-                    <input type="radio" name="callMethod" value="webrtc" checked> WebRTC (推荐，仅可局域网，但也有可能跨网段成功)
+                    <input type="radio" name="callMethod" value="webrtc" checked> WebRTC (推荐，有概率无法跨网段)
                 </label>
                 <label>
-                    <input type="radio" name="callMethod" value="socket.io"> Socket.io
+                    <input type="radio" name="callMethod" value="socket.io"> Socket.io（不推荐，不太可能能接通）
                 </label>
             `;
             callUserList.appendChild(callMethodDiv);
@@ -3782,15 +4033,7 @@
             // 显示通话中提示
             alert(`正在与 ${username} 发起${callType === 'video' ? '视频' : '语音'}通话，使用${callMethod === 'webrtc' ? 'WebRTC' : 'Socket.io'}方式`);
         }
-        
-        // 开始通话功能已移至CallSystem类中，不再直接在页面中定义
-        
-        // 媒体流相关函数已移至CallSystem类中，不再直接在页面中定义
-        
-        
-        // 通话相关函数已移至CallSystem类中，不再直接在页面中定义
-        
-
+ 
         // 从URL路径获取房间名
         function getRoomFromUrl() {
             const path = window.location.pathname;
