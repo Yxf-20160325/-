@@ -3056,20 +3056,65 @@
                         videoTracks.forEach(track => track.stop());
                     }
                     
-                    // 创建一个新的媒体流，包含屏幕共享视频和音频
+                    // 创建一个新的媒体流，包含屏幕共享视频和混合后的音频
                     const combinedStream = new MediaStream();
                     
                     // 添加屏幕共享视频轨道
                     const screenVideoTracks = screenStream.getVideoTracks();
                     screenVideoTracks.forEach(track => combinedStream.addTrack(track));
                     
-                    // 添加屏幕共享音频轨道（优先使用屏幕共享音频）
+                    // 获取屏幕共享音频轨道
                     const screenAudioTracks = screenStream.getAudioTracks();
-                    screenAudioTracks.forEach(track => combinedStream.addTrack(track));
                     
-                    // 如果有麦克风轨道，也添加到流中
-                    if (microphoneTrack) {
+                    // 混合音频轨道（屏幕共享音频+麦克风音频）
+                    let mixedAudioTrack = null;
+                    
+                    if (screenAudioTracks.length > 0 && microphoneTrack) {
+                        // 使用AudioContext混合屏幕共享音频和麦克风音频
+                        try {
+                            const audioContext = new AudioContext();
+                            
+                            // 创建媒体源节点
+                            const screenAudioSource = audioContext.createMediaStreamSource(new MediaStream([screenAudioTracks[0]]));
+                            const microphoneSource = audioContext.createMediaStreamSource(new MediaStream([microphoneTrack]));
+                            
+                            // 创建增益节点，用于调整各音频源的音量
+                            const screenGain = audioContext.createGain();
+                            const microphoneGain = audioContext.createGain();
+                            
+                            // 设置增益（屏幕共享音频为主，麦克风为辅）
+                            screenGain.gain.value = 1.0;
+                            microphoneGain.gain.value = 0.5;
+                            
+                            // 创建目的地节点
+                            const destination = audioContext.createMediaStreamDestination();
+                            
+                            // 连接节点
+                            screenAudioSource.connect(screenGain);
+                            microphoneSource.connect(microphoneGain);
+                            screenGain.connect(destination);
+                            microphoneGain.connect(destination);
+                            
+                            // 获取混合后的音频轨道
+                            mixedAudioTrack = destination.stream.getAudioTracks()[0];
+                            
+                            // 添加混合后的音频轨道到流中
+                            combinedStream.addTrack(mixedAudioTrack);
+                            
+                            console.log('成功混合屏幕共享音频和麦克风音频');
+                        } catch (audioError) {
+                            console.error('混合音频失败，使用单一音频轨道:', audioError);
+                            // 如果混合失败，优先使用屏幕共享音频
+                            combinedStream.addTrack(screenAudioTracks[0]);
+                        }
+                    } else if (screenAudioTracks.length > 0) {
+                        // 只有屏幕共享音频轨道
+                        combinedStream.addTrack(screenAudioTracks[0]);
+                        console.log('只使用屏幕共享音频轨道');
+                    } else if (microphoneTrack) {
+                        // 只有麦克风轨道
                         combinedStream.addTrack(microphoneTrack);
+                        console.log('只使用麦克风轨道');
                     }
                     
                     // 更新本地流
@@ -3102,19 +3147,15 @@
                             }
                         }
                         
-                        // 处理音频轨道 - 确保传递屏幕共享音频
+                        // 处理音频轨道 - 使用混合后的音频轨道
                         const audioSender = senders.find(sender => sender.track && sender.track.kind === 'audio');
                         if (audioSender) {
-                            // 获取屏幕共享音频轨道
-                            const screenAudioTracks = screenStream.getAudioTracks();
-                            if (screenAudioTracks.length > 0) {
-                                // 优先使用屏幕共享音频轨道，确保对方能听到共享内容的声音
-                                audioSender.replaceTrack(screenAudioTracks[0]);
-                                console.log('已更新peerConnection中的音频轨道为屏幕共享流中的音频轨道');
-                            } else if (microphoneTrack) {
-                                // 如果没有屏幕共享音频轨道，使用麦克风轨道
-                                audioSender.replaceTrack(microphoneTrack);
-                                console.log('已更新peerConnection中的音频轨道为麦克风轨道');
+                            // 获取混合后的音频轨道
+                            const audioTracks = combinedStream.getAudioTracks();
+                            if (audioTracks.length > 0) {
+                                // 使用混合后的音频轨道
+                                audioSender.replaceTrack(audioTracks[0]);
+                                console.log('已更新peerConnection中的音频轨道为混合音频轨道');
                             }
                         }
                     }
