@@ -3056,20 +3056,20 @@
                         videoTracks.forEach(track => track.stop());
                     }
                     
-                    // 创建一个新的媒体流，包含屏幕共享视频和麦克风音频
+                    // 创建一个新的媒体流，包含屏幕共享视频和音频
                     const combinedStream = new MediaStream();
                     
                     // 添加屏幕共享视频轨道
                     const screenVideoTracks = screenStream.getVideoTracks();
                     screenVideoTracks.forEach(track => combinedStream.addTrack(track));
                     
-                    // 添加麦克风音频轨道
+                    // 添加屏幕共享音频轨道（优先使用屏幕共享音频）
+                    const screenAudioTracks = screenStream.getAudioTracks();
+                    screenAudioTracks.forEach(track => combinedStream.addTrack(track));
+                    
+                    // 如果有麦克风轨道，也添加到流中
                     if (microphoneTrack) {
                         combinedStream.addTrack(microphoneTrack);
-                    } else {
-                        // 如果没有麦克风轨道，尝试使用屏幕共享流中的音频轨道
-                        const screenAudioTracks = screenStream.getAudioTracks();
-                        screenAudioTracks.forEach(track => combinedStream.addTrack(track));
                     }
                     
                     // 更新本地流
@@ -3102,20 +3102,19 @@
                             }
                         }
                         
-                        // 处理音频轨道 - 确保始终使用麦克风轨道，这样对方能听到说话声音
+                        // 处理音频轨道 - 确保传递屏幕共享音频
                         const audioSender = senders.find(sender => sender.track && sender.track.kind === 'audio');
                         if (audioSender) {
-                            if (microphoneTrack) {
-                                // 优先使用麦克风轨道，确保说话声音能被听到
+                            // 获取屏幕共享音频轨道
+                            const screenAudioTracks = screenStream.getAudioTracks();
+                            if (screenAudioTracks.length > 0) {
+                                // 优先使用屏幕共享音频轨道，确保对方能听到共享内容的声音
+                                audioSender.replaceTrack(screenAudioTracks[0]);
+                                console.log('已更新peerConnection中的音频轨道为屏幕共享流中的音频轨道');
+                            } else if (microphoneTrack) {
+                                // 如果没有屏幕共享音频轨道，使用麦克风轨道
                                 audioSender.replaceTrack(microphoneTrack);
                                 console.log('已更新peerConnection中的音频轨道为麦克风轨道');
-                            } else {
-                                // 如果没有麦克风轨道，尝试使用屏幕共享流中的音频轨道
-                                const screenAudioTracks = screenStream.getAudioTracks();
-                                if (screenAudioTracks.length > 0) {
-                                    audioSender.replaceTrack(screenAudioTracks[0]);
-                                    console.log('已更新peerConnection中的音频轨道为屏幕共享流中的音频轨道');
-                                }
                             }
                         }
                     }
