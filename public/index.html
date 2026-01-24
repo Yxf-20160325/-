@@ -2089,10 +2089,9 @@
                 this.currentCallTargetSocketId = null;
                 /* 
                  * 通话方式说明：
-                 * - webrtc：点对点直接通信，延迟低，质量高，但只能在局域网内使用
-                 * - socket.io：使用服务器转发数据，支持跨网段通话
+                 * - webrtc：点对点直接通信，延迟低，质量高
                  */
-                this.currentCallMethod = 'webrtc'; // 默认使用webrtc，可选'socket.io'
+                this.currentCallMethod = 'webrtc'; // 只使用webrtc
                 this.localStream = null;
                 this.remoteStream = null;
                 this.peerConnection = null;
@@ -2117,17 +2116,10 @@
                         }
                     ]
                 };
-                this.socketMediaBuffer = [];
                 this.pendingIceCandidates = null;
                 this.pendingOffer = null;
                 this.currentFacingMode = 'user'; // 当前摄像头方向：'user'（前置）或'environment'（后置）
                 this.videoDevices = []; // 存储所有视频设备
-                
-                // Socket.io媒体流相关
-                this.mediaSource = null;
-                this.sourceBuffer = null;
-                this.socketMediaQueue = []; // 媒体数据队列
-                this.isMediaSourceOpen = false;
                 
                 // 音频音量自动调整相关
                 this.audioContext = null;
@@ -2140,38 +2132,98 @@
                 this.originalVolume = 1.0;
                 this.adjustedVolume = 1.0;
                 
+                // HTTP信令相关
+                this.pollingInterval = null;
+                this.pollingIntervalTime = 1000; // 轮询间隔，1秒
+                
                 this.init();
             }
             
             init() {
-                this.setupSocketListeners();
+                this.setupHTTPSignaling();
             }
             
-            setupSocketListeners() {
-                // 监听通话请求
-                this.socket.on('call-request', (data) => {
-                    this.handleCallRequest(data);
-                });
+            setupHTTPSignaling() {
+                // 设置HTTP轮询来获取通话请求和信令
+                this.startPolling();
+            }
+            
+            startPolling() {
+                // 停止现有的轮询
+                this.stopPolling();
                 
-                // 监听通话接受
-                this.socket.on('call-accepted', (data) => {
-                    this.handleCallAccepted(data);
-                });
+                // 开始新的轮询
+                this.pollingInterval = setInterval(() => {
+                    this.pollCallRequests();
+                    if (this.currentCallId) {
+                        this.pollCallStatus();
+                        this.pollSignalingMessages();
+                    }
+                }, this.pollingIntervalTime);
+            }
+            
+            stopPolling() {
+                if (this.pollingInterval) {
+                    clearInterval(this.pollingInterval);
+                    this.pollingInterval = null;
+                }
+            }
+            
+            async pollCallRequests() {
+                try {
+                    const response = await fetch(`/api/calls/poll/${this.socket.id}`);
+                    const data = await response.json();
+                    
+                    if (data.success && data.calls && data.calls.length > 0) {
+                        for (const callRequest of data.calls) {
+                            this.handleCallRequest(callRequest);
+                        }
+                    }
+                } catch (error) {
+                    console.error('轮询通话请求失败:', error);
+                }
+            }
+            
+            async pollCallStatus() {
+                try {
+                    const response = await fetch(`/api/calls/${this.currentCallId}/status`);
+                    const data = await response.json();
+                    
+                    if (data.success && data.call) {
+                        const call = data.call;
+                        if (call.status === 'ended' && this.isInCall) {
+                            this.handleCallEnded({ callId: this.currentCallId });
+                        }
+                    }
+                } catch (error) {
+                    console.error('轮询通话状态失败:', error);
+                }
+            }
+            
+            async pollSignalingMessages() {
+                // 对于WebRTC信令，我们将使用直接的HTTP POST请求，不需要轮询
+                // 因为信令消息会立即通过HTTP POST发送给对方
+            }
+            
+            async sendHTTPRequest(url, method, data = null) {
+                const options = {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                };
                 
-                // 监听通话拒绝
-                this.socket.on('call-rejected', (data) => {
-                    this.handleCallRejected(data);
-                });
+                if (data) {
+                    options.body = JSON.stringify(data);
+                }
                 
-                // 监听通话结束
-                this.socket.on('call-ended', (data) => {
-                    this.handleCallEnded(data);
-                });
-                
-                // 监听WebRTC媒体数据（offer/answer/ICE候选）
-                this.socket.on('call-media', (data) => {
-                    this.handleCallMedia(data);
-                });
+                try {
+                    const response = await fetch(url, options);
+                    return await response.json();
+                } catch (error) {
+                    console.error(`HTTP请求失败 (${method} ${url}):`, error);
+                    throw error;
+                }
             }
             
             // 设置通话方式
@@ -2180,8 +2232,7 @@
             }
             
             // 发起通话请求
-            startCall(targetSocketId, callType, callMethod) {
-                this.currentCallId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+            async startCall(targetSocketId, callType, callMethod) {
                 this.currentCallType = callType;
                 this.currentCallTargetSocketId = targetSocketId;
                 this.currentCallMethod = callMethod || this.currentCallMethod;
@@ -2205,14 +2256,28 @@
                 // 初始化媒体流（这样发起端就能看到自己的画面）
                 this.initMediaStream();
                 
-                // 发送通话请求
-                this.socket.emit('call-request', {
-                    targetSocketId: targetSocketId,
-                    callId: this.currentCallId,
-                    callType: callType,
-                    callMethod: this.currentCallMethod,
-                    fromUsername: this.username
-                });
+                // 使用HTTP API发起通话请求
+                try {
+                    const response = await this.sendHTTPRequest('/api/calls/request', 'POST', {
+                        initiatorSocketId: this.socket.id,
+                        targetSocketId: targetSocketId,
+                        callType: callType,
+                        callMethod: this.currentCallMethod
+                    });
+                    
+                    if (response.success) {
+                        this.currentCallId = response.callId;
+                        console.log('通话请求已发送，callId:', this.currentCallId);
+                    } else {
+                        console.error('发起通话请求失败:', response.error);
+                        alert('发起通话请求失败: ' + (response.error || '未知错误'));
+                        this.endCall();
+                    }
+                } catch (error) {
+                    console.error('发起通话请求失败:', error);
+                    alert('发起通话请求失败: ' + error.message);
+                    this.endCall();
+                }
             }
             
             // 获取视频设备列表
@@ -2490,7 +2555,7 @@
             }
             
             // 接受通话
-            acceptCall() {
+            async acceptCall() {
                 if (!this.currentCallId) return;
                 
                 // 关闭来电界面
@@ -2503,12 +2568,16 @@
                 // 设置为通话中状态
                 this.isInCall = true;
                 
-                // 发送通话接受
-                this.socket.emit('call-accept', {
-                    targetSocketId: this.currentCallTargetSocketId,
-                    callId: this.currentCallId,
-                    callMethod: this.currentCallMethod
-                });
+                // 使用HTTP API接受通话
+                try {
+                    await this.sendHTTPRequest(`/api/calls/${this.currentCallId}/accept`, 'POST');
+                    console.log('通话已接受，callId:', this.currentCallId);
+                } catch (error) {
+                    console.error('接受通话失败:', error);
+                    alert('接受通话失败: ' + error.message);
+                    this.resetCallState();
+                    return;
+                }
                 
                 // 显示视频容器
                 const videoContainer = document.getElementById('videoContainer');
@@ -2526,31 +2595,37 @@
             }
             
             // 拒绝通话
-            rejectCall() {
+            async rejectCall() {
                 if (!this.currentCallId) return;
                 
                 // 关闭来电界面
                 const callIncoming = document.getElementById('callIncoming');
                 callIncoming.classList.remove('active');
                 
-                // 发送通话拒绝
-                this.socket.emit('call-reject', {
-                    targetSocketId: this.currentCallTargetSocketId,
-                    callId: this.currentCallId
-                });
+                // 使用HTTP API拒绝通话
+                try {
+                    await this.sendHTTPRequest(`/api/calls/${this.currentCallId}/reject`, 'POST');
+                    console.log('通话已拒绝，callId:', this.currentCallId);
+                } catch (error) {
+                    console.error('拒绝通话失败:', error);
+                    alert('拒绝通话失败: ' + error.message);
+                }
                 
                 this.resetCallState();
             }
             
             // 结束通话
-            endCall() {
+            async endCall() {
                 if (!this.currentCallId) return;
                 
-                // 发送通话结束
-                this.socket.emit('call-end', {
-                    targetSocketId: this.currentCallTargetSocketId,
-                    callId: this.currentCallId
-                });
+                // 使用HTTP API结束通话
+                try {
+                    await this.sendHTTPRequest(`/api/calls/${this.currentCallId}/end`, 'POST');
+                    console.log('通话已结束，callId:', this.currentCallId);
+                } catch (error) {
+                    console.error('结束通话失败:', error);
+                    alert('结束通话失败: ' + error.message);
+                }
                 
                 this.cleanupMedia();
                 this.resetCallState();
@@ -3363,11 +3438,15 @@
                 // 监听ICE候选
                 this.peerConnection.onicecandidate = (event) => {
                     if (event.candidate) {
-                        this.socket.emit('call-media', {
+                        // 使用HTTP API发送ICE候选
+                        this.sendHTTPRequest(`/api/calls/${this.currentCallId}/signaling`, 'POST', {
+                            fromSocketId: this.socket.id,
                             targetSocketId: this.currentCallTargetSocketId,
                             callId: this.currentCallId,
                             type: 'ice-candidate',
                             data: event.candidate
+                        }).catch(error => {
+                            console.error('发送ICE候选失败:', error);
                         });
                     }
                 };
@@ -3467,11 +3546,16 @@
                         return this.peerConnection.setLocalDescription(offer);
                     })
                     .then(() => {
-                        this.socket.emit('call-media', {
+                        // 使用HTTP API发送offer
+                        this.sendHTTPRequest(`/api/calls/${this.currentCallId}/signaling`, 'POST', {
+                            fromSocketId: this.socket.id,
                             targetSocketId: this.currentCallTargetSocketId,
                             callId: this.currentCallId,
                             type: 'offer',
                             data: this.peerConnection.localDescription
+                        }).catch(error => {
+                            console.error('发送offer失败:', error);
+                            this.endCall();
                         });
                     })
                     .catch(error => {
@@ -3744,11 +3828,16 @@
                         })
                         .then(() => {
                             console.log('设置answer的localDescription成功，发送answer...');
-                            this.socket.emit('call-media', {
+                            // 使用HTTP API发送answer
+                            this.sendHTTPRequest(`/api/calls/${this.currentCallId}/signaling`, 'POST', {
+                                fromSocketId: this.socket.id,
                                 targetSocketId: this.currentCallTargetSocketId,
                                 callId: this.currentCallId,
                                 type: 'answer',
                                 data: this.peerConnection.localDescription
+                            }).catch(error => {
+                                console.error('发送answer失败:', error);
+                                this.endCall();
                             });
                         })
                         .catch(error => {
