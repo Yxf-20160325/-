@@ -3006,11 +3006,6 @@
                         videoTracks.forEach(track => track.stop());
                     }
                     
-                    // 将麦克风音频轨道添加到屏幕共享流中，实现同时共享系统音频和麦克风声音
-                    if (microphoneTrack) {
-                        screenStream.addTrack(microphoneTrack);
-                    }
-                    
                     // 更新本地流
                     this.localStream = screenStream;
                     this.isSharingScreen = true;
@@ -3023,6 +3018,9 @@
                         console.log('屏幕共享已结束，自动切换回摄像头');
                         this.stopScreenSharing();
                     });
+                    
+                    // 开始监测音频，用于自动调整音量
+                    this.startMonitoringAudio();
                     
                     // 如果已经创建了peerConnection，更新视频和音频轨道
                     if (this.peerConnection) {
@@ -3038,20 +3036,23 @@
                             }
                         }
                         
-                        // 确保音频轨道已添加（包括系统音频和麦克风音频）
+                        // 确保音频轨道已添加（只使用麦克风音频，不使用系统音频，这样对方能清晰听到说话）
                         const audioSender = senders.find(sender => sender.track && sender.track.kind === 'audio');
                         if (audioSender) {
-                            // 使用屏幕共享流中的音频轨道（包含系统音频和麦克风音频）
-                            const audioTracks = screenStream.getAudioTracks();
-                            if (audioTracks.length > 0) {
-                                audioSender.replaceTrack(audioTracks[0]);
-                                console.log('已更新peerConnection中的音频轨道，同时共享系统音频和麦克风声音');
+                            // 优先使用麦克风轨道
+                            if (microphoneTrack) {
+                                audioSender.replaceTrack(microphoneTrack);
+                                console.log('已更新peerConnection中的音频轨道为麦克风轨道');
+                            } else {
+                                // 如果没有麦克风轨道，尝试使用屏幕共享流中的音频轨道
+                                const audioTracks = screenStream.getAudioTracks();
+                                if (audioTracks.length > 0) {
+                                    audioSender.replaceTrack(audioTracks[0]);
+                                    console.log('已更新peerConnection中的音频轨道为屏幕共享流中的音频轨道');
+                                }
                             }
                         }
                     }
-                    
-                    // 开始监测音频，用于自动调整音量
-                    this.startMonitoringAudio();
                     
                     console.log('屏幕共享已开始，同时共享系统音频和麦克风声音');
                 } catch (error) {
