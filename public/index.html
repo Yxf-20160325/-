@@ -3759,35 +3759,55 @@
                         });
                 } else if (data.type === 'answer') {
                     // 处理answer
-                    console.log('处理answer，remoteDescription状态:', this.peerConnection.remoteDescription ? this.peerConnection.remoteDescription.type : 'none');
+                    console.log('处理answer，当前状态:', {
+                        remoteDescription: this.peerConnection.remoteDescription ? this.peerConnection.remoteDescription.type : 'none',
+                        localDescription: this.peerConnection.localDescription ? this.peerConnection.localDescription.type : 'none',
+                        signalingState: this.peerConnection.signalingState
+                    });
                     
                     if (!data.data || !data.data.type || !data.data.sdp) {
                         console.error('无效的answer数据:', data.data);
                         return;
                     }
                     
-                    // 保存answer的SDP，用于调试
-                    console.log('Answer SDP:', data.data.sdp);
-                    
-                    this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.data))
-                        .then(() => {
-                            console.log('设置answer的remoteDescription成功');
-                            
-                            // 处理所有暂存的ICE候选
-                            if (this.pendingIceCandidates) {
-                                console.log('处理暂存的ICE候选，数量:', this.pendingIceCandidates.length);
-                                this.pendingIceCandidates.forEach(candidate => {
-                                    this.peerConnection.addIceCandidate(candidate)
-                                        .catch(err => console.error('处理暂存ICE候选失败:', err));
-                                });
-                                this.pendingIceCandidates = null;
-                            }
-                        })
-                        .catch(error => {
-                            console.error('处理answer失败:', error);
-                            // 不立即结束通话，只显示警告
-                            console.warn('处理answer失败，但继续通话尝试:', error.message);
-                        });
+                    // 状态检查：只有在已经发送了offer（localDescription为offer）且还没有设置remoteDescription时，才处理answer
+                    if (this.peerConnection.signalingState === 'have-local-offer') {
+                        // 保存answer的SDP，用于调试
+                        console.log('Answer SDP:', data.data.sdp);
+                        
+                        this.peerConnection.setRemoteDescription(new RTCSessionDescription(data.data))
+                            .then(() => {
+                                console.log('设置answer的remoteDescription成功');
+                                
+                                // 处理所有暂存的ICE候选
+                                if (this.pendingIceCandidates) {
+                                    console.log('处理暂存的ICE候选，数量:', this.pendingIceCandidates.length);
+                                    this.pendingIceCandidates.forEach(candidate => {
+                                        this.peerConnection.addIceCandidate(candidate)
+                                            .catch(err => console.error('处理暂存ICE候选失败:', err));
+                                    });
+                                    this.pendingIceCandidates = null;
+                                }
+                            })
+                            .catch(error => {
+                                console.error('处理answer失败:', error);
+                                // 不立即结束通话，只显示警告
+                                console.warn('处理answer失败，但继续通话尝试:', error.message);
+                            });
+                    } else {
+                        // 状态不正确，跳过处理answer
+                        console.warn('跳过处理answer，当前状态:', this.peerConnection.signalingState, 'localDescription:', this.peerConnection.localDescription ? this.peerConnection.localDescription.type : 'none');
+                        
+                        // 但仍然处理暂存的ICE候选，确保ICE连接正常
+                        if (this.pendingIceCandidates) {
+                            console.log('处理暂存的ICE候选，数量:', this.pendingIceCandidates.length);
+                            this.pendingIceCandidates.forEach(candidate => {
+                                this.peerConnection.addIceCandidate(candidate)
+                                    .catch(err => console.error('处理暂存ICE候选失败:', err));
+                            });
+                            this.pendingIceCandidates = null;
+                        }
+                    }
                 }
             }
             
