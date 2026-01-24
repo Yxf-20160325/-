@@ -2904,15 +2904,14 @@
             adjustVolumeAutomatically() {
                 if (!this.audioGainNode) return;
                 
-                // 设置音量调整阈值
-                const speakingThreshold = 40; // 说话阈值
-                const quietThreshold = 20; // 安静阈值
+                // 使用用户设置的音量调整阈值
+                const speakingThreshold = window.userSettings.speakingThreshold;
+                const volumeReduction = 1 - (window.userSettings.volumeReduction / 100); // 转换为0-1范围
                 
                 if (this.audioLevel > speakingThreshold) {
                     // 检测到说话，降低背景音量
-                    const volumeReduction = 0.3; // 降低30%音量
                     this.adjustedVolume = this.originalVolume * volumeReduction;
-                } else if (this.audioLevel < quietThreshold) {
+                } else {
                     // 没有说话，恢复音量
                     this.adjustedVolume = this.originalVolume;
                 }
