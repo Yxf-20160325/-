@@ -274,6 +274,29 @@
         #localVideo {
             transform: scaleX(-1);
         }
+        
+        /* 视频放大样式 */
+        .video-content {
+            transition: all 0.3s ease;
+        }
+        
+        .video-box {
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+        
+        .video-box.fullscreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1001;
+        }
+        
+        .video-box:not(.fullscreen) {
+            flex: 1;
+        }
 
         .video-label {
             position: absolute;
@@ -6118,6 +6141,51 @@
                 }
             }
         });
+        
+        // 双击视频放大功能
+        function setupDoubleClickZoom() {
+            const videoBoxes = document.querySelectorAll('.video-box');
+            
+            videoBoxes.forEach(box => {
+                box.addEventListener('dblclick', () => {
+                    // 切换全屏状态
+                    box.classList.toggle('fullscreen');
+                    
+                    // 如果当前视频框被放大，将其他视频框隐藏
+                    if (box.classList.contains('fullscreen')) {
+                        videoBoxes.forEach(otherBox => {
+                            if (otherBox !== box) {
+                                otherBox.style.display = 'none';
+                            }
+                        });
+                    } else {
+                        // 如果当前视频框恢复正常，显示所有视频框
+                        videoBoxes.forEach(otherBox => {
+                            otherBox.style.display = 'block';
+                        });
+                    }
+                });
+            });
+        }
+        
+        // 页面加载完成后初始化双击放大功能
+        document.addEventListener('DOMContentLoaded', () => {
+            setupDoubleClickZoom();
+        });
+        
+        // 监听视频容器显示事件，确保双击放大功能在视频显示时可用
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach(mutation => {
+                if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                    if (videoContainer.classList.contains('active')) {
+                        // 延迟初始化，确保视频元素已加载
+                        setTimeout(setupDoubleClickZoom, 100);
+                    }
+                }
+            });
+        });
+        
+        observer.observe(videoContainer, { attributes: true });
         
         // 显示设备选择模态框
         async function showDeviceSelectModal() {
