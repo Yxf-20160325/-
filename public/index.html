@@ -3720,15 +3720,8 @@
                     remoteVideoBox.style.opacity = '1';
                 }
                 
-                // 完全重置视频元素，避免播放请求冲突
-                try {
-                    remoteVideo.pause();
-                    // 清除视频源，确保完全重置
-                    remoteVideo.srcObject = null;
-                    console.log('已重置视频元素');
-                } catch (e) {
-                    console.log('重置视频元素失败:', e.message);
-                }
+                // 先检查视频是否已经在播放，如果是，尽量不要切换视频源
+                const isCurrentlyPlaying = !remoteVideo.paused && remoteVideo.readyState >= 2; // HAVE_CURRENT_DATA
                 
                 let newStream = null;
                 
@@ -3745,58 +3738,129 @@
                 // 更新remoteStream引用
                 this.remoteStream = newStream;
                 
-                // 直接设置视频源，这是最可靠的方式
-                remoteVideo.srcObject = newStream;
-                console.log('已将远程流设置为视频源');
+                // 只有在以下情况才更新视频源：
+                // 1. 视频当前没有srcObject
+                // 2. 视频当前没有在播放
+                // 3. 视频源确实不同且包含不同的轨道
+                const shouldUpdateSource = !remoteVideo.srcObject || 
+                                          !isCurrentlyPlaying || 
+                                          (remoteVideo.srcObject !== newStream && 
+                                           remoteVideo.srcObject.getTracks().length !== newStream.getTracks().length);
                 
-                // 重置播放尝试标志，确保可以再次尝试播放
-                remoteVideo._hasPlayAttempted = false;
-                remoteVideo._hasInteractionListener = false;
-                
-                // 尝试播放视频
-                this.ensureVideoPlays(remoteVideo);
+                if (shouldUpdateSource) {
+                    console.log('需要更新视频源:', {
+                        currentSrcObject: !!remoteVideo.srcObject,
+                        isPlaying: isCurrentlyPlaying,
+                        sourceDifferent: remoteVideo.srcObject !== newStream,
+                        trackCountDifferent: remoteVideo.srcObject && remoteVideo.srcObject.getTracks().length !== newStream.getTracks().length
+                    });
+                    
+                    // 直接设置新的视频源，浏览器会处理好切换
+                    remoteVideo.srcObject = newStream;
+                    console.log('已将远程流设置为视频源');
+                    
+                    // 重置播放尝试标志，确保可以再次尝试播放
+                    remoteVideo._hasPlayAttempted = false;
+                    remoteVideo._hasInteractionListener = false;
+                    
+                    // 尝试播放视频，但只在视频暂停时才尝试
+                    if (remoteVideo.paused) {
+                        this.ensureVideoPlays(remoteVideo);
+                    }
+                } else {
+                    console.log('视频源稳定，跳过更新，保持当前播放状态');
+                    // 检查视频是否正在播放，如果没有，尝试播放
+                    if (remoteVideo.paused) {
+                        this.ensureVideoPlays(remoteVideo);
+                    }
+                }
             }
             
             // 确保视频播放的辅助方法
             ensureVideoPlays(videoElement) {
                 if (!videoElement) return;
                 
-                // 检查是否已经有播放尝试或用户交互监听器
-                if (videoElement._hasPlayAttempted) {
-                    return;
-                }
-                
                 // 标记已经尝试过播放
                 videoElement._hasPlayAttempted = true;
                 
-                // 确保视频播放，添加用户交互检查
-                const playVideo = () => {
-                    videoElement.play()
-                        .then(() => {
-                            console.log('视频播放成功');
-                        })
-                        .catch(err => {
-                            console.log('视频自动播放失败，将在用户交互后播放:', err.message);
-                            
-                            // 只添加一次用户交互事件监听器
-                            if (!videoElement._hasInteractionListener) {
-                                videoElement._hasInteractionListener = true;
-                                
-                                // 添加用户交互事件监听器，确保只监听一次
-                                const handleUserInteraction = () => {
-                                    videoElement.play().catch(e => console.error('用户交互后播放失败:', e));
-                                    // 移除所有用户交互监听器
-                                    document.removeEventListener('click', handleUserInteraction);
-                                    document.removeEventListener('touchstart', handleUserInteraction);
-                                    document.removeEventListener('keydown', handleUserInteraction);
-                                };
-                                
-                                // 添加多种用户交互事件监听器
-                                document.addEventListener('click', handleUserInteraction, { once: true });
-                                document.addEventListener('touchstart', handleUserInteraction, { once: true });
-                                document.addEventListener('keydown', handleUserInteraction, { once: true });
+                // 确保视频播放，添加用户交互检查和重试机制
+                const playVideo = async () => {
+                    try {
+                        // 检查视频元素是否已经被销毁
+                        if (!document.body.contains(videoElement)) {
+                            console.log('视频元素已被销毁，跳过播放');
+                            return;
+                        }
+                        
+                        // 确保视频元素没有被暂停，避免播放请求被中断
+                        if (videoElement.paused) {
+                            // 检查视频是否正在加载新源，如果是则等待一下再尝试
+                            if (videoElement.readyState < 3) { // HAVE_FUTURE_DATA
+                                console.log('视频正在加载，等待后重试播放');
+                                setTimeout(playVideo, 100);
+                                return;
                             }
-                        });
+                            
+                            try {
+                                await videoElement.play();
+                                console.log('视频播放成功');
+                            } catch (err) {
+                                console.log('视频自动播放失败，将在用户交互后播放:', err.message);
+                                
+                                // 只添加一次用户交互事件监听器
+                                if (!videoElement._hasInteractionListener) {
+                                    videoElement._hasInteractionListener = true;
+                                    
+                                    // 添加用户交互事件监听器，确保只监听一次
+                                    const handleUserInteraction = async () => {
+                                        try {
+                                            // 检查视频是否已经在播放或被销毁
+                                            if (!document.body.contains(videoElement)) {
+                                                console.log('视频元素已被销毁，跳过用户交互后播放');
+                                                return;
+                                            }
+                                            
+                                            if (!videoElement.paused) {
+                                                console.log('视频已经在播放，跳过用户交互后播放');
+                                                return;
+                                            }
+                                            
+                                            try {
+                                                await videoElement.play();
+                                                console.log('用户交互后视频播放成功');
+                                            } catch (e) {
+                                                console.error('用户交互后播放失败:', e);
+                                                
+                                                // 如果是AbortError（播放请求被中断），尝试重试
+                                                if (e.name === 'AbortError') {
+                                                    console.log('播放被中断，500ms后重试...');
+                                                    setTimeout(async () => {
+                                                        if (document.body.contains(videoElement) && videoElement.paused) {
+                                                            try {
+                                                                await videoElement.play();
+                                                                console.log('重试播放成功');
+                                                            } catch (retryErr) {
+                                                                console.error('重试播放失败:', retryErr);
+                                                            }
+                                                        }
+                                                    }, 500);
+                                                }
+                                            }
+                                        } catch (e) {
+                                            console.error('用户交互处理视频播放失败:', e);
+                                        }
+                                    };
+                                    
+                                    // 添加多种用户交互事件监听器
+                                    document.addEventListener('click', handleUserInteraction);
+                                    document.addEventListener('touchstart', handleUserInteraction);
+                                    document.addEventListener('keydown', handleUserInteraction);
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.error('尝试播放视频时出错:', e);
+                    }
                 };
                 
                 // 只尝试一次播放，避免重复请求导致的中断
