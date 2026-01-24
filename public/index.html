@@ -2202,8 +2202,8 @@
                     window.DeveloperLogManager.showLog();
                 }
                 
-                // 获取本地媒体流（这样发起端就能看到自己的画面）
-                this.initLocalMediaStream();
+                // 初始化媒体流（这样发起端就能看到自己的画面）
+                this.initMediaStream();
                 
                 // 发送通话请求
                 this.socket.emit('call-request', {
@@ -2266,6 +2266,117 @@
                         // 只有在通话中才显示错误和结束通话
                         if (this.isInCall) {
                             alert('获取本地媒体流失败: ' + error.message);
+                            this.endCall();
+                        }
+                    });
+            }
+            
+            // 初始化媒体流
+            initMediaStream() {
+                console.log('initMediaStream: isCallInitiator=', this.isCallInitiator, 'currentCallMethod=', this.currentCallMethod, 'isInCall=', this.isInCall);
+                
+                // 如果不在通话中，直接返回，避免继续执行
+                if (!this.isInCall) {
+                    console.log('不在通话中，取消initMediaStream');
+                    return;
+                }
+                
+                // 先获取视频设备列表
+                this.getVideoDevices();
+                
+                // 如果已经有本地媒体流，直接使用
+                if (this.localStream) {
+                    if (this.currentCallMethod === 'webrtc') {
+                        // WebRTC方式：创建peer connection
+                        this.createPeerConnection();
+                        
+                        // 如果是发起方，创建并发送offer
+                        if (this.isCallInitiator) {
+                            console.log('发起方：创建并发送offer');
+                            this.createAndSendOffer();
+                        } else {
+                            // 作为接收方，如果有pendingOffer，立即处理
+                            if (this.pendingOffer) {
+                                console.log('接收方：处理pendingOffer');
+                                // 处理之前保存的offer
+                                this.handleWebRTCMedia({ 
+                                    type: 'offer', 
+                                    data: this.pendingOffer 
+                                });
+                                this.pendingOffer = null;
+                            } else {
+                                console.log('接收方：等待offer...');
+                                // 即使没有pendingOffer，也要确保peerConnection已创建，以便接收后续的offer
+                                if (!this.peerConnection) {
+                                    this.createPeerConnection();
+                                }
+                            }
+                        }
+                    } else {
+                        // Socket.io方式：开始发送媒体流
+                        this.startSocketMediaStream();
+                    }
+                    return;
+                }
+                
+                // 没有本地媒体流，获取媒体流
+                const constraints = {
+                    audio: true,
+                    video: this.currentCallType === 'video' ? {
+                        facingMode: this.currentFacingMode
+                    } : false
+                };
+                
+                navigator.mediaDevices.getUserMedia(constraints)
+                    .then(stream => {
+                        // 检查是否仍在通话中，避免在通话结束后设置localStream
+                        if (!this.isInCall) {
+                            console.log('通话已结束，停止新获取的媒体流');
+                            stream.getTracks().forEach(track => track.stop());
+                            return;
+                        }
+                        
+                        console.log('获取媒体流成功，轨道:', stream.getTracks().map(track => track.kind));
+                        this.localStream = stream;
+                        // 显示本地视频流
+                        this.showLocalStream(stream);
+                        
+                        if (this.currentCallMethod === 'webrtc') {
+                            // WebRTC方式：创建peer connection
+                            this.createPeerConnection();
+                            
+                            // 如果是发起方，创建并发送offer
+                            if (this.isCallInitiator) {
+                                console.log('发起方：创建并发送offer');
+                                this.createAndSendOffer();
+                            } else {
+                                // 作为接收方，如果有pendingOffer，立即处理
+                                if (this.pendingOffer) {
+                                    console.log('接收方：处理pendingOffer');
+                                    // 处理之前保存的offer
+                                    this.handleWebRTCMedia({ 
+                                        type: 'offer', 
+                                        data: this.pendingOffer 
+                                    });
+                                    this.pendingOffer = null;
+                                } else {
+                                    console.log('接收方：等待offer...');
+                                    // 即使没有pendingOffer，也要确保peerConnection已创建，以便接收后续的offer
+                                    if (!this.peerConnection) {
+                                        this.createPeerConnection();
+                                    }
+                                }
+                            }
+                        } else {
+                            // Socket.io方式：开始发送媒体流
+                            this.startSocketMediaStream();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('获取媒体流失败:', error);
+                        // 只有在通话中才显示错误和结束通话
+                        if (this.isInCall) {
+                            alert('获取媒体流失败: ' + error.message);
                             this.endCall();
                         }
                     });
@@ -3304,17 +3415,30 @@
                     return;
                 }
                 
-                console.log('确保本地媒体流已添加到peerConnection');
-                
                 // 获取所有本地轨道
                 const localTracks = this.localStream.getTracks();
-                console.log('本地媒体流轨道:', localTracks.map(track => track.kind));
                 
                 // 获取已添加到peerConnection的轨道ID
                 const addedTrackIds = this.peerConnection.getSenders()
                     .map(sender => sender.track)
                     .filter(track => track)
                     .map(track => track.id);
+                
+                // 检查是否所有轨道都已添加
+                const allTracksAdded = localTracks.every(track => addedTrackIds.includes(track.id));
+                
+                if (allTracksAdded) {
+                    // 如果所有轨道都已添加，清除定时器，不再重复检查
+                    if (this.streamCheckInterval) {
+                        console.log('所有本地轨道已添加到peerConnection，清理定时器');
+                        clearInterval(this.streamCheckInterval);
+                        this.streamCheckInterval = null;
+                    }
+                    return;
+                }
+                
+                console.log('确保本地媒体流已添加到peerConnection');
+                console.log('本地媒体流轨道:', localTracks.map(track => track.kind));
                 console.log('已添加到peerConnection的轨道ID:', addedTrackIds);
                 
                 // 添加未添加的轨道
@@ -3322,8 +3446,6 @@
                     if (!addedTrackIds.includes(track.id)) {
                         console.log('添加本地轨道到peerConnection:', track.kind, track.id);
                         this.peerConnection.addTrack(track, this.localStream);
-                    } else {
-                        console.log('轨道已存在于peerConnection中，跳过:', track.kind, track.id);
                     }
                 });
             }
