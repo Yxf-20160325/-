@@ -133,6 +133,170 @@ app.get('/api/admin/calls/:callId', (req, res) => {
     }
 });
 
+// 通话信令API - 发起通话请求
+app.post('/api/calls/request', (req, res) => {
+    try {
+        const { initiatorSocketId, targetSocketId, callType, callMethod } = req.body;
+        
+        const initiatorUser = users.get(initiatorSocketId);
+        const targetUser = users.get(targetSocketId);
+        
+        if (!initiatorUser || !targetUser) {
+            return res.status(404).json({ error: '用户不存在' });
+        }
+        
+        const callId = callIdCounter++;
+        
+        // 存储通话请求信息
+        const callRequest = {
+            callId,
+            initiatorSocketId,
+            targetSocketId,
+            initiatorUsername: initiatorUser.username,
+            targetUsername: targetUser.username,
+            callType,
+            callMethod,
+            status: 'pending',
+            createdAt: new Date()
+        };
+        
+        ongoingCalls.set(callId, callRequest);
+        
+        res.json({ success: true, callId, callRequest });
+        
+        console.log(`${initiatorUser.username} 请求与 ${targetUser.username} ${callType === 'video' ? '视频' : '语音'}通话`);
+    } catch (error) {
+        console.error('发起通话请求失败:', error);
+        res.status(500).json({ error: '发起通话请求失败' });
+    }
+});
+
+// 通话信令API - 接受通话
+app.post('/api/calls/:callId/accept', (req, res) => {
+    try {
+        const { callId } = req.params;
+        const call = ongoingCalls.get(callId);
+        
+        if (!call) {
+            return res.status(404).json({ error: '通话不存在' });
+        }
+        
+        // 更新通话状态
+        call.status = 'active';
+        call.startTime = new Date();
+        ongoingCalls.set(callId, call);
+        
+        res.json({ success: true, callId, call });
+        
+        console.log(`通话已开始，ID: ${callId}, 双方: ${call.targetUsername} 和 ${call.initiatorUsername}`);
+    } catch (error) {
+        console.error('接受通话失败:', error);
+        res.status(500).json({ error: '接受通话失败' });
+    }
+});
+
+// 通话信令API - 拒绝通话
+app.post('/api/calls/:callId/reject', (req, res) => {
+    try {
+        const { callId } = req.params;
+        const call = ongoingCalls.get(callId);
+        
+        if (!call) {
+            return res.status(404).json({ error: '通话不存在' });
+        }
+        
+        // 更新通话状态
+        call.status = 'rejected';
+        call.endTime = new Date();
+        ongoingCalls.set(callId, call);
+        
+        res.json({ success: true, callId });
+        
+        console.log(`通话已拒绝，ID: ${callId}`);
+    } catch (error) {
+        console.error('拒绝通话失败:', error);
+        res.status(500).json({ error: '拒绝通话失败' });
+    }
+});
+
+// 通话信令API - 结束通话
+app.post('/api/calls/:callId/end', (req, res) => {
+    try {
+        const { callId } = req.params;
+        const call = ongoingCalls.get(callId);
+        
+        if (!call) {
+            return res.status(404).json({ error: '通话不存在' });
+        }
+        
+        // 更新通话状态
+        call.status = 'ended';
+        call.endTime = new Date();
+        ongoingCalls.set(callId, call);
+        
+        res.json({ success: true, callId });
+        
+        console.log(`通话已结束，ID: ${callId}`);
+    } catch (error) {
+        console.error('结束通话失败:', error);
+        res.status(500).json({ error: '结束通话失败' });
+    }
+});
+
+// 通话信令API - 发送WebRTC信令
+app.post('/api/calls/:callId/signaling', (req, res) => {
+    try {
+        const { callId } = req.params;
+        const { fromSocketId, type, data } = req.body;
+        
+        const call = ongoingCalls.get(callId);
+        if (!call) {
+            return res.status(404).json({ error: '通话不存在' });
+        }
+        
+        res.json({ success: true, callId, type, data });
+        
+        console.log(`WebRTC信令: ${fromSocketId} -> ${call.initiatorSocketId === fromSocketId ? call.targetSocketId : call.initiatorSocketId}, 类型: ${type}`);
+    } catch (error) {
+        console.error('发送WebRTC信令失败:', error);
+        res.status(500).json({ error: '发送WebRTC信令失败' });
+    }
+});
+
+// 通话信令API - 获取通话状态
+app.get('/api/calls/:callId/status', (req, res) => {
+    try {
+        const { callId } = req.params;
+        const call = ongoingCalls.get(callId);
+        
+        if (!call) {
+            return res.status(404).json({ error: '通话不存在' });
+        }
+        
+        res.json({ success: true, callId, call });
+    } catch (error) {
+        console.error('获取通话状态失败:', error);
+        res.status(500).json({ error: '获取通话状态失败' });
+    }
+});
+
+// 通话信令API - 轮询获取通话请求
+app.get('/api/calls/poll/:socketId', (req, res) => {
+    try {
+        const { socketId } = req.params;
+        
+        // 获取所有与该用户相关的通话
+        const userCalls = Array.from(ongoingCalls.values()).filter(call => 
+            call.targetSocketId === socketId && call.status === 'pending'
+        );
+        
+        res.json({ success: true, calls: userCalls });
+    } catch (error) {
+        console.error('轮询通话请求失败:', error);
+        res.status(500).json({ error: '轮询通话请求失败' });
+    }
+});
+
 // 文件管理API - 获取文件列表（支持目录浏览）
 app.get('/api/files', (req, res) => {
     try {
