@@ -343,6 +343,15 @@
         .video-control-btn.end:hover {
             background: #c82333;
         }
+        
+        .video-control-btn.disabled {
+            background: rgba(108, 117, 125, 0.7);
+            color: #6c757d;
+        }
+        
+        .video-control-btn.disabled:hover {
+            background: rgba(108, 117, 125, 0.9);
+        }
 
         .call-incoming {
             position: fixed;
@@ -2448,14 +2457,23 @@
                 
                 // 切换视频轨道的enabled状态
                 const videoTracks = this.localStream.getVideoTracks();
+                let isEnabled = true;
                 videoTracks.forEach(track => {
                     track.enabled = !track.enabled;
+                    isEnabled = track.enabled;
                 });
                 
                 // 更新按钮状态
                 const toggleVideoBtn = document.getElementById('toggleVideoBtn');
                 if (toggleVideoBtn) {
-                    // 可以添加视觉反馈，比如改变按钮样式
+                    // 根据视频轨道状态改变按钮样式
+                    if (isEnabled) {
+                        toggleVideoBtn.classList.remove('disabled');
+                        toggleVideoBtn.innerHTML = '📹';
+                    } else {
+                        toggleVideoBtn.classList.add('disabled');
+                        toggleVideoBtn.innerHTML = '📷';
+                    }
                 }
             }
             
@@ -2465,14 +2483,23 @@
                 
                 // 切换音频轨道的enabled状态
                 const audioTracks = this.localStream.getAudioTracks();
+                let isEnabled = true;
                 audioTracks.forEach(track => {
                     track.enabled = !track.enabled;
+                    isEnabled = track.enabled;
                 });
                 
                 // 更新按钮状态
                 const toggleAudioBtn = document.getElementById('toggleAudioBtn');
                 if (toggleAudioBtn) {
-                    // 可以添加视觉反馈，比如改变按钮样式
+                    // 根据音频轨道状态改变按钮样式
+                    if (isEnabled) {
+                        toggleAudioBtn.classList.remove('disabled');
+                        toggleAudioBtn.innerHTML = '🎤';
+                    } else {
+                        toggleAudioBtn.classList.add('disabled');
+                        toggleAudioBtn.innerHTML = '🔇';
+                    }
                 }
             }
             
@@ -3059,20 +3086,19 @@
                             }
                         }
                         
-                        // 确保音频轨道已添加（只使用麦克风音频，不使用系统音频，这样对方能清晰听到说话）
+                        // 处理音频轨道
                         const audioSender = senders.find(sender => sender.track && sender.track.kind === 'audio');
                         if (audioSender) {
-                            // 优先使用麦克风轨道
-                            if (microphoneTrack) {
+                            // 检查屏幕共享流是否有音频轨道
+                            const screenAudioTracks = screenStream.getAudioTracks();
+                            if (screenAudioTracks.length > 0) {
+                                // 使用屏幕共享的音频轨道，这样可以传输系统声音
+                                audioSender.replaceTrack(screenAudioTracks[0]);
+                                console.log('已更新peerConnection中的音频轨道为屏幕共享流中的音频轨道');
+                            } else if (microphoneTrack) {
+                                // 如果屏幕共享没有音频，使用麦克风轨道
                                 audioSender.replaceTrack(microphoneTrack);
                                 console.log('已更新peerConnection中的音频轨道为麦克风轨道');
-                            } else {
-                                // 如果没有麦克风轨道，尝试使用屏幕共享流中的音频轨道
-                                const audioTracks = screenStream.getAudioTracks();
-                                if (audioTracks.length > 0) {
-                                    audioSender.replaceTrack(audioTracks[0]);
-                                    console.log('已更新peerConnection中的音频轨道为屏幕共享流中的音频轨道');
-                                }
                             }
                         }
                     }
