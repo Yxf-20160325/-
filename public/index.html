@@ -1263,6 +1263,7 @@
                 <button class="video-control-btn" id="toggleAudioBtn">🎤</button>
                 <button class="video-control-btn" id="switchCameraBtn">🔄</button>
                 <button class="video-control-btn" id="toggleScreenShareBtn">🖥️</button>
+                <button class="video-control-btn" id="callSettingsBtn">⚙️</button>
                 <button class="video-control-btn end" id="endCallBtn">📞</button>
             </div>
         <!-- 开发者模式日志显示区域 -->
@@ -1343,6 +1344,7 @@
                 <button class="admin-tab active" data-tab="translation">翻译设置</button>
                 <button class="admin-tab" data-tab="notifications">通知设置</button>
                 <button class="admin-tab" data-tab="video">视频设置</button>
+                <button class="admin-tab" data-tab="call">通话设置</button>
             </div>
             <div class="admin-panel-content">
                 <div class="admin-tab-content active" id="translationTab">
@@ -1434,6 +1436,44 @@
                                 <input type="range" id="myVideoExposure" min="0" max="2" step="0.05" value="1" style="flex: 1; margin: 0 10px;">
                                 <span id="myVideoExposureValue" style="width: 40px; text-align: right; font-size: 14px;">1.0</span>
                             </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="admin-tab-content" id="callTab">
+                    <div style="margin-bottom: 20px;">
+                        <h4>通话设置</h4>
+                        <div style="margin-top: 15px;">
+                            <label>
+                                <input type="checkbox" id="autoAdjustVolumeCheckbox" checked>
+                                共享屏幕时自动调整音量
+                            </label>
+                            <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">启用后，在共享屏幕时说话会自动降低背景音量，确保对方能清晰听到你的声音。</p>
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                                <label for="speakingThreshold" style="width: 120px; font-size: 14px;">说话检测阈值:</label>
+                                <input type="range" id="speakingThreshold" min="0" max="100" step="5" value="40" style="flex: 1; margin: 0 10px;">
+                                <span id="speakingThresholdValue" style="width: 40px; text-align: right; font-size: 14px;">40</span>
+                            </div>
+                            <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">调整检测到说话的音量阈值，数值越高需要更大的声音才会触发音量调整。</p>
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                                <label for="volumeReduction" style="width: 120px; font-size: 14px;">音量降低比例:</label>
+                                <input type="range" id="volumeReduction" min="10" max="80" step="5" value="30" style="flex: 1; margin: 0 10px;">
+                                <span id="volumeReductionValue" style="width: 40px; text-align: right; font-size: 14px;">30%</span>
+                            </div>
+                            <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">设置说话时背景音量降低的百分比，数值越高降低幅度越大。</p>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <h4>音频设备设置</h4>
+                        <div style="margin-top: 15px;">
+                            <button class="friend-btn" onclick="showDeviceSelectModal()" style="width: 100%; padding: 10px; margin-bottom: 10px;">
+                                选择音频设备
+                            </button>
+                            <p style="font-size: 12px; color: #6c757d;">点击按钮选择麦克风和扬声器设备，优化通话音质。</p>
                         </div>
                     </div>
                 </div>
@@ -1599,7 +1639,11 @@
             myVideoBrightness: 1, // 亮度，范围0-3，默认1
             myVideoContrast: 1, // 对比度，范围0-2.5，默认1
             myVideoSaturation: 1, // 饱和度，范围0-2，默认1
-            myVideoExposure: 1 // 曝光，范围0-2，默认1
+            myVideoExposure: 1, // 曝光，范围0-2，默认1
+            // 通话设置
+            autoAdjustVolume: true, // 默认开启共享屏幕时自动调整音量
+            speakingThreshold: 40, // 说话检测阈值，默认40
+            volumeReduction: 30 // 音量降低比例，默认30%
         };
         
         // 用户设置锁定状态
@@ -1638,6 +1682,44 @@
                 remoteMirrorVideoCheckbox.checked = window.userSettings.remoteMirrorVideo;
                 // 立即应用对方视频镜像设置
                 updateRemoteVideoMirrorSetting();
+            }
+            
+            // 初始化通话设置
+            const autoAdjustVolumeCheckbox = document.getElementById('autoAdjustVolumeCheckbox');
+            const speakingThreshold = document.getElementById('speakingThreshold');
+            const speakingThresholdValue = document.getElementById('speakingThresholdValue');
+            const volumeReduction = document.getElementById('volumeReduction');
+            const volumeReductionValue = document.getElementById('volumeReductionValue');
+            
+            if (autoAdjustVolumeCheckbox) {
+                autoAdjustVolumeCheckbox.checked = window.userSettings.autoAdjustVolume;
+            }
+            
+            if (speakingThreshold && speakingThresholdValue) {
+                speakingThreshold.value = window.userSettings.speakingThreshold;
+                speakingThresholdValue.textContent = window.userSettings.speakingThreshold;
+            }
+            
+            if (volumeReduction && volumeReductionValue) {
+                volumeReduction.value = window.userSettings.volumeReduction;
+                volumeReductionValue.textContent = `${window.userSettings.volumeReduction}%`;
+            }
+            
+            // 为通话设置滑块添加事件监听器
+            if (speakingThreshold && speakingThresholdValue) {
+                speakingThreshold.addEventListener('input', (e) => {
+                    const value = parseInt(e.target.value);
+                    speakingThresholdValue.textContent = value;
+                    window.userSettings.speakingThreshold = value;
+                });
+            }
+            
+            if (volumeReduction && volumeReductionValue) {
+                volumeReduction.addEventListener('input', (e) => {
+                    const value = parseInt(e.target.value);
+                    volumeReductionValue.textContent = `${value}%`;
+                    window.userSettings.volumeReduction = value;
+                });
             }
             
             // 更新当前翻译目标语言
@@ -1868,6 +1950,23 @@
                 updateRemoteVideoMirrorSetting();
             }
             
+            // 保存通话设置
+            const autoAdjustVolumeCheckbox = document.getElementById('autoAdjustVolumeCheckbox');
+            const speakingThreshold = document.getElementById('speakingThreshold');
+            const volumeReduction = document.getElementById('volumeReduction');
+            
+            if (autoAdjustVolumeCheckbox) {
+                window.userSettings.autoAdjustVolume = autoAdjustVolumeCheckbox.checked;
+            }
+            
+            if (speakingThreshold) {
+                window.userSettings.speakingThreshold = parseInt(speakingThreshold.value);
+            }
+            
+            if (volumeReduction) {
+                window.userSettings.volumeReduction = parseInt(volumeReduction.value);
+            }
+            
             // 更新当前翻译目标语言
             currentTargetLanguage = window.userSettings.targetLanguage;
             
@@ -1994,6 +2093,17 @@
                 this.sourceBuffer = null;
                 this.socketMediaQueue = []; // 媒体数据队列
                 this.isMediaSourceOpen = false;
+                
+                // 音频音量自动调整相关
+                this.audioContext = null;
+                this.analyser = null;
+                this.mediaRecorder = null;
+                this.audioGainNode = null;
+                this.audioLevelDetector = null;
+                this.isMonitoringAudio = false;
+                this.audioLevel = 0;
+                this.originalVolume = 1.0;
+                this.adjustedVolume = 1.0;
                 
                 this.init();
             }
@@ -2544,6 +2654,117 @@
                 }
             }
             
+            // 初始化音频上下文和分析器
+            initAudioContext() {
+                if (this.audioContext) return;
+                
+                try {
+                    this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    this.analyser = this.audioContext.createAnalyser();
+                    this.analyser.fftSize = 256;
+                    
+                    // 创建增益节点，用于控制音量
+                    this.audioGainNode = this.audioContext.createGain();
+                    this.audioGainNode.gain.value = 1.0;
+                    
+                    this.originalVolume = 1.0;
+                    this.adjustedVolume = 1.0;
+                    
+                    console.log('音频上下文和分析器初始化成功');
+                } catch (error) {
+                    console.error('初始化音频上下文失败:', error);
+                }
+            }
+            
+            // 开始监测音频音量
+            startMonitoringAudio() {
+                if (!this.localStream || this.isMonitoringAudio) return;
+                
+                this.initAudioContext();
+                
+                try {
+                    const audioTracks = this.localStream.getAudioTracks();
+                    if (audioTracks.length === 0) return;
+                    
+                    // 创建媒体流源
+                    const source = this.audioContext.createMediaStreamSource(this.localStream);
+                    
+                    // 连接音频处理链
+                    source.connect(this.audioGainNode);
+                    this.audioGainNode.connect(this.analyser);
+                    this.analyser.connect(this.audioContext.destination);
+                    
+                    const bufferLength = this.analyser.frequencyBinCount;
+                    const dataArray = new Uint8Array(bufferLength);
+                    
+                    const updateAudioLevel = () => {
+                        if (!this.isMonitoringAudio) return;
+                        
+                        // 获取音频数据
+                        this.analyser.getByteFrequencyData(dataArray);
+                        
+                        // 计算平均音量
+                        let sum = 0;
+                        for (let i = 0; i < bufferLength; i++) {
+                            sum += dataArray[i];
+                        }
+                        this.audioLevel = sum / bufferLength;
+                        
+                        // 如果正在共享屏幕，自动调整音量
+                        if (this.isSharingScreen) {
+                            this.adjustVolumeAutomatically();
+                        } else {
+                            // 恢复原始音量
+                            this.restoreVolume();
+                        }
+                        
+                        requestAnimationFrame(updateAudioLevel);
+                    };
+                    
+                    this.isMonitoringAudio = true;
+                    updateAudioLevel();
+                    console.log('音频监测已启动');
+                } catch (error) {
+                    console.error('启动音频监测失败:', error);
+                }
+            }
+            
+            // 停止监测音频音量
+            stopMonitoringAudio() {
+                this.isMonitoringAudio = false;
+                this.restoreVolume();
+                console.log('音频监测已停止');
+            }
+            
+            // 自动调整音量
+            adjustVolumeAutomatically() {
+                if (!this.audioGainNode) return;
+                
+                // 设置音量调整阈值
+                const speakingThreshold = 40; // 说话阈值
+                const quietThreshold = 20; // 安静阈值
+                
+                if (this.audioLevel > speakingThreshold) {
+                    // 检测到说话，降低背景音量
+                    const volumeReduction = 0.3; // 降低30%音量
+                    this.adjustedVolume = this.originalVolume * volumeReduction;
+                } else if (this.audioLevel < quietThreshold) {
+                    // 没有说话，恢复音量
+                    this.adjustedVolume = this.originalVolume;
+                }
+                
+                // 平滑过渡音量
+                this.audioGainNode.gain.value = this.adjustedVolume;
+            }
+            
+            // 恢复原始音量
+            restoreVolume() {
+                if (!this.audioGainNode) return;
+                
+                this.adjustedVolume = this.originalVolume;
+                this.audioGainNode.gain.value = this.adjustedVolume;
+            }
+            
             // 初始化媒体流
             initMediaStream() {
                 console.log('initMediaStream: isCallInitiator=', this.isCallInitiator, 'currentCallMethod=', this.currentCallMethod, 'isInCall=', this.isInCall);
@@ -2829,6 +3050,9 @@
                         }
                     }
                     
+                    // 开始监测音频，用于自动调整音量
+                    this.startMonitoringAudio();
+                    
                     console.log('屏幕共享已开始，同时共享系统音频和麦克风声音');
                 } catch (error) {
                     console.error('开始共享屏幕失败:', error);
@@ -2875,6 +3099,9 @@
                 
                 try {
                     console.log('停止共享屏幕，切换回摄像头...');
+                    
+                    // 停止音频监测
+                    this.stopMonitoringAudio();
                     
                     // 停止当前的屏幕共享流中的所有轨道（包括视频和音频轨道）
                     if (this.localStream) {
@@ -5874,106 +6101,159 @@
             }
         });
         
+        // 设置按钮事件监听器
+        const callSettingsBtn = document.getElementById('callSettingsBtn');
+        callSettingsBtn.addEventListener('click', () => {
+            // 打开设置模态框
+            const settingsModal = document.getElementById('settingsModal');
+            if (settingsModal) {
+                settingsModal.classList.add('active');
+                
+                // 确保通话设置标签页存在
+                const callSettingsTab = document.querySelector('.admin-tab[data-tab="call"]');
+                if (callSettingsTab) {
+                    // 切换到通话设置标签页
+                    callSettingsTab.click();
+                }
+            }
+        });
+        
         // 显示设备选择模态框
-        function showDeviceSelectModal() {
+        async function showDeviceSelectModal() {
             // 如果模态框已经打开，不重复显示
             if (isDeviceSelectModalOpen) {
                 return;
             }
             
+            // 显示加载状态
             isDeviceSelectModalOpen = true;
-            deviceSelectContent.innerHTML = '';
-            
-            // 添加搜索框
-            const searchInput = document.createElement('input');
-            searchInput.type = 'text';
-            searchInput.placeholder = '搜索设备...';
-            searchInput.style.width = '100%';
-            searchInput.style.padding = '10px';
-            searchInput.style.marginBottom = '15px';
-            searchInput.style.border = '1px solid #dee2e6';
-            searchInput.style.borderRadius = '5px';
-            searchInput.addEventListener('input', (e) => {
-                filterDeviceList(e.target.value);
-            });
-            
-            deviceSelectContent.appendChild(searchInput);
-            
-            // 添加视频设备选择
-            if (availableVideoDevices.length > 0) {
-                const videoSection = document.createElement('div');
-                videoSection.innerHTML = '<h4 style="margin-bottom: 10px;">选择摄像头:</h4>';
-                
-                availableVideoDevices.forEach((device, index) => {
-                    const deviceDiv = document.createElement('div');
-                    deviceDiv.style.display = 'flex';
-                    deviceDiv.style.alignItems = 'center';
-                    deviceDiv.style.padding = '10px';
-                    deviceDiv.style.marginBottom = '5px';
-                    deviceDiv.style.border = '1px solid #e9ecef';
-                    deviceDiv.style.borderRadius = '5px';
-                    deviceDiv.style.cursor = 'pointer';
-                    deviceDiv.dataset.deviceId = device.deviceId;
-                    deviceDiv.dataset.deviceType = 'video';
-                    
-                    const deviceLabel = device.label || `摄像头 ${index + 1}`;
-                    
-                    deviceDiv.innerHTML = `
-                        <input type="radio" name="videoDevice" value="${device.deviceId}" ${device.deviceId === selectedVideoDeviceId ? 'checked' : ''}>
-                        <span style="margin-left: 10px;">${escapeHtml(deviceLabel)}</span>
-                    `;
-                    
-                    deviceDiv.addEventListener('click', () => {
-                        selectedVideoDeviceId = device.deviceId;
-                        document.querySelectorAll('input[name="videoDevice"]').forEach(input => {
-                            input.checked = input.value === device.deviceId;
-                        });
-                    });
-                    
-                    videoSection.appendChild(deviceDiv);
-                });
-                
-                deviceSelectContent.appendChild(videoSection);
-            }
-            
-            // 添加音频设备选择
-            if (availableAudioDevices.length > 0) {
-                const audioSection = document.createElement('div');
-                audioSection.innerHTML = '<h4 style="margin-bottom: 10px;">选择麦克风:</h4>';
-                
-                availableAudioDevices.forEach((device, index) => {
-                    const deviceDiv = document.createElement('div');
-                    deviceDiv.style.display = 'flex';
-                    deviceDiv.style.alignItems = 'center';
-                    deviceDiv.style.padding = '10px';
-                    deviceDiv.style.marginBottom = '5px';
-                    deviceDiv.style.border = '1px solid #e9ecef';
-                    deviceDiv.style.borderRadius = '5px';
-                    deviceDiv.style.cursor = 'pointer';
-                    deviceDiv.dataset.deviceId = device.deviceId;
-                    deviceDiv.dataset.deviceType = 'audio';
-                    
-                    const deviceLabel = device.label || `麦克风 ${index + 1}`;
-                    
-                    deviceDiv.innerHTML = `
-                        <input type="radio" name="audioDevice" value="${device.deviceId}" ${device.deviceId === selectedAudioDeviceId ? 'checked' : ''}>
-                        <span style="margin-left: 10px;">${escapeHtml(deviceLabel)}</span>
-                    `;
-                    
-                    deviceDiv.addEventListener('click', () => {
-                        selectedAudioDeviceId = device.deviceId;
-                        document.querySelectorAll('input[name="audioDevice"]').forEach(input => {
-                            input.checked = input.value === device.deviceId;
-                        });
-                    });
-                    
-                    audioSection.appendChild(deviceDiv);
-                });
-                
-                deviceSelectContent.appendChild(audioSection);
-            }
-            
+            deviceSelectContent.innerHTML = '<div style="text-align: center; padding: 20px;">正在获取设备列表...</div>';
             deviceSelectModal.classList.add('active');
+            
+            try {
+                // 检查浏览器支持
+                if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+                    throw new Error('您的浏览器不支持媒体设备访问');
+                }
+                
+                // 获取可用设备列表
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                const audioDevices = devices.filter(device => device.kind === 'audioinput');
+                
+                // 初始化全局变量
+                window.availableVideoDevices = videoDevices;
+                window.availableAudioDevices = audioDevices;
+                
+                // 初始化选中的设备ID
+                window.selectedVideoDeviceId = videoDevices.length > 0 ? videoDevices[0].deviceId : null;
+                window.selectedAudioDeviceId = audioDevices.length > 0 ? audioDevices[0].deviceId : null;
+                
+                // 清空内容并重新开始构建UI
+                deviceSelectContent.innerHTML = '';
+                
+                // 添加搜索框
+                const searchInput = document.createElement('input');
+                searchInput.type = 'text';
+                searchInput.placeholder = '搜索设备...';
+                searchInput.style.width = '100%';
+                searchInput.style.padding = '10px';
+                searchInput.style.marginBottom = '15px';
+                searchInput.style.border = '1px solid #dee2e6';
+                searchInput.style.borderRadius = '5px';
+                searchInput.addEventListener('input', (e) => {
+                    filterDeviceList(e.target.value);
+                });
+                
+                deviceSelectContent.appendChild(searchInput);
+                
+                // 添加视频设备选择
+                if (videoDevices.length > 0) {
+                    const videoSection = document.createElement('div');
+                    videoSection.innerHTML = '<h4 style="margin-bottom: 10px;">选择摄像头:</h4>';
+                    
+                    videoDevices.forEach((device, index) => {
+                        const deviceDiv = document.createElement('div');
+                        deviceDiv.style.display = 'flex';
+                        deviceDiv.style.alignItems = 'center';
+                        deviceDiv.style.padding = '10px';
+                        deviceDiv.style.marginBottom = '5px';
+                        deviceDiv.style.border = '1px solid #e9ecef';
+                        deviceDiv.style.borderRadius = '5px';
+                        deviceDiv.style.cursor = 'pointer';
+                        deviceDiv.dataset.deviceId = device.deviceId;
+                        deviceDiv.dataset.deviceType = 'video';
+                        
+                        const deviceLabel = device.label || `摄像头 ${index + 1}`;
+                        
+                        deviceDiv.innerHTML = `
+                            <input type="radio" name="videoDevice" value="${device.deviceId}" ${device.deviceId === selectedVideoDeviceId ? 'checked' : ''}>
+                            <span style="margin-left: 10px;">${escapeHtml(deviceLabel)}</span>
+                        `;
+                        
+                        deviceDiv.addEventListener('click', () => {
+                            selectedVideoDeviceId = device.deviceId;
+                            document.querySelectorAll('input[name="videoDevice"]').forEach(input => {
+                                input.checked = input.value === device.deviceId;
+                            });
+                        });
+                        
+                        videoSection.appendChild(deviceDiv);
+                    });
+                    
+                    deviceSelectContent.appendChild(videoSection);
+                } else {
+                    const noVideoDevicesDiv = document.createElement('div');
+                    noVideoDevicesDiv.innerHTML = '<h4 style="margin-bottom: 10px;">选择摄像头:</h4>';
+                    noVideoDevicesDiv.innerHTML += '<div style="color: #6c757d; margin-bottom: 15px;">未检测到摄像头设备</div>';
+                    deviceSelectContent.appendChild(noVideoDevicesDiv);
+                }
+                
+                // 添加音频设备选择
+                if (audioDevices.length > 0) {
+                    const audioSection = document.createElement('div');
+                    audioSection.innerHTML = '<h4 style="margin-bottom: 10px;">选择麦克风:</h4>';
+                    
+                    audioDevices.forEach((device, index) => {
+                        const deviceDiv = document.createElement('div');
+                        deviceDiv.style.display = 'flex';
+                        deviceDiv.style.alignItems = 'center';
+                        deviceDiv.style.padding = '10px';
+                        deviceDiv.style.marginBottom = '5px';
+                        deviceDiv.style.border = '1px solid #e9ecef';
+                        deviceDiv.style.borderRadius = '5px';
+                        deviceDiv.style.cursor = 'pointer';
+                        deviceDiv.dataset.deviceId = device.deviceId;
+                        deviceDiv.dataset.deviceType = 'audio';
+                        
+                        const deviceLabel = device.label || `麦克风 ${index + 1}`;
+                        
+                        deviceDiv.innerHTML = `
+                            <input type="radio" name="audioDevice" value="${device.deviceId}" ${device.deviceId === selectedAudioDeviceId ? 'checked' : ''}>
+                            <span style="margin-left: 10px;">${escapeHtml(deviceLabel)}</span>
+                        `;
+                        
+                        deviceDiv.addEventListener('click', () => {
+                            selectedAudioDeviceId = device.deviceId;
+                            document.querySelectorAll('input[name="audioDevice"]').forEach(input => {
+                                input.checked = input.value === device.deviceId;
+                            });
+                        });
+                        
+                        audioSection.appendChild(deviceDiv);
+                    });
+                    
+                    deviceSelectContent.appendChild(audioSection);
+                } else {
+                    const noAudioDevicesDiv = document.createElement('div');
+                    noAudioDevicesDiv.innerHTML = '<h4 style="margin-bottom: 10px;">选择麦克风:</h4>';
+                    noAudioDevicesDiv.innerHTML += '<div style="color: #6c757d; margin-bottom: 15px;">未检测到麦克风设备</div>';
+                    deviceSelectContent.appendChild(noAudioDevicesDiv);
+                }
+            } catch (error) {
+                console.error('获取设备列表失败:', error);
+                deviceSelectContent.innerHTML = `<div style="color: #dc3545; text-align: center; padding: 20px;">获取设备列表失败: ${error.message}</div>`;
+            }
         }
         
         // 过滤设备列表
