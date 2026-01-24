@@ -3056,12 +3056,28 @@
                         videoTracks.forEach(track => track.stop());
                     }
                     
+                    // 创建一个新的媒体流，包含屏幕共享视频和麦克风音频
+                    const combinedStream = new MediaStream();
+                    
+                    // 添加屏幕共享视频轨道
+                    const screenVideoTracks = screenStream.getVideoTracks();
+                    screenVideoTracks.forEach(track => combinedStream.addTrack(track));
+                    
+                    // 添加麦克风音频轨道
+                    if (microphoneTrack) {
+                        combinedStream.addTrack(microphoneTrack);
+                    } else {
+                        // 如果没有麦克风轨道，尝试使用屏幕共享流中的音频轨道
+                        const screenAudioTracks = screenStream.getAudioTracks();
+                        screenAudioTracks.forEach(track => combinedStream.addTrack(track));
+                    }
+                    
                     // 更新本地流
-                    this.localStream = screenStream;
+                    this.localStream = combinedStream;
                     this.isSharingScreen = true;
                     
                     // 更新本地视频显示
-                    this.showLocalStream(screenStream);
+                    this.showLocalStream(combinedStream);
                     
                     // 监听屏幕共享结束事件
                     screenStream.getVideoTracks()[0].addEventListener('ended', () => {
@@ -3086,19 +3102,20 @@
                             }
                         }
                         
-                        // 处理音频轨道
+                        // 处理音频轨道 - 确保始终使用麦克风轨道，这样对方能听到说话声音
                         const audioSender = senders.find(sender => sender.track && sender.track.kind === 'audio');
                         if (audioSender) {
-                            // 检查屏幕共享流是否有音频轨道
-                            const screenAudioTracks = screenStream.getAudioTracks();
-                            if (screenAudioTracks.length > 0) {
-                                // 使用屏幕共享的音频轨道，这样可以传输系统声音
-                                audioSender.replaceTrack(screenAudioTracks[0]);
-                                console.log('已更新peerConnection中的音频轨道为屏幕共享流中的音频轨道');
-                            } else if (microphoneTrack) {
-                                // 如果屏幕共享没有音频，使用麦克风轨道
+                            if (microphoneTrack) {
+                                // 优先使用麦克风轨道，确保说话声音能被听到
                                 audioSender.replaceTrack(microphoneTrack);
                                 console.log('已更新peerConnection中的音频轨道为麦克风轨道');
+                            } else {
+                                // 如果没有麦克风轨道，尝试使用屏幕共享流中的音频轨道
+                                const screenAudioTracks = screenStream.getAudioTracks();
+                                if (screenAudioTracks.length > 0) {
+                                    audioSender.replaceTrack(screenAudioTracks[0]);
+                                    console.log('已更新peerConnection中的音频轨道为屏幕共享流中的音频轨道');
+                                }
                             }
                         }
                     }
@@ -6173,7 +6190,40 @@
             const videoBoxes = document.querySelectorAll('.video-box');
             
             videoBoxes.forEach(box => {
-                box.addEventListener('dblclick', () => {
+                // 直接在视频元素上添加事件监听器，防止浏览器拦截
+                const video = box.querySelector('video');
+                if (video) {
+                    video.addEventListener('dblclick', (e) => {
+                        // 阻止浏览器默认的视频双击行为（如全屏）
+                        e.preventDefault();
+                        e.stopPropagation();
+                        
+                        // 切换全屏状态
+                        box.classList.toggle('fullscreen');
+                        
+                        // 如果当前视频框被放大，将其他视频框隐藏
+                        if (box.classList.contains('fullscreen')) {
+                            videoBoxes.forEach(otherBox => {
+                                if (otherBox !== box) {
+                                    otherBox.style.display = 'none';
+                                }
+                            });
+                        } else {
+                            // 如果当前视频框恢复正常，显示所有视频框
+                            videoBoxes.forEach(otherBox => {
+                                otherBox.style.display = 'block';
+                            });
+                        }
+                    });
+                }
+                
+                // 同时保留在video-box上的事件监听器，确保双击空白区域也能放大
+                box.addEventListener('dblclick', (e) => {
+                    // 如果点击的是video元素，事件已经被处理，这里不再处理
+                    if (e.target.tagName === 'VIDEO') {
+                        return;
+                    }
+                    
                     // 切换全屏状态
                     box.classList.toggle('fullscreen');
                     
