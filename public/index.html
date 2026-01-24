@@ -254,6 +254,7 @@
             gap: 20px;
             max-width: 1200px;
             width: 90%;
+            height: 80vh;
         }
 
         .video-box {
@@ -262,6 +263,8 @@
             border-radius: 10px;
             overflow: hidden;
             position: relative;
+            height: 100%;
+            min-height: 300px;
         }
 
         .video-box video {
@@ -3460,7 +3463,7 @@
             
             // 处理WebRTC媒体数据
             handleWebRTCMedia(data) {
-                console.log('收到WebRTC媒体数据:', data.type, 'isInCall:', this.isInCall, 'peerConnection:', !!this.peerConnection);
+                console.log('收到WebRTC媒体数据:', data.type, 'isInCall:', this.isInCall, 'peerConnection:', !!this.peerConnection, 'targetSocketId:', this.currentCallTargetSocketId, 'callId:', this.currentCallId);
                 
                 // 确保peerConnection已创建，无论是否在通话中状态
                 if (!this.peerConnection) {
@@ -3486,6 +3489,12 @@
                         console.log('未在通话中，忽略媒体数据:', data.type);
                         return;
                     }
+                }
+                
+                // 确保targetSocketId存在，否则无法发送媒体数据
+                if (!this.currentCallTargetSocketId) {
+                    console.error('currentCallTargetSocketId不存在，无法处理媒体数据:', data.type);
+                    return;
                 }
                 
                 // 处理ICE候选：改进ICE候选处理逻辑，确保所有候选都能被正确处理
@@ -3711,11 +3720,14 @@
                     remoteVideoBox.style.opacity = '1';
                 }
                 
-                // 停止当前视频的播放和加载，避免播放请求冲突
+                // 完全重置视频元素，避免播放请求冲突
                 try {
                     remoteVideo.pause();
+                    // 清除视频源，确保完全重置
+                    remoteVideo.srcObject = null;
+                    console.log('已重置视频元素');
                 } catch (e) {
-                    console.log('停止当前视频播放失败:', e.message);
+                    console.log('重置视频元素失败:', e.message);
                 }
                 
                 let newStream = null;
@@ -3737,7 +3749,11 @@
                 remoteVideo.srcObject = newStream;
                 console.log('已将远程流设置为视频源');
                 
-                // 只尝试一次播放，避免重复请求导致的中断
+                // 重置播放尝试标志，确保可以再次尝试播放
+                remoteVideo._hasPlayAttempted = false;
+                remoteVideo._hasInteractionListener = false;
+                
+                // 尝试播放视频
                 this.ensureVideoPlays(remoteVideo);
             }
             
