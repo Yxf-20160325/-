@@ -911,6 +911,8 @@
                 <button class="tab" onclick="switchTab('mutedUsers')">禁言管理</button>
                 <button class="tab" onclick="switchTab('calls')">通话管理</button>
                 <button class="tab" onclick="switchTab('settingsManagement')">用户设置管理</button>
+                <button class="tab" onclick="switchTab('updates')">发布更新</button>
+                <button class="tab" onclick="switchTab('chatroomNotifications')">聊天室提示</button>
                 <button class="tab" onclick="switchTab('systemManagement')">系统管理</button>
                 <button class="tab" onclick="switchTab('globalSettings')">全体设置</button>
             </div>
@@ -1357,6 +1359,142 @@
                         <button class="btn btn-secondary" onclick="closeUserSettingsForm()">取消</button>
                     </div>
                 </div>
+            </div>
+        </div>
+        
+        <div class="tab-content" id="updatesTab">
+            <div class="section">
+                <h2>发布更新</h2>
+                <div class="input-group">
+                    <button class="btn btn-primary" onclick="openUpdateModal()">发布新版本</button>
+                </div>
+                
+                <div class="section" style="margin-top: 20px;">
+                    <h3>更新历史</h3>
+                    <div id="updateHistory" style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                        <p>暂无更新历史</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="tab-content" id="chatroomNotificationsTab">
+            <div class="section">
+                <h2>发送聊天室提示</h2>
+                <p style="margin-bottom: 15px; color: #666;">向指定用户发送聊天室提示，支持自定义样式和按钮</p>
+                <div class="input-group">
+                    <button class="btn btn-primary" onclick="openChatroomNotificationModal()">发送提示</button>
+                    <button class="btn btn-info" onclick="refreshActiveNotifications()">刷新活跃提示</button>
+                </div>
+            </div>
+            
+            <div class="section" style="margin-top: 20px;">
+                <h2>活跃提示管理</h2>
+                <p style="margin-bottom: 15px; color: #666;">管理当前活跃的聊天室提示，支持编辑、删除和样式修改</p>
+                <div id="activeNotificationsList" style="background: #f8f9fa; padding: 15px; border-radius: 10px; max-height: 500px; overflow-y: auto;">
+                    <div class="empty-state">
+                        <p>暂无活跃提示</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 更新通知模态框 -->
+        <div class="modal" id="updateModal">
+            <div class="modal-content">
+                <h3>发布新版本</h3>
+                <form onsubmit="event.preventDefault(); publishUpdate();">
+                    <div class="input-group">
+                        <label>版本号</label>
+                        <input type="text" id="updateVersion" placeholder="输入版本号，例如：v1.0.1" required>
+                    </div>
+                    <div class="input-group">
+                        <label>更新内容</label>
+                        <textarea id="updateContent" placeholder="输入更新内容，支持换行" rows="5" required></textarea>
+                    </div>
+                    <div class="input-group">
+                        <label>更新目标</label>
+                        <select id="updateTarget" onchange="updateTargetChanged()">
+                            <option value="all">全体用户</option>
+                            <option value="probability">概率推送</option>
+                            <option value="specific">特定用户</option>
+                        </select>
+                    </div>
+                    <div class="input-group" id="probabilityGroup" style="display: none;">
+                        <label>推送概率 (%)</label>
+                        <input type="number" id="updateProbability" placeholder="输入0-100之间的概率值" min="0" max="100" step="1">
+                    </div>
+                    <div class="input-group" id="specificUsersGroup" style="display: none;">
+                        <label>特定用户ID</label>
+                        <textarea id="specificUsers" placeholder="输入用户ID，多个用户用逗号分隔" rows="3"></textarea>
+                    </div>
+                    <div class="input-group">
+                        <label>强制更新</label>
+                        <input type="checkbox" id="forceUpdate">
+                        <span style="margin-left: 10px; color: #666;">勾选后用户必须刷新页面才能继续使用</span>
+                    </div>
+                    <div class="modal-buttons">
+                        <button type="button" class="btn btn-cancel" onclick="closeUpdateModal()">取消</button>
+                        <button type="submit" class="btn btn-confirm">发布更新</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- 聊天室提示模态框 -->
+        <div class="modal" id="chatroomNotificationModal">
+            <div class="modal-content">
+                <h3>发送聊天室提示</h3>
+                <form onsubmit="event.preventDefault(); sendChatroomNotification();">
+                    <div class="input-group">
+                        <label>提示标题</label>
+                        <input type="text" id="notificationTitle" placeholder="输入提示标题，例如：聊天室活动" required style="height: 40px; padding: 8px 12px;">
+                    </div>
+                    <div class="input-group">
+                        <label>提示内容</label>
+                        <textarea id="notificationContent" placeholder="输入提示内容，支持换行" rows="10" required style="height: 200px; padding: 8px 12px; resize: vertical; overflow-y: auto;"></textarea>
+                    </div>
+                    <div class="input-group">
+                        <label>按钮文本</label>
+                        <input type="text" id="notificationButtonText" placeholder="输入按钮文本，例如：立即参与" value="进入聊天室" style="height: 40px; padding: 8px 12px;">
+                    </div>
+                    <div class="input-group">
+                        <label>按钮颜色</label>
+                        <input type="color" id="notificationButtonColor" value="#667eea">
+                        <input type="text" id="notificationButtonColorText" placeholder="例如：#667eea" value="#667eea" style="margin-left: 10px; width: 120px;">
+                    </div>
+                    <div class="input-group">
+                        <label>背景颜色</label>
+                        <input type="color" id="notificationBackgroundColor" value="#ffffff">
+                        <input type="text" id="notificationBackgroundColorText" placeholder="例如：#ffffff" value="#ffffff" style="margin-left: 10px; width: 120px;">
+                        <button type="button" class="btn btn-sm btn-warning" onclick="selectNotificationStyle()" style="margin-left: 10px; padding: 8px 12px; font-size: 12px;">🎨 选择样式</button>
+                    </div>
+                    <div class="input-group">
+                        <label>强制操作</label>
+                        <input type="checkbox" id="notificationForceAction">
+                        <span style="margin-left: 10px; color: #666;">勾选后用户必须点击按钮，无法关闭</span>
+                    </div>
+                    <div class="input-group">
+                        <label>推送目标</label>
+                        <select id="notificationTarget" onchange="notificationTargetChanged()">
+                            <option value="all">全体用户</option>
+                            <option value="probability">概率推送</option>
+                            <option value="specific">特定用户</option>
+                        </select>
+                    </div>
+                    <div class="input-group" id="notificationProbabilityGroup" style="display: none;">
+                        <label>推送概率 (%)</label>
+                        <input type="number" id="notificationProbability" placeholder="输入0-100之间的概率值" min="0" max="100" step="1">
+                    </div>
+                    <div class="input-group" id="notificationSpecificUsersGroup" style="display: none;">
+                        <label>特定用户ID</label>
+                        <textarea id="notificationSpecificUsers" placeholder="输入用户ID，多个用户用逗号分隔" rows="3"></textarea>
+                    </div>
+                    <div class="modal-buttons">
+                        <button type="button" class="btn btn-cancel" onclick="closeChatroomNotificationModal()">取消</button>
+                        <button type="submit" class="btn btn-confirm">发送提示</button>
+                    </div>
+                </form>
             </div>
         </div>
         
@@ -4023,6 +4161,776 @@
                 clearInterval(roomDetailsRefreshInterval);
             }
         });
+        
+        // 更新通知相关功能
+        function openUpdateModal() {
+            const updateModal = document.getElementById('updateModal');
+            updateModal.classList.add('active');
+        }
+        
+        function closeUpdateModal() {
+            const updateModal = document.getElementById('updateModal');
+            updateModal.classList.remove('active');
+            // 重置表单
+            document.getElementById('updateVersion').value = '';
+            document.getElementById('updateContent').value = '';
+            document.getElementById('forceUpdate').checked = false;
+            document.getElementById('updateTarget').value = 'all';
+            document.getElementById('updateProbability').value = '';
+            document.getElementById('specificUsers').value = '';
+        }
+        
+        function loadUpdateHistory() {
+            socket.emit('get-update-history');
+        }
+        
+        function displayUpdateHistory(history) {
+            const historyContainer = document.getElementById('updateHistory');
+            if (history.length === 0) {
+                historyContainer.innerHTML = '<p>暂无更新历史</p>';
+                return;
+            }
+            
+            const historyHTML = history.map(update => `
+                <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h4 style="margin: 0; color: #667eea;">版本 ${update.version}</h4>
+                        <span style="font-size: 12px; color: #999;">${update.timeString}</span>
+                    </div>
+                    <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; margin-bottom: 10px; white-space: pre-wrap; font-size: 14px; color: #666;">
+                        ${update.content}
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <span style="font-size: 12px; padding: 3px 8px; border-radius: 12px; background: ${update.forceUpdate ? '#ff6b6b' : '#4ecdc4'}; color: white;">
+                            ${update.forceUpdate ? '强制更新' : '可选更新'}
+                        </span>
+                        <span style="font-size: 12px; color: #999;">
+                            ${update.target || '全体用户'}
+                        </span>
+                    </div>
+                </div>
+            `).join('');
+            
+            historyContainer.innerHTML = historyHTML;
+        }
+        
+        function publishUpdate() {
+            const version = document.getElementById('updateVersion').value;
+            const content = document.getElementById('updateContent').value;
+            const forceUpdate = document.getElementById('forceUpdate').checked;
+            const target = document.getElementById('updateTarget').value;
+            const probability = document.getElementById('updateProbability').value;
+            const specificUsers = document.getElementById('specificUsers').value;
+            
+            if (!version || !content) {
+                alert('请填写版本号和更新内容');
+                return;
+            }
+            
+            // 验证概率值
+            if (target === 'probability' && (!probability || isNaN(probability) || probability < 0 || probability > 100)) {
+                alert('请输入0-100之间的有效概率值');
+                return;
+            }
+            
+            // 验证特定用户
+            if (target === 'specific' && !specificUsers) {
+                alert('请输入特定用户ID，多个用户用逗号分隔');
+                return;
+            }
+            
+            // 发送更新通知到服务器
+            socket.emit('admin-publish-update', {
+                version: version,
+                content: content,
+                forceUpdate: forceUpdate,
+                target: target,
+                probability: target === 'probability' ? parseFloat(probability) : null,
+                specificUsers: target === 'specific' ? specificUsers.split(',').map(id => id.trim()) : null
+            });
+            
+            alert('更新已发布！');
+            closeUpdateModal();
+            loadUpdateHistory(); // 重新加载更新历史
+        }
+        
+        // 监听更新目标切换
+        function updateTargetChanged() {
+            const target = document.getElementById('updateTarget').value;
+            const probabilityGroup = document.getElementById('probabilityGroup');
+            const specificUsersGroup = document.getElementById('specificUsersGroup');
+            
+            probabilityGroup.style.display = target === 'probability' ? 'block' : 'none';
+            specificUsersGroup.style.display = target === 'specific' ? 'block' : 'none';
+        }
+        
+        // 聊天室提示相关功能
+        function openChatroomNotificationModal() {
+            const modal = document.getElementById('chatroomNotificationModal');
+            modal.classList.add('active');
+        }
+        
+        function closeChatroomNotificationModal() {
+            const modal = document.getElementById('chatroomNotificationModal');
+            modal.classList.remove('active');
+            // 重置表单
+            document.getElementById('notificationTitle').value = '';
+            document.getElementById('notificationContent').value = '';
+            document.getElementById('notificationButtonText').value = '进入聊天室';
+            document.getElementById('notificationButtonColor').value = '#667eea';
+            document.getElementById('notificationButtonColorText').value = '#667eea';
+            document.getElementById('notificationBackgroundColor').value = '#ffffff';
+            document.getElementById('notificationBackgroundColorText').value = '#ffffff';
+            document.getElementById('notificationForceAction').checked = false;
+            document.getElementById('notificationTarget').value = 'all';
+            document.getElementById('notificationProbability').value = '';
+            document.getElementById('notificationSpecificUsers').value = '';
+            notificationTargetChanged();
+        }
+        
+        function notificationTargetChanged() {
+            const target = document.getElementById('notificationTarget').value;
+            const probabilityGroup = document.getElementById('notificationProbabilityGroup');
+            const specificUsersGroup = document.getElementById('notificationSpecificUsersGroup');
+            
+            probabilityGroup.style.display = target === 'probability' ? 'block' : 'none';
+            specificUsersGroup.style.display = target === 'specific' ? 'block' : 'none';
+        }
+        
+        function sendChatroomNotification() {
+            const title = document.getElementById('notificationTitle').value;
+            const content = document.getElementById('notificationContent').value;
+            const buttonText = document.getElementById('notificationButtonText').value;
+            const buttonColor = document.getElementById('notificationButtonColorText').value;
+            const backgroundColor = document.getElementById('notificationBackgroundColorText').value;
+            const forceAction = document.getElementById('notificationForceAction').checked;
+            const target = document.getElementById('notificationTarget').value;
+            const probability = document.getElementById('notificationProbability').value;
+            const specificUsers = document.getElementById('notificationSpecificUsers').value;
+            
+            if (!title || !content) {
+                alert('请填写提示标题和内容');
+                return;
+            }
+            
+            // 验证概率值
+            if (target === 'probability' && (!probability || isNaN(probability) || probability < 0 || probability > 100)) {
+                alert('请输入0-100之间的有效概率值');
+                return;
+            }
+            
+            // 验证特定用户
+            if (target === 'specific' && !specificUsers) {
+                alert('请输入特定用户ID，多个用户用逗号分隔');
+                return;
+            }
+            
+            // 发送通知
+            socket.emit('admin-send-chatroom-notification', {
+                title: title,
+                content: content,
+                buttonText: buttonText,
+                buttonColor: buttonColor,
+                backgroundColor: backgroundColor,
+                forceAction: forceAction,
+                target: target,
+                probability: target === 'probability' ? parseFloat(probability) : null,
+                specificUsers: target === 'specific' ? specificUsers.split(',').map(id => id.trim()) : null
+            });
+            
+            closeChatroomNotificationModal();
+            
+            // 直接显示可交互的提示框
+            const notificationData = {
+                id: 'temp_notification_' + Date.now(),
+                title: title,
+                content: content,
+                buttonText: buttonText,
+                buttonColor: buttonColor,
+                backgroundColor: backgroundColor,
+                forceAction: forceAction,
+                timestamp: new Date().toLocaleTimeString()
+            };
+            
+            showAdminChatroomNotification(notificationData);
+        }
+        
+        // 管理员界面显示可交互聊天室提示
+        function showAdminChatroomNotification(data) {
+            // 生成唯一ID
+            const notificationId = data.id || ('adminNotification_' + Date.now() + '_' + Math.floor(Math.random() * 1000));
+            
+            // 创建悬浮提示元素
+            const notification = document.createElement('div');
+            notification.id = notificationId;
+            notification.className = 'admin-notification';
+            notification.dataset.notificationId = notificationId;
+            notification.style.cssText = `
+                position: fixed;
+                top: 100px;
+                right: 20px;
+                background: ${data.backgroundColor || '#ffffff'};
+                border-radius: 10px;
+                padding: 20px;
+                max-width: 400px;
+                width: 320px;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+                text-align: center;
+                z-index: 10000;
+                cursor: move;
+                transition: all 0.3s ease;
+                border: 2px solid ${data.buttonColor || '#667eea'};
+            `;
+            
+            // 设置初始位置（右侧垂直排列）
+            const existingNotifications = document.querySelectorAll('.admin-notification');
+            const topPosition = 100 + (existingNotifications.length * 280);
+            notification.style.top = `${topPosition}px`;
+            
+            const notificationHTML = `
+                <div class="notification-header" style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                    <h3 class="notification-title" style="margin: 0; font-size: 18px; color: #333; cursor: pointer;">
+                        ${data.title || '聊天室提示'}
+                    </h3>
+                    <div class="notification-controls" style="display: flex; gap: 8px;">
+                        <button class="control-btn edit-btn" style="padding: 4px 8px; background: #ffc107; color: #333; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                            ✏️
+                        </button>
+                        <button class="control-btn delete-btn" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                            🗑️
+                        </button>
+                        <button class="control-btn style-btn" style="padding: 4px 8px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                            🎨
+                        </button>
+                    </div>
+                </div>
+                <div class="notification-content" style="margin-bottom: 20px; text-align: left; padding: 12px; border-radius: 6px; 
+                    background: ${data.backgroundColor === '#ffffff' ? '#f8f9fa' : 'rgba(255, 255, 255, 0.1)'};
+                    white-space: pre-wrap; font-size: 14px; color: #666; cursor: pointer;
+                    max-height: 150px; overflow-y: auto;
+                    scrollbar-width: thin; scrollbar-color: ${data.buttonColor || '#667eea'} rgba(0,0,0,0.1);">
+                    ${data.content}
+                </div>
+                <button class="notification-button" style="padding: 10px 25px; background: ${data.buttonColor || '#667eea'};
+                    color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px;
+                    transition: all 0.2s; font-weight: 500;">${data.buttonText || '进入聊天室'}</button>
+            `;
+            
+            notification.innerHTML = notificationHTML;
+            document.body.appendChild(notification);
+            
+            // 拖拽功能
+            let isDragging = false;
+            let startX, startY, startLeft, startTop;
+            
+            notification.addEventListener('mousedown', (e) => {
+                if (e.target.closest('.control-btn') || e.target.closest('.notification-button')) {
+                    return;
+                }
+                
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                startLeft = parseInt(notification.style.left) || notification.offsetLeft;
+                startTop = parseInt(notification.style.top) || notification.offsetTop;
+                notification.style.zIndex = '10001';
+                notification.style.cursor = 'grabbing';
+                
+                document.addEventListener('mousemove', drag);
+                document.addEventListener('mouseup', stopDrag);
+            });
+            
+            function drag(e) {
+                if (!isDragging) return;
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                notification.style.left = `${startLeft + dx}px`;
+                notification.style.top = `${startTop + dy}px`;
+            }
+            
+            function stopDrag() {
+                isDragging = false;
+                notification.style.cursor = 'move';
+                document.removeEventListener('mousemove', drag);
+                document.removeEventListener('mouseup', stopDrag);
+            }
+            
+            // 编辑通知
+            notification.querySelector('.edit-btn').addEventListener('click', () => {
+                // 填充表单进行编辑
+                document.getElementById('notificationTitle').value = data.title;
+                document.getElementById('notificationContent').value = data.content;
+                document.getElementById('notificationButtonText').value = data.buttonText || '进入聊天室';
+                document.getElementById('notificationButtonColor').value = data.buttonColor || '#667eea';
+                document.getElementById('notificationButtonColorText').value = data.buttonColor || '#667eea';
+                document.getElementById('notificationBackgroundColor').value = data.backgroundColor || '#ffffff';
+                document.getElementById('notificationBackgroundColorText').value = data.backgroundColor || '#ffffff';
+                document.getElementById('notificationForceAction').checked = data.forceAction;
+                
+                // 打开编辑模态框
+                openChatroomNotificationModal();
+                
+                // 删除临时提示
+                notification.remove();
+            });
+            
+            // 删除通知
+            notification.querySelector('.delete-btn').addEventListener('click', () => {
+                if (confirm('确定要删除这个提示吗？')) {
+                    notification.remove();
+                    // 如果是服务器发送的提示，发送删除请求
+                    if (data.id && !data.id.startsWith('temp_')) {
+                        socket.emit('delete-chatroom-notification', { notificationId: data.id });
+                    }
+                }
+            });
+            
+            // 更改样式
+            notification.querySelector('.style-btn').addEventListener('click', () => {
+                const styleOptions = [
+                    { name: '默认样式', bg: '#ffffff', border: '#667eea' },
+                    { name: '蓝色主题', bg: '#e3f2fd', border: '#2196f3' },
+                    { name: '绿色主题', bg: '#e8f5e8', border: '#4caf50' },
+                    { name: '橙色主题', bg: '#fff3e0', border: '#ff9800' },
+                    { name: '紫色主题', bg: '#f3e5f5', border: '#9c27b0' }
+                ];
+                
+                const style = prompt('请选择样式：\n1. 默认样式\n2. 蓝色主题\n3. 绿色主题\n4. 橙色主题\n5. 紫色主题\n\n请输入数字(1-5)：');
+                if (!style || isNaN(style) || style < 1 || style > 5) {
+                    return;
+                }
+                
+                const selectedStyle = styleOptions[parseInt(style) - 1];
+                
+                // 应用样式
+                notification.style.background = selectedStyle.bg;
+                notification.style.borderColor = selectedStyle.border;
+                notification.querySelector('.notification-content').style.background = selectedStyle.bg === '#ffffff' ? '#f8f9fa' : `rgba(255, 255, 255, 0.1)`;
+                const button = notification.querySelector('.notification-button');
+                button.style.background = selectedStyle.border;
+            });
+            
+            // 长按删除
+            let longPressTimer;
+            notification.addEventListener('mousedown', (e) => {
+                if (e.target.closest('.control-btn') || e.target.closest('.notification-button')) {
+                    return;
+                }
+                
+                longPressTimer = setTimeout(() => {
+                    if (confirm('确定要删除这个提示吗？')) {
+                        notification.remove();
+                        // 如果是服务器发送的提示，发送删除请求
+                        if (data.id && !data.id.startsWith('temp_')) {
+                            socket.emit('delete-chatroom-notification', { notificationId: data.id });
+                        }
+                    }
+                }, 800);
+            });
+            
+            notification.addEventListener('mouseup', () => {
+                clearTimeout(longPressTimer);
+            });
+            
+            notification.addEventListener('mouseleave', () => {
+                clearTimeout(longPressTimer);
+            });
+            
+            // 右键菜单
+            notification.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                
+                const contextMenu = document.createElement('div');
+                contextMenu.style.cssText = `
+                    position: fixed;
+                    background: white;
+                    border: 1px solid #ddd;
+                    border-radius: 8px;
+                    padding: 8px 0;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    z-index: 10002;
+                    left: ${e.clientX}px;
+                    top: ${e.clientY}px;
+                `;
+                
+                const menuItems = [
+                    { text: '编辑', icon: '✏️', action: () => {
+                        // 填充表单进行编辑
+                        document.getElementById('notificationTitle').value = data.title;
+                        document.getElementById('notificationContent').value = data.content;
+                        document.getElementById('notificationButtonText').value = data.buttonText || '进入聊天室';
+                        document.getElementById('notificationButtonColor').value = data.buttonColor || '#667eea';
+                        document.getElementById('notificationButtonColorText').value = data.buttonColor || '#667eea';
+                        document.getElementById('notificationBackgroundColor').value = data.backgroundColor || '#ffffff';
+                        document.getElementById('notificationBackgroundColorText').value = data.backgroundColor || '#ffffff';
+                        document.getElementById('notificationForceAction').checked = data.forceAction;
+                        
+                        // 打开编辑模态框
+                        openChatroomNotificationModal();
+                        
+                        // 删除临时提示
+                        notification.remove();
+                        contextMenu.remove();
+                    }},
+                    { text: '删除', icon: '🗑️', action: () => {
+                        if (confirm('确定要删除这个提示吗？')) {
+                            notification.remove();
+                            // 如果是服务器发送的提示，发送删除请求
+                            if (data.id && !data.id.startsWith('temp_')) {
+                                socket.emit('delete-chatroom-notification', { notificationId: data.id });
+                            }
+                        }
+                        contextMenu.remove();
+                    }},
+                    { text: '更改样式', icon: '🎨', action: () => {
+                        const styleOptions = [
+                            { name: '默认样式', bg: '#ffffff', border: '#667eea' },
+                            { name: '蓝色主题', bg: '#e3f2fd', border: '#2196f3' },
+                            { name: '绿色主题', bg: '#e8f5e8', border: '#4caf50' },
+                            { name: '橙色主题', bg: '#fff3e0', border: '#ff9800' },
+                            { name: '紫色主题', bg: '#f3e5f5', border: '#9c27b0' }
+                        ];
+                        
+                        const style = prompt('请选择样式：\n1. 默认样式\n2. 蓝色主题\n3. 绿色主题\n4. 橙色主题\n5. 紫色主题\n\n请输入数字(1-5)：');
+                        if (!style || isNaN(style) || style < 1 || style > 5) {
+                            contextMenu.remove();
+                            return;
+                        }
+                        
+                        const selectedStyle = styleOptions[parseInt(style) - 1];
+                        
+                        // 应用样式
+                        notification.style.background = selectedStyle.bg;
+                        notification.style.borderColor = selectedStyle.border;
+                        notification.querySelector('.notification-content').style.background = selectedStyle.bg === '#ffffff' ? '#f8f9fa' : `rgba(255, 255, 255, 0.1)`;
+                        const button = notification.querySelector('.notification-button');
+                        button.style.background = selectedStyle.border;
+                        
+                        contextMenu.remove();
+                    }}
+                ];
+                
+                menuItems.forEach(item => {
+                    const menuItem = document.createElement('div');
+                    menuItem.style.cssText = `
+                        padding: 10px 15px;
+                        cursor: pointer;
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                        transition: background-color 0.2s;
+                    `;
+                    
+                    menuItem.innerHTML = `
+                        <span>${item.icon}</span>
+                        <span>${item.text}</span>
+                    `;
+                    
+                    menuItem.addEventListener('mouseenter', () => {
+                        menuItem.style.backgroundColor = '#f5f5f5';
+                    });
+                    
+                    menuItem.addEventListener('mouseleave', () => {
+                        menuItem.style.backgroundColor = 'transparent';
+                    });
+                    
+                    menuItem.addEventListener('click', item.action);
+                    
+                    contextMenu.appendChild(menuItem);
+                });
+                
+                document.body.appendChild(contextMenu);
+                
+                // 点击外部关闭
+                setTimeout(() => {
+                    document.addEventListener('click', function outsideClickHandler(e) {
+                        if (!contextMenu.contains(e.target)) {
+                            contextMenu.remove();
+                            document.removeEventListener('click', outsideClickHandler);
+                        }
+                    });
+                }, 100);
+            });
+        }
+        
+        // 活跃提示管理相关功能
+        let editingNotificationId = null;
+        
+        // 刷新活跃提示列表
+        function refreshActiveNotifications() {
+            socket.emit('get-active-notifications');
+        }
+        
+        // 显示活跃提示列表
+        function displayActiveNotifications(notifications) {
+            const container = document.getElementById('activeNotificationsList');
+            if (notifications.length === 0) {
+                container.innerHTML = '<div class="empty-state"><p>暂无活跃提示</p></div>';
+                return;
+            }
+            
+            const notificationsHTML = notifications.map(notification => `
+                <div class="notification-item" style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid ${notification.buttonColor || '#667eea'};">
+                    <div class="notification-header" style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div>
+                            <h4 style="margin: 0; font-size: 16px; color: #333;">${notification.title}</h4>
+                            <span style="font-size: 12px; color: #999;">${notification.timeString}</span>
+                        </div>
+                        <div class="notification-actions" style="display: flex; gap: 8px;">
+                            <button class="btn btn-sm btn-info" onclick="editActiveNotification('${notification.id}')" style="padding: 5px 10px; font-size: 12px;">✏️ 编辑</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteActiveNotification('${notification.id}')" style="padding: 5px 10px; font-size: 12px;">🗑️ 删除</button>
+                            <button class="btn btn-sm btn-warning" onclick="changeNotificationStyle('${notification.id}')" style="padding: 5px 10px; font-size: 12px;">🎨 样式</button>
+                        </div>
+                    </div>
+                    <div class="notification-content" style="margin-bottom: 12px; background: #f8f9fa; padding: 12px; border-radius: 6px; white-space: pre-wrap; font-size: 13px; color: #666;">
+                        ${notification.content}
+                    </div>
+                    <div class="notification-meta" style="display: flex; gap: 15px; font-size: 12px; color: #999;">
+                        <div><strong>目标：</strong>${notification.target === 'all' ? '全体用户' : notification.target === 'probability' ? `概率推送(${notification.probability}%)` : `特定用户(${notification.specificUsers?.length || 0}个)`}</div>
+                        <div><strong>按钮：</strong>${notification.buttonText || '进入聊天室'}</div>
+                        <div><strong>强制：</strong>${notification.forceAction ? '是' : '否'}</div>
+                    </div>
+                </div>
+            `).join('');
+            
+            container.innerHTML = notificationsHTML;
+        }
+        
+        // 编辑活跃提示
+        function editActiveNotification(notificationId) {
+            // 查找要编辑的提示
+            socket.emit('get-active-notifications', (notifications) => {
+                const notification = notifications.find(n => n.id === notificationId);
+                if (!notification) return;
+                
+                // 打开编辑模态框
+                const modal = document.getElementById('editNotificationModal');
+                if (!modal) {
+                    createEditNotificationModal();
+                }
+                
+                // 填充表单
+                document.getElementById('editNotificationId').value = notification.id;
+                document.getElementById('editNotificationTitle').value = notification.title;
+                document.getElementById('editNotificationContent').value = notification.content;
+                document.getElementById('editNotificationButtonText').value = notification.buttonText || '进入聊天室';
+                document.getElementById('editNotificationButtonColor').value = notification.buttonColor || '#667eea';
+                document.getElementById('editNotificationButtonColorText').value = notification.buttonColor || '#667eea';
+                document.getElementById('editNotificationBackgroundColor').value = notification.backgroundColor || '#ffffff';
+                document.getElementById('editNotificationBackgroundColorText').value = notification.backgroundColor || '#ffffff';
+                document.getElementById('editNotificationForceAction').checked = notification.forceAction;
+                
+                // 显示模态框
+                document.getElementById('editNotificationModal').classList.add('active');
+            });
+        }
+        
+        // 创建编辑模态框
+        function createEditNotificationModal() {
+            const modalHTML = `
+                <div class="modal" id="editNotificationModal">
+                    <div class="modal-content">
+                        <h3>编辑聊天室提示</h3>
+                        <form onsubmit="event.preventDefault(); saveEditedNotification();">
+                            <input type="hidden" id="editNotificationId">
+                            <div class="input-group">
+                                <label>提示标题</label>
+                                <input type="text" id="editNotificationTitle" required>
+                            </div>
+                            <div class="input-group">
+                                <label>提示内容</label>
+                                <textarea id="editNotificationContent" rows="5" required></textarea>
+                            </div>
+                            <div class="input-group">
+                                <label>按钮文本</label>
+                                <input type="text" id="editNotificationButtonText" value="进入聊天室">
+                            </div>
+                            <div class="input-group">
+                                <label>按钮颜色</label>
+                                <input type="color" id="editNotificationButtonColor" value="#667eea">
+                                <input type="text" id="editNotificationButtonColorText" placeholder="例如：#667eea" value="#667eea" style="margin-left: 10px; width: 120px;">
+                            </div>
+                            <div class="input-group">
+                                <label>背景颜色</label>
+                                <input type="color" id="editNotificationBackgroundColor" value="#ffffff">
+                                <input type="text" id="editNotificationBackgroundColorText" placeholder="例如：#ffffff" value="#ffffff" style="margin-left: 10px; width: 120px;">
+                            </div>
+                            <div class="input-group">
+                                <label>强制操作</label>
+                                <input type="checkbox" id="editNotificationForceAction">
+                                <span style="margin-left: 10px; color: #666;">勾选后用户必须点击按钮，无法关闭</span>
+                            </div>
+                            <div class="modal-buttons">
+                                <button type="button" class="btn btn-cancel" onclick="closeEditNotificationModal()">取消</button>
+                                <button type="submit" class="btn btn-confirm">保存修改</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+            
+            document.body.insertAdjacentHTML('beforeend', modalHTML);
+            
+            // 添加颜色同步
+            const buttonColorPicker = document.getElementById('editNotificationButtonColor');
+            const buttonColorText = document.getElementById('editNotificationButtonColorText');
+            const bgColorPicker = document.getElementById('editNotificationBackgroundColor');
+            const bgColorText = document.getElementById('editNotificationBackgroundColorText');
+            
+            buttonColorPicker.addEventListener('input', (e) => {
+                buttonColorText.value = e.target.value;
+            });
+            buttonColorText.addEventListener('input', (e) => {
+                if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) {
+                    buttonColorPicker.value = e.target.value;
+                }
+            });
+            
+            bgColorPicker.addEventListener('input', (e) => {
+                bgColorText.value = e.target.value;
+            });
+            bgColorText.addEventListener('input', (e) => {
+                if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) {
+                    bgColorPicker.value = e.target.value;
+                }
+            });
+        }
+        
+        // 保存编辑
+        function saveEditedNotification() {
+            const notificationId = document.getElementById('editNotificationId').value;
+            const title = document.getElementById('editNotificationTitle').value;
+            const content = document.getElementById('editNotificationContent').value;
+            const buttonText = document.getElementById('editNotificationButtonText').value;
+            const buttonColor = document.getElementById('editNotificationButtonColorText').value;
+            const backgroundColor = document.getElementById('editNotificationBackgroundColorText').value;
+            const forceAction = document.getElementById('editNotificationForceAction').checked;
+            
+            socket.emit('update-chatroom-notification', {
+                notificationId,
+                title,
+                content,
+                buttonText,
+                buttonColor,
+                backgroundColor,
+                forceAction
+            });
+            
+            closeEditNotificationModal();
+            alert('提示已更新！');
+        }
+        
+        // 关闭编辑模态框
+        function closeEditNotificationModal() {
+            const modal = document.getElementById('editNotificationModal');
+            if (modal) {
+                modal.classList.remove('active');
+            }
+        }
+        
+        // 删除活跃提示
+        function deleteActiveNotification(notificationId) {
+            if (confirm('确定要删除这个提示吗？')) {
+                socket.emit('delete-chatroom-notification', { notificationId });
+                alert('提示已删除！');
+            }
+        }
+        
+        // 更改提示样式
+        function changeNotificationStyle(notificationId) {
+            const styleOptions = [
+                { name: '默认样式', bg: '#ffffff', border: '#667eea' },
+                { name: '蓝色主题', bg: '#e3f2fd', border: '#2196f3' },
+                { name: '绿色主题', bg: '#e8f5e8', border: '#4caf50' },
+                { name: '橙色主题', bg: '#fff3e0', border: '#ff9800' },
+                { name: '紫色主题', bg: '#f3e5f5', border: '#9c27b0' }
+            ];
+            
+            const style = prompt('请选择样式：\n1. 默认样式\n2. 蓝色主题\n3. 绿色主题\n4. 橙色主题\n5. 紫色主题\n\n请输入数字(1-5)：');
+            if (!style || isNaN(style) || style < 1 || style > 5) {
+                return;
+            }
+            
+            const selectedStyle = styleOptions[parseInt(style) - 1];
+            
+            // 更新提示样式
+            socket.emit('update-chatroom-notification', {
+                notificationId,
+                backgroundColor: selectedStyle.bg,
+                buttonColor: selectedStyle.border
+            });
+            
+            alert(`样式已更新为：${selectedStyle.name}`);
+        }
+        
+        // 选择提示样式
+        function selectNotificationStyle() {
+            const styleOptions = [
+                { name: '默认样式', bg: '#ffffff', border: '#667eea' },
+                { name: '蓝色主题', bg: '#e3f2fd', border: '#2196f3' },
+                { name: '绿色主题', bg: '#e8f5e8', border: '#4caf50' },
+                { name: '橙色主题', bg: '#fff3e0', border: '#ff9800' },
+                { name: '紫色主题', bg: '#f3e5f5', border: '#9c27b0' }
+            ];
+            
+            const style = prompt('请选择样式：\n1. 默认样式\n2. 蓝色主题\n3. 绿色主题\n4. 橙色主题\n5. 紫色主题\n\n请输入数字(1-5)：');
+            if (!style || isNaN(style) || style < 1 || style > 5) {
+                return;
+            }
+            
+            const selectedStyle = styleOptions[parseInt(style) - 1];
+            
+            // 应用样式到表单
+            document.getElementById('notificationButtonColor').value = selectedStyle.border;
+            document.getElementById('notificationButtonColorText').value = selectedStyle.border;
+            document.getElementById('notificationBackgroundColor').value = selectedStyle.bg;
+            document.getElementById('notificationBackgroundColorText').value = selectedStyle.bg;
+            
+            alert(`样式已设置为：${selectedStyle.name}`);
+        }
+        
+        // 颜色输入框同步
+        document.addEventListener('DOMContentLoaded', () => {
+            const buttonColorPicker = document.getElementById('notificationButtonColor');
+            const buttonColorText = document.getElementById('notificationButtonColorText');
+            const bgColorPicker = document.getElementById('notificationBackgroundColor');
+            const bgColorText = document.getElementById('notificationBackgroundColorText');
+            
+            if (buttonColorPicker && buttonColorText) {
+                buttonColorPicker.addEventListener('input', (e) => {
+                    buttonColorText.value = e.target.value;
+                });
+                buttonColorText.addEventListener('input', (e) => {
+                    if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) {
+                        buttonColorPicker.value = e.target.value;
+                    }
+                });
+            }
+            
+            if (bgColorPicker && bgColorText) {
+                bgColorPicker.addEventListener('input', (e) => {
+                    bgColorText.value = e.target.value;
+                });
+                bgColorText.addEventListener('input', (e) => {
+                    if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) {
+                        bgColorPicker.value = e.target.value;
+                    }
+                });
+            }
+            
+            // 加载活跃提示
+            refreshActiveNotifications();
+        });
+        
+        // 监听活跃提示更新
+        socket.on('active-notifications', displayActiveNotifications);
+        socket.on('active-notifications-update', displayActiveNotifications);
+        
+        // 加载更新历史
+        loadUpdateHistory();
+        
+        // 监听更新历史数据
+        socket.on('update-history', displayUpdateHistory);
     </script>
 </body>
 </html>
