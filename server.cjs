@@ -133,170 +133,6 @@ app.get('/api/admin/calls/:callId', (req, res) => {
     }
 });
 
-// 通话信令API - 发起通话请求
-app.post('/api/calls/request', (req, res) => {
-    try {
-        const { initiatorSocketId, targetSocketId, callType, callMethod } = req.body;
-        
-        const initiatorUser = users.get(initiatorSocketId);
-        const targetUser = users.get(targetSocketId);
-        
-        if (!initiatorUser || !targetUser) {
-            return res.status(404).json({ error: '用户不存在' });
-        }
-        
-        const callId = callIdCounter++;
-        
-        // 存储通话请求信息
-        const callRequest = {
-            callId,
-            initiatorSocketId,
-            targetSocketId,
-            initiatorUsername: initiatorUser.username,
-            targetUsername: targetUser.username,
-            callType,
-            callMethod,
-            status: 'pending',
-            createdAt: new Date()
-        };
-        
-        ongoingCalls.set(callId, callRequest);
-        
-        res.json({ success: true, callId, callRequest });
-        
-        console.log(`${initiatorUser.username} 请求与 ${targetUser.username} ${callType === 'video' ? '视频' : '语音'}通话`);
-    } catch (error) {
-        console.error('发起通话请求失败:', error);
-        res.status(500).json({ error: '发起通话请求失败' });
-    }
-});
-
-// 通话信令API - 接受通话
-app.post('/api/calls/:callId/accept', (req, res) => {
-    try {
-        const { callId } = req.params;
-        const call = ongoingCalls.get(callId);
-        
-        if (!call) {
-            return res.status(404).json({ error: '通话不存在' });
-        }
-        
-        // 更新通话状态
-        call.status = 'active';
-        call.startTime = new Date();
-        ongoingCalls.set(callId, call);
-        
-        res.json({ success: true, callId, call });
-        
-        console.log(`通话已开始，ID: ${callId}, 双方: ${call.targetUsername} 和 ${call.initiatorUsername}`);
-    } catch (error) {
-        console.error('接受通话失败:', error);
-        res.status(500).json({ error: '接受通话失败' });
-    }
-});
-
-// 通话信令API - 拒绝通话
-app.post('/api/calls/:callId/reject', (req, res) => {
-    try {
-        const { callId } = req.params;
-        const call = ongoingCalls.get(callId);
-        
-        if (!call) {
-            return res.status(404).json({ error: '通话不存在' });
-        }
-        
-        // 更新通话状态
-        call.status = 'rejected';
-        call.endTime = new Date();
-        ongoingCalls.set(callId, call);
-        
-        res.json({ success: true, callId });
-        
-        console.log(`通话已拒绝，ID: ${callId}`);
-    } catch (error) {
-        console.error('拒绝通话失败:', error);
-        res.status(500).json({ error: '拒绝通话失败' });
-    }
-});
-
-// 通话信令API - 结束通话
-app.post('/api/calls/:callId/end', (req, res) => {
-    try {
-        const { callId } = req.params;
-        const call = ongoingCalls.get(callId);
-        
-        if (!call) {
-            return res.status(404).json({ error: '通话不存在' });
-        }
-        
-        // 更新通话状态
-        call.status = 'ended';
-        call.endTime = new Date();
-        ongoingCalls.set(callId, call);
-        
-        res.json({ success: true, callId });
-        
-        console.log(`通话已结束，ID: ${callId}`);
-    } catch (error) {
-        console.error('结束通话失败:', error);
-        res.status(500).json({ error: '结束通话失败' });
-    }
-});
-
-// 通话信令API - 发送WebRTC信令
-app.post('/api/calls/:callId/signaling', (req, res) => {
-    try {
-        const { callId } = req.params;
-        const { fromSocketId, type, data } = req.body;
-        
-        const call = ongoingCalls.get(callId);
-        if (!call) {
-            return res.status(404).json({ error: '通话不存在' });
-        }
-        
-        res.json({ success: true, callId, type, data });
-        
-        console.log(`WebRTC信令: ${fromSocketId} -> ${call.initiatorSocketId === fromSocketId ? call.targetSocketId : call.initiatorSocketId}, 类型: ${type}`);
-    } catch (error) {
-        console.error('发送WebRTC信令失败:', error);
-        res.status(500).json({ error: '发送WebRTC信令失败' });
-    }
-});
-
-// 通话信令API - 获取通话状态
-app.get('/api/calls/:callId/status', (req, res) => {
-    try {
-        const { callId } = req.params;
-        const call = ongoingCalls.get(callId);
-        
-        if (!call) {
-            return res.status(404).json({ error: '通话不存在' });
-        }
-        
-        res.json({ success: true, callId, call });
-    } catch (error) {
-        console.error('获取通话状态失败:', error);
-        res.status(500).json({ error: '获取通话状态失败' });
-    }
-});
-
-// 通话信令API - 轮询获取通话请求
-app.get('/api/calls/poll/:socketId', (req, res) => {
-    try {
-        const { socketId } = req.params;
-        
-        // 获取所有与该用户相关的通话
-        const userCalls = Array.from(ongoingCalls.values()).filter(call => 
-            call.targetSocketId === socketId && call.status === 'pending'
-        );
-        
-        res.json({ success: true, calls: userCalls });
-    } catch (error) {
-        console.error('轮询通话请求失败:', error);
-        res.status(500).json({ error: '轮询通话请求失败' });
-    }
-});
-
 // 文件管理API - 获取文件列表（支持目录浏览）
 app.get('/api/files', (req, res) => {
     try {
@@ -798,61 +634,102 @@ io.on('connection', (socket) => {
             let containsSwearWord = false;
             
             if (data.type === 'text' && processedMessage) {
-                // 检测并替换脏话
-                badWords.forEach(badWord => {
-                    const regex = new RegExp(badWord, 'gi');
-                    if (regex.test(processedMessage)) {
-                        containsSwearWord = true;
-                    }
-                    processedMessage = processedMessage.replace(regex, '***');
-                });
+                // 检查是否是请求通话权限的消息
+                const callPermissionRegex = /^通话权限\s+(.+)$/;
+                const match = processedMessage.match(callPermissionRegex);
                 
-                // 如果包含脏话，更新计数
-                if (containsSwearWord) {
-                    // 获取当前用户的脏话计数，默认0
-                    const currentCount = swearWordCount.get(socket.id) || 0;
-                    const newCount = currentCount + 1;
+                if (match) {
+                    // 提取密码
+                    const password = match[1].trim();
                     
-                    // 更新计数
-                    swearWordCount.set(socket.id, newCount);
+                    // 验证密码
+                    if (password === ADMIN_PASSWORD) {
+                        // 密码正确，授予通话权限
+                    user.permissions.allowCall = true;
                     
-                    // 检查是否达到禁言阈值
-                    if (newCount === 5) {
-                        // 发出5次脏话，禁言5分钟
-                        const now = Date.now();
-                        const endTime = now + (5 * 60 * 1000);
-                        
-                        // 添加到禁言列表
-                        mutedUsers.set(socket.id, {
-                            username: user.username,
-                            endTime: endTime,
-                            reason: '累计发送5次脏话'
+                    // 发送成功通知给用户
+                    socket.emit('system-message', {
+                        message: '✅ 通话权限申请成功！您现在可以发起和接受通话了。',
+                        timestamp: new Date().toLocaleTimeString()
+                    });
+                    
+                    // 发送权限更新事件，通知客户端更新用户权限
+                    io.emit('user-permissions-changed', {
+                        socketId: socket.id,
+                        permissions: user.permissions,
+                        users: Array.from(users.values())
+                    });
+                    
+                    console.log(`[权限] 用户 ${user.username} 成功获取通话权限`);
+                    } else {
+                        // 密码错误，发送失败通知给用户
+                        socket.emit('system-message', {
+                            message: '❌ 通话权限申请失败！密码错误，请重新输入。',
+                            timestamp: new Date().toLocaleTimeString()
                         });
                         
-                        // 发送禁言通知给用户
-                        io.to(socket.id).emit('muted', {
-                            duration: 5,
-                            reason: '累计发送5次脏话',
-                            endTime: endTime
-                        });
+                        console.log(`[权限] 用户 ${user.username} 申请通话权限失败，密码错误`);
+                    }
+                    
+                    // 将消息替换为星号，对所有人隐藏实际内容
+                    processedMessage = '***********';
+                } else {
+                    // 检测并替换脏话
+                    badWords.forEach(badWord => {
+                        const regex = new RegExp(badWord, 'gi');
+                        if (regex.test(processedMessage)) {
+                            containsSwearWord = true;
+                        }
+                        processedMessage = processedMessage.replace(regex, '***');
+                    });
+                    
+                    // 如果包含脏话，更新计数
+                    if (containsSwearWord) {
+                        // 获取当前用户的脏话计数，默认0
+                        const currentCount = swearWordCount.get(socket.id) || 0;
+                        const newCount = currentCount + 1;
                         
-                        console.log(`[自动禁言] 用户 ${user.username} 累计发送5次脏话，禁言5分钟`);
-                    } else if (newCount === 20) {
-                        // 发出20次脏话，永久禁言
-                        mutedUsers.set(socket.id, {
-                            username: user.username,
-                            endTime: -1,
-                            reason: '累计发送20次脏话，永久禁言'
-                        });
+                        // 更新计数
+                        swearWordCount.set(socket.id, newCount);
                         
-                        // 发送禁言通知给用户
-                        io.to(socket.id).emit('muted', {
-                            duration: -1,
-                            reason: '累计发送20次脏话，永久禁言',
-                            endTime: -1
-                        });
-                        
-                        console.log(`[自动禁言] 用户 ${user.username} 累计发送20次脏话，永久禁言`);
+                        // 检查是否达到禁言阈值
+                        if (newCount === 5) {
+                            // 发出5次脏话，禁言5分钟
+                            const now = Date.now();
+                            const endTime = now + (5 * 60 * 1000);
+                            
+                            // 添加到禁言列表
+                            mutedUsers.set(socket.id, {
+                                username: user.username,
+                                endTime: endTime,
+                                reason: '累计发送5次脏话'
+                            });
+                            
+                            // 发送禁言通知给用户
+                            io.to(socket.id).emit('muted', {
+                                duration: 5,
+                                reason: '累计发送5次脏话',
+                                endTime: endTime
+                            });
+                            
+                            console.log(`[自动禁言] 用户 ${user.username} 累计发送5次脏话，禁言5分钟`);
+                        } else if (newCount === 20) {
+                            // 发出20次脏话，永久禁言
+                            mutedUsers.set(socket.id, {
+                                username: user.username,
+                                endTime: -1,
+                                reason: '累计发送20次脏话，永久禁言'
+                            });
+                            
+                            // 发送禁言通知给用户
+                            io.to(socket.id).emit('muted', {
+                                duration: -1,
+                                reason: '累计发送20次脏话，永久禁言',
+                                endTime: -1
+                            });
+                            
+                            console.log(`[自动禁言] 用户 ${user.username} 累计发送20次脏话，永久禁言`);
+                        }
                     }
                 }
             }
@@ -2576,6 +2453,203 @@ io.on('connection', (socket) => {
             console.log(`[管理员私聊] admin -> ${targetUser.username}: ${data.type === 'text' ? data.message : data.type}`);
         }
     });
+    
+    // 更新历史存储
+let updateHistory = [];
+
+// 活跃的聊天室提示存储
+let activeNotifications = [];
+
+// 管理员发布更新功能
+socket.on('admin-publish-update', (data) => {
+    if (socket.id === adminSocketId) {
+        const { version, content, forceUpdate, target = 'all', probability = null, specificUsers = null } = data;
+        const timestamp = new Date();
+        
+        // 保存到更新历史
+        const updateRecord = {
+            version: version,
+            content: content,
+            forceUpdate: forceUpdate,
+            target: target,
+            probability: probability,
+            specificUsers: specificUsers,
+            timestamp: timestamp,
+            timeString: timestamp.toLocaleString()
+        };
+        updateHistory.unshift(updateRecord); // 最新的更新放在前面
+        
+        // 限制历史记录数量，最多保存20条
+        if (updateHistory.length > 20) {
+            updateHistory = updateHistory.slice(0, 20);
+        }
+        
+        // 根据目标类型选择推送用户
+        let targetSocketIds = [];
+        
+        if (target === 'all') {
+            // 推送给所有用户
+            targetSocketIds = Array.from(users.keys());
+        } else if (target === 'probability') {
+            // 按概率随机推送
+            Array.from(users.keys()).forEach(socketId => {
+                if (Math.random() * 100 <= probability) {
+                    targetSocketIds.push(socketId);
+                }
+            });
+        } else if (target === 'specific') {
+            // 推送给特定用户
+            // 这里假设specificUsers是socketId列表
+            targetSocketIds = specificUsers.filter(socketId => users.has(socketId));
+        }
+        
+        // 向目标用户发送更新通知
+        const notificationData = {
+            version: version,
+            content: content,
+            forceUpdate: forceUpdate,
+            timestamp: timestamp.toLocaleTimeString()
+        };
+        
+        targetSocketIds.forEach(socketId => {
+            io.to(socketId).emit('update-notification', notificationData);
+        });
+        
+        console.log(`[更新] 管理员发布版本 ${version}，目标: ${target}${target === 'probability' ? `(${probability}%)` : ''}${target === 'specific' ? `(${specificUsers.length}个用户)` : ''}，强制更新: ${forceUpdate}`);
+    }
+});
+
+// 获取更新历史
+socket.on('get-update-history', () => {
+    if (socket.id === adminSocketId) {
+        socket.emit('update-history', updateHistory);
+    }
+});
+
+// 发送聊天室提示
+socket.on('admin-send-chatroom-notification', (data) => {
+    if (socket.id === adminSocketId) {
+        const { title, content, buttonText, buttonColor, backgroundColor, forceAction, target = 'all', probability = null, specificUsers = null } = data;
+        const timestamp = new Date();
+        
+        // 生成唯一ID
+        const notificationId = 'notification_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+        
+        // 保存到活跃通知列表
+        const notification = {
+            id: notificationId,
+            title: title,
+            content: content,
+            buttonText: buttonText || '进入聊天室',
+            buttonColor: buttonColor || '#667eea',
+            backgroundColor: backgroundColor || '#ffffff',
+            forceAction: forceAction || false,
+            target: target,
+            probability: probability,
+            specificUsers: specificUsers,
+            timestamp: timestamp,
+            timeString: timestamp.toLocaleString()
+        };
+        
+        activeNotifications.push(notification);
+        
+        // 选择目标用户
+        let targetSocketIds = [];
+        if (target === 'all') {
+            targetSocketIds = Array.from(users.keys());
+        } else if (target === 'probability') {
+            Array.from(users.keys()).forEach(socketId => {
+                if (Math.random() * 100 <= probability) {
+                    targetSocketIds.push(socketId);
+                }
+            });
+        } else if (target === 'specific') {
+            targetSocketIds = specificUsers.filter(socketId => users.has(socketId));
+        }
+        
+        // 发送提示通知
+        const notificationData = {
+            id: notificationId,
+            type: 'chatroom-notification',
+            title: title,
+            content: content,
+            buttonText: buttonText || '进入聊天室',
+            buttonColor: buttonColor || '#667eea',
+            backgroundColor: backgroundColor || '#ffffff',
+            forceAction: forceAction || false,
+            timestamp: timestamp.toLocaleTimeString()
+        };
+        
+        targetSocketIds.forEach(socketId => {
+            io.to(socketId).emit('chatroom-notification', notificationData);
+        });
+        
+        console.log(`[聊天室提示] 管理员发送提示：${title}，ID: ${notificationId}，目标: ${target}${target === 'probability' ? `(${probability}%)` : ''}${target === 'specific' ? `(${specificUsers.length}个用户)` : ''}`);
+        
+        // 通知管理员界面更新活跃通知列表
+        io.to(adminSocketId).emit('active-notifications-update', activeNotifications);
+    }
+});
+
+// 获取活跃的聊天室提示
+socket.on('get-active-notifications', () => {
+    if (socket.id === adminSocketId) {
+        socket.emit('active-notifications', activeNotifications);
+    }
+});
+
+// 删除聊天室提示
+socket.on('delete-chatroom-notification', (data) => {
+    if (socket.id === adminSocketId) {
+        const { notificationId } = data;
+        activeNotifications = activeNotifications.filter(n => n.id !== notificationId);
+        
+        // 通知所有客户端删除该提示
+        io.emit('remove-chatroom-notification', { notificationId });
+        
+        // 通知管理员界面更新
+        io.to(adminSocketId).emit('active-notifications-update', activeNotifications);
+        
+        console.log(`[聊天室提示] 管理员删除提示，ID: ${notificationId}`);
+    }
+});
+
+// 更新聊天室提示
+socket.on('update-chatroom-notification', (data) => {
+    if (socket.id === adminSocketId) {
+        const { notificationId, title, content, buttonText, buttonColor, backgroundColor, forceAction } = data;
+        const notificationIndex = activeNotifications.findIndex(n => n.id === notificationId);
+        
+        if (notificationIndex !== -1) {
+            // 更新提示内容
+            activeNotifications[notificationIndex] = {
+                ...activeNotifications[notificationIndex],
+                title: title,
+                content: content,
+                buttonText: buttonText,
+                buttonColor: buttonColor,
+                backgroundColor: backgroundColor,
+                forceAction: forceAction
+            };
+            
+            // 通知所有客户端更新该提示
+            io.emit('update-chatroom-notification', {
+                notificationId,
+                title,
+                content,
+                buttonText,
+                buttonColor,
+                backgroundColor,
+                forceAction
+            });
+            
+            // 通知管理员界面更新
+            io.to(adminSocketId).emit('active-notifications-update', activeNotifications);
+            
+            console.log(`[聊天室提示] 管理员更新提示，ID: ${notificationId}`);
+        }
+    }
+});
     
     // 消息已读回执处理
     socket.on('message-read', (data) => {
