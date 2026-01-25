@@ -1290,11 +1290,45 @@
                 <div class="video-label">对方</div>
             </div>
         </div>
+        
+        <!-- 字幕显示区域 -->
+        <div id="subtitlesContainer" class="subtitles-container" style="
+            position: absolute;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-size: 16px;
+            max-width: 80%;
+            text-align: center;
+            z-index: 999;
+            min-height: 40px;
+            max-height: 120px;
+            overflow-y: auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(5px);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+            display: none;
+        ">
+            <div id="subtitlesText" class="subtitles-text" style="
+                line-height: 1.5;
+                font-family: Arial, sans-serif;
+                white-space: pre-line;
+                text-align: center;
+            "></div>
+        </div>
+        
         <div class="video-controls">
                 <button class="video-control-btn" id="toggleVideoBtn">📹</button>
                 <button class="video-control-btn" id="toggleAudioBtn">🎤</button>
                 <button class="video-control-btn" id="switchCameraBtn">🔄</button>
                 <button class="video-control-btn" id="toggleScreenShareBtn">🖥️</button>
+                <button class="video-control-btn" id="toggleSubtitlesBtn" title="开启/关闭字幕">📝</button>
                 <button class="video-control-btn" id="callSettingsBtn">⚙️</button>
                 <button class="video-control-btn end" id="endCallBtn">📞</button>
             </div>
@@ -1482,6 +1516,13 @@
                             <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">启用后，在共享屏幕时说话会自动降低背景音量，确保对方能清晰听到你的声音。</p>
                         </div>
                         <div style="margin-top: 15px;">
+                            <label>
+                                <input type="checkbox" id="enableSubtitlesCheckbox">
+                                启用实时字幕
+                            </label>
+                            <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">启用后，通话中会显示对方说话的实时字幕。</p>
+                        </div>
+                        <div style="margin-top: 15px;">
                             <div style="display: flex; align-items: center; margin-bottom: 10px;">
                                 <label for="speakingThreshold" style="width: 120px; font-size: 14px;">说话检测阈值:</label>
                                 <input type="range" id="speakingThreshold" min="0" max="100" step="5" value="40" style="flex: 1; margin: 0 10px;">
@@ -1496,6 +1537,14 @@
                                 <span id="volumeReductionValue" style="width: 40px; text-align: right; font-size: 14px;">30%</span>
                             </div>
                             <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">设置说话时背景音量降低的百分比，数值越高降低幅度越大。</p>
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                                <label for="subtitlesFontSize" style="width: 120px; font-size: 14px;">字幕字体大小:</label>
+                                <input type="range" id="subtitlesFontSize" min="12" max="24" step="1" value="16" style="flex: 1; margin: 0 10px;">
+                                <span id="subtitlesFontSizeValue" style="width: 40px; text-align: right; font-size: 14px;">16px</span>
+                            </div>
+                            <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">调整字幕的字体大小，使字幕更易阅读。</p>
                         </div>
                     </div>
                     
@@ -1984,11 +2033,17 @@
             
             // 保存通话设置
             const autoAdjustVolumeCheckbox = document.getElementById('autoAdjustVolumeCheckbox');
+            const enableSubtitlesCheckbox = document.getElementById('enableSubtitlesCheckbox');
             const speakingThreshold = document.getElementById('speakingThreshold');
             const volumeReduction = document.getElementById('volumeReduction');
+            const subtitlesFontSize = document.getElementById('subtitlesFontSize');
             
             if (autoAdjustVolumeCheckbox) {
                 window.userSettings.autoAdjustVolume = autoAdjustVolumeCheckbox.checked;
+            }
+            
+            if (enableSubtitlesCheckbox) {
+                window.userSettings.enableSubtitles = enableSubtitlesCheckbox.checked;
             }
             
             if (speakingThreshold) {
@@ -1997,6 +2052,10 @@
             
             if (volumeReduction) {
                 window.userSettings.volumeReduction = parseInt(volumeReduction.value);
+            }
+            
+            if (subtitlesFontSize) {
+                window.userSettings.subtitlesFontSize = parseInt(subtitlesFontSize.value);
             }
             
             // 更新当前翻译目标语言
@@ -2014,13 +2073,87 @@
             if (myVideoExposure) window.userSettings.myVideoExposure = parseFloat(myVideoExposure.value);
             
             // 保存到localStorage
-            localStorage.setItem('userSettings', JSON.stringify(window.userSettings));
+            try {
+                localStorage.setItem('userSettings', JSON.stringify(window.userSettings));
+                console.log('设置已保存到localStorage');
+            } catch (error) {
+                console.error('保存设置到localStorage失败:', error);
+            }
             
             // 关闭设置模态框
-            closeSettingsModal();
+            try {
+                closeSettingsModal();
+                console.log('设置模态框已关闭');
+            } catch (error) {
+                console.error('关闭设置模态框失败:', error);
+            }
             
-            // 显示保存成功提示
-            alert('设置已保存');
+            // 使用更友好的提示方式，避免alert导致的卡顿
+            try {
+                // 移除旧的提示元素
+                const oldToast = document.getElementById('settingsToast');
+                if (oldToast) {
+                    oldToast.remove();
+                }
+                
+                // 创建新的提示元素
+                const toast = document.createElement('div');
+                toast.id = 'settingsToast';
+                toast.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: #28a745;
+                    color: white;
+                    padding: 12px 20px;
+                    border-radius: 5px;
+                    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                    z-index: 10000;
+                    font-size: 14px;
+                    animation: slideInRight 0.3s ease;
+                `;
+                toast.textContent = '设置已保存';
+                
+                // 添加动画样式
+                const style = document.createElement('style');
+                style.textContent = `
+                    @keyframes slideInRight {
+                        from {
+                            transform: translateX(100%);
+                            opacity: 0;
+                        }
+                        to {
+                            transform: translateX(0);
+                            opacity: 1;
+                        }
+                    }
+                    @keyframes slideOutRight {
+                        from {
+                            transform: translateX(0);
+                            opacity: 1;
+                        }
+                        to {
+                            transform: translateX(100%);
+                            opacity: 0;
+                        }
+                    }
+                `;
+                document.head.appendChild(style);
+                
+                document.body.appendChild(toast);
+                
+                // 3秒后自动移除
+                setTimeout(() => {
+                    toast.style.animation = 'slideOutRight 0.3s ease';
+                    setTimeout(() => {
+                        toast.remove();
+                    }, 300);
+                }, 3000);
+                
+                console.log('保存成功提示已显示');
+            } catch (error) {
+                console.error('显示保存成功提示失败:', error);
+            }
         }
         
         // 监听设置更新事件
@@ -2137,11 +2270,507 @@
                 this.originalVolume = 1.0;
                 this.adjustedVolume = 1.0;
                 
+                // 字幕功能相关
+                this.speechRecognition = null;
+                this.isSubtitlesEnabled = false;
+                this.subtitlesHistory = []; // 字幕历史记录
+                this.subtitlesContainerElement = null;
+                this.subtitlesTimeout = null;
+                this.subtitlesFontSize = 16;
+                this.isSubtitlesActive = false;
+                this.maxSubtitlesCount = 3; // 最多显示3条字幕
+                this.remoteMediaRecorder = null;
+                this.audioChunks = [];
+                this.audioContext = null;
+                this.audioSource = null;
+                this.recognizingAudio = false;
+                
                 this.init();
             }
             
             init() {
                 this.setupSocketListeners();
+                this.initSpeechRecognition();
+            }
+            
+            // 初始化语音识别
+            initSpeechRecognition() {
+                // 检查浏览器是否支持语音识别
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (!SpeechRecognition) {
+                    console.log('浏览器不支持语音识别功能，无法使用实时字幕');
+                    return;
+                }
+                
+                try {
+                    // 创建语音识别实例
+                    this.speechRecognition = new SpeechRecognition();
+                    
+                    // 配置语音识别，优化远程音频识别
+                    this.speechRecognition.continuous = true; // 持续识别，适合长时间通话
+                    this.speechRecognition.interimResults = true; // 返回临时结果，提高响应速度
+                    this.speechRecognition.lang = 'zh-CN'; // 设置为中文
+                    this.speechRecognition.maxAlternatives = 3; // 返回多个结果，提高识别率
+                    this.speechRecognition.continuous = true; // 确保持续识别开启
+                    this.speechRecognition.interimResults = true; // 确保临时结果开启
+                    
+                    // 语音识别结果事件处理
+                    this.speechRecognition.onresult = (event) => {
+                        console.log('语音识别结果:', event.results);
+                        let transcript = '';
+                        
+                        // 遍历所有识别结果
+                        for (let i = event.resultIndex; i < event.results.length; i++) {
+                            const result = event.results[i];
+                            
+                            // 如果结果为空，跳过
+                            if (result.length === 0) {
+                                continue;
+                            }
+                            
+                            // 从多个备选结果中选择最佳结果
+                            let bestTranscript = '';
+                            let highestConfidence = 0;
+                            
+                            for (let j = 0; j < result.length; j++) {
+                                const alternative = result[j];
+                                if (alternative.confidence > highestConfidence) {
+                                    highestConfidence = alternative.confidence;
+                                    bestTranscript = alternative.transcript;
+                                }
+                            }
+                            
+                            // 如果找不到最佳结果，跳过
+                            if (!bestTranscript) {
+                                continue;
+                            }
+                            
+                            // 确保transcript不为空
+                            transcript = bestTranscript;
+                            
+                            console.log('识别到文本:', transcript, '是否最终结果:', result.isFinal, '置信度:', highestConfidence);
+                            
+                            // 根据结果类型更新字幕
+                            if (result.isFinal) {
+                                // 最终结果，显示在字幕中
+                                this.updateSubtitles(transcript);
+                            } else {
+                                // 临时结果，显示在字幕中
+                                this.updateSubtitles(transcript, true);
+                            }
+                        }
+                    };
+                    
+                    // 语音识别错误事件处理
+                    this.speechRecognition.onerror = (event) => {
+                        console.error('语音识别错误:', event.error);
+                        if (event.error === 'not-allowed') {
+                            console.error('语音识别权限被拒绝，请在浏览器设置中允许使用麦克风');
+                        } else if (event.error === 'network') {
+                            console.error('网络错误导致语音识别失败，请检查网络连接');
+                        } else if (event.error === 'no-speech') {
+                            console.log('未检测到语音，等待说话...');
+                        } else if (event.error === 'audio-capture') {
+                            console.error('无法访问麦克风，请检查麦克风是否可用');
+                        }
+                    };
+                    
+                    // 语音识别开始事件处理
+                    this.speechRecognition.onstart = () => {
+                        console.log('语音识别已开始');
+                    };
+                    
+                    // 语音识别结束事件处理
+                    this.speechRecognition.onend = () => {
+                        console.log('语音识别已结束');
+                        // 如果字幕功能仍启用，尝试重新启动
+                        if (this.isSubtitlesActive) {
+                            setTimeout(() => {
+                                this.startSubtitles();
+                            }, 1000);
+                        }
+                    };
+                    
+                    console.log('语音识别初始化成功');
+                } catch (error) {
+                    console.error('初始化语音识别失败:', error);
+                }
+            }
+            
+            // 启动字幕功能
+            startSubtitles() {
+                console.log('尝试启动字幕功能:', {
+                    speechRecognition: !!this.speechRecognition,
+                    remoteStream: !!this.remoteStream,
+                    enableSubtitles: window.userSettings?.enableSubtitles,
+                    isSubtitlesEnabled: this.isSubtitlesEnabled
+                });
+                
+                // 检查用户设置中的字幕配置
+                if (window.userSettings?.enableSubtitles) {
+                    this.isSubtitlesEnabled = true;
+                    console.log('从设置中获取到字幕配置：已启用');
+                } else {
+                    this.isSubtitlesEnabled = false;
+                    console.log('从设置中获取到字幕配置：未启用');
+                }
+                
+                // 如果字幕功能未启用，不启动
+                if (!this.isSubtitlesEnabled) {
+                    console.log('字幕功能未启用，无法启动');
+                    return;
+                }
+                
+                try {
+                    // 显示字幕容器
+                    this.showSubtitlesContainer();
+                    
+                    // 初始化本地音频用于识别
+                    this.initLocalAudioForRecognition();
+                    
+                    // 检查远程流
+                    if (this.remoteStream) {
+                        const audioTracks = this.remoteStream.getAudioTracks();
+                        console.log('远程流音频轨道数量:', audioTracks.length);
+                        
+                        if (audioTracks.length > 0) {
+                            // 如果有远程流，使用MediaRecorder录制远程音频，然后发送到语音识别服务
+                            this.startRecordingRemoteAudio();
+                            this.isSubtitlesActive = true;
+                            this.updateSubtitles('📢 字幕功能已启动，正在识别对方语音', true);
+                            console.log('字幕功能已启动，正在录制远程音频');
+                            
+                            // 启动SpeechRecognition
+                            if (this.speechRecognition && !this.recognizingAudio) {
+                                try {
+                                    this.speechRecognition.start();
+                                    this.recognizingAudio = true;
+                                    console.log('SpeechRecognition已启动，正在识别对方语音');
+                                } catch (error) {
+                                    console.error('启动SpeechRecognition失败:', error);
+                                    this.updateSubtitles('⚠️ 启动语音识别失败，请检查麦克风权限', true);
+                                }
+                            }
+                            return;
+                        }
+                    }
+                    
+                    // 如果没有远程流或没有音频轨道，尝试使用本地麦克风
+                    if (this.speechRecognition) {
+                        // 启动语音识别
+                        this.speechRecognition.start();
+                        this.isSubtitlesActive = true;
+                        this.recognizingAudio = true;
+                        
+                        // 显示提示信息，说明字幕功能使用的是本地麦克风
+                        this.updateSubtitles('📢 字幕功能已启动，使用本地麦克风识别语音', true);
+                        
+                        console.log('字幕功能已启动，使用本地麦克风识别语音');
+                    } else {
+                        console.log('无法启动字幕功能：语音识别未初始化');
+                        this.isSubtitlesActive = false;
+                        this.hideSubtitlesContainer();
+                    }
+                } catch (error) {
+                    console.error('启动字幕功能失败:', error);
+                    this.isSubtitlesActive = false;
+                    this.hideSubtitlesContainer();
+                    this.updateSubtitles('⚠️ 启动字幕功能失败，请检查麦克风权限', true);
+                }
+            }
+            
+            // 开始录制远程音频
+            startRecordingRemoteAudio() {
+                console.log('开始录制远程音频');
+                
+                if (!this.remoteStream) {
+                    console.error('没有远程流，无法录制音频');
+                    return;
+                }
+                
+                // 获取远程流的音频轨道数量
+                const audioTracks = this.remoteStream.getAudioTracks();
+                console.log('远程流音频轨道数量:', audioTracks.length);
+                
+                try {
+                    // 检查是否已有运行中的MediaRecorder实例
+                    if (this.remoteMediaRecorder && this.remoteMediaRecorder.state !== 'inactive') {
+                        this.remoteMediaRecorder.stop();
+                        console.log('已停止旧的MediaRecorder实例');
+                    }
+                    
+                    // 创建新的MediaRecorder实例
+                    this.remoteMediaRecorder = new MediaRecorder(this.remoteStream, {
+                        mimeType: 'audio/webm',
+                        bitsPerSecond: 160000 // 提高比特率，获得更好的音频质量
+                    });
+                    
+                    // 监听数据可用事件
+                    this.remoteMediaRecorder.ondataavailable = (event) => {
+                        if (event.data.size > 0) {
+                            this.audioChunks.push(event.data);
+                            // 立即处理音频数据，不等待录制结束
+                            this.sendAudioForRecognition();
+                        }
+                    };
+                    
+                    // 监听录制结束事件
+                    this.remoteMediaRecorder.onstop = () => {
+                        console.log('录制结束');
+                    };
+                    
+                    // 监听录制错误事件
+                    this.remoteMediaRecorder.onerror = (error) => {
+                        console.error('录制音频时出错:', error);
+                        // 尝试重新启动录制
+                        setTimeout(() => {
+                            this.startRecordingRemoteAudio();
+                        }, 1000);
+                    };
+                    
+                    // 开始录制，每1秒发送一次数据，更及时地处理音频
+                    this.remoteMediaRecorder.start(1000);
+                    console.log('远程音频录制已开始，每1秒发送一次数据');
+                } catch (error) {
+                    console.error('创建MediaRecorder失败:', error);
+                    // 尝试重新启动录制
+                    setTimeout(() => {
+                        this.startRecordingRemoteAudio();
+                    }, 1000);
+                }
+            }
+            
+            // 初始化本地音频流，用于语音识别
+            async initLocalAudioForRecognition() {
+                try {
+                    // 创建AudioContext
+                    if (!this.audioContext) {
+                        this.audioContext = new AudioContext();
+                    }
+                    
+                    console.log('本地音频流初始化完成，准备用于语音识别');
+                } catch (error) {
+                    console.error('初始化本地音频流失败:', error);
+                }
+            }
+            
+            // 发送音频进行识别
+            async sendAudioForRecognition() {
+                if (this.audioChunks.length === 0) {
+                    console.log('没有音频数据，无需发送识别');
+                    return;
+                }
+                
+                console.log('发送音频数据进行识别，数据块数量:', this.audioChunks.length);
+                
+                try {
+                    // 确保SpeechRecognition正在运行
+                    if (this.speechRecognition && this.isSubtitlesEnabled && !this.recognizingAudio) {
+                        try {
+                            this.speechRecognition.start();
+                            this.recognizingAudio = true;
+                            console.log('SpeechRecognition已启动，正在识别远程音频');
+                        } catch (error) {
+                            console.error('启动SpeechRecognition失败:', error);
+                            // 发送错误字幕提示
+                            this.updateSubtitles('⚠️ 语音识别服务连接失败，请检查网络或麦克风权限', true);
+                        }
+                    }
+                } catch (error) {
+                    console.error('处理音频数据失败:', error);
+                    // 发送错误字幕提示
+                    this.updateSubtitles('⚠️ 音频处理失败，字幕可能无法正常显示', true);
+                } finally {
+                    // 清空音频数据，避免内存泄漏
+                    this.audioChunks = [];
+                    
+                    // 重新开始录制
+                    if (this.isSubtitlesActive) {
+                        this.startRecordingRemoteAudio();
+                    }
+                }
+            }
+            
+            // 停止字幕功能
+            stopSubtitles() {
+                console.log('尝试停止字幕功能');
+                
+                // 停止SpeechRecognition
+                if (this.speechRecognition) {
+                    try {
+                        this.speechRecognition.stop();
+                        this.recognizingAudio = false;
+                    } catch (error) {
+                        console.error('停止SpeechRecognition失败:', error);
+                    }
+                }
+                
+                // 停止远程音频录制
+                if (this.remoteMediaRecorder && this.remoteMediaRecorder.state !== 'inactive') {
+                    try {
+                        this.remoteMediaRecorder.stop();
+                    } catch (error) {
+                        console.error('停止远程音频录制失败:', error);
+                    }
+                }
+                
+                // 清空音频数据
+                this.audioChunks = [];
+                
+                // 更新状态
+                this.isSubtitlesActive = false;
+                this.hideSubtitlesContainer();
+                this.clearSubtitles();
+                
+                console.log('字幕功能已成功停止');
+            }
+            
+            // 更新字幕显示
+            updateSubtitles(text, isInterim = false) {
+                if (!this.isSubtitlesEnabled) {
+                    return;
+                }
+                
+                if (isInterim) {
+                    // 临时结果，只更新当前字幕，不添加到历史记录
+                    const subtitlesTextElement = document.getElementById('subtitlesText');
+                    if (subtitlesTextElement) {
+                        // 如果有历史记录，保留历史记录，只更新最后一行
+                        let displayText = text;
+                        if (this.subtitlesHistory.length > 0) {
+                            displayText = this.subtitlesHistory.join('\n') + '\n' + text;
+                        }
+                        subtitlesTextElement.textContent = displayText;
+                        subtitlesTextElement.style.fontSize = `${this.subtitlesFontSize}px`;
+                    }
+                    
+                    // 临时结果，不设置自动消失
+                    if (this.subtitlesTimeout) {
+                        clearTimeout(this.subtitlesTimeout);
+                        this.subtitlesTimeout = null;
+                    }
+                } else {
+                    // 最终结果，添加到历史记录
+                    this.subtitlesHistory.push(text);
+                    
+                    // 限制历史记录的数量
+                    if (this.subtitlesHistory.length > this.maxSubtitlesCount) {
+                        this.subtitlesHistory.shift(); // 移除最早的一条
+                    }
+                    
+                    // 更新字幕显示
+                    const subtitlesTextElement = document.getElementById('subtitlesText');
+                    if (subtitlesTextElement) {
+                        subtitlesTextElement.textContent = this.subtitlesHistory.join('\n');
+                        subtitlesTextElement.style.fontSize = `${this.subtitlesFontSize}px`;
+                    }
+                    
+                    // 最终结果，3秒后自动清除最旧的一条字幕
+                    if (this.subtitlesTimeout) {
+                        clearTimeout(this.subtitlesTimeout);
+                    }
+                    this.subtitlesTimeout = setTimeout(() => {
+                        this.removeOldestSubtitle();
+                    }, 3000);
+                }
+            }
+            
+            // 清除字幕
+            clearSubtitles() {
+                // 清空字幕历史记录
+                this.subtitlesHistory = [];
+                
+                // 更新字幕显示
+                const subtitlesTextElement = document.getElementById('subtitlesText');
+                if (subtitlesTextElement) {
+                    subtitlesTextElement.textContent = '';
+                }
+                
+                if (this.subtitlesTimeout) {
+                    clearTimeout(this.subtitlesTimeout);
+                    this.subtitlesTimeout = null;
+                }
+            }
+            
+            // 移除最旧的一条字幕
+            removeOldestSubtitle() {
+                if (this.subtitlesHistory.length > 0) {
+                    // 移除最早的一条字幕
+                    this.subtitlesHistory.shift();
+                    
+                    // 更新字幕显示
+                    const subtitlesTextElement = document.getElementById('subtitlesText');
+                    if (subtitlesTextElement) {
+                        subtitlesTextElement.textContent = this.subtitlesHistory.join('\n');
+                    }
+                }
+            }
+            
+            // 显示字幕容器
+            showSubtitlesContainer() {
+                const subtitlesContainer = document.getElementById('subtitlesContainer');
+                if (subtitlesContainer) {
+                    subtitlesContainer.style.display = 'flex';
+                }
+            }
+            
+            // 隐藏字幕容器
+            hideSubtitlesContainer() {
+                const subtitlesContainer = document.getElementById('subtitlesContainer');
+                if (subtitlesContainer) {
+                    subtitlesContainer.style.display = 'none';
+                }
+            }
+            
+            // 切换字幕开关
+            toggleSubtitles() {
+                this.isSubtitlesEnabled = !this.isSubtitlesEnabled;
+                
+                // 更新用户设置
+                if (window.userSettings) {
+                    window.userSettings.enableSubtitles = this.isSubtitlesEnabled;
+                    localStorage.setItem('userSettings', JSON.stringify(window.userSettings));
+                }
+                
+                if (this.isSubtitlesEnabled) {
+                    this.startSubtitles();
+                } else {
+                    this.stopSubtitles();
+                }
+                
+                console.log(`字幕功能已${this.isSubtitlesEnabled ? '开启' : '关闭'}`);
+            }
+            
+            // 从设置中更新字幕配置
+            updateSubtitlesFromSettings() {
+                if (window.userSettings) {
+                    this.isSubtitlesEnabled = window.userSettings.enableSubtitles || false;
+                    this.subtitlesFontSize = window.userSettings.subtitlesFontSize || 16;
+                    
+                    // 更新字幕字体大小
+                    const subtitlesTextElement = document.getElementById('subtitlesText');
+                    if (subtitlesTextElement) {
+                        subtitlesTextElement.style.fontSize = `${this.subtitlesFontSize}px`;
+                    }
+                    
+                    // 更新字幕开关按钮状态
+                    this.updateSubtitlesButton();
+                }
+            }
+            
+            // 更新字幕开关按钮状态
+            updateSubtitlesButton() {
+                const toggleSubtitlesBtn = document.getElementById('toggleSubtitlesBtn');
+                if (toggleSubtitlesBtn) {
+                    // 根据字幕是否启用，更新按钮样式或图标
+                    if (this.isSubtitlesEnabled) {
+                        toggleSubtitlesBtn.style.backgroundColor = '#28a745';
+                        toggleSubtitlesBtn.title = '关闭字幕';
+                    } else {
+                        toggleSubtitlesBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+                        toggleSubtitlesBtn.title = '开启字幕';
+                    }
+                }
             }
             
             setupSocketListeners() {
@@ -2373,6 +3002,10 @@
                 window.DeveloperLogManager.hideLog();
                 
                 alert('通话已结束');
+                
+                // 触发通话结束事件，供外部监听
+                const callEndedEvent = new Event('callEnded');
+                document.dispatchEvent(callEndedEvent);
             }
             
             // 接受通话
@@ -2437,6 +3070,9 @@
                     targetSocketId: this.currentCallTargetSocketId,
                     callId: this.currentCallId
                 });
+                
+                // 停止字幕功能
+                this.stopSubtitles();
                 
                 this.cleanupMedia();
                 this.resetCallState();
@@ -3752,6 +4388,9 @@
                     // 立即尝试播放视频
                     this.ensureVideoPlays(remoteVideo);
                     
+                    // 启动字幕功能
+                    this.startSubtitles();
+                    
                     return;
                 }
                 
@@ -3771,6 +4410,9 @@
                     
                     // 立即尝试播放视频
                     this.ensureVideoPlays(remoteVideo);
+                    
+                    // 启动字幕功能
+                    this.startSubtitles();
                 }
                 
                 // 额外的稳定性检查：确保远程视频元素的srcObject始终指向正确的remoteStream
@@ -3778,6 +4420,9 @@
                     console.log('修复远程视频源，重新设置为remoteStream');
                     remoteVideo.srcObject = this.remoteStream;
                     this.ensureVideoPlays(remoteVideo);
+                    
+                    // 启动字幕功能
+                    this.startSubtitles();
                 }
             }
             
@@ -3990,7 +4635,7 @@
                     console.log('peerConnection已关闭');
                 }
                 
-                // 清理mediaRecorder
+                // 清理mediaRecorder（本地录制用）
                 if (this.mediaRecorder) {
                     try {
                         this.mediaRecorder.stop();
@@ -4000,6 +4645,46 @@
                     this.mediaRecorder = null;
                     console.log('mediaRecorder已清理');
                 }
+                
+                // 清理remoteMediaRecorder（远程音频识别用）
+                if (this.remoteMediaRecorder) {
+                    try {
+                        this.remoteMediaRecorder.stop();
+                    } catch (e) {
+                        console.log('remoteMediaRecorder已经停止，忽略stop调用');
+                    }
+                    this.remoteMediaRecorder = null;
+                    console.log('remoteMediaRecorder已清理');
+                }
+                
+                // 清理语音识别相关资源
+                if (this.speechRecognition) {
+                    try {
+                        this.speechRecognition.stop();
+                        this.recognizingAudio = false;
+                    } catch (e) {
+                        console.log('speechRecognition已经停止，忽略stop调用');
+                    }
+                    console.log('speechRecognition已清理');
+                }
+                
+                // 清理音频上下文
+                if (this.audioContext) {
+                    try {
+                        this.audioContext.close();
+                    } catch (e) {
+                        console.error('关闭AudioContext时出错:', e);
+                    }
+                    this.audioContext = null;
+                    console.log('audioContext已清理');
+                }
+                
+                // 清空音频数据
+                this.audioChunks = [];
+                console.log('音频数据已清空');
+                
+                // 停止字幕功能
+                this.stopSubtitles();
                 
                 // 清理视频元素资源
                 const localVideo = document.getElementById('localVideo');
@@ -4050,7 +4735,9 @@
         
         // 通话相关变量
         let callSystem = null;
+        let pendingUpdateNotification = null;
         let currentCallType = null;
+        let isInitiator = false;
         
         // 开发者日志管理器 - 定义在window对象中，确保全局可访问
         window.DeveloperLogManager = {
@@ -4274,6 +4961,16 @@
             audioCallBtn.addEventListener('click', () => {
                 openCallUserModal('audio');
             });
+            
+            // 添加字幕开关按钮事件监听
+            const toggleSubtitlesBtn = document.getElementById('toggleSubtitlesBtn');
+            if (toggleSubtitlesBtn) {
+                toggleSubtitlesBtn.addEventListener('click', () => {
+                    if (callSystem) {
+                        callSystem.toggleSubtitles();
+                    }
+                });
+            }
         });
 
         // 打开选择通话用户模态框
@@ -4584,6 +5281,468 @@
         socket.on('unmuted', () => {
             alert('您已被解除禁言');
         });
+        
+        // 聊天室提示事件处理
+        socket.on('chatroom-notification', (data) => {
+            showChatroomNotification(data);
+        });
+        
+        // 更新聊天室提示
+        socket.on('update-chatroom-notification', (data) => {
+            // 重新显示更新后的提示
+            showChatroomNotification(data);
+        });
+        
+        // 移除聊天室提示
+        socket.on('remove-chatroom-notification', (data) => {
+            const notificationModal = document.getElementById('chatroomNotificationModal');
+            if (notificationModal) {
+                notificationModal.remove();
+            }
+        });
+        
+        // 显示聊天室提示函数
+        function showChatroomNotification(data) {
+            // 生成唯一ID
+            const notificationId = data.id || ('notification_' + Date.now() + '_' + Math.floor(Math.random() * 1000));
+            
+            // 创建悬浮提示元素
+            const notification = document.createElement('div');
+            notification.id = notificationId;
+            notification.className = 'chatroom-notification';
+            notification.dataset.notificationId = notificationId;
+            notification.style.cssText = `
+                position: fixed;
+                top: 100px;
+                right: 20px;
+                background: ${data.backgroundColor || '#ffffff'};
+                border-radius: 10px;
+                padding: 20px;
+                max-width: 400px;
+                width: 320px;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+                text-align: center;
+                z-index: 10000;
+                cursor: move;
+                transition: all 0.3s ease;
+                border: 2px solid ${data.buttonColor || '#667eea'};
+            `;
+            
+            // 设置初始位置（右侧垂直排列）
+            const existingNotifications = document.querySelectorAll('.chatroom-notification');
+            const topPosition = 100 + (existingNotifications.length * 280);
+            notification.style.top = `${topPosition}px`;
+            
+            const notificationHTML = `
+                <div class="notification-header" style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                    <h3 class="notification-title" style="margin: 0; font-size: 18px; color: #333; cursor: pointer;">
+                        ${data.title || '聊天室提示'}
+                    </h3>
+                    <div class="notification-controls" style="display: flex; gap: 8px;">
+                        <button class="control-btn style-btn" style="padding: 4px 8px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                            🎨
+                        </button>
+                    </div>
+                </div>
+                <div class="notification-content" style="margin-bottom: 20px; text-align: left; padding: 12px; border-radius: 6px; 
+                    background: ${data.backgroundColor === '#ffffff' ? '#f8f9fa' : 'rgba(255, 255, 255, 0.1)'};
+                    white-space: pre-wrap; font-size: 14px; color: #666; cursor: pointer;
+                    max-height: 150px; overflow-y: auto;
+                    scrollbar-width: thin; scrollbar-color: ${data.buttonColor || '#667eea'} rgba(0,0,0,0.1);">
+                    ${data.content}
+                </div>
+                <button class="notification-button" style="padding: 10px 25px; background: ${data.buttonColor || '#667eea'};
+                    color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px;
+                    transition: all 0.2s; font-weight: 500;">${data.buttonText || '进入聊天室'}</button>
+            `;
+            
+            notification.innerHTML = notificationHTML;
+            document.body.appendChild(notification);
+            
+            // 拖拽功能
+            let isDragging = false;
+            let startX, startY, startLeft, startTop;
+            
+            notification.addEventListener('mousedown', (e) => {
+                if (e.target.closest('.control-btn') || e.target.closest('.notification-button') || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                    return;
+                }
+                
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                startLeft = parseInt(notification.style.left) || notification.offsetLeft;
+                startTop = parseInt(notification.style.top) || notification.offsetTop;
+                notification.style.zIndex = '10001';
+                notification.style.cursor = 'grabbing';
+                
+                document.addEventListener('mousemove', drag);
+                document.addEventListener('mouseup', stopDrag);
+            });
+            
+            function drag(e) {
+                if (!isDragging) return;
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                notification.style.left = `${startLeft + dx}px`;
+                notification.style.top = `${startTop + dy}px`;
+            }
+            
+            function stopDrag() {
+                isDragging = false;
+                notification.style.cursor = 'move';
+                document.removeEventListener('mousemove', drag);
+                document.removeEventListener('mouseup', stopDrag);
+            }
+            
+            // 点击修改功能
+            function enableEdit(element, fieldName) {
+                const originalText = element.textContent;
+                const isTitle = fieldName === 'title';
+                
+                if (isTitle) {
+                    // 标题编辑
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.value = originalText;
+                    input.style.cssText = `
+                        width: 100%;
+                        padding: 8px;
+                        font-size: 18px;
+                        font-weight: bold;
+                        border: 1px solid #ddd;
+                        border-radius: 5px;
+                        outline: none;
+                        text-align: center;
+                    `;
+                    
+                    element.innerHTML = '';
+                    element.appendChild(input);
+                    input.focus();
+                    input.select();
+                    
+                    function saveEdit() {
+                        const newText = input.value.trim() || (isTitle ? '聊天室提示' : '');
+                        if (newText !== originalText) {
+                            element.textContent = newText;
+                            // 发送更新请求到服务器
+                            socket.emit('update-chatroom-notification', {
+                                notificationId: notificationId,
+                                [fieldName]: newText
+                            });
+                        } else {
+                            element.textContent = originalText;
+                        }
+                    }
+                    
+                    input.addEventListener('blur', saveEdit);
+                    input.addEventListener('keypress', (e) => {
+                        if (e.key === 'Enter') {
+                            saveEdit();
+                        }
+                    });
+                } else {
+                    // 内容编辑
+                    const textarea = document.createElement('textarea');
+                    textarea.value = originalText;
+                    textarea.style.cssText = `
+                        width: 100%;
+                        padding: 12px;
+                        font-size: 14px;
+                        border: 1px solid #ddd;
+                        border-radius: 5px;
+                        outline: none;
+                        resize: vertical;
+                        min-height: 100px;
+                        max-height: 200px;
+                        white-space: pre-wrap;
+                        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    `;
+                    
+                    element.innerHTML = '';
+                    element.appendChild(textarea);
+                    textarea.focus();
+                    textarea.select();
+                    
+                    function saveEdit() {
+                        const newText = textarea.value;
+                        if (newText !== originalText) {
+                            element.textContent = newText;
+                            // 发送更新请求到服务器
+                            socket.emit('update-chatroom-notification', {
+                                notificationId: notificationId,
+                                [fieldName]: newText
+                            });
+                        } else {
+                            element.textContent = originalText;
+                        }
+                    }
+                    
+                    textarea.addEventListener('blur', saveEdit);
+                    textarea.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter' && e.ctrlKey) {
+                            saveEdit();
+                        }
+                    });
+                }
+            }
+            
+            // 为标题和内容添加点击编辑功能
+            const titleElement = notification.querySelector('.notification-title');
+            titleElement.addEventListener('click', () => enableEdit(titleElement, 'title'));
+            
+            const contentElement = notification.querySelector('.notification-content');
+            contentElement.addEventListener('click', () => enableEdit(contentElement, 'content'));
+            
+            // 更改样式
+            notification.querySelector('.style-btn').addEventListener('click', () => {
+                const styleOptions = [
+                    { name: '默认样式', bg: '#ffffff', border: '#667eea' },
+                    { name: '蓝色主题', bg: '#e3f2fd', border: '#2196f3' },
+                    { name: '绿色主题', bg: '#e8f5e8', border: '#4caf50' },
+                    { name: '橙色主题', bg: '#fff3e0', border: '#ff9800' },
+                    { name: '紫色主题', bg: '#f3e5f5', border: '#9c27b0' }
+                ];
+                
+                const style = prompt('请选择样式：\n1. 默认样式\n2. 蓝色主题\n3. 绿色主题\n4. 橙色主题\n5. 紫色主题\n\n请输入数字(1-5)：');
+                if (!style || isNaN(style) || style < 1 || style > 5) {
+                    return;
+                }
+                
+                const selectedStyle = styleOptions[parseInt(style) - 1];
+                
+                // 应用样式
+                notification.style.background = selectedStyle.bg;
+                notification.style.borderColor = selectedStyle.border;
+                notification.querySelector('.notification-content').style.background = selectedStyle.bg === '#ffffff' ? '#f8f9fa' : `rgba(255, 255, 255, 0.1)`;
+                const button = notification.querySelector('.notification-button');
+                button.style.background = selectedStyle.border;
+            });
+            
+            // 长按删除
+            let longPressTimer;
+            notification.addEventListener('mousedown', (e) => {
+                if (e.target.closest('.control-btn') || e.target.closest('.notification-button') || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                    return;
+                }
+                
+                longPressTimer = setTimeout(() => {
+                    if (confirm('确定要删除这个提示吗？')) {
+                        notification.remove();
+                        // 发送删除请求到服务器
+                        socket.emit('delete-chatroom-notification', {
+                            notificationId: notificationId
+                        });
+                    }
+                }, 800);
+            });
+            
+            notification.addEventListener('mouseup', () => {
+                clearTimeout(longPressTimer);
+            });
+            
+            notification.addEventListener('mouseleave', () => {
+                clearTimeout(longPressTimer);
+            });
+            
+            // 右键菜单
+            notification.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                
+                const contextMenu = document.createElement('div');
+                contextMenu.style.cssText = `
+                    position: fixed;
+                    background: white;
+                    border: 1px solid #ddd;
+                    border-radius: 8px;
+                    padding: 8px 0;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    z-index: 10002;
+                    left: ${e.clientX}px;
+                    top: ${e.clientY}px;
+                `;
+                
+                const menuItems = [
+                    { text: '删除', icon: '🗑️', action: () => {
+                        if (confirm('确定要删除这个提示吗？')) {
+                            notification.remove();
+                            // 发送删除请求到服务器
+                            socket.emit('delete-chatroom-notification', {
+                                notificationId: notificationId
+                            });
+                        }
+                        contextMenu.remove();
+                    }},
+                    { text: '更改样式', icon: '🎨', action: () => {
+                        const styleOptions = [
+                            { name: '默认样式', bg: '#ffffff', border: '#667eea' },
+                            { name: '蓝色主题', bg: '#e3f2fd', border: '#2196f3' },
+                            { name: '绿色主题', bg: '#e8f5e8', border: '#4caf50' },
+                            { name: '橙色主题', bg: '#fff3e0', border: '#ff9800' },
+                            { name: '紫色主题', bg: '#f3e5f5', border: '#9c27b0' }
+                        ];
+                        
+                        const style = prompt('请选择样式：\n1. 默认样式\n2. 蓝色主题\n3. 绿色主题\n4. 橙色主题\n5. 紫色主题\n\n请输入数字(1-5)：');
+                        if (!style || isNaN(style) || style < 1 || style > 5) {
+                            contextMenu.remove();
+                            return;
+                        }
+                        
+                        const selectedStyle = styleOptions[parseInt(style) - 1];
+                        
+                        // 应用样式
+                        notification.style.background = selectedStyle.bg;
+                        notification.style.borderColor = selectedStyle.border;
+                        notification.querySelector('.notification-content').style.background = selectedStyle.bg === '#ffffff' ? '#f8f9fa' : `rgba(255, 255, 255, 0.1)`;
+                        const button = notification.querySelector('.notification-button');
+                        button.style.background = selectedStyle.border;
+                        
+                        contextMenu.remove();
+                    }}
+                ];
+                
+                menuItems.forEach(item => {
+                    const menuItem = document.createElement('div');
+                    menuItem.style.cssText = `
+                        padding: 10px 15px;
+                        cursor: pointer;
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                        transition: background-color 0.2s;
+                    `;
+                    
+                    menuItem.innerHTML = `
+                        <span>${item.icon}</span>
+                        <span>${item.text}</span>
+                    `;
+                    
+                    menuItem.addEventListener('mouseenter', () => {
+                        menuItem.style.backgroundColor = '#f5f5f5';
+                    });
+                    
+                    menuItem.addEventListener('mouseleave', () => {
+                        menuItem.style.backgroundColor = 'transparent';
+                    });
+                    
+                    menuItem.addEventListener('click', item.action);
+                    
+                    contextMenu.appendChild(menuItem);
+                });
+                
+                document.body.appendChild(contextMenu);
+                
+                // 点击外部关闭右键菜单
+                setTimeout(() => {
+                    document.addEventListener('click', () => {
+                        contextMenu.remove();
+                    }, { once: true });
+                }, 100);
+            });
+        }
+        
+        // 更新通知事件处理
+        socket.on('update-notification', (data) => {
+            showUpdateNotification(data);
+        });
+        
+        // 监听通话结束事件，检查是否有待显示的更新通知
+        document.addEventListener('callEnded', () => {
+            setTimeout(() => {
+                if (pendingUpdateNotification) {
+                    showUpdateNotification(pendingUpdateNotification);
+                    pendingUpdateNotification = null;
+                }
+            }, 1000);
+        });
+        
+        // 显示更新通知
+        function showUpdateNotification(data) {
+            // 如果正在通话中，保存更新通知，等通话结束后显示
+            if (callSystem && callSystem.isInCall) {
+                console.log('正在通话中，保存更新通知待通话结束后显示');
+                pendingUpdateNotification = data;
+                return;
+            }
+            
+            // 创建更新通知模态框
+            let updateModal = document.getElementById('updateNotificationModal');
+            if (!updateModal) {
+                updateModal = document.createElement('div');
+                updateModal.id = 'updateNotificationModal';
+                updateModal.style.cssText = `
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0, 0, 0, 0.8);
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    z-index: 10000;
+                `;
+                
+                const modalContent = document.createElement('div');
+                modalContent.style.cssText = `
+                    background: white;
+                    border-radius: 10px;
+                    padding: 30px;
+                    max-width: 500px;
+                    width: 90%;
+                    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+                    text-align: center;
+                `;
+                
+                const modalHTML = `
+                    <h2 style="margin-top: 0; margin-bottom: 20px; color: #333;">新版本更新</h2>
+                    <div style="margin-bottom: 20px;">
+                        <h3 style="color: #667eea; margin-bottom: 10px;">版本号: <span id="updateVersionText"></span></h3>
+                        <div style="text-align: left; background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px; white-space: pre-wrap;">
+                            <h4 style="margin-top: 0; margin-bottom: 10px; color: #333;">更新内容:</h4>
+                            <div id="updateContentText"></div>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 15px; justify-content: center;">
+                        <button id="updateRefreshBtn" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; transition: all 0.2s;">立即刷新</button>
+                        <button id="updateLaterBtn" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; transition: all 0.2s;">稍后再说</button>
+                    </div>
+                `;
+                
+                modalContent.innerHTML = modalHTML;
+                updateModal.appendChild(modalContent);
+                document.body.appendChild(updateModal);
+                
+                // 添加事件监听器
+                document.getElementById('updateRefreshBtn').addEventListener('click', () => {
+                    window.location.reload();
+                });
+                
+                document.getElementById('updateLaterBtn').addEventListener('click', () => {
+                    if (data.forceUpdate) {
+                        alert('本次更新为强制更新，您必须刷新页面才能继续使用');
+                    } else {
+                        updateModal.remove();
+                    }
+                });
+            }
+            
+            // 设置更新内容
+            document.getElementById('updateVersionText').textContent = data.version;
+            document.getElementById('updateContentText').textContent = data.content;
+            
+            // 如果是强制更新，禁用稍后再说按钮
+            const updateLaterBtn = document.getElementById('updateLaterBtn');
+            if (data.forceUpdate) {
+                updateLaterBtn.disabled = true;
+                updateLaterBtn.style.opacity = '0.5';
+                updateLaterBtn.style.cursor = 'not-allowed';
+            } else {
+                updateLaterBtn.disabled = false;
+                updateLaterBtn.style.opacity = '1';
+                updateLaterBtn.style.cursor = 'pointer';
+            }
+        }
 
         socket.on('message', (data) => {
             addMessage(data);
@@ -6205,6 +7364,14 @@
         endCallBtn.addEventListener('click', () => {
             if (callSystem) {
                 callSystem.endCall();
+                
+                // 检查是否有待显示的更新通知
+                setTimeout(() => {
+                    if (pendingUpdateNotification) {
+                        showUpdateNotification(pendingUpdateNotification);
+                        pendingUpdateNotification = null;
+                    }
+                }, 1000);
             }
         });
         
