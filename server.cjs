@@ -407,12 +407,13 @@ let defaultPermissions = {
     allowFile: true,
     allowSendMessages: true,
     allowViewMessages: true,
-    allowCall: false, // 默认禁用通话功能，需要管理员同意
+    allowCall: false, // 默认启用通话功能
     allowAddFriends: true,
     allowViewUsers: true,
     allowPrivateChat: true,
     allowOpenFriendsPage: true,
-    allowRecallMessage: true
+    allowRecallMessage: true,
+    allowAIChat: false // 默认禁用AI聊天功能，需要管理员同意
 };
 
 // 默认房间
@@ -540,41 +541,43 @@ io.on('connection', (socket) => {
         const user = users.get(socket.id);
         if (user) {
             // 确保用户权限对象存在，如果不存在则设置默认权限
-        if (!user.permissions) {
-            user.permissions = {
-                allowAudio: true,
-                allowImage: true,
-                allowFile: true,
-                allowSendMessages: true,
-                allowViewMessages: true,
-                allowCall: true,
-                allowAddFriends: true,
-                allowViewUsers: true,
-                allowPrivateChat: true,
-                allowOpenFriendsPage: true,
-                allowRecallMessage: true
-            };
-        } else {
-            // 确保所有权限字段都存在，如果不存在则设置默认值
-            const defaultPermissions = {
-                allowAudio: true,
-                allowImage: true,
-                allowFile: true,
-                allowSendMessages: true,
-                allowViewMessages: true,
-                allowCall: true,
-                allowAddFriends: true,
-                allowViewUsers: true,
-                allowPrivateChat: true,
-                allowOpenFriendsPage: true,
-                allowRecallMessage: true
-            };
-            
-            user.permissions = {
-                ...defaultPermissions,
-                ...user.permissions
-            };
-        }
+            if (!user.permissions) {
+                user.permissions = {
+                    allowAudio: true,
+                    allowImage: true,
+                    allowFile: true,
+                    allowSendMessages: true,
+                    allowViewMessages: true,
+                    allowCall: true,
+                    allowAddFriends: true,
+                    allowViewUsers: true,
+                    allowPrivateChat: true,
+                    allowOpenFriendsPage: true,
+                    allowRecallMessage: true,
+                    allowAIChat: defaultPermissions.allowAIChat // 使用全局默认值
+                };
+            } else {
+                // 确保所有权限字段都存在，如果不存在则设置默认值
+                const defaultPermissions = {
+                    allowAudio: true,
+                    allowImage: true,
+                    allowFile: true,
+                    allowSendMessages: true,
+                    allowViewMessages: true,
+                    allowCall: true,
+                    allowAddFriends: true,
+                    allowViewUsers: true,
+                    allowPrivateChat: true,
+                    allowOpenFriendsPage: true,
+                    allowRecallMessage: true,
+                    allowAIChat: false // 默认禁用AI聊天功能
+                };
+                
+                user.permissions = {
+                    ...defaultPermissions,
+                    ...user.permissions
+                };
+            }
         
         // 确保用户设置对象存在，如果不存在则设置默认设置
         if (!user.settings) {
@@ -813,7 +816,9 @@ io.on('connection', (socket) => {
     });
 
     socket.on('admin-kick-user', (socketId) => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             const user = users.get(socketId);
             if (user) {
                 io.to(socketId).emit('kicked', '你已被管理员踢出聊天室');
@@ -830,7 +835,9 @@ io.on('connection', (socket) => {
     });
 
     socket.on('admin-rename-user', (data) => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             const user = users.get(data.socketId);
             if (user) {
                 const oldName = user.username;
@@ -846,7 +853,9 @@ io.on('connection', (socket) => {
     });
 
     socket.on('admin-set-permissions', (data) => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             const user = users.get(data.socketId);
             if (user) {
                 user.permissions = {
@@ -860,7 +869,8 @@ io.on('connection', (socket) => {
                     allowViewUsers: data.permissions.allowViewUsers,
                     allowPrivateChat: data.permissions.allowPrivateChat,
                     allowOpenFriendsPage: data.permissions.allowOpenFriendsPage,
-                    allowRecallMessage: data.permissions.allowRecallMessage
+                    allowRecallMessage: data.permissions.allowRecallMessage,
+                    allowAIChat: data.permissions.allowAIChat // 添加AI聊天权限
                 };
                 io.emit('user-permissions-changed', {
                     socketId: data.socketId,
@@ -874,7 +884,9 @@ io.on('connection', (socket) => {
     
     // 设置用户角色
     socket.on('admin-set-role', (data) => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             const user = users.get(data.socketId);
             if (user) {
                 const oldRole = user.role;
@@ -896,7 +908,9 @@ io.on('connection', (socket) => {
     
     // 设置@功能开关
     socket.on('admin-set-mentions', (data) => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             allowMentions = data.allow;
             console.log(`管理员将@功能设置为 ${allowMentions ? '开启' : '关闭'}`);
         }
@@ -904,7 +918,9 @@ io.on('connection', (socket) => {
 
     // 设置全体权限（应用到所有用户）
     socket.on('admin-set-global-permissions', (permissions) => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             users.forEach((user, socketId) => {
                 user.permissions = {
                     ...user.permissions,
@@ -925,14 +941,18 @@ io.on('connection', (socket) => {
 
     // 设置默认权限（仅应用到新用户）
     socket.on('admin-set-default-permissions', (permissions) => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             defaultPermissions = permissions;
             console.log('管理员设置了默认权限:', JSON.stringify(permissions));
         }
     });
 
     socket.on('admin-system-message', (message) => {
-            if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
                 const systemMessageData = {
                     message: message,
                     timestamp: new Date().toLocaleTimeString()
@@ -951,7 +971,9 @@ io.on('connection', (socket) => {
         
         // 管理员发送系统消息到指定房间
         socket.on('admin-room-system-message', (data) => {
-            if (socket.id === adminSocketId) {
+            // 允许管理员和超级管理员执行操作
+            const user = users.get(socket.id);
+            if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
                 const { roomName, message } = data;
                 const room = rooms.get(roomName);
                 if (room) {
@@ -975,7 +997,9 @@ io.on('connection', (socket) => {
         
         // 管理员在指定房间伪装发送消息
         socket.on('admin-room-send-message', (data) => {
-            if (socket.id === adminSocketId) {
+            // 允许管理员和超级管理员执行操作
+            const user = users.get(socket.id);
+            if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
                 const { roomName, username, message, color, type } = data;
                 const room = rooms.get(roomName);
                 if (room) {
@@ -1023,7 +1047,9 @@ io.on('connection', (socket) => {
         });
 
     socket.on('admin-send-message', (data) => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
             const messageData = {
                 id: messageId,
@@ -1066,7 +1092,9 @@ io.on('connection', (socket) => {
     });
 
     socket.on('admin-get-users', () => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             socket.emit('user-joined', {
                 username: '管理员',
                 userCount: users.size,
@@ -1077,7 +1105,9 @@ io.on('connection', (socket) => {
     
     // 管理员获取好友扩容申请列表
     socket.on('admin-get-friend-limit-requests', () => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             const requests = Array.from(friendLimitRequests.values());
             socket.emit('admin-friend-limit-requests', requests);
         }
@@ -1085,7 +1115,9 @@ io.on('connection', (socket) => {
 
     // 管理员批准好友扩容申请
     socket.on('admin-approve-friend-limit-request', (data) => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             const { requestId, newLimit } = data;
             const request = friendLimitRequests.get(requestId);
             
@@ -1115,7 +1147,9 @@ io.on('connection', (socket) => {
 
     // 管理员拒绝好友扩容申请
     socket.on('admin-reject-friend-limit-request', (data) => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             const { requestId, reason } = data;
             const request = friendLimitRequests.get(requestId);
             
@@ -1141,7 +1175,9 @@ io.on('connection', (socket) => {
     
     // 禁言管理 - 获取禁言用户列表
     socket.on('admin-get-muted-users', () => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             // 过滤掉已过期的禁言记录
             const now = Date.now();
             const validMutedUsers = [];
@@ -1166,7 +1202,9 @@ io.on('connection', (socket) => {
     
     // 禁言管理 - 禁言用户
     socket.on('admin-mute-user', (data) => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             const { socketId, duration, reason } = data;
             const user = users.get(socketId);
             
@@ -1203,7 +1241,9 @@ io.on('connection', (socket) => {
     
     // 禁言管理 - 解除禁言
     socket.on('admin-unmute-user', (socketId) => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             const mutedData = mutedUsers.get(socketId);
             
             if (mutedData) {
@@ -1231,7 +1271,9 @@ io.on('connection', (socket) => {
     
     // 用户设置管理 - 获取用户设置
     socket.on('admin-get-user-settings', (socketId) => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             const user = users.get(socketId);
             if (user) {
                 // 确保用户设置对象存在
@@ -1263,7 +1305,9 @@ io.on('connection', (socket) => {
     
     // 用户设置管理 - 设置用户设置
     socket.on('admin-set-user-settings', (data) => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             const { socketId, settings, userSettings } = data;
             const user = users.get(socketId);
             
@@ -1295,7 +1339,9 @@ io.on('connection', (socket) => {
 
     // 管理员直接设置用户好友数量上限
     socket.on('admin-set-user-max-friends', (data) => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             const { userId, maxFriends } = data;
             
             // 设置用户的好友数量上限
@@ -1315,7 +1361,9 @@ io.on('connection', (socket) => {
     });
 
     socket.on('admin-get-friends', () => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             console.log('管理员请求获取好友列表');
             const allFriendships = [];
             friendships.forEach((friendSet, userSocketId) => {
@@ -1344,7 +1392,9 @@ io.on('connection', (socket) => {
     });
 
     socket.on('admin-delete-friendship', (data) => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             const { userSocketId, friendSocketId } = data;
             
             const user = users.get(userSocketId);
@@ -1376,7 +1426,9 @@ io.on('connection', (socket) => {
     });
 
     socket.on('admin-add-friendship', (data) => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             const { userSocketId, friendSocketId } = data;
             
             const user = users.get(userSocketId);
@@ -1425,7 +1477,9 @@ io.on('connection', (socket) => {
     });
 
     socket.on('admin-clear-messages', () => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             messages.clear();
             io.emit('messages-cleared');
             console.log('管理员清空了所有消息');
@@ -1434,7 +1488,9 @@ io.on('connection', (socket) => {
     
     // 管理员创建房间
     socket.on('admin-create-room', (data) => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             const { roomName, password, settings } = data;
             
             // 检查房间名是否已存在
@@ -1475,7 +1531,9 @@ io.on('connection', (socket) => {
     
     // 管理员删除房间
     socket.on('admin-delete-room', (roomName) => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             // 不允许删除默认房间
             if (roomName === 'main') {
                 socket.emit('admin-room-error', { message: '不能删除默认房间' });
@@ -1520,7 +1578,9 @@ io.on('connection', (socket) => {
     
     // 管理员修改房间设置
     socket.on('admin-update-room', (data) => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             const { roomName, updates } = data;
             
             const room = rooms.get(roomName);
@@ -1543,7 +1603,9 @@ io.on('connection', (socket) => {
 
     // 管理员修改管理员密码
     socket.on('admin-change-password', (data) => {
-            if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
                 const { oldPassword, newPassword } = data;
                 
                 // 验证旧密码
@@ -1734,7 +1796,9 @@ io.on('connection', (socket) => {
     
     // 获取房间列表
     socket.on('admin-get-rooms', () => {
-        if (socket.id === adminSocketId) {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             socket.emit('admin-rooms', Array.from(rooms.values()));
         }
     });
