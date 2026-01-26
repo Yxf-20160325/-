@@ -1641,6 +1641,15 @@
                 </div>
                 <div class="permission-item">
                     <label>
+                        <span>允许AI聊天</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowAIChat" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </label>
+                </div>
+                <div class="permission-item">
+                    <label>
                         <span>允许添加好友</span>
                         <label class="switch">
                             <input type="checkbox" id="allowAddFriends" checked>
@@ -1929,6 +1938,29 @@
         </div>
     </div>
     
+    <div class="modal" id="setRoleModal">
+        <div class="modal-content">
+            <h3>设置用户角色</h3>
+            <form onsubmit="event.preventDefault(); confirmSetRole();">
+                <div class="input-group">
+                    <label>用户名</label>
+                    <input type="text" id="setRoleUsername" readonly>
+                </div>
+                <div class="input-group">
+                    <label>用户角色</label>
+                    <select id="setRoleValue" required>
+                        <option value="user">普通用户</option>
+                        <option value="superadmin">超级管理员(SU)</option>
+                    </select>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeSetRoleModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
@@ -1961,6 +1993,7 @@
         const allowSendMessages = document.getElementById('allowSendMessages');
         const allowViewMessages = document.getElementById('allowViewMessages');
         const allowCall = document.getElementById('allowCall');
+        const allowAIChat = document.getElementById('allowAIChat');
         const allowAddFriends = document.getElementById('allowAddFriends');
         const allowViewUsers = document.getElementById('allowViewUsers');
         const allowPrivateChat = document.getElementById('allowPrivateChat');
@@ -2559,11 +2592,13 @@
                 allowSendMessages.checked = user.permissions.allowSendMessages;
                 allowViewMessages.checked = user.permissions.allowViewMessages;
                 allowCall.checked = user.permissions.allowCall;
+                allowAIChat.checked = user.permissions.allowAIChat ?? false;
                 allowAddFriends.checked = user.permissions.allowAddFriends ?? true;
                 allowViewUsers.checked = user.permissions.allowViewUsers ?? true;
                 allowPrivateChat.checked = user.permissions.allowPrivateChat ?? true;
                 allowOpenFriendsPage.checked = user.permissions.allowOpenFriendsPage ?? true;
                 allowRecallMessage.checked = user.permissions.allowRecallMessage ?? true;
+                allowAIChat.checked = user.permissions.allowAIChat ?? false;
             }
             permissionsModal.classList.add('active');
         }
@@ -2606,6 +2641,7 @@
                             allowSendMessages: allowSendMessages.checked,
                             allowViewMessages: allowViewMessages.checked,
                             allowCall: allowCall.checked,
+                            allowAIChat: allowAIChat.checked,
                             allowAddFriends: allowAddFriends.checked,
                             allowViewUsers: allowViewUsers.checked,
                             allowPrivateChat: allowPrivateChat.checked,
@@ -2627,6 +2663,7 @@
                             allowSendMessages: allowSendMessages.checked,
                             allowViewMessages: allowViewMessages.checked,
                             allowCall: allowCall.checked,
+                            allowAIChat: allowAIChat.checked,
                             allowAddFriends: allowAddFriends.checked,
                             allowViewUsers: allowViewUsers.checked,
                             allowPrivateChat: allowPrivateChat.checked,
@@ -2657,14 +2694,19 @@
                     <div class="user-info">
                         <div class="user-color" style="background: ${user.color}"></div>
                         <div>
-                            <div class="user-name">${escapeHtml(user.username)}</div>
+                            <div class="user-name">
+                                ${escapeHtml(user.username)}
+                                ${user.role === 'superadmin' ? '<span style="color: #ff6b6b; margin-left: 5px;">SU</span>' : ''}
+                            </div>
                             <small style="color: #666;">房间: ${escapeHtml(user.roomName || 'main')}</small>
+                            <small style="color: #666; margin-left: 10px;">角色: ${user.role || 'user'}</small>
                         </div>
                     </div>
                     <div class="user-actions">
                         <button class="btn btn-rename" onclick="openRenameModal('${user.socketId}')">重命名</button>
                         <button class="btn btn-kick" onclick="kickUser('${user.socketId}')">踢出</button>
                         <button class="btn btn-permissions" onclick="openPermissionsModal('${user.socketId}')">权限</button>
+                        <button class="btn btn-role" onclick="openSetRoleModal('${user.socketId}', '${escapeHtml(user.username)}', '${user.role || 'user'}')">角色</button>
                         <button class="btn btn-primary" onclick="openSetMaxFriendsModal('${user.socketId}', '${escapeHtml(user.username)}')">好友上限</button>
                         <button class="btn btn-info" onclick="openPopupModal('${user.socketId}', '${escapeHtml(user.username)}')">弹窗</button>
                         <button class="btn btn-success" onclick="openChangeTitleModal('${user.socketId}', '${escapeHtml(user.username)}')">更改标题</button>
@@ -2782,6 +2824,33 @@
                     title: title
                 });
                 closeChangeTitleModal();
+            }
+        }
+        
+        // 角色设置相关函数
+        let selectedRoleSocketId = null;
+        
+        function openSetRoleModal(socketId, username, currentRole) {
+            selectedRoleSocketId = socketId;
+            document.getElementById('setRoleUsername').value = username;
+            document.getElementById('setRoleValue').value = currentRole || 'user';
+            usersModal.classList.remove('active');
+            document.getElementById('setRoleModal').classList.add('active');
+        }
+        
+        function closeSetRoleModal() {
+            document.getElementById('setRoleModal').classList.remove('active');
+            selectedRoleSocketId = null;
+        }
+        
+        function confirmSetRole() {
+            const role = document.getElementById('setRoleValue').value;
+            if (selectedRoleSocketId && role) {
+                socket.emit('admin-set-role', {
+                    socketId: selectedRoleSocketId,
+                    role: role
+                });
+                closeSetRoleModal();
             }
         }
 
