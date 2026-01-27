@@ -472,22 +472,42 @@ io.on('connection', (socket) => {
         }
         
         // 设置用户信息
-        const user = {
-            username: username,
-            color: getRandomColor(),
-            socketId: socket.id,
-            roomName: roomName,
-            role: 'user', // 默认角色为user
-            permissions: { ...defaultPermissions },
-            status: 'online', // 添加在线状态
-            settings: { locked: false, lockMessage: '设置已被管理员锁定' },
-            userSettings: { // 用户具体设置
-                targetLanguage: 'zh',
-                autoTranslate: false,
-                soundNotification: true,
-                mentionNotification: true
-            }
-        };
+            const user = {
+                username: username,
+                color: getRandomColor(),
+                socketId: socket.id,
+                roomName: roomName,
+                role: 'user', // 默认角色为user
+                permissions: { ...defaultPermissions },
+                status: 'online', // 添加在线状态
+                settings: { locked: false, lockMessage: '设置已被管理员锁定' },
+                userSettings: { // 用户具体设置
+                    targetLanguage: 'zh',
+                    autoTranslate: false,
+                    soundNotification: true,
+                    mentionNotification: true
+                },
+                aiSettings: { // AI设置
+                    enable: false,
+                    model: 'glm4',
+                    glm4: {
+                        apiKey: ''
+                    },
+                    deepseek: {
+                        modelName: '',
+                        apiKey: ''
+                    },
+                    siliconflow: {
+                        modelName: '',
+                        apiKey: ''
+                    },
+                    custom: {
+                        apiUrl: '',
+                        apiKey: '',
+                        modelName: ''
+                    }
+                }
+            };
         
         // 为新用户分配25%概率的通话权限
         if (Math.random() < 0.25) {
@@ -1357,6 +1377,39 @@ io.on('connection', (socket) => {
             
             // 通知管理员操作成功
             socket.emit('admin-set-max-friends-success', { userId, maxFriends });
+        }
+    });
+    
+    // 管理员设置用户AI聊天配置
+    socket.on('admin-set-ai-settings', (data) => {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
+            const { socketId, aiSettings } = data;
+            const targetUser = users.get(socketId);
+            
+            if (targetUser) {
+                // 更新用户的AI设置
+                targetUser.aiSettings = {
+                    ...targetUser.aiSettings,
+                    ...aiSettings
+                };
+                
+                // 通知用户AI设置已更新
+                io.to(socketId).emit('ai-settings-updated', {
+                    ...targetUser.aiSettings,
+                    message: '管理员已更新您的AI聊天设置'
+                });
+                
+                // 通知管理员操作成功
+                socket.emit('admin-ai-settings-success', {
+                    socketId: socketId,
+                    username: targetUser.username,
+                    aiSettings: targetUser.aiSettings
+                });
+                
+                console.log(`管理员更新了用户 ${targetUser.username} 的AI设置: ${JSON.stringify(targetUser.aiSettings)}`);
+            }
         }
     });
 
