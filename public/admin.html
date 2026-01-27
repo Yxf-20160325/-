@@ -2061,6 +2061,13 @@
             }
         });
         
+        let userRefreshInterval = null;
+        
+        function login() {
+            const password = adminPassword.value;
+            socket.emit('admin-login', password);
+        }
+
         adminPassword.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') {
                 login();
@@ -2078,13 +2085,6 @@
                 sendSystemMessage();
             }
         });
-
-        let userRefreshInterval = null;
-        
-        function login() {
-            const password = adminPassword.value;
-            socket.emit('admin-login', password);
-        }
 
         socket.on('admin-login-success', (success) => {
             if (success) {
@@ -2119,18 +2119,6 @@
         socket.on('message-recalled', () => {
             const selectedRoom = roomSelect.value || 'main';
             loadRoomMessages(selectedRoom);
-        });
-
-        newUsername.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                confirmRename();
-            }
-        });
-
-        systemMessage.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                sendSystemMessage();
-            }
         });
 
         function updateUsersWithSearch(data) {
