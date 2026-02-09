@@ -56,7 +56,21 @@ app.post('/upload-image', (req, res) => {
         }
         
         const filePath = path.join(__dirname, 'uploads', filename);
-        fs.writeFileSync(filePath, req.body);
+        
+        // 确保 req.body 是 Buffer 类型
+        let fileData = req.body;
+        if (fileData instanceof ArrayBuffer) {
+            fileData = Buffer.from(fileData);
+        } else if (typeof fileData === 'object' && fileData !== null) {
+            // 处理可能的对象类型（例如当中间件解析错误时）
+            try {
+                fileData = Buffer.from(JSON.stringify(fileData));
+            } catch (e) {
+                throw new Error('无法将请求体转换为Buffer');
+            }
+        }
+        
+        fs.writeFileSync(filePath, fileData);
         res.json({ imageUrl: `/uploads/${filename}` });
     } catch (error) {
         console.error('上传图片失败:', error);
@@ -90,7 +104,21 @@ app.post('/upload-audio', (req, res) => {
         }
         
         const filePath = path.join(__dirname, 'uploads', filename);
-        fs.writeFileSync(filePath, req.body);
+        
+        // 确保 req.body 是 Buffer 类型
+        let fileData = req.body;
+        if (fileData instanceof ArrayBuffer) {
+            fileData = Buffer.from(fileData);
+        } else if (typeof fileData === 'object' && fileData !== null) {
+            // 处理可能的对象类型（例如当中间件解析错误时）
+            try {
+                fileData = Buffer.from(JSON.stringify(fileData));
+            } catch (e) {
+                throw new Error('无法将请求体转换为Buffer');
+            }
+        }
+        
+        fs.writeFileSync(filePath, fileData);
         res.json({ 
             audioUrl: `/uploads/${filename}`,
             contentType: contentType
@@ -253,7 +281,21 @@ app.post('/api/files/upload', (req, res) => {
         }
         
         const filePath = path.join(__dirname, 'uploads', relativePath, filename);
-        fs.writeFileSync(filePath, req.body);
+        
+        // 确保 req.body 是 Buffer 类型
+        let fileData = req.body;
+        if (fileData instanceof ArrayBuffer) {
+            fileData = Buffer.from(fileData);
+        } else if (typeof fileData === 'object' && fileData !== null) {
+            // 处理可能的对象类型（例如当中间件解析错误时）
+            try {
+                fileData = Buffer.from(JSON.stringify(fileData));
+            } catch (e) {
+                throw new Error('无法将请求体转换为Buffer');
+            }
+        }
+        
+        fs.writeFileSync(filePath, fileData);
         const stats = fs.statSync(filePath);
         
         res.json({
