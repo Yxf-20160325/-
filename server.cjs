@@ -67,7 +67,22 @@ app.post('/upload-image', (req, res) => {
 // 音频上传接口
 app.post('/upload-audio', (req, res) => {
     try {
-        const filename = Date.now() + '-' + Math.round(Math.random() * 1E9) + '.webm';
+        // 根据Content-Type确定文件扩展名
+        let extension = '.webm';
+        const contentType = req.headers['content-type'];
+        if (contentType) {
+            const mimeToExt = {
+                'audio/webm': '.webm',
+                'audio/mp3': '.mp3',
+                'audio/mpeg': '.mp3',
+                'audio/ogg': '.ogg',
+                'audio/wav': '.wav',
+                'audio/flac': '.flac'
+            };
+            extension = mimeToExt[contentType] || extension;
+        }
+        
+        const filename = Date.now() + '-' + Math.round(Math.random() * 1E9) + extension;
         
         // 检查是否为PHP文件
         if (filename.toLowerCase().endsWith('.php')) {
@@ -76,7 +91,10 @@ app.post('/upload-audio', (req, res) => {
         
         const filePath = path.join(__dirname, 'uploads', filename);
         fs.writeFileSync(filePath, req.body);
-        res.json({ audioUrl: `/uploads/${filename}` });
+        res.json({ 
+            audioUrl: `/uploads/${filename}`,
+            contentType: contentType
+        });
     } catch (error) {
         console.error('上传音频失败:', error);
         res.status(500).json({ error: '上传音频失败' });
@@ -223,7 +241,11 @@ app.post('/api/files/create-directory', express.json(), (req, res) => {
 app.post('/api/files/upload', (req, res) => {
     try {
         const relativePath = req.headers['x-path'] || '';
-        const filename = req.headers['x-filename'] || Date.now() + '-' + Math.round(Math.random() * 1E9);
+        let filename = req.headers['x-filename'] || Date.now() + '-' + Math.round(Math.random() * 1E9);
+        // 解码文件名，处理中文等非ASCII字符
+        if (filename) {
+            filename = decodeURIComponent(filename);
+        }
         
         // 检查是否为PHP文件
         if (filename.toLowerCase().endsWith('.php')) {
@@ -422,7 +444,7 @@ const mutedUsers = new Map(); // 存储被禁言用户: Map<socketId, { username
 // 脏话过滤系统
 const badWords = [
     // 英文脏话
-    'fuck', 'shit', 'asshole', 'bitch', 'dick', 'pussy', 'cunt', 'nigger', 'faggot', 'damn', 'hell',
+    'fuck', 'shit', 'asshole', 'bitch', 'dick', 'pussy', 'cunt', 'nigger', 'faggot', 'damn',
     // 中文脏话
     '傻逼', 'sb', '傻b', '煞笔', '操你妈', '去死', '垃圾', '废物', '脑残', '王八蛋', '滚蛋', '畜生', '贱人', '狗东西', '杂种',
     '草泥马', '妈蛋', '二货', '智障', '白痴', '混蛋', '恶棍', '禽兽', '畜生不如',
@@ -731,7 +753,16 @@ io.on('connection', (socket) => {
                 } else {
                     // 检测并替换脏话
                     badWords.forEach(badWord => {
-                        const regex = new RegExp(badWord, 'gi');
+                        // 使用单词边界确保只匹配完整的单词
+                        // 对于单字或非单词字符，不使用单词边界
+                        let regex;
+                        if (badWord.length === 1 || !/^\w+$/.test(badWord)) {
+                            // 单字或非单词字符，直接匹配
+                            regex = new RegExp(badWord, 'gi');
+                        } else {
+                            // 多字单词，使用单词边界
+                            regex = new RegExp('\\b' + badWord + '\\b', 'gi');
+                        }
                         if (regex.test(processedMessage)) {
                             containsSwearWord = true;
                         }
