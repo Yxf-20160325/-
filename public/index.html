@@ -1244,7 +1244,7 @@
                 <button id="joinBtn">加入聊天</button>
             </div>
             <div id="chatForm" class="hidden">
-                <input type="file" id="imageInput" accept="image/*">
+                <input type="file" id="imageInput">
                 <div class="action-buttons">
 ·                    <button class="action-btn" id="emojiBtn" title="发送表情">😀</button>
                     <button class="action-btn disabled" id="imageBtn" title="发送图片">📷</button>
@@ -1383,7 +1383,7 @@
             <h3 id="privateChatTitle">私聊</h3>
             <div class="private-chat-messages" id="privateChatMessages"></div>
             <div class="private-chat-input">
-                <input type="file" id="privateChatImageInput" accept="image/*" style="display: none;">
+                <input type="file" id="privateChatImageInput" style="display: none;">
                 <div class="action-buttons" style="margin-bottom: 10px;">
                     <button class="action-btn" id="privateChatImageBtn" title="发送图片">📷</button>
                     <button class="action-btn" id="privateChatAudioBtn" title="发送语音">🎤</button>
@@ -6147,23 +6147,63 @@
                     const reader = new FileReader();
                     reader.onload = async (event) => {
                         const arrayBuffer = event.target.result;
-                        const response = await fetch('/upload-image', {
-                            method: 'POST',
-                            body: arrayBuffer,
-                            headers: {
-                                'Content-Type': file.type
-                            }
-                        });
-                        const data = await response.json();
+                        let response, data, messageType;
                         
-                        if (data.imageUrl) {
-                            socket.emit('message', { message: data.imageUrl, type: 'image' });
+                        // 根据文件类型选择不同的上传接口和消息类型
+                        if (file.type.startsWith('image/')) {
+                            // 图片文件
+                            response = await fetch('/upload-image', {
+                                method: 'POST',
+                                body: arrayBuffer,
+                                headers: {
+                                    'Content-Type': file.type
+                                }
+                            });
+                            data = await response.json();
+                            messageType = 'image';
+                        } else if (file.type.startsWith('audio/')) {
+                            // 音频文件
+                            response = await fetch('/upload-audio', {
+                                method: 'POST',
+                                body: arrayBuffer,
+                                headers: {
+                                    'Content-Type': file.type
+                                }
+                            });
+                            data = await response.json();
+                            messageType = 'audio';
+                        } else {
+                            // 其他文件类型
+                            response = await fetch('/api/files/upload', {
+                                method: 'POST',
+                                body: arrayBuffer,
+                                headers: {
+                                    'Content-Type': file.type,
+                                    'X-Filename': file.name
+                                }
+                            });
+                            data = await response.json();
+                            messageType = 'file';
+                        }
+                        
+                        // 根据不同类型发送消息
+                        if (messageType === 'image' && data.imageUrl) {
+                            socket.emit('message', { message: data.imageUrl, type: messageType });
+                        } else if (messageType === 'audio' && data.audioUrl) {
+                            socket.emit('message', { message: data.audioUrl, type: messageType });
+                        } else if (messageType === 'file' && data.url) {
+                            socket.emit('message', { 
+                                message: data.url, 
+                                type: messageType,
+                                fileName: file.name,
+                                fileSize: file.size
+                            });
                         }
                     };
                     reader.readAsArrayBuffer(file);
                 } catch (error) {
-                    console.error('上传图片失败:', error);
-                    alert('上传图片失败，请重试');
+                    console.error('上传文件失败:', error);
+                    alert('上传文件失败，请重试');
                 }
                 
                 imageInput.value = '';
@@ -7206,27 +7246,72 @@
                     const reader = new FileReader();
                     reader.onload = async (event) => {
                         const arrayBuffer = event.target.result;
-                        const response = await fetch('/upload-image', {
-                            method: 'POST',
-                            body: arrayBuffer,
-                            headers: {
-                                'Content-Type': file.type
-                            }
-                        });
-                        const data = await response.json();
+                        let response, data, messageType;
                         
-                        if (data.imageUrl) {
+                        // 根据文件类型选择不同的上传接口和消息类型
+                        if (file.type.startsWith('image/')) {
+                            // 图片文件
+                            response = await fetch('/upload-image', {
+                                method: 'POST',
+                                body: arrayBuffer,
+                                headers: {
+                                    'Content-Type': file.type
+                                }
+                            });
+                            data = await response.json();
+                            messageType = 'image';
+                        } else if (file.type.startsWith('audio/')) {
+                            // 音频文件
+                            response = await fetch('/upload-audio', {
+                                method: 'POST',
+                                body: arrayBuffer,
+                                headers: {
+                                    'Content-Type': file.type
+                                }
+                            });
+                            data = await response.json();
+                            messageType = 'audio';
+                        } else {
+                            // 其他文件类型
+                            response = await fetch('/api/files/upload', {
+                                method: 'POST',
+                                body: arrayBuffer,
+                                headers: {
+                                    'Content-Type': file.type,
+                                    'X-Filename': file.name
+                                }
+                            });
+                            data = await response.json();
+                            messageType = 'file';
+                        }
+                        
+                        // 根据不同类型发送私聊消息
+                        if (messageType === 'image' && data.imageUrl) {
                             socket.emit('private-message', {
                                 targetSocketId: currentPrivateChatTarget,
                                 message: data.imageUrl,
-                                type: 'image'
+                                type: messageType
+                            });
+                        } else if (messageType === 'audio' && data.audioUrl) {
+                            socket.emit('private-message', {
+                                targetSocketId: currentPrivateChatTarget,
+                                message: data.audioUrl,
+                                type: messageType
+                            });
+                        } else if (messageType === 'file' && data.url) {
+                            socket.emit('private-message', {
+                                targetSocketId: currentPrivateChatTarget,
+                                message: data.url,
+                                type: messageType,
+                                fileName: file.name,
+                                fileSize: file.size
                             });
                         }
                     };
                     reader.readAsArrayBuffer(file);
                 } catch (error) {
-                    console.error('上传图片失败:', error);
-                    alert('上传图片失败，请重试');
+                    console.error('上传文件失败:', error);
+                    alert('上传文件失败，请重试');
                 }
                 
                 privateChatImageInput.value = '';
@@ -7480,12 +7565,17 @@
                 contentHtml = `<img src="${data.message}" alt="图片" style="max-width: 100%; max-height: 200px; border-radius: 5px;">`;
             } else if (data.type === 'audio') {
                 contentHtml = `<audio controls style="width: 100%; border-radius: 5px;"><source src="${data.message}" type="audio/webm">您的浏览器不支持音频播放</audio>`;
+            } else if (data.type === 'file') {
+                // 处理文件消息，显示下载链接
+                const fileName = data.fileName || '文件';
+                const fileSize = data.fileSize ? formatFileSize(data.fileSize) : '';
+                contentHtml = `<a href="${data.message}" target="_blank" download="${fileName}" style="color: #667eea; text-decoration: underline; display: inline-block; padding: 10px; background: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6;">📁 ${fileName} ${fileSize}</a>`;
             } else {
                 // 处理文本消息，识别并转换链接
                 let text = escapeHtml(data.message);
                 
                 // 链接识别正则表达式
-                const urlRegex = /(https?:\/\/[\w\-_]+(\.[\w\-_]+)+([\w\-\.,@?^=%&:/~\+#]*[\w\-\@?^=%&/~\+#])?)/g;
+                const urlRegex = /(https?:\/\/[\w\-_]+(\.[\w\-_]+)+([\w\-\.,@?^=%&:/~\+#;]*[\w\-\@?^=%&/~\+#])?)/g;
                 
                 // 将链接转换为超链接
                 text = text.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color: #667eea; text-decoration: underline;">$1</a>');
@@ -7787,12 +7877,17 @@
                 contentHtml = `<img src="${data.message}" alt="图片" style="max-width: 100%; max-height: 200px; border-radius: 5px;">`;
             } else if (data.type === 'audio') {
                 contentHtml = `<audio controls style="width: 100%; border-radius: 5px;"><source src="${data.message}" type="audio/webm">您的浏览器不支持音频播放</think_never_used_51bce0c785ca2f68081bfa7d91973934>`;
+            } else if (data.type === 'file') {
+                // 处理文件消息，显示下载链接
+                const fileName = data.fileName || '文件';
+                const fileSize = data.fileSize ? formatFileSize(data.fileSize) : '';
+                contentHtml = `<a href="${data.message}" target="_blank" download="${fileName}" style="color: #667eea; text-decoration: underline; display: inline-block; padding: 10px; background: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6;">📁 ${fileName} ${fileSize}</a>`;
             } else {
                 // 处理文本消息，识别并转换链接
                 let text = escapeHtml(data.message);
                 
                 // 链接识别正则表达式
-                const urlRegex = /(https?:\/\/[\w\-_]+(\.[\w\-_]+)+([\w\-\.,@?^=%&:/~\+#]*[\w\-\@?^=%&/~\+#])?)/g;
+                const urlRegex = /(https?:\/\/[\w\-_]+(\.[\w\-_]+)+([\w\-\.,@?^=%&:/~\+#;]*[\w\-\@?^=%&/~\+#])?)/g;
                 
                 // 将链接转换为超链接
                 text = text.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color: #667eea; text-decoration: underline;">$1</a>');
@@ -7912,6 +8007,15 @@
         // 转义正则表达式特殊字符
         function escapeRegExp(string) {
             return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+        
+        // 格式化文件大小
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return `(${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]})`;
         }
         
         // 搜索消息
