@@ -829,7 +829,11 @@ io.on('connection', (socket) => {
                 type: data.type || 'text',
                 timestamp: new Date().toLocaleTimeString(),
                 senderSocketId: socket.id,
-                readBy: [socket.id] // 初始时只有发送者已读
+                readBy: [socket.id], // 初始时只有发送者已读
+                // 包含额外的文件和音频属性
+                fileName: data.fileName,
+                fileSize: data.fileSize,
+                contentType: data.contentType
             };
             
             // 检查消息中是否包含@{用户名}
@@ -2552,7 +2556,11 @@ io.on('connection', (socket) => {
             message: data.message,
             type: data.type || 'text',
             timestamp: new Date().toLocaleTimeString(),
-            readBy: [socket.id] // 初始时只有发送者已读
+            readBy: [socket.id], // 初始时只有发送者已读
+            // 包含额外的文件和音频属性
+            fileName: data.fileName,
+            fileSize: data.fileSize,
+            contentType: data.contentType
         };
         
         // 存储私聊消息
@@ -2612,7 +2620,11 @@ io.on('connection', (socket) => {
                 message: data.message,
                 type: data.type || 'text',
                 timestamp: new Date().toLocaleTimeString(),
-                readBy: [socket.id] // 初始时只有发送者已读
+                readBy: [socket.id], // 初始时只有发送者已读
+                // 包含额外的文件和音频属性
+                fileName: data.fileName,
+                fileSize: data.fileSize,
+                contentType: data.contentType
             };
             
             // 存储私聊消息
