@@ -3228,8 +3228,22 @@
                 // 隐藏等待提示
                 this.hideWaitingPrompt();
                 
+                // 清理媒体资源
+                this.cleanupMedia();
                 // 重置通话状态
                 this.resetCallState();
+                
+                // 隐藏视频容器
+                const videoContainer = document.getElementById('videoContainer');
+                if (videoContainer) {
+                    videoContainer.classList.remove('active');
+                }
+                
+                // 隐藏日志区域
+                if (window.DeveloperLogManager) {
+                    window.DeveloperLogManager.hideLog();
+                }
+                
                 alert('通话被拒绝');
             }
             
