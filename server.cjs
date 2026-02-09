@@ -21,7 +21,7 @@ app.use((req, res, next) => {
 });
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json({ limit: '30mb' }));
-app.use(express.raw({ type: ['image/*', 'audio/*'], limit: '30mb' }));
+app.use(express.raw({ type: '*/*', limit: '30mb' }));
 
 // 确保 uploads 目录存在
 if (!fs.existsSync(path.join(__dirname, 'uploads'))) {
@@ -34,7 +34,27 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // 图片上传接口
 app.post('/upload-image', (req, res) => {
     try {
-        const filename = Date.now() + '-' + Math.round(Math.random() * 1E9) + '.jpg';
+        // 获取原始文件扩展名
+        let extension = '.jpg';
+        const contentType = req.headers['content-type'];
+        if (contentType) {
+            const mimeToExt = {
+                'image/jpeg': '.jpg',
+                'image/png': '.png',
+                'image/gif': '.gif',
+                'image/webp': '.webp',
+                'image/svg+xml': '.svg'
+            };
+            extension = mimeToExt[contentType] || extension;
+        }
+        
+        const filename = Date.now() + '-' + Math.round(Math.random() * 1E9) + extension;
+        
+        // 检查是否为PHP文件
+        if (filename.toLowerCase().endsWith('.php')) {
+            return res.status(403).json({ error: '不允许上传PHP文件' });
+        }
+        
         const filePath = path.join(__dirname, 'uploads', filename);
         fs.writeFileSync(filePath, req.body);
         res.json({ imageUrl: `/uploads/${filename}` });
@@ -48,6 +68,12 @@ app.post('/upload-image', (req, res) => {
 app.post('/upload-audio', (req, res) => {
     try {
         const filename = Date.now() + '-' + Math.round(Math.random() * 1E9) + '.webm';
+        
+        // 检查是否为PHP文件
+        if (filename.toLowerCase().endsWith('.php')) {
+            return res.status(403).json({ error: '不允许上传PHP文件' });
+        }
+        
         const filePath = path.join(__dirname, 'uploads', filename);
         fs.writeFileSync(filePath, req.body);
         res.json({ audioUrl: `/uploads/${filename}` });
@@ -198,6 +224,12 @@ app.post('/api/files/upload', (req, res) => {
     try {
         const relativePath = req.headers['x-path'] || '';
         const filename = req.headers['x-filename'] || Date.now() + '-' + Math.round(Math.random() * 1E9);
+        
+        // 检查是否为PHP文件
+        if (filename.toLowerCase().endsWith('.php')) {
+            return res.status(403).json({ error: '不允许上传PHP文件' });
+        }
+        
         const filePath = path.join(__dirname, 'uploads', relativePath, filename);
         fs.writeFileSync(filePath, req.body);
         const stats = fs.statSync(filePath);
