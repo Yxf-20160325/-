@@ -3228,22 +3228,8 @@
                 // 隐藏等待提示
                 this.hideWaitingPrompt();
                 
-                // 清理媒体资源
-                this.cleanupMedia();
                 // 重置通话状态
                 this.resetCallState();
-                
-                // 隐藏视频容器
-                const videoContainer = document.getElementById('videoContainer');
-                if (videoContainer) {
-                    videoContainer.classList.remove('active');
-                }
-                
-                // 隐藏日志区域
-                if (window.DeveloperLogManager) {
-                    window.DeveloperLogManager.hideLog();
-                }
-                
                 alert('通话被拒绝');
             }
             
@@ -7599,7 +7585,7 @@
             if (data.type === 'image') {
                 contentHtml = `<img src="${data.message}" alt="图片" style="max-width: 100%; max-height: 200px; border-radius: 5px;">`;
             } else if (data.type === 'audio') {
-                contentHtml = `<audio controls style="width: 100%; border-radius: 5px;"><source src="${data.message}" type="${data.contentType || 'audio/webm'}">您的浏览器不支持音频播放</think_never_used_51bce0c785ca2f68081bfa7d91973934>`;
+                contentHtml = `<audio controls style="width: 100%; border-radius: 5px;"><source src="${data.message}" type="audio/webm">您的浏览器不支持音频播放</audio>`;
             } else if (data.type === 'file') {
                 // 处理文件消息，显示下载链接
                 const fileName = data.fileName || '文件';
