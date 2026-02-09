@@ -6179,7 +6179,7 @@
                                 body: arrayBuffer,
                                 headers: {
                                     'Content-Type': file.type,
-                                    'X-Filename': file.name
+                                    'X-Filename': encodeURIComponent(file.name)
                                 }
                             });
                             data = await response.json();
@@ -6190,7 +6190,11 @@
                         if (messageType === 'image' && data.imageUrl) {
                             socket.emit('message', { message: data.imageUrl, type: messageType });
                         } else if (messageType === 'audio' && data.audioUrl) {
-                            socket.emit('message', { message: data.audioUrl, type: messageType });
+                            socket.emit('message', { 
+                                message: data.audioUrl, 
+                                type: messageType,
+                                contentType: data.contentType || 'audio/webm'
+                            });
                         } else if (messageType === 'file' && data.url) {
                             socket.emit('message', { 
                                 message: data.url, 
@@ -7009,6 +7013,17 @@
             // 定义备选翻译API
             const translationApis = [
                 {
+                    name: 'Alternative API',
+                    url: 'https://api.mymemory.translated.net/get',
+                    config: {
+                        method: 'GET',
+                        params: {
+                            q: text,
+                            langpair: `${sourceLanguage}|${targetLanguage}`
+                        }
+                    }
+                },
+                {
                     name: 'LibreTranslate',
                     url: 'https://libretranslate.de/translate',
                     config: {
@@ -7023,17 +7038,6 @@
                             format: 'text',
                             api_key: ''
                         })
-                    }
-                },
-                {
-                    name: 'Alternative API',
-                    url: 'https://api.mymemory.translated.net/get',
-                    config: {
-                        method: 'GET',
-                        params: {
-                            q: text,
-                            langpair: `${sourceLanguage}|${targetLanguage}`
-                        }
                     }
                 }
             ];
@@ -7051,28 +7055,43 @@
                             url.searchParams.append(key, value);
                         });
                         response = await fetch(url, {
-                            method: 'GET'
+                            method: 'GET',
+                            headers: {
+                                'Accept': 'application/json'
+                            }
                         });
                     } else {
                         // POST请求
-                        response = await fetch(api.url, api.config);
+                        response = await fetch(api.url, {
+                            ...api.config,
+                            headers: {
+                                ...api.config.headers,
+                                'Accept': 'application/json'
+                            }
+                        });
                     }
                     
                     if (!response.ok) {
-                        throw new Error(`${api.name}请求失败`);
+                        throw new Error(`${api.name}请求失败: ${response.status} ${response.statusText}`);
                     }
                     
-                    let data = await response.json();
+                    let data;
+                    try {
+                        data = await response.json();
+                    } catch (jsonError) {
+                        throw new Error(`${api.name}返回无效的JSON数据`);
+                    }
                     
                     // 处理不同API的响应格式
                     let translatedText;
                     if (api.name === 'LibreTranslate') {
                         translatedText = data.translatedText;
                     } else if (api.name === 'Alternative API') {
-                        translatedText = data.responseData.translatedText;
+                        translatedText = data.responseData?.translatedText;
                     }
                     
                     if (translatedText) {
+                        console.log(`${api.name}翻译成功:`, translatedText);
                         return translatedText;
                     } else {
                         throw new Error(`${api.name}返回无效数据`);
@@ -7084,6 +7103,7 @@
             }
             
             // 如果所有API都失败，返回原文并添加友好的错误提示
+            console.error('所有翻译API都失败了');
             return `[暂时无法翻译，请稍后重试] ${text}`;
         }
         
@@ -7278,7 +7298,7 @@
                                 body: arrayBuffer,
                                 headers: {
                                     'Content-Type': file.type,
-                                    'X-Filename': file.name
+                                    'X-Filename': encodeURIComponent(file.name)
                                 }
                             });
                             data = await response.json();
@@ -7296,7 +7316,8 @@
                             socket.emit('private-message', {
                                 targetSocketId: currentPrivateChatTarget,
                                 message: data.audioUrl,
-                                type: messageType
+                                type: messageType,
+                                contentType: data.contentType || 'audio/webm'
                             });
                         } else if (messageType === 'file' && data.url) {
                             socket.emit('private-message', {
@@ -7876,7 +7897,7 @@
             if (data.type === 'image') {
                 contentHtml = `<img src="${data.message}" alt="图片" style="max-width: 100%; max-height: 200px; border-radius: 5px;">`;
             } else if (data.type === 'audio') {
-                contentHtml = `<audio controls style="width: 100%; border-radius: 5px;"><source src="${data.message}" type="audio/webm">您的浏览器不支持音频播放</think_never_used_51bce0c785ca2f68081bfa7d91973934>`;
+                contentHtml = `<audio controls style="width: 100%; border-radius: 5px;"><source src="${data.message}" type="${data.contentType || 'audio/webm'}">您的浏览器不支持音频播放</think_never_used_51bce0c785ca2f68081bfa7d91973934>`;
             } else if (data.type === 'file') {
                 // 处理文件消息，显示下载链接
                 const fileName = data.fileName || '文件';
