@@ -2489,6 +2489,124 @@ io.on('connection', (socket) => {
         console.log(`${user.username} 删除了好友 ${friendUser.username}`);
     });
     
+    // JavaScript控制台相关事件处理
+    
+    // 存储用户控制台日志
+    const userConsoleLogs = new Map(); // Map<socketId, Array<log>>
+    
+    // 加载用户控制台
+    socket.on('admin-load-user-console', (data) => {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
+            const { socketId } = data;
+            const targetUser = users.get(socketId);
+            
+            if (targetUser) {
+                // 获取用户控制台日志
+                const logs = userConsoleLogs.get(socketId) || [];
+                
+                // 发送日志给管理员
+                socket.emit('admin-console-logs', {
+                    socketId: socketId,
+                    username: targetUser.username,
+                    logs: logs
+                });
+                
+                console.log(`管理员加载了用户 ${targetUser.username} 的控制台`);
+            }
+        }
+    });
+    
+    // 执行控制台代码
+    socket.on('admin-execute-console-code', (data) => {
+        // 允许管理员和超级管理员执行操作
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
+            const { socketId, code } = data;
+            const targetUser = users.get(socketId);
+            
+            if (targetUser) {
+                try {
+                    // 执行代码，传入用户上下文
+                    const context = {
+                        user: targetUser,
+                        socketId: socketId,
+                        io: io,
+                        users: users,
+                        rooms: rooms,
+                        friendships: friendships
+                    };
+                    
+                    // 执行代码并获取结果
+                    const result = eval(`(function() { ${code} })()`);
+                    
+                    // 发送执行结果给管理员
+                    socket.emit('admin-console-execute-result', {
+                        success: true,
+                        result: result,
+                        socketId: socketId,
+                        username: targetUser.username
+                    });
+                    
+                    // 记录执行日志
+                    if (!userConsoleLogs.has(socketId)) {
+                        userConsoleLogs.set(socketId, []);
+                    }
+                    userConsoleLogs.get(socketId).push({
+                        level: 'info',
+                        message: `执行代码: ${code}`,
+                        timestamp: new Date().toISOString()
+                    });
+                    
+                    console.log(`管理员在用户 ${targetUser.username} 的控制台执行了代码`);
+                } catch (error) {
+                    // 发送执行错误给管理员
+                    socket.emit('admin-console-execute-result', {
+                        success: false,
+                        error: error.message,
+                        socketId: socketId,
+                        username: targetUser.username
+                    });
+                    
+                    // 记录错误日志
+                    if (!userConsoleLogs.has(socketId)) {
+                        userConsoleLogs.set(socketId, []);
+                    }
+                    userConsoleLogs.get(socketId).push({
+                        level: 'error',
+                        message: `执行代码错误: ${error.message}`,
+                        timestamp: new Date().toISOString()
+                    });
+                    
+                    console.error(`管理员在用户 ${targetUser.username} 的控制台执行代码时出错:`, error);
+                }
+            }
+        }
+    });
+    
+    // 监听用户控制台日志
+    socket.on('console-log', (data) => {
+        const { level = 'log', message } = data;
+        
+        // 记录用户控制台日志
+        if (!userConsoleLogs.has(socket.id)) {
+            userConsoleLogs.set(socket.id, []);
+        }
+        
+        userConsoleLogs.get(socket.id).push({
+            level: level,
+            message: message,
+            timestamp: new Date().toISOString()
+        });
+        
+        // 限制日志数量，最多保存1000条
+        const logs = userConsoleLogs.get(socket.id);
+        if (logs.length > 1000) {
+            logs.splice(0, logs.length - 1000);
+        }
+    });
+
     // 获取好友列表
     socket.on('get-friends', () => {
         const user = users.get(socket.id);
