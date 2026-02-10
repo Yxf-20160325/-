@@ -1254,6 +1254,13 @@
                 </div>
                 <input type="text" id="messageInput" placeholder="输入消息..." maxlength="500">
                 <button id="sendBtn">发送</button>
+                <!-- 上传进度条 -->
+                <div id="uploadProgress" style="display: none; margin-top: 10px;">
+                    <div style="font-size: 12px; margin-bottom: 5px;">上传中...</div>
+                    <div style="width: 100%; height: 5px; background-color: #f0f0f0; border-radius: 5px;">
+                        <div id="uploadProgressBar" style="width: 0%; height: 100%; background-color: #667eea; border-radius: 5px; transition: width 0.3s ease;"></div>
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -3228,8 +3235,22 @@
                 // 隐藏等待提示
                 this.hideWaitingPrompt();
                 
+                // 清理媒体资源
+                this.cleanupMedia();
                 // 重置通话状态
                 this.resetCallState();
+                
+                // 隐藏视频容器
+                const videoContainer = document.getElementById('videoContainer');
+                if (videoContainer) {
+                    videoContainer.classList.remove('active');
+                }
+                
+                // 隐藏日志区域
+                if (window.DeveloperLogManager) {
+                    window.DeveloperLogManager.hideLog();
+                }
+                
                 alert('通话被拒绝');
             }
             
@@ -3321,13 +3342,13 @@
             
             // 结束通话
             endCall() {
-                if (!this.currentCallId) return;
-                
-                // 发送通话结束
-                this.socket.emit('call-end', {
-                    targetSocketId: this.currentCallTargetSocketId,
-                    callId: this.currentCallId
-                });
+                // 只有在有currentCallId时才发送通话结束事件
+                if (this.currentCallId) {
+                    this.socket.emit('call-end', {
+                        targetSocketId: this.currentCallTargetSocketId,
+                        callId: this.currentCallId
+                    });
+                }
                 
                 // 停止字幕功能
                 this.stopSubtitles();
@@ -3342,7 +3363,9 @@
                 }
                 
                 // 隐藏日志区域
-                window.DeveloperLogManager.hideLog();
+                if (window.DeveloperLogManager) {
+                    window.DeveloperLogManager.hideLog();
+                }
             }
             
             // 切换视频开关
@@ -6135,6 +6158,109 @@
             }
         });
 
+        // 显示上传进度条
+        function showUploadProgress() {
+            const progress = document.getElementById('uploadProgress');
+            if (progress) {
+                progress.style.display = 'block';
+            }
+        }
+        
+        // 更新上传进度条
+        function updateUploadProgress(percent) {
+            const progressBar = document.getElementById('uploadProgressBar');
+            if (progressBar) {
+                progressBar.style.width = percent + '%';
+            }
+        }
+        
+        // 隐藏上传进度条
+        function hideUploadProgress() {
+            const progress = document.getElementById('uploadProgress');
+            if (progress) {
+                progress.style.display = 'none';
+            }
+            const progressBar = document.getElementById('uploadProgressBar');
+            if (progressBar) {
+                progressBar.style.width = '0%';
+            }
+        }
+        
+        // 根据文件后缀名获取Content-Type
+        function getContentTypeByExtension(filename) {
+            const extension = filename.split('.').pop().toLowerCase();
+            const mimeTypes = {
+                'mp3': 'audio/mpeg',
+                'wav': 'audio/wav',
+                'ogg': 'audio/ogg',
+                'flac': 'audio/flac',
+                'webm': 'audio/webm',
+                'jpg': 'image/jpeg',
+                'jpeg': 'image/jpeg',
+                'png': 'image/png',
+                'gif': 'image/gif',
+                'webp': 'image/webp',
+                'svg': 'image/svg+xml',
+                'pdf': 'application/pdf',
+                'doc': 'application/msword',
+                'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'xls': 'application/vnd.ms-excel',
+                'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'ppt': 'application/vnd.ms-powerpoint',
+                'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                'zip': 'application/zip',
+                'rar': 'application/x-rar-compressed',
+                '7z': 'application/x-7z-compressed',
+                'txt': 'text/plain',
+                'html': 'text/html',
+                'css': 'text/css',
+                'js': 'application/javascript'
+            };
+            return mimeTypes[extension] || 'application/octet-stream';
+        }
+        
+        // 使用XMLHttpRequest上传文件并跟踪进度
+        function uploadFileWithProgress(file, arrayBuffer, url, headers, successCallback, errorCallback) {
+            showUploadProgress();
+            
+            const xhr = new XMLHttpRequest();
+            
+            xhr.upload.addEventListener('progress', (event) => {
+                if (event.lengthComputable) {
+                    const percentComplete = Math.round((event.loaded / event.total) * 100);
+                    updateUploadProgress(percentComplete);
+                }
+            });
+            
+            xhr.addEventListener('load', () => {
+                hideUploadProgress();
+                if (xhr.status === 200) {
+                    try {
+                        const data = JSON.parse(xhr.responseText);
+                        successCallback(data);
+                    } catch (e) {
+                        errorCallback(new Error('解析响应失败'));
+                    }
+                } else {
+                    errorCallback(new Error(`上传失败: ${xhr.statusText}`));
+                }
+            });
+            
+            xhr.addEventListener('error', () => {
+                hideUploadProgress();
+                errorCallback(new Error('网络错误'));
+            });
+            
+            xhr.open('POST', url);
+            
+            // 设置请求头
+            for (const [key, value] of Object.entries(headers)) {
+                xhr.setRequestHeader(key, value);
+            }
+            
+            xhr.send(arrayBuffer);
+        }
+        
         imageInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (file) {
@@ -6145,63 +6271,80 @@
                 }
                 try {
                     const reader = new FileReader();
-                    reader.onload = async (event) => {
+                    reader.onload = (event) => {
                         const arrayBuffer = event.target.result;
-                        let response, data, messageType;
+                        let messageType;
                         
                         // 根据文件类型选择不同的上传接口和消息类型
-                        if (file.type.startsWith('image/')) {
+                        // 获取文件的Content-Type，优先使用file.type，否则根据后缀名推断
+                        const contentType = file.type || getContentTypeByExtension(file.name);
+                        
+                        if (contentType.startsWith('image/')) {
                             // 图片文件
-                            response = await fetch('/upload-image', {
-                                method: 'POST',
-                                body: arrayBuffer,
-                                headers: {
-                                    'Content-Type': file.type
-                                }
-                            });
-                            data = await response.json();
                             messageType = 'image';
-                        } else if (file.type.startsWith('audio/')) {
-                            // 音频文件
-                            response = await fetch('/upload-audio', {
-                                method: 'POST',
-                                body: arrayBuffer,
-                                headers: {
-                                    'Content-Type': file.type
+                            uploadFileWithProgress(
+                                file,
+                                arrayBuffer,
+                                '/upload-image',
+                                { 'Content-Type': contentType },
+                                (data) => {
+                                    if (data.imageUrl) {
+                                        socket.emit('message', { message: data.imageUrl, type: messageType });
+                                    }
+                                },
+                                (error) => {
+                                    console.error('上传文件失败:', error);
+                                    alert('上传文件失败，请重试');
                                 }
-                            });
-                            data = await response.json();
+                            );
+                        } else if (contentType.startsWith('audio/')) {
+                            // 音频文件
                             messageType = 'audio';
+                            uploadFileWithProgress(
+                                file,
+                                arrayBuffer,
+                                '/upload-audio',
+                                { 'Content-Type': contentType },
+                                (data) => {
+                                    if (data.audioUrl) {
+                                        socket.emit('message', { 
+                                            message: data.audioUrl, 
+                                            type: messageType,
+                                            contentType: data.contentType || contentType
+                                        });
+                                    }
+                                },
+                                (error) => {
+                                    console.error('上传文件失败:', error);
+                                    alert('上传文件失败，请重试');
+                                }
+                            );
                         } else {
                             // 其他文件类型
-                            response = await fetch('/api/files/upload', {
-                                method: 'POST',
-                                body: arrayBuffer,
-                                headers: {
-                                    'Content-Type': file.type,
-                                    'X-Filename': encodeURIComponent(file.name)
-                                }
-                            });
-                            data = await response.json();
                             messageType = 'file';
-                        }
-                        
-                        // 根据不同类型发送消息
-                        if (messageType === 'image' && data.imageUrl) {
-                            socket.emit('message', { message: data.imageUrl, type: messageType });
-                        } else if (messageType === 'audio' && data.audioUrl) {
-                            socket.emit('message', { 
-                                message: data.audioUrl, 
-                                type: messageType,
-                                contentType: data.contentType || 'audio/webm'
-                            });
-                        } else if (messageType === 'file' && data.url) {
-                            socket.emit('message', { 
-                                message: data.url, 
-                                type: messageType,
-                                fileName: file.name,
-                                fileSize: file.size
-                            });
+                            uploadFileWithProgress(
+                                file,
+                                arrayBuffer,
+                                '/api/files/upload',
+                                { 
+                                    'Content-Type': contentType,
+                                    'X-Filename': encodeURIComponent(file.name)
+                                },
+                                (data) => {
+                                    if (data.url) {
+                                        socket.emit('message', { 
+                                            message: data.url, 
+                                            type: messageType,
+                                            fileName: file.name,
+                                            fileSize: file.size
+                                        });
+                                    }
+                                },
+                                (error) => {
+                                    console.error('上传文件失败:', error);
+                                    alert('上传文件失败，请重试');
+                                }
+                            );
                         }
                     };
                     reader.readAsArrayBuffer(file);
@@ -6230,32 +6373,39 @@
                         audioChunks.push(event.data);
                     };
                     
-                    mediaRecorder.onstop = async () => {
+                    mediaRecorder.onstop = () => {
                         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
                         
-                        try {
-                            // 直接使用Blob上传，不转换为arrayBuffer
-                            const response = await fetch('/upload-audio', {
-                                method: 'POST',
-                                body: audioBlob,
-                                headers: {
-                                    'Content-Type': 'audio/webm'
+                        // 将Blob转换为ArrayBuffer以便使用uploadFileWithProgress
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                            const arrayBuffer = event.target.result;
+                            
+                            uploadFileWithProgress(
+                                new File([audioBlob], 'recording.webm', { type: 'audio/webm' }),
+                                arrayBuffer,
+                                '/upload-audio',
+                                { 'Content-Type': 'audio/webm' },
+                                (data) => {
+                                    if (data.audioUrl) {
+                                        socket.emit('message', { 
+                                            message: data.audioUrl, 
+                                            type: 'audio',
+                                            contentType: data.contentType || 'audio/webm'
+                                        });
+                                    }
+                                },
+                                (error) => {
+                                    console.error('上传语音失败:', error);
+                                    alert('上传语音失败，请重试');
                                 }
-                            });
-                            
-                            if (!response.ok) {
-                                throw new Error(`网络响应错误: ${response.statusText}`);
-                            }
-                            
-                            const data = await response.json();
-                            
-                            if (data.audioUrl) {
-                                socket.emit('message', { message: data.audioUrl, type: 'audio' });
-                            }
-                        } catch (error) {
-                            console.error('上传语音失败:', error);
+                            );
+                        };
+                        reader.onerror = (error) => {
+                            console.error('读取音频数据失败:', error);
                             alert('上传语音失败，请重试');
-                        }
+                        };
+                        reader.readAsArrayBuffer(audioBlob);
                         
                         stream.getTracks().forEach(track => track.stop());
                     };
@@ -7269,24 +7419,27 @@
                         let response, data, messageType;
                         
                         // 根据文件类型选择不同的上传接口和消息类型
-                        if (file.type.startsWith('image/')) {
+                        // 获取文件的Content-Type，优先使用file.type，否则根据后缀名推断
+                        const contentType = file.type || getContentTypeByExtension(file.name);
+                        
+                        if (contentType.startsWith('image/')) {
                             // 图片文件
                             response = await fetch('/upload-image', {
                                 method: 'POST',
                                 body: arrayBuffer,
                                 headers: {
-                                    'Content-Type': file.type
+                                    'Content-Type': contentType
                                 }
                             });
                             data = await response.json();
                             messageType = 'image';
-                        } else if (file.type.startsWith('audio/')) {
+                        } else if (contentType.startsWith('audio/')) {
                             // 音频文件
                             response = await fetch('/upload-audio', {
                                 method: 'POST',
                                 body: arrayBuffer,
                                 headers: {
-                                    'Content-Type': file.type
+                                    'Content-Type': contentType
                                 }
                             });
                             data = await response.json();
@@ -7297,7 +7450,7 @@
                                 method: 'POST',
                                 body: arrayBuffer,
                                 headers: {
-                                    'Content-Type': file.type,
+                                    'Content-Type': contentType,
                                     'X-Filename': encodeURIComponent(file.name)
                                 }
                             });
@@ -7585,10 +7738,10 @@
             if (data.type === 'image') {
                 contentHtml = `<img src="${data.message}" alt="图片" style="max-width: 100%; max-height: 200px; border-radius: 5px;">`;
             } else if (data.type === 'audio') {
-                contentHtml = `<audio controls style="width: 100%; border-radius: 5px;"><source src="${data.message}" type="audio/webm">您的浏览器不支持音频播放</audio>`;
+                contentHtml = `<audio controls style="width: 100%; border-radius: 5px;"><source src="${data.message}" type="${data.contentType || 'audio/webm'}">您的浏览器不支持音频播放</think_never_used_51bce0c785ca2f68081bfa7d91973934>`;
             } else if (data.type === 'file') {
                 // 处理文件消息，显示下载链接
-                const fileName = data.fileName || '文件';
+                const fileName = data.fileName || '文件null';
                 const fileSize = data.fileSize ? formatFileSize(data.fileSize) : '';
                 contentHtml = `<a href="${data.message}" target="_blank" download="${fileName}" style="color: #667eea; text-decoration: underline; display: inline-block; padding: 10px; background: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6;">📁 ${fileName} ${fileSize}</a>`;
             } else {
@@ -9212,4 +9365,4 @@
         }
     </script>
 </body>
-</html>
+</html
