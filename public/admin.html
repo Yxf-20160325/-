@@ -5371,7 +5371,18 @@ if (typeof userSettings !== 'undefined') {
                 `;
             }).join('');
             
-            consoleLogs.innerHTML = logsHTML;
+            // 检查是否需要更新（避免重复更新导致的闪烁）
+            const currentContent = consoleLogs.innerHTML;
+            if (currentContent.includes('正在加载用户控制台') || currentContent.includes('暂无控制台日志') || currentContent.includes('控制台日志已清空')) {
+                consoleLogs.innerHTML = logsHTML;
+            } else {
+                // 只有当内容确实不同时才更新
+                const currentText = consoleLogs.textContent;
+                const newText = logs.map(log => `${new Date(log.timestamp).toLocaleString()} [${log.level.toUpperCase()}] ${log.message}`).join(' ');
+                if (currentText !== newText) {
+                    consoleLogs.innerHTML = logsHTML;
+                }
+            }
             
             // 滚动到底部
             consoleLogs.scrollTop = consoleLogs.scrollHeight;
