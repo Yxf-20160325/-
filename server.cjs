@@ -71,8 +71,8 @@ if (!fs.existsSync(path.join(__dirname, 'uploads'))) {
 // 静态文件服务 - 提供上传的文件
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// 图片上传接口
-app.post('/upload-image', (req, res) => {
+// 图片上传接口 - 单独配置raw解析器
+app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), (req, res) => {
     try {
         // 获取原始文件扩展名
         let extension = '.jpg';
@@ -96,6 +96,13 @@ app.post('/upload-image', (req, res) => {
         }
         
         const filePath = path.join(__dirname, 'uploads', filename);
+        
+        // 确保目录存在
+        const dirPath = path.dirname(filePath);
+        if (!fs.existsSync(dirPath)) {
+            fs.mkdirSync(dirPath, { recursive: true });
+        }
+        
         fs.writeFileSync(filePath, req.body);
         res.json({ imageUrl: `/uploads/${filename}` });
     } catch (error) {
@@ -104,8 +111,8 @@ app.post('/upload-image', (req, res) => {
     }
 });
 
-// 音频上传接口
-app.post('/upload-audio', (req, res) => {
+// 音频上传接口 - 单独配置raw解析器
+app.post('/upload-audio', express.raw({ type: '*/*', limit: '30mb' }), (req, res) => {
     try {
         // 根据Content-Type确定文件扩展名
         let extension = '.webm';
@@ -130,6 +137,13 @@ app.post('/upload-audio', (req, res) => {
         }
         
         const filePath = path.join(__dirname, 'uploads', filename);
+        
+        // 确保目录存在
+        const dirPath = path.dirname(filePath);
+        if (!fs.existsSync(dirPath)) {
+            fs.mkdirSync(dirPath, { recursive: true });
+        }
+        
         fs.writeFileSync(filePath, req.body);
         res.json({ 
             audioUrl: `/uploads/${filename}`,
