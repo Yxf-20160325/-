@@ -431,6 +431,9 @@ let requestIdCounter = 1; // 申请ID计数器
 const ongoingCalls = new Map(); // 存储正在进行的通话: Map<callId, callInfo>
 let callIdCounter = 1; // 通话ID计数器
 
+// 控制台日志系统
+const userConsoleLogs = new Map(); // Map<socketId, Array<log>>
+
 // 默认好友数量上限
 const DEFAULT_MAX_FRIENDS = 5;
 const INFINITE_FRIENDS = -1; // 无限好友数量
@@ -2491,9 +2494,6 @@ io.on('connection', (socket) => {
     
     // JavaScript控制台相关事件处理
     
-    // 存储用户控制台日志
-    const userConsoleLogs = new Map(); // Map<socketId, Array<log>>
-    
     // 加载用户控制台
     socket.on('admin-load-user-console', (data) => {
         // 允许管理员和超级管理员执行操作
@@ -2527,61 +2527,40 @@ io.on('connection', (socket) => {
             const targetUser = users.get(socketId);
             
             if (targetUser) {
-                try {
-                    // 执行代码，传入用户上下文
-                    const context = {
-                        user: targetUser,
-                        socketId: socketId,
-                        io: io,
-                        users: users,
-                        rooms: rooms,
-                        friendships: friendships
-                    };
-                    
-                    // 执行代码并获取结果
-                    const result = eval(`(function() { ${code} })()`);
-                    
-                    // 发送执行结果给管理员
-                    socket.emit('admin-console-execute-result', {
-                        success: true,
-                        result: result,
-                        socketId: socketId,
-                        username: targetUser.username
-                    });
-                    
-                    // 记录执行日志
-                    if (!userConsoleLogs.has(socketId)) {
-                        userConsoleLogs.set(socketId, []);
-                    }
-                    userConsoleLogs.get(socketId).push({
-                        level: 'info',
-                        message: `执行代码: ${code}`,
-                        timestamp: new Date().toISOString()
-                    });
-                    
-                    console.log(`管理员在用户 ${targetUser.username} 的控制台执行了代码`);
-                } catch (error) {
-                    // 发送执行错误给管理员
-                    socket.emit('admin-console-execute-result', {
-                        success: false,
-                        error: error.message,
-                        socketId: socketId,
-                        username: targetUser.username
-                    });
-                    
-                    // 记录错误日志
-                    if (!userConsoleLogs.has(socketId)) {
-                        userConsoleLogs.set(socketId, []);
-                    }
-                    userConsoleLogs.get(socketId).push({
-                        level: 'error',
-                        message: `执行代码错误: ${error.message}`,
-                        timestamp: new Date().toISOString()
-                    });
-                    
-                    console.error(`管理员在用户 ${targetUser.username} 的控制台执行代码时出错:`, error);
+                // 将代码发送给用户浏览器执行
+                io.to(socketId).emit('execute-console-code', {
+                    code: code,
+                    adminSocketId: socket.id
+                });
+                
+                // 记录执行日志
+                if (!userConsoleLogs.has(socketId)) {
+                    userConsoleLogs.set(socketId, []);
                 }
+                userConsoleLogs.get(socketId).push({
+                    level: 'info',
+                    message: `执行代码: ${code}`,
+                    timestamp: new Date().toISOString()
+                });
+                
+                console.log(`管理员在用户 ${targetUser.username} 的控制台执行了代码`);
             }
+        }
+    });
+    
+    // 监听用户浏览器执行代码的结果
+    socket.on('console-code-execute-result', (data) => {
+        const { adminSocketId, success, result, error } = data;
+        
+        // 将执行结果发送给管理员
+        if (adminSocketId) {
+            io.to(adminSocketId).emit('admin-console-execute-result', {
+                success: success,
+                result: result,
+                error: error,
+                socketId: socket.id,
+                username: users.get(socket.id)?.username || '未知用户'
+            });
         }
     });
     
