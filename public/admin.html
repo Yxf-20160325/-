@@ -915,6 +915,7 @@
                 <button class="tab" onclick="switchTab('chatroomNotifications')">聊天室提示</button>
                 <button class="tab" onclick="switchTab('systemManagement')">系统管理</button>
                 <button class="tab" onclick="switchTab('globalSettings')">全体设置</button>
+                <button class="tab" onclick="switchTab('console')">JavaScript控制台</button>
             </div>
 
             <div class="tab-content active" id="usersTab">
@@ -1394,6 +1395,54 @@
                 <div id="activeNotificationsList" style="background: #f8f9fa; padding: 15px; border-radius: 10px; max-height: 500px; overflow-y: auto;">
                     <div class="empty-state">
                         <p>暂无活跃提示</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="tab-content" id="consoleTab">
+            <div class="section">
+                <h2>JavaScript控制台</h2>
+                <p style="margin-bottom: 15px; color: #666;">查看用户JavaScript控制台，执行JavaScript代码，查看所有级别的日志</p>
+                
+                <div class="input-group" style="margin-bottom: 20px;">
+                    <select id="consoleUserSelect" style="flex: 1; padding: 10px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 14px;">
+                        <option value="">选择用户</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="loadUserConsole()">加载控制台</button>
+                </div>
+                
+                <div class="section">
+                    <h3>执行JavaScript代码</h3>
+                    <div class="input-group">
+                        <textarea id="consoleCode" placeholder="输入JavaScript代码，按执行按钮运行" rows="10" style="flex: 1; padding: 12px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 14px; font-family: 'Courier New', monospace;"></textarea>
+                    </div>
+                    <div class="input-group" style="margin-top: 10px;">
+                        <button class="btn btn-primary" onclick="executeConsoleCode()">执行代码</button>
+                        <button class="btn btn-secondary" onclick="clearConsoleCode()">清空代码</button>
+                        <button class="btn btn-info" onclick="loadSampleCode()">加载示例代码</button>
+                    </div>
+                </div>
+                
+                <div class="section" style="margin-top: 20px;">
+                    <h3>控制台日志</h3>
+                    <div class="input-group" style="margin-bottom: 10px;">
+                        <select id="logLevelFilter" style="padding: 8px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 14px;">
+                            <option value="all">所有级别</option>
+                            <option value="error">错误</option>
+                            <option value="warn">警告</option>
+                            <option value="info">信息</option>
+                            <option value="log">日志</option>
+                            <option value="debug">调试</option>
+                        </select>
+                        <button class="btn btn-primary" onclick="clearConsoleLogs()">清空日志</button>
+                        <button class="btn btn-info" onclick="exportConsoleLogs()">导出日志</button>
+                    </div>
+                    <div id="consoleLogs" style="background: #f8f9fa; border-radius: 10px; padding: 15px; max-height: 500px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 14px;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">💻</div>
+                            <div>请选择用户并加载控制台</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -5153,6 +5202,221 @@
         
         // 监听更新历史数据
         socket.on('update-history', displayUpdateHistory);
+        
+        // JavaScript控制台相关函数
+        function loadUserConsole() {
+            const userSelect = document.getElementById('consoleUserSelect');
+            const selectedUserId = userSelect.value;
+            
+            if (!selectedUserId) {
+                alert('请选择一个用户');
+                return;
+            }
+            
+            // 加载用户控制台
+            socket.emit('admin-load-user-console', { socketId: selectedUserId });
+            
+            // 清空日志区域并显示加载状态
+            const consoleLogs = document.getElementById('consoleLogs');
+            consoleLogs.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">🔄</div>
+                    <div>正在加载用户控制台...</div>
+                </div>
+            `;
+        }
+        
+        function executeConsoleCode() {
+            const userSelect = document.getElementById('consoleUserSelect');
+            const selectedUserId = userSelect.value;
+            const code = document.getElementById('consoleCode').value.trim();
+            
+            if (!selectedUserId) {
+                alert('请选择一个用户');
+                return;
+            }
+            
+            if (!code) {
+                alert('请输入要执行的JavaScript代码');
+                return;
+            }
+            
+            // 执行代码
+            socket.emit('admin-execute-console-code', {
+                socketId: selectedUserId,
+                code: code
+            });
+        }
+        
+        function clearConsoleCode() {
+            document.getElementById('consoleCode').value = '';
+        }
+        
+        function loadSampleCode() {
+            const sampleCode = `// 示例代码：获取用户信息
+console.log('用户信息:', {
+    username: user.username,
+    room: user.roomName,
+    permissions: user.permissions
+});
+
+// 示例代码：发送消息
+if (typeof sendMessage === 'function') {
+    sendMessage('这是一条来自管理员控制台的测试消息', 'text');
+}
+
+// 示例代码：修改用户设置
+if (typeof userSettings !== 'undefined') {
+    console.log('当前用户设置:', userSettings);
+}`;
+            
+            document.getElementById('consoleCode').value = sampleCode;
+        }
+        
+        function clearConsoleLogs() {
+            const consoleLogs = document.getElementById('consoleLogs');
+            consoleLogs.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">💻</div>
+                    <div>控制台日志已清空</div>
+                </div>
+            `;
+        }
+        
+        function exportConsoleLogs() {
+            const consoleLogs = document.getElementById('consoleLogs');
+            const logsContent = consoleLogs.textContent;
+            
+            if (logsContent.includes('请选择用户并加载控制台') || logsContent.includes('控制台日志已清空')) {
+                alert('没有可导出的日志');
+                return;
+            }
+            
+            // 创建下载链接
+            const blob = new Blob([logsContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `console-logs-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        // 监听用户列表更新，更新控制台用户选择器
+        socket.on('user-joined', (data) => {
+            updateConsoleUserSelect(data.users);
+        });
+        
+        socket.on('user-left', (data) => {
+            updateConsoleUserSelect(data.users);
+        });
+        
+        // 更新控制台用户选择器
+        function updateConsoleUserSelect(users) {
+            const consoleUserSelect = document.getElementById('consoleUserSelect');
+            if (!consoleUserSelect) return;
+            
+            // 保存当前选中的值
+            const currentValue = consoleUserSelect.value;
+            
+            // 清空并重新添加选项
+            consoleUserSelect.innerHTML = '<option value="">选择用户</option>';
+            users.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user.socketId;
+                option.textContent = user.username;
+                consoleUserSelect.appendChild(option);
+            });
+            
+            // 恢复之前的选中值
+            if (currentValue) {
+                consoleUserSelect.value = currentValue;
+            }
+        }
+        
+        // 监听控制台日志
+        socket.on('admin-console-logs', (data) => {
+            const consoleLogs = document.getElementById('consoleLogs');
+            const logs = data.logs;
+            
+            if (!logs || logs.length === 0) {
+                consoleLogs.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">💻</div>
+                        <div>暂无控制台日志</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            // 生成日志HTML
+            const logsHTML = logs.map(log => {
+                const levelClass = {
+                    error: 'color: #dc3545;',
+                    warn: 'color: #ffc107;',
+                    info: 'color: #17a2b8;',
+                    log: 'color: #333;',
+                    debug: 'color: #6c757d;'
+                }[log.level] || 'color: #333;';
+                
+                return `
+                    <div style="margin-bottom: 8px; padding: 5px; border-left: 3px solid #667eea;">
+                        <div style="font-size: 12px; color: #999; margin-bottom: 2px;">
+                            ${new Date(log.timestamp).toLocaleString()} [${log.level.toUpperCase()}]
+                        </div>
+                        <div style="${levelClass}">
+                            ${escapeHtml(log.message)}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            consoleLogs.innerHTML = logsHTML;
+            
+            // 滚动到底部
+            consoleLogs.scrollTop = consoleLogs.scrollHeight;
+        });
+        
+        // 监听代码执行结果
+        socket.on('admin-console-execute-result', (data) => {
+            const consoleLogs = document.getElementById('consoleLogs');
+            const { success, result, error } = data;
+            
+            if (success) {
+                const resultHTML = `
+                    <div style="margin-bottom: 8px; padding: 5px; border-left: 3px solid #28a745;">
+                        <div style="font-size: 12px; color: #999; margin-bottom: 2px;">
+                            ${new Date().toLocaleString()} [EXECUTE]
+                        </div>
+                        <div style="color: #28a745;">
+                            代码执行成功:
+                        </div>
+                        <div style="margin-top: 5px; color: #333; font-family: monospace;">
+                            ${escapeHtml(JSON.stringify(result, null, 2))}
+                        </div>
+                    </div>
+                `;
+                consoleLogs.insertAdjacentHTML('beforeend', resultHTML);
+            } else {
+                const errorHTML = `
+                    <div style="margin-bottom: 8px; padding: 5px; border-left: 3px solid #dc3545;">
+                        <div style="font-size: 12px; color: #999; margin-bottom: 2px;">
+                            ${new Date().toLocaleString()} [EXECUTE ERROR]
+                        </div>
+                        <div style="color: #dc3545;">
+                            代码执行失败:
+                        </div>
+                        <div style="margin-top: 5px; color: #dc3545; font-family: monospace;">
+                            ${escapeHtml(error)}
+                        </div>
+                    </div>
+                `;
+                consoleLogs.insertAdjacentHTML('beforeend', errorHTML);
+            }
+            
+            // 滚动到底部
+            consoleLogs.scrollTop = consoleLogs.scrollHeight;
+        });
     </script>
 </body>
 </html>
