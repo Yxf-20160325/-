@@ -20,8 +20,48 @@ app.use((req, res, next) => {
     next();
 });
 app.use(express.static(path.join(__dirname, 'public')));
+
+// 为文件上传API单独配置raw解析器
+app.post('/api/files/upload', express.raw({ type: '*/*', limit: '30mb' }), (req, res) => {
+    try {
+        const relativePath = req.headers['x-path'] || '';
+        let filename = req.headers['x-filename'] || Date.now() + '-' + Math.round(Math.random() * 1E9);
+        // 解码文件名，处理中文等非ASCII字符
+        if (filename) {
+            filename = decodeURIComponent(filename);
+        }
+        
+        // 检查是否为PHP文件
+        if (filename.toLowerCase().endsWith('.php')) {
+            return res.status(403).json({ error: '不允许上传PHP文件' });
+        }
+        
+        const filePath = path.join(__dirname, 'uploads', relativePath, filename);
+        
+        // 确保目录存在
+        const dirPath = path.dirname(filePath);
+        if (!fs.existsSync(dirPath)) {
+            fs.mkdirSync(dirPath, { recursive: true });
+        }
+        
+        fs.writeFileSync(filePath, req.body);
+        const stats = fs.statSync(filePath);
+        
+        res.json({
+            name: filename,
+            size: stats.size,
+            createdAt: stats.birthtime,
+            modifiedAt: stats.mtime,
+            url: `/uploads/${relativePath ? relativePath + '/' + filename : filename}`
+        });
+    } catch (error) {
+        console.error('上传文件失败:', error);
+        res.status(500).json({ error: '上传文件失败' });
+    }
+});
+
+// 其他路由使用json解析器
 app.use(express.json({ limit: '30mb' }));
-app.use(express.raw({ type: '*/*', limit: '30mb' }));
 
 // 确保 uploads 目录存在
 if (!fs.existsSync(path.join(__dirname, 'uploads'))) {
@@ -237,37 +277,7 @@ app.post('/api/files/create-directory', express.json(), (req, res) => {
     }
 });
 
-// 文件管理API - 上传文件
-app.post('/api/files/upload', (req, res) => {
-    try {
-        const relativePath = req.headers['x-path'] || '';
-        let filename = req.headers['x-filename'] || Date.now() + '-' + Math.round(Math.random() * 1E9);
-        // 解码文件名，处理中文等非ASCII字符
-        if (filename) {
-            filename = decodeURIComponent(filename);
-        }
-        
-        // 检查是否为PHP文件
-        if (filename.toLowerCase().endsWith('.php')) {
-            return res.status(403).json({ error: '不允许上传PHP文件' });
-        }
-        
-        const filePath = path.join(__dirname, 'uploads', relativePath, filename);
-        fs.writeFileSync(filePath, req.body);
-        const stats = fs.statSync(filePath);
-        
-        res.json({
-            name: filename,
-            size: stats.size,
-            createdAt: stats.birthtime,
-            modifiedAt: stats.mtime,
-            url: `/uploads/${relativePath ? relativePath + '/' + filename : filename}`
-        });
-    } catch (error) {
-        console.error('上传文件失败:', error);
-        res.status(500).json({ error: '上传文件失败' });
-    }
-});
+
 
 // 文件管理API - 删除文件或目录
 app.delete('/api/files/*', (req, res) => {
