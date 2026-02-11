@@ -22,6 +22,548 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            transition: all 0.3s ease;
+        }
+        
+        /* 深色模式样式 */
+        body.dark-mode {
+            background: linear-gradient(135deg, #1e1e2f 0%, #1a1a2e 100%);
+            color: #e0e0e0;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        
+        body.dark-mode html {
+            background: linear-gradient(135deg, #1e1e2f 0%, #1a1a2e 100%);
+            color: #e0e0e0;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+        
+        body.dark-mode .container {
+            background: #1a1a2e;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+        
+        body.dark-mode .header {
+            background: linear-gradient(135deg, #16213e 0%, #0f3460 100%);
+        }
+        
+        body.dark-mode .messages {
+            background: #16213e;
+            color: #e0e0e0;
+            border: none;
+            outline: none;
+        }
+        
+        /* 自定义滚动条样式 */
+        body.dark-mode .messages::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        body.dark-mode .messages::-webkit-scrollbar-track {
+            background: #1a1a2e;
+        }
+        
+        body.dark-mode .messages::-webkit-scrollbar-thumb {
+            background: #333;
+            border-radius: 4px;
+        }
+        
+        body.dark-mode .messages::-webkit-scrollbar-thumb:hover {
+            background: #667eea;
+        }
+        
+        body.dark-mode .users-panel {
+            background: #1a1a2e;
+            border-left: 1px solid #333;
+        }
+        
+        body.dark-mode .message-content {
+            background: #1e1e2f;
+            color: #e0e0e0;
+            border: 1px solid #333;
+        }
+        
+        body.dark-mode .system-message {
+            background: #1e3a8a;
+            color: #bfdbfe;
+        }
+        
+        body.dark-mode #messageInput,
+        body.dark-mode #usernameInput {
+            background: #1e1e2f;
+            border: 2px solid #333;
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode #messageInput:focus,
+        body.dark-mode #usernameInput:focus {
+            border-color: #667eea;
+        }
+        
+        body.dark-mode .action-btn {
+            background: #1e1e2f;
+            color: #667eea;
+            border: 1px solid #333;
+        }
+        
+        body.dark-mode .action-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+        
+        body.dark-mode .user-item {
+            background: #1e1e2f;
+            border: 2px solid #333;
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .user-item:hover {
+            border-color: #667eea;
+            background: #16213e;
+        }
+        
+        body.dark-mode .modal-content {
+            background: #1e1e2f;
+            color: #e0e0e0;
+            border: 1px solid #333;
+        }
+        
+        body.dark-mode .tab {
+            background: #1a1a2e;
+            color: #e0e0e0;
+            border: 1px solid #333;
+        }
+        
+        body.dark-mode .tab.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        body.dark-mode .tab:hover {
+            background: #667eea;
+            color: white;
+        }
+        
+        body.dark-mode select {
+            background: #1e1e2f;
+            color: #e0e0e0;
+            border: 1px solid #333;
+        }
+        
+        body.dark-mode select:focus {
+            border-color: #667eea;
+        }
+        
+        body.dark-mode .input-group label {
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .input-group input[type="text"],
+        body.dark-mode .input-group input[type="number"],
+        body.dark-mode .input-group input[type="password"] {
+            background: #1e1e2f;
+            color: #e0e0e0;
+            border: 1px solid #333;
+        }
+        
+        body.dark-mode .input-group input[type="text"]:focus,
+        body.dark-mode .input-group input[type="number"]:focus,
+        body.dark-mode .input-group input[type="password"]:focus {
+            border-color: #667eea;
+        }
+        
+        body.dark-mode .input-group input[type="checkbox"] {
+            accent-color: #667eea;
+        }
+        
+        body.dark-mode .btn-confirm {
+            background: #667eea;
+            color: white;
+            border: 1px solid #333;
+        }
+        
+        body.dark-mode .btn-confirm:hover {
+            background: #764ba2;
+        }
+        
+        body.dark-mode .btn-cancel {
+            background: #333;
+            color: #e0e0e0;
+            border: 1px solid #444;
+        }
+        
+        body.dark-mode .btn-cancel:hover {
+            background: #444;
+        }
+        
+        /* 修复黄色背景的可读性问题 */
+        body.dark-mode .warn {
+            background: #332700;
+            color: #ffc107;
+        }
+        
+        /* 修复用户详情页面的白色背景问题 */
+        body.dark-mode #userDetailModal .modal-content {
+            background: #1e1e2f;
+            color: #e0e0e0;
+            border: 1px solid #333;
+        }
+        
+        /* 修复设置页面的标签样式 */
+        body.dark-mode .setting-tab {
+            background: #1a1a2e;
+            color: #e0e0e0;
+            border: 1px solid #333;
+        }
+        
+        body.dark-mode .setting-tab.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        body.dark-mode .setting-tab:hover {
+            background: #667eea;
+            color: white;
+        }
+        
+        /* 修复设置页面的标签样式（通用） */
+        body.dark-mode .tab {
+            background: #1a1a2e !important;
+            color: #e0e0e0 !important;
+            border: 1px solid #333 !important;
+        }
+        
+        body.dark-mode .tab.active {
+            background: #667eea !important;
+            color: white !important;
+        }
+        
+        body.dark-mode .tab:hover {
+            background: #667eea !important;
+            color: white !important;
+        }
+        
+        /* 修复用户详情页面的白色背景问题 */
+        body.dark-mode #userDetailModal .modal-content {
+            background: #1e1e2f !important;
+            color: #e0e0e0 !important;
+            border: 1px solid #333 !important;
+        }
+        
+        /* 修复所有模态框的白色背景问题 */
+        body.dark-mode .modal-content {
+            background: #1e1e2f !important;
+            color: #e0e0e0 !important;
+            border: 1px solid #333 !important;
+        }
+        
+        /* 修复输入框和选择框的样式 */
+        body.dark-mode input[type="text"],
+        body.dark-mode input[type="number"],
+        body.dark-mode input[type="password"],
+        body.dark-mode select,
+        body.dark-mode textarea {
+            background: #1e1e2f !important;
+            color: #e0e0e0 !important;
+            border: 1px solid #333 !important;
+        }
+        
+        body.dark-mode input[type="text"]:focus,
+        body.dark-mode input[type="number"]:focus,
+        body.dark-mode input[type="password"]:focus,
+        body.dark-mode select:focus,
+        body.dark-mode textarea:focus {
+            border-color: #667eea !important;
+        }
+        
+        /* 修复复选框和单选框的样式 */
+        body.dark-mode input[type="checkbox"],
+        body.dark-mode input[type="radio"] {
+            accent-color: #667eea !important;
+        }
+        
+        /* 修复按钮的样式 */
+        body.dark-mode button {
+            background: #1a1a2e !important;
+            color: #e0e0e0 !important;
+            border: 1px solid #333 !important;
+        }
+        
+        body.dark-mode button:hover {
+            background: #667eea !important;
+            color: white !important;
+        }
+        
+        /* 修复链接的样式 */
+        body.dark-mode a {
+            color: #667eea !important;
+        }
+        
+        body.dark-mode a:hover {
+            color: #764ba2 !important;
+        }
+        
+        /* 修复黄色背景的可读性问题 */
+        body.dark-mode .warn {
+            background: #332700 !important;
+            color: #ffc107 !important;
+        }
+        
+        /* 修复系统消息的样式 */
+        body.dark-mode .system-message {
+            background: #1e3a8a !important;
+            color: #bfdbfe !important;
+        }
+        
+        body.dark-mode .emoji-panel {
+            background: #1e1e2f;
+            border: 1px solid #333;
+        }
+        
+        body.dark-mode .emoji-categories {
+            background: #16213e;
+        }
+        
+        body.dark-mode .emoji-category {
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .emoji-category:hover {
+            background: #333;
+        }
+        
+        body.dark-mode .emoji-category.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        body.dark-mode .call-incoming {
+            background: #1e1e2f;
+            color: #e0e0e0;
+            border: 1px solid #333;
+        }
+        
+        body.dark-mode .call-accept {
+            background: #10b981;
+            color: white;
+        }
+        
+        body.dark-mode .call-reject {
+            background: #ef4444;
+            color: white;
+        }
+        
+        body.dark-mode .reply-indicator {
+            background: #1e3a8a;
+            border-left: 3px solid #3b82f6;
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .reply-indicator strong {
+            color: #93c5fd;
+        }
+        
+        body.dark-mode .read-status {
+            color: #6b7280;
+        }
+        
+        /* 新增深色模式样式 */
+        body.dark-mode .header-actions {
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .online-count {
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .header-btn {
+            background: #1e1e2f;
+            color: #667eea;
+            border: 1px solid #333;
+        }
+        
+        body.dark-mode .header-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+        
+        body.dark-mode .search-container {
+            background: #1a1a2e;
+            border-bottom: 1px solid #333;
+        }
+        
+        body.dark-mode #messageSearchInput {
+            background: #1e1e2f;
+            border: 1px solid #333;
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode #messageSearchInput:focus {
+            border-color: #667eea;
+        }
+        
+        body.dark-mode .chat-container {
+            background: #1a1a2e;
+        }
+        
+        body.dark-mode #joinBtn {
+            background: #667eea;
+            color: white;
+            border: 1px solid #333;
+        }
+        
+        body.dark-mode #joinBtn:hover {
+            background: #764ba2;
+        }
+        
+        body.dark-mode #sendBtn {
+            background: #667eea;
+            color: white;
+            border: 1px solid #333;
+        }
+        
+        body.dark-mode #sendBtn:hover {
+            background: #764ba2;
+        }
+        
+        body.dark-mode #uploadProgress {
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+        
+        body.dark-mode #uploadProgressText {
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode #cancelUploadBtn {
+            background: #dc3545;
+            color: white;
+            border: 1px solid #333;
+        }
+        
+        body.dark-mode #cancelUploadBtn:hover {
+            background: #c82333;
+        }
+        
+        body.dark-mode .emoji-grid {
+            background: #1e1e2f;
+        }
+        
+        body.dark-mode .video-container {
+            background: #1a1a2e;
+            border: 1px solid #333;
+        }
+        
+        body.dark-mode .video-content {
+            background: #1e1e2f;
+        }
+        
+        body.dark-mode .video-box {
+            background: #16213e;
+            border: 1px solid #333;
+        }
+        
+        body.dark-mode .video-label {
+            background: #1e1e2f;
+            color: #e0e0e0;
+            border: 1px solid #333;
+        }
+        
+        body.dark-mode .subtitles-container {
+            background: rgba(0, 0, 0, 0.7);
+        }
+        
+        body.dark-mode .subtitles-text {
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .video-controls {
+            background: #1e1e2f;
+            border-top: 1px solid #333;
+        }
+        
+        body.dark-mode .video-control-btn {
+            background: #16213e;
+            color: #e0e0e0;
+            border: 1px solid #333;
+        }
+        
+        body.dark-mode .video-control-btn:hover {
+            background: #667eea;
+            color: white;
+        }
+        
+        body.dark-mode .video-control-btn.end {
+            background: #dc3545;
+            color: white;
+        }
+        
+        body.dark-mode .video-control-btn.end:hover {
+            background: #c82333;
+        }
+        
+        body.dark-mode .developer-log {
+            background: #1e1e2f;
+            color: #e0e0e0;
+            border: 1px solid #333;
+        }
+        
+        body.dark-mode .call-incoming-buttons {
+            background: #1e1e2f;
+            border-top: 1px solid #333;
+        }
+        
+        body.dark-mode .modal-buttons {
+            background: #1e1e2f;
+            border-top: 1px solid #333;
+        }
+        
+        body.dark-mode .search-box {
+            background: #1e1e2f;
+            border: 1px solid #333;
+        }
+        
+        body.dark-mode #searchInput {
+            background: #16213e;
+            border: 1px solid #333;
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode #searchInput:focus {
+            border-color: #667eea;
+        }
+        
+        body.dark-mode .private-chat-messages {
+            background: #16213e;
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .private-chat-input {
+            background: #1e1e2f;
+            border-top: 1px solid #333;
+        }
+        
+        body.dark-mode #privateChatInput {
+            background: #16213e;
+            border: 1px solid #333;
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode #privateChatInput:focus {
+            border-color: #667eea;
+        }
+        
+        body.dark-mode #privateChatSendBtn {
+            background: #667eea;
+            color: white;
+            border: 1px solid #333;
+        }
+        
+        body.dark-mode #privateChatSendBtn:hover {
+            background: #764ba2;
         }
 
         .container {
@@ -1228,13 +1770,18 @@
         </div>
         
         <!-- 消息搜索框 -->
-        <div class="search-container" style="padding: 10px; background: white; border-bottom: 1px solid #dee2e6;">
-            <input type="text" id="messageSearchInput" placeholder="搜索消息..." style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 20px; font-size: 14px; outline: none;">
-        </div>
+        <div class="search-container" style="padding: 10px;">
+                <input type="text" id="messageSearchInput" placeholder="搜索消息..." style="width: 100%; padding: 8px 12px; border-radius: 20px; font-size: 14px; outline: none;">
+            </div>
 
         <div class="chat-container">
-            <div class="messages" id="messages">
+            <div class="messages" id="messages" style="position: relative;">
                 <div class="system-message">欢迎来到聊天室！请输入昵称加入。</div>
+                <!-- 虚拟列表容器 -->
+                <div id="virtualListContainer" style="display: none; position: relative; height: 100%; overflow-y: auto;">
+                    <div id="virtualListContent" style="position: relative;"></div>
+                    <div id="virtualListPlaceholder" style="position: absolute; top: 0; left: 0; width: 100%;"></div>
+                </div>
             </div>
         </div>
 
@@ -1251,6 +1798,7 @@
                     <button class="action-btn disabled" id="audioBtn" title="发送语音">🎤</button>
                     <button class="action-btn" id="videoCallBtn" title="视频通话">📹</button>
                     <button class="action-btn" id="audioCallBtn" title="语音通话">📞</button>
+
                 </div>
                 <input type="text" id="messageInput" placeholder="输入消息..." maxlength="500">
                 <button id="sendBtn">发送</button>
@@ -1464,6 +2012,12 @@
                             <label>
                                 <input type="checkbox" id="mentionNotificationCheckbox" checked>
                                 @提及通知
+                            </label>
+                        </div>
+                        <div style="margin-top: 10px;">
+                            <label>
+                                <input type="checkbox" id="darkModeCheckbox">
+                                深色模式
                             </label>
                         </div>
                         <div style="margin-top: 10px;">
@@ -1747,6 +2301,54 @@
             </div>
         </div>
     </div>
+    
+    <!-- 投票模态框 -->
+    <div class="modal" id="pollModal">
+        <div class="modal-content" style="max-width: 600px;">
+            <h3>发起投票</h3>
+            <div style="margin-bottom: 20px;">
+                <label for="pollQuestion" style="display: block; margin-bottom: 8px;">投票问题</label>
+                <input type="text" id="pollQuestion" placeholder="请输入投票问题" style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 5px; margin-bottom: 15px;">
+                
+                <label style="display: block; margin-bottom: 8px;">投票选项</label>
+                <div id="pollOptions">
+                    <div class="poll-option" style="display: flex; align-items: center; margin-bottom: 10px;">
+                        <input type="text" class="poll-option-input" placeholder="选项1" style="flex: 1; padding: 8px; border: 1px solid #dee2e6; border-radius: 5px; margin-right: 10px;">
+                        <button type="button" onclick="removePollOption(this)" style="padding: 8px 12px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">删除</button>
+                    </div>
+                    <div class="poll-option" style="display: flex; align-items: center; margin-bottom: 10px;">
+                        <input type="text" class="poll-option-input" placeholder="选项2" style="flex: 1; padding: 8px; border: 1px solid #dee2e6; border-radius: 5px; margin-right: 10px;">
+                        <button type="button" onclick="removePollOption(this)" style="padding: 8px 12px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">删除</button>
+                    </div>
+                </div>
+                <button type="button" onclick="addPollOption()" style="margin-top: 10px; padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer;">添加选项</button>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-cancel" onclick="closePollModal()">取消</button>
+                <button type="button" class="btn btn-confirm" onclick="createPoll()">创建投票</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 待办事项模态框 -->
+    <div class="modal" id="todoModal">
+        <div class="modal-content" style="max-width: 600px;">
+            <h3>待办事项</h3>
+            <div style="margin-bottom: 20px;">
+                <div style="display: flex; margin-bottom: 15px;">
+                    <input type="text" id="todoInput" placeholder="添加新的待办事项" style="flex: 1; padding: 10px; border: 1px solid #dee2e6; border-radius: 5px; margin-right: 10px;">
+                    <button type="button" onclick="addTodoItem()" style="padding: 10px 16px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer;">添加</button>
+                </div>
+                <div id="todoList" style="max-height: 300px; overflow-y: auto;">
+                    <!-- 待办事项将通过JavaScript动态添加 -->
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-cancel" onclick="closeTodoModal()">关闭</button>
+                <button type="button" class="btn btn-confirm" onclick="clearCompletedTodos()">清除已完成</button>
+            </div>
+        </div>
+    </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
@@ -1754,7 +2356,485 @@
         var userDetailUpdateInterval = null;
         var currentDetailSocketId = null;
         
-        const socket = io();
+        // 配置socket.io连接，添加心跳和重连机制
+        const socket = io({
+            reconnection: true,
+            reconnectionAttempts: Infinity,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            timeout: 20000,
+            transports: ['websocket', 'polling']
+        });
+        
+        // 网络状态管理
+        let isOnline = true;
+        let heartbeatInterval;
+        let reconnectAttempts = 0;
+        
+        // 监听连接成功事件
+        socket.on('connect', () => {
+            console.log('WebSocket连接成功');
+            isOnline = true;
+            reconnectAttempts = 0;
+            startHeartbeat();
+            showConnectionStatus('已连接', 'success');
+        });
+        
+        // 监听连接错误事件
+        socket.on('connect_error', (error) => {
+            console.error('WebSocket连接错误:', error);
+        });
+        
+        // 监听断开连接事件
+        socket.on('disconnect', (reason) => {
+            console.log('WebSocket断开连接:', reason);
+            isOnline = false;
+            stopHeartbeat();
+            showConnectionStatus('已断开连接', 'error');
+        });
+        
+        // 监听重连尝试事件
+        socket.on('reconnect_attempt', (attemptNumber) => {
+            console.log(`WebSocket尝试重连 (${attemptNumber})`);
+            reconnectAttempts = attemptNumber;
+            showConnectionStatus(`正在重连... (${attemptNumber})`, 'warning');
+        });
+        
+        // 监听重连成功事件
+        socket.on('reconnect', (attemptNumber) => {
+            console.log(`WebSocket重连成功 (尝试次数: ${attemptNumber})`);
+            isOnline = true;
+            reconnectAttempts = 0;
+            startHeartbeat();
+            showConnectionStatus('重连成功', 'success');
+        });
+        
+        // 监听重连失败事件
+        socket.on('reconnect_failed', () => {
+            console.error('WebSocket重连失败');
+            showConnectionStatus('重连失败', 'error');
+        });
+        
+        // 开始心跳检测
+        function startHeartbeat() {
+            // 停止之前的心跳
+            stopHeartbeat();
+            
+            // 每30秒发送一次心跳
+            heartbeatInterval = setInterval(() => {
+                if (socket.connected) {
+                    socket.emit('ping');
+                }
+            }, 30000);
+        }
+        
+        // 停止心跳检测
+        function stopHeartbeat() {
+            if (heartbeatInterval) {
+                clearInterval(heartbeatInterval);
+                heartbeatInterval = null;
+            }
+        }
+        
+        // 投票和待办事项功能
+        let polls = [];
+        let todos = JSON.parse(localStorage.getItem('todos') || '[]');
+        
+        function initPollAndTodo() {
+            // 确保DOM元素已加载
+            setTimeout(() => {
+                const pollBtn = document.getElementById('pollBtn');
+                const todoBtn = document.getElementById('todoBtn');
+                
+                if (pollBtn) {
+                    // 移除可能存在的旧事件监听器
+                    pollBtn.removeEventListener('click', openPollModal);
+                    // 添加新的事件监听器
+                    pollBtn.addEventListener('click', openPollModal);
+                    console.log('投票按钮事件监听器已绑定');
+                }
+                
+                if (todoBtn) {
+                    // 移除可能存在的旧事件监听器
+                    todoBtn.removeEventListener('click', openTodoModal);
+                    // 添加新的事件监听器
+                    todoBtn.addEventListener('click', openTodoModal);
+                    console.log('待办事项按钮事件监听器已绑定');
+                }
+            }, 100);
+            
+            // 加载待办事项
+            loadTodos();
+        }
+        
+        // 投票相关函数
+        function openPollModal() {
+            const pollModal = document.getElementById('pollModal');
+            if (pollModal) {
+                pollModal.classList.add('active');
+            }
+        }
+        
+        function closePollModal() {
+            const pollModal = document.getElementById('pollModal');
+            if (pollModal) {
+                pollModal.classList.remove('active');
+                // 重置表单
+                document.getElementById('pollQuestion').value = '';
+                const pollOptions = document.getElementById('pollOptions');
+                pollOptions.innerHTML = `
+                    <div class="poll-option" style="display: flex; align-items: center; margin-bottom: 10px;">
+                        <input type="text" class="poll-option-input" placeholder="选项1" style="flex: 1; padding: 8px; border: 1px solid #dee2e6; border-radius: 5px; margin-right: 10px;">
+                        <button type="button" onclick="removePollOption(this)" style="padding: 8px 12px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">删除</button>
+                    </div>
+                    <div class="poll-option" style="display: flex; align-items: center; margin-bottom: 10px;">
+                        <input type="text" class="poll-option-input" placeholder="选项2" style="flex: 1; padding: 8px; border: 1px solid #dee2e6; border-radius: 5px; margin-right: 10px;">
+                        <button type="button" onclick="removePollOption(this)" style="padding: 8px 12px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">删除</button>
+                    </div>
+                `;
+            }
+        }
+        
+        function addPollOption() {
+            const pollOptions = document.getElementById('pollOptions');
+            const optionCount = pollOptions.children.length + 1;
+            
+            const optionDiv = document.createElement('div');
+            optionDiv.className = 'poll-option';
+            optionDiv.style.display = 'flex';
+            optionDiv.style.alignItems = 'center';
+            optionDiv.style.marginBottom = '10px';
+            
+            optionDiv.innerHTML = `
+                <input type="text" class="poll-option-input" placeholder="选项${optionCount}" style="flex: 1; padding: 8px; border: 1px solid #dee2e6; border-radius: 5px; margin-right: 10px;">
+                <button type="button" onclick="removePollOption(this)" style="padding: 8px 12px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer;">删除</button>
+            `;
+            
+            pollOptions.appendChild(optionDiv);
+        }
+        
+        function removePollOption(button) {
+            const optionDiv = button.parentElement;
+            const pollOptions = document.getElementById('pollOptions');
+            
+            if (pollOptions.children.length > 2) {
+                pollOptions.removeChild(optionDiv);
+                // 更新选项编号
+                Array.from(pollOptions.children).forEach((child, index) => {
+                    const input = child.querySelector('.poll-option-input');
+                    input.placeholder = `选项${index + 1}`;
+                });
+            } else {
+                alert('至少需要两个选项');
+            }
+        }
+        
+        function createPoll() {
+            const question = document.getElementById('pollQuestion').value.trim();
+            const optionInputs = document.querySelectorAll('.poll-option-input');
+            const options = Array.from(optionInputs).map(input => input.value.trim()).filter(value => value);
+            
+            if (!question) {
+                alert('请输入投票问题');
+                return;
+            }
+            
+            if (options.length < 2) {
+                alert('至少需要两个选项');
+                return;
+            }
+            
+            // 创建投票对象
+            const poll = {
+                id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+                question: question,
+                options: options.map(option => ({
+                    text: option,
+                    votes: 0,
+                    voters: []
+                })),
+                creator: username,
+                createdAt: new Date().toLocaleTimeString(),
+                closed: false
+            };
+            
+            polls.push(poll);
+            
+            // 发送投票消息
+            const pollMessage = `📊 **投票**: ${question}\n选项: ${options.join(', ')}\n点击查看详情并投票`;
+            socket.emit('message', {
+                message: pollMessage, 
+                type: 'poll', 
+                pollId: poll.id,
+                question: question,
+                options: poll.options
+            });
+            
+            closePollModal();
+        }
+        
+        function displayPoll(poll) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+            messageDiv.dataset.pollId = poll.id;
+            
+            let optionsHtml = '';
+            poll.options.forEach((option, index) => {
+                const isVoted = option.voters.includes(username);
+                optionsHtml += `
+                    <div style="margin: 8px 0;">
+                        <label style="display: flex; align-items: center;">
+                            <input type="radio" name="poll-${poll.id}" value="${index}" ${isVoted ? 'checked' : ''} ${poll.closed ? 'disabled' : ''} onchange="voteOnPoll('${poll.id}', ${index})">
+                            <span style="margin-left: 8px;">${option.text}</span>
+                            <span style="margin-left: auto; font-size: 12px; color: #666;">${option.votes} 票</span>
+                        </label>
+                    </div>
+                `;
+            });
+            
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    <span class="username" style="color: #667eea;">${poll.creator} 发起投票</span>
+                    <span class="timestamp">${poll.createdAt}</span>
+                </div>
+                <div class="message-content">
+                    <h4 style="margin-bottom: 12px;">${poll.question}</h4>
+                    <div>${optionsHtml}</div>
+                    ${poll.closed ? '<div style="margin-top: 10px; padding: 8px; background: #f8f9fa; border-radius: 5px; font-size: 12px; color: #666;">投票已结束</div>' : ''}
+                </div>
+            `;
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        function voteOnPoll(pollId, optionIndex) {
+            console.log('投票函数被调用:', pollId, optionIndex);
+            const poll = polls.find(p => p.id === pollId);
+            if (!poll || poll.closed) {
+                console.log('投票无效:', !poll ? '投票不存在' : '投票已结束');
+                return;
+            }
+            
+            console.log('找到投票:', poll);
+            
+            // 检查用户是否已经投过票
+            let hasVoted = false;
+            poll.options.forEach(option => {
+                if (option.voters.includes(username)) {
+                    hasVoted = true;
+                }
+            });
+            
+            if (hasVoted) {
+                console.log('用户已经投过票');
+                alert('您已经投过票了，不能重复投票！');
+                return;
+            }
+            
+            // 添加新的投票
+            poll.options[optionIndex].voters.push(username);
+            poll.options[optionIndex].votes++;
+            console.log('添加新的投票:', poll.options[optionIndex]);
+            
+            // 更新投票显示
+            updatePollDisplay(pollId);
+            console.log('投票更新完成');
+        }
+        
+        function updatePollDisplay(pollId) {
+            const pollElement = document.querySelector(`[data-poll-id="${pollId}"]`);
+            if (pollElement) {
+                const poll = polls.find(p => p.id === pollId);
+                if (poll) {
+                    let optionsHtml = '';
+                    poll.options.forEach((option, index) => {
+                        const isVoted = option.voters.includes(username);
+                        optionsHtml += `
+                            <div style="margin: 8px 0;">
+                                <label style="display: flex; align-items: center;">
+                                    <input type="radio" name="poll-${poll.id}" value="${index}" ${isVoted ? 'checked' : ''} ${poll.closed ? 'disabled' : ''} onchange="voteOnPoll('${poll.id}', ${index})">
+                                    <span style="margin-left: 8px;">${option.text}</span>
+                                    <span style="margin-left: auto; font-size: 12px; color: #666;">${option.votes} 票</span>
+                                </label>
+                            </div>
+                        `;
+                    });
+                    
+                    const contentDiv = pollElement.querySelector('.message-content');
+                    contentDiv.innerHTML = `
+                        <h4 style="margin-bottom: 12px;">${poll.question}</h4>
+                        <div>${optionsHtml}</div>
+                        ${poll.closed ? '<div style="margin-top: 10px; padding: 8px; background: #f8f9fa; border-radius: 5px; font-size: 12px; color: #666;">投票已结束</div>' : ''}
+                    `;
+                }
+            }
+        }
+        
+        // 待办事项相关函数
+        function openTodoModal() {
+            const todoModal = document.getElementById('todoModal');
+            if (todoModal) {
+                todoModal.classList.add('active');
+                loadTodos();
+            }
+        }
+        
+        function closeTodoModal() {
+            const todoModal = document.getElementById('todoModal');
+            if (todoModal) {
+                todoModal.classList.remove('active');
+            }
+        }
+        
+        function addTodoItem() {
+            console.log('添加待办事项函数被调用');
+            const input = document.getElementById('todoInput');
+            if (!input) {
+                console.log('待办事项输入框未找到');
+                return;
+            }
+            
+            const text = input.value.trim();
+            console.log('待办事项内容:', text);
+            
+            if (text) {
+                const todo = {
+                    id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+                    text: text,
+                    completed: false,
+                    createdAt: new Date().toLocaleTimeString()
+                };
+                
+                console.log('创建待办事项:', todo);
+                todos.push(todo);
+                saveTodos();
+                loadTodos();
+                input.value = '';
+                console.log('待办事项添加完成');
+            } else {
+                console.log('待办事项内容为空');
+            }
+        }
+        
+        function toggleTodoStatus(todoId) {
+            const todo = todos.find(t => t.id === todoId);
+            if (todo) {
+                todo.completed = !todo.completed;
+                saveTodos();
+                loadTodos();
+            }
+        }
+        
+        function deleteTodoItem(todoId) {
+            todos = todos.filter(t => t.id !== todoId);
+            saveTodos();
+            loadTodos();
+        }
+        
+        function clearCompletedTodos() {
+            todos = todos.filter(t => !t.completed);
+            saveTodos();
+            loadTodos();
+        }
+        
+        function saveTodos() {
+            localStorage.setItem('todos', JSON.stringify(todos));
+        }
+        
+        function loadTodos() {
+            const todoList = document.getElementById('todoList');
+            if (todoList) {
+                todoList.innerHTML = '';
+                
+                if (todos.length === 0) {
+                    todoList.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">暂无待办事项</div>';
+                    return;
+                }
+                
+                todos.forEach(todo => {
+                    const todoItem = document.createElement('div');
+                    todoItem.style.cssText = `
+                        display: flex;
+                        align-items: center;
+                        padding: 10px;
+                        margin-bottom: 8px;
+                        background: ${todo.completed ? '#e8f5e8' : '#f8f9fa'};
+                        border: 1px solid #dee2e6;
+                        border-radius: 5px;
+                        transition: all 0.2s;
+                    `;
+                    
+                    todoItem.innerHTML = `
+                        <input type="checkbox" ${todo.completed ? 'checked' : ''} onchange="toggleTodoStatus('${todo.id}')" style="margin-right: 10px;">
+                        <span style="flex: 1; text-decoration: ${todo.completed ? 'line-through' : 'none'}; color: ${todo.completed ? '#666' : '#333'};">${todo.text}</span>
+                        <span style="font-size: 12px; color: #999; margin-right: 10px;">${todo.createdAt}</span>
+                        <button type="button" onclick="deleteTodoItem('${todo.id}')" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer;">删除</button>
+                    `;
+                    
+                    todoList.appendChild(todoItem);
+                });
+            }
+        }
+        
+        // 显示连接状态
+        function showConnectionStatus(message, type) {
+            // 检查是否已存在状态元素
+            let statusElement = document.getElementById('connectionStatus');
+            if (!statusElement) {
+                statusElement = document.createElement('div');
+                statusElement.id = 'connectionStatus';
+                statusElement.style.cssText = `
+                    position: fixed;
+                    top: 10px;
+                    right: 10px;
+                    padding: 8px 12px;
+                    border-radius: 4px;
+                    font-size: 12px;
+                    z-index: 9999;
+                    transition: all 0.3s ease;
+                    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                `;
+                document.body.appendChild(statusElement);
+            }
+            
+            // 设置状态样式
+            const typeStyles = {
+                success: { background: '#d4edda', color: '#155724', border: '1px solid #c3e6cb' },
+                error: { background: '#f8d7da', color: '#721c24', border: '1px solid #f5c6cb' },
+                warning: { background: '#fff3cd', color: '#856404', border: '1px solid #ffeaa7' },
+                info: { background: '#d1ecf1', color: '#0c5460', border: '1px solid #bee5eb' }
+            };
+            
+            const style = typeStyles[type] || typeStyles.info;
+            Object.assign(statusElement.style, style);
+            statusElement.textContent = message;
+            
+            // 3秒后自动隐藏（除了错误状态）
+            if (type !== 'error') {
+                setTimeout(() => {
+                    statusElement.style.opacity = '0';
+                    setTimeout(() => {
+                        if (document.body.contains(statusElement)) {
+                            document.body.removeChild(statusElement);
+                        }
+                    }, 300);
+                }, 3000);
+            }
+        }
+        
+        // 监听网络状态变化
+        window.addEventListener('online', () => {
+            console.log('网络已连接');
+            if (!socket.connected) {
+                socket.connect();
+            }
+        });
+        
+        window.addEventListener('offline', () => {
+            console.log('网络已断开');
+            showConnectionStatus('网络已断开', 'error');
+        });
         let username = '';
         let currentRoom = '';
         let userPermissions = {
@@ -1919,6 +2999,310 @@
         let allMessages = []; // 保存所有历史消息
         let isSearching = false; // 是否正在搜索状态
         let searchKeyword = '';
+        
+        // 桌面通知系统
+        class NotificationSystem {
+            constructor() {
+                this.permission = 'default';
+                this.init();
+            }
+            
+            init() {
+                this.checkPermission();
+            }
+            
+            checkPermission() {
+                if ('Notification' in window) {
+                    this.permission = Notification.permission;
+                }
+            }
+            
+            async requestPermission() {
+                if ('Notification' in window && this.permission !== 'granted') {
+                    this.permission = await Notification.requestPermission();
+                    return this.permission === 'granted';
+                }
+                return this.permission === 'granted';
+            }
+            
+            sendNotification(title, options = {}) {
+                if ('Notification' in window && this.permission === 'granted') {
+                    try {
+                        const notification = new Notification(title, {
+                            body: options.body || '',
+                            icon: options.icon || '/favicon.ico',
+                            badge: options.badge || '',
+                            image: options.image || '',
+                            vibrate: options.vibrate || [200, 100, 200],
+                            requireInteraction: options.requireInteraction || false,
+                            tag: options.tag || '',
+                            renotify: options.renotify || false,
+                            actions: options.actions || [],
+                            data: options.data || {}
+                        });
+                        
+                        if (options.onClick) {
+                            notification.onclick = options.onClick;
+                        }
+                        
+                        if (options.autoClose !== false) {
+                            setTimeout(() => {
+                                notification.close();
+                            }, 5000);
+                        }
+                        
+                        return true;
+                    } catch (error) {
+                        console.error('发送通知失败:', error);
+                        return false;
+                    }
+                }
+                return false;
+            }
+            
+            sendMessageNotification(username, message) {
+                return this.sendNotification(`${username} 发送了消息`, {
+                    body: message.length > 50 ? message.substring(0, 50) + '...' : message,
+                    icon: '/favicon.ico',
+                    tag: 'message',
+                    renotify: true,
+                    onClick: () => {
+                        window.focus();
+                    }
+                });
+            }
+            
+            sendMentionNotification(username, message) {
+                return this.sendNotification(`${username} @了你`, {
+                    body: message.length > 50 ? message.substring(0, 50) + '...' : message,
+                    icon: '/favicon.ico',
+                    tag: 'mention',
+                    renotify: true,
+                    vibrate: [200, 100, 200, 100, 200],
+                    onClick: () => {
+                        window.focus();
+                    }
+                });
+            }
+            
+            sendCallNotification(username, callType) {
+                return this.sendNotification(`${username} 发起了${callType}通话`, {
+                    body: '点击接听通话',
+                    icon: '/favicon.ico',
+                    tag: 'call',
+                    requireInteraction: true,
+                    vibrate: [500, 100, 500, 100, 500],
+                    actions: [
+                        { action: 'accept', title: '接听' },
+                        { action: 'reject', title: '拒绝' }
+                    ],
+                    onClick: () => {
+                        window.focus();
+                    }
+                });
+            }
+        }
+        
+        // 初始化通知系统
+        const notificationSystem = new NotificationSystem();
+        
+        // 虚拟列表实现
+        class VirtualList {
+            constructor(containerId, itemHeight = 80) {
+                this.container = document.getElementById(containerId);
+                this.content = document.getElementById('virtualListContent');
+                this.placeholder = document.getElementById('virtualListPlaceholder');
+                this.itemHeight = itemHeight;
+                this.items = [];
+                this.startIndex = 0;
+                this.endIndex = 0;
+                this.isInitialized = false;
+                
+                this.init();
+            }
+            
+            init() {
+                if (!this.container || !this.content || !this.placeholder) {
+                    console.error('虚拟列表容器元素未找到');
+                    return;
+                }
+                
+                this.container.addEventListener('scroll', () => this.handleScroll());
+                this.isInitialized = true;
+            }
+            
+            setItems(items) {
+                this.items = items;
+                this.updatePlaceholderHeight();
+                this.renderVisibleItems();
+            }
+            
+            updatePlaceholderHeight() {
+                const totalHeight = this.items.length * this.itemHeight;
+                this.placeholder.style.height = totalHeight + 'px';
+            }
+            
+            getVisibleRange() {
+                const scrollTop = this.container.scrollTop;
+                const containerHeight = this.container.clientHeight;
+                
+                const start = Math.floor(scrollTop / this.itemHeight);
+                const end = Math.min(
+                    this.items.length,
+                    Math.ceil((scrollTop + containerHeight) / this.itemHeight) + 5
+                );
+                
+                return { start, end };
+            }
+            
+            renderVisibleItems() {
+                if (!this.isInitialized || this.items.length === 0) return;
+                
+                const { start, end } = this.getVisibleRange();
+                
+                // 只在可见范围变化时重新渲染
+                if (this.startIndex === start && this.endIndex === end) return;
+                
+                this.startIndex = start;
+                this.endIndex = end;
+                
+                const visibleItems = this.items.slice(start, end);
+                const offsetY = start * this.itemHeight;
+                
+                this.content.style.transform = `translateY(${offsetY}px)`;
+                this.content.innerHTML = '';
+                
+                visibleItems.forEach((item, index) => {
+                    const actualIndex = start + index;
+                    const messageElement = this.createMessageElement(item, actualIndex);
+                    if (messageElement) {
+                        this.content.appendChild(messageElement);
+                    }
+                });
+            }
+            
+            createMessageElement(message, index) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message';
+                messageDiv.dataset.messageId = message.id;
+                messageDiv.dataset.index = index;
+                messageDiv.style.height = this.itemHeight + 'px';
+                messageDiv.style.overflow = 'hidden';
+                
+                // 根据消息类型创建不同的内容
+                let contentHTML = '';
+                switch (message.type) {
+                    case 'text':
+                        contentHTML = `<div class="message-header">
+                            <span class="username" style="color: ${message.color};">${message.username}</span>
+                            <span class="timestamp">${message.timestamp}</span>
+                        </div>
+                        <div class="message-content">${message.message}</div>
+                        <div class="message-actions">
+                            <button class="favorite-btn" onclick="toggleFavorite('${message.id}')" title="收藏消息">⭐</button>
+                            <button class="translate-btn" onclick="translateMessage('${message.id}', '${message.message}')" title="翻译消息">🌐</button>
+                        </div>`;
+                        break;
+                    case 'image':
+                        contentHTML = `<div class="message-header">
+                            <span class="username" style="color: ${message.color};">${message.username}</span>
+                            <span class="timestamp">${message.timestamp}</span>
+                        </div>
+                        <div class="message-content">
+                            <img src="${message.message}" style="max-width: 100%; max-height: 200px; border-radius: 5px; cursor: pointer;" onclick="openImageModal('${message.message}')">
+                        </div>
+                        <div class="message-actions">
+                            <button class="favorite-btn" onclick="toggleFavorite('${message.id}')" title="收藏消息">⭐</button>
+                        </div>`;
+                        break;
+                    case 'audio':
+                        contentHTML = `<div class="message-header">
+                            <span class="username" style="color: ${message.color};">${message.username}</span>
+                            <span class="timestamp">${message.timestamp}</span>
+                        </div>
+                        <div class="message-content">
+                            <audio controls style="width: 100%;">
+                                <source src="${message.message}" type="${message.contentType || 'audio/webm'}">
+                                您的浏览器不支持音频播放。
+                            </audio>
+                        </div>
+                        <div class="message-actions">
+                            <button class="favorite-btn" onclick="toggleFavorite('${message.id}')" title="收藏消息">⭐</button>
+                        </div>`;
+                        break;
+                    case 'video':
+                        contentHTML = `<div class="message-header">
+                            <span class="username" style="color: ${message.color};">${message.username}</span>
+                            <span class="timestamp">${message.timestamp}</span>
+                        </div>
+                        <div class="message-content">
+                            <video controls style="max-width: 100%; max-height: 300px; border-radius: 5px;">
+                                <source src="${message.message}" type="${message.contentType || 'video/webm'}">
+                                您的浏览器不支持视频播放。
+                            </video>
+                        </div>
+                        <div class="message-actions">
+                            <button class="favorite-btn" onclick="toggleFavorite('${message.id}')" title="收藏消息">⭐</button>
+                        </div>`;
+                        break;
+                    default:
+                        contentHTML = `<div class="message-header">
+                            <span class="username" style="color: ${message.color};">${message.username}</span>
+                            <span class="timestamp">${message.timestamp}</span>
+                        </div>
+                        <div class="message-content">${message.message}</div>
+                        <div class="message-actions">
+                            <button class="favorite-btn" onclick="toggleFavorite('${message.id}')" title="收藏消息">⭐</button>
+                            <button class="translate-btn" onclick="translateMessage('${message.id}', '${message.message}')" title="翻译消息">🌐</button>
+                        </div>`;
+                }
+                
+                messageDiv.innerHTML = contentHTML;
+                
+                // 检查消息是否已收藏
+                if (isMessageFavorited(message.id)) {
+                    const favoriteBtn = messageDiv.querySelector('.favorite-btn');
+                    if (favoriteBtn) {
+                        favoriteBtn.classList.add('favorited');
+                        favoriteBtn.title = '取消收藏';
+                    }
+                }
+                
+                return messageDiv;
+            }
+            
+            handleScroll() {
+                this.renderVisibleItems();
+            }
+            
+            scrollToBottom() {
+                if (this.container) {
+                    this.container.scrollTop = this.container.scrollHeight;
+                }
+            }
+            
+            scrollToIndex(index) {
+                if (this.container) {
+                    const scrollTop = index * this.itemHeight;
+                    this.container.scrollTop = scrollTop;
+                }
+            }
+        }
+        
+        // 初始化虚拟列表
+        let virtualList = null;
+        function initVirtualList() {
+            const messagesContainer = document.getElementById('messages');
+            const virtualListContainer = document.getElementById('virtualListContainer');
+            
+            if (messagesContainer && virtualListContainer) {
+                messagesContainer.style.display = 'none';
+                virtualListContainer.style.display = 'block';
+                
+                virtualList = new VirtualList('virtualListContainer');
+                console.log('虚拟列表初始化完成');
+            }
+        }
         
         // 消息收藏相关变量
         let favoritedMessages = JSON.parse(localStorage.getItem('favoritedMessages') || '[]');
@@ -2089,6 +3473,32 @@
             initVideoParameterSliders();
             // 立即应用视频参数设置
             applyVideoSettings();
+            
+            // 初始化深色模式
+            initDarkMode();
+            
+            // 请求桌面通知权限
+            requestNotificationPermission();
+        }
+        
+        // 请求桌面通知权限
+        function requestNotificationPermission() {
+            if ('Notification' in window) {
+                if (Notification.permission === 'default') {
+                    Notification.requestPermission().then(permission => {
+                        console.log('桌面通知权限:', permission);
+                    });
+                }
+            }
+        }
+        
+        // 发送桌面通知
+        function sendDesktopNotification(title, options = {}) {
+            if ('Notification' in window && Notification.permission === 'granted') {
+                if (window.userSettings.enableDesktopNotifications) {
+                    new Notification(title, options);
+                }
+            }
         }
         
         // 初始化视频参数滑动条
@@ -2274,6 +3684,35 @@
                 if (lockNotice) {
                     lockNotice.style.display = 'none';
                 }
+            }
+        }
+        
+        // 深色模式功能
+        function initDarkMode() {
+            const darkModeCheckbox = document.getElementById('darkModeCheckbox');
+            const savedDarkMode = localStorage.getItem('darkMode');
+            const isDarkMode = savedDarkMode === 'true';
+            
+            // 应用深色模式
+            if (isDarkMode) {
+                document.body.classList.add('dark-mode');
+                if (darkModeCheckbox) {
+                    darkModeCheckbox.checked = true;
+                }
+            }
+            
+            // 添加事件监听器
+            if (darkModeCheckbox) {
+                darkModeCheckbox.addEventListener('change', (e) => {
+                    const isDark = e.target.checked;
+                    if (isDark) {
+                        document.body.classList.add('dark-mode');
+                    } else {
+                        document.body.classList.remove('dark-mode');
+                    }
+                    // 保存设置到本地存储
+                    localStorage.setItem('darkMode', isDark.toString());
+                });
             }
         }
         
@@ -5489,7 +6928,25 @@
                     alert('您没有发送消息的权限');
                     return;
                 }
-                socket.emit('message', { message, type: 'text' });
+                
+                // 处理回复消息
+                let messageData = {
+                    message: message,
+                    type: 'text'
+                };
+                
+                // 如果是回复消息，添加回复信息
+                if (replyToMessageId) {
+                    messageData.replyTo = {
+                        messageId: replyToMessageId,
+                        username: replyToUsername,
+                        content: replyToMessageContent
+                    };
+                    // 清空回复状态
+                    cancelReply();
+                }
+                
+                socket.emit('message', messageData);
                 messageInput.value = '';
             }
         });
@@ -6249,6 +7706,33 @@
                 sendBtn.click();
             }
         });
+        
+        // 输入状态检测
+        let typingTimeout;
+        messageInput.addEventListener('input', () => {
+            // 发送typing事件
+            socket.emit('user-typing', {
+                roomName: currentRoom
+            });
+            
+            // 清除之前的定时器
+            clearTimeout(typingTimeout);
+            
+            // 设置新的定时器，3秒后发送stop-typing事件
+            typingTimeout = setTimeout(() => {
+                socket.emit('user-stop-typing', {
+                    roomName: currentRoom
+                });
+            }, 3000);
+        });
+        
+        // 当发送消息时，发送stop-typing事件
+        sendBtn.addEventListener('click', () => {
+            clearTimeout(typingTimeout);
+            socket.emit('user-stop-typing', {
+                roomName: currentRoom
+            });
+        });
 
         imageBtn.addEventListener('click', () => {
             if (userPermissions.allowImage) {
@@ -6399,6 +7883,140 @@
             xhr.send(arrayBuffer);
         }
         
+        // 压缩图片函数
+        function compressImage(file) {
+            return new Promise((resolve, reject) => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const img = new Image();
+                
+                img.onload = () => {
+                    // 计算压缩后的尺寸，保持宽高比
+                    const maxWidth = 1920;
+                    const maxHeight = 1080;
+                    let width = img.width;
+                    let height = img.height;
+                    
+                    if (width > maxWidth || height > maxHeight) {
+                        const ratio = Math.min(maxWidth / width, maxHeight / height);
+                        width *= ratio;
+                        height *= ratio;
+                    }
+                    
+                    canvas.width = width;
+                    canvas.height = height;
+                    
+                    // 绘制图片到Canvas，实现压缩
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    // 将Canvas转换为Blob，设置压缩质量
+                    canvas.toBlob((blob) => {
+                        if (blob) {
+                            // 将Blob转换为ArrayBuffer
+                            const reader = new FileReader();
+                            reader.onload = () => {
+                                resolve(reader.result);
+                            };
+                            reader.onerror = reject;
+                            reader.readAsArrayBuffer(blob);
+                        } else {
+                            reject(new Error('Canvas to Blob failed'));
+                        }
+                    }, file.type, 0.7); // 0.7 是压缩质量，可根据需要调整
+                };
+                
+                img.onerror = reject;
+                img.src = URL.createObjectURL(file);
+            });
+        }
+        
+        // 压缩音频函数
+        function compressAudio(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                
+                reader.onload = (event) => {
+                    const arrayBuffer = event.target.result;
+                    
+                    // 使用Web Audio API压缩音频
+                    try {
+                        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                        
+                        audioContext.decodeAudioData(arrayBuffer).then((audioBuffer) => {
+                            // 创建一个新的音频上下文，设置较低的采样率
+                            const compressedContext = new (window.AudioContext || window.webkitAudioContext)({
+                                sampleRate: 44100 // 降低采样率，可根据需要调整
+                            });
+                            
+                            // 创建一个新的音频缓冲区
+                            const compressedBuffer = compressedContext.createBuffer(
+                                audioBuffer.numberOfChannels,
+                                audioBuffer.length,
+                                compressedContext.sampleRate
+                            );
+                            
+                            // 复制音频数据
+                            for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
+                                const channelData = audioBuffer.getChannelData(i);
+                                const compressedChannelData = compressedBuffer.getChannelData(i);
+                                
+                                // 简单的降采样
+                                for (let j = 0; j < compressedBuffer.length; j++) {
+                                    const sourceIndex = Math.floor(j * (audioBuffer.length / compressedBuffer.length));
+                                    compressedChannelData[j] = channelData[sourceIndex];
+                                }
+                            }
+                            
+                            // 创建一个媒体流源
+                            const source = compressedContext.createBufferSource();
+                            source.buffer = compressedBuffer;
+                            
+                            // 创建一个媒体录制器
+                            const destination = compressedContext.createMediaStreamDestination();
+                            source.connect(destination);
+                            
+                            // 开始录制
+                            const recorder = new MediaRecorder(destination.stream, {
+                                mimeType: file.type
+                            });
+                            
+                            const chunks = [];
+                            
+                            recorder.ondataavailable = (e) => {
+                                if (e.data.size > 0) {
+                                    chunks.push(e.data);
+                                }
+                            };
+                            
+                            recorder.onstop = () => {
+                                const blob = new Blob(chunks, { type: file.type });
+                                const reader = new FileReader();
+                                reader.onload = () => {
+                                    resolve(reader.result);
+                                };
+                                reader.onerror = reject;
+                                reader.readAsArrayBuffer(blob);
+                            };
+                            
+                            recorder.start();
+                            source.start();
+                            
+                            // 录音时长设置为音频总时长
+                            setTimeout(() => {
+                                recorder.stop();
+                                source.stop();
+                            }, audioBuffer.duration * 1000);
+                        }).catch(reject);
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
+        }
+        
         imageInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (file) {
@@ -6417,21 +8035,16 @@
                 }
                 
                 try {
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                        const arrayBuffer = event.target.result;
-                        let messageType;
-                        
-                        // 根据文件类型选择不同的上传接口和消息类型
-                        // 获取文件的Content-Type，优先使用file.type，否则根据后缀名推断
-                        const contentType = file.type || getContentTypeByExtension(file.name);
-                        
-                        if (contentType.startsWith('image/')) {
-                            // 图片文件
-                            messageType = 'image';
+                    // 获取文件的Content-Type，优先使用file.type，否则根据后缀名推断
+                    const contentType = file.type || getContentTypeByExtension(file.name);
+                    
+                    if (contentType.startsWith('image/')) {
+                        // 压缩图片
+                        compressImage(file).then((compressedArrayBuffer) => {
+                            const messageType = 'image';
                             uploadFileWithProgress(
                                 file,
-                                arrayBuffer,
+                                compressedArrayBuffer,
                                 '/upload-image',
                                 { 'Content-Type': contentType },
                                 (data) => {
@@ -6444,12 +8057,38 @@
                                     alert('上传文件失败，请重试');
                                 }
                             );
-                        } else if (contentType.startsWith('audio/')) {
-                            // 音频文件
-                            messageType = 'audio';
+                        }).catch((error) => {
+                            console.error('压缩图片失败:', error);
+                            // 压缩失败时使用原始文件
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                                const arrayBuffer = event.target.result;
+                                const messageType = 'image';
+                                uploadFileWithProgress(
+                                    file,
+                                    arrayBuffer,
+                                    '/upload-image',
+                                    { 'Content-Type': contentType },
+                                    (data) => {
+                                        if (data.imageUrl) {
+                                            socket.emit('message', { message: data.imageUrl, type: messageType });
+                                        }
+                                    },
+                                    (error) => {
+                                        console.error('上传文件失败:', error);
+                                        alert('上传文件失败，请重试');
+                                    }
+                                );
+                            };
+                            reader.readAsArrayBuffer(file);
+                        });
+                    } else if (contentType.startsWith('audio/')) {
+                        // 压缩音频
+                        compressAudio(file).then((compressedArrayBuffer) => {
+                            const messageType = 'audio';
                             uploadFileWithProgress(
                                 file,
-                                arrayBuffer,
+                                compressedArrayBuffer,
                                 '/upload-audio',
                                 { 'Content-Type': contentType },
                                 (data) => {
@@ -6466,9 +8105,41 @@
                                     alert('上传文件失败，请重试');
                                 }
                             );
-                        } else {
-                            // 其他文件类型
-                            messageType = 'file';
+                        }).catch((error) => {
+                            console.error('压缩音频失败:', error);
+                            // 压缩失败时使用原始文件
+                            const reader = new FileReader();
+                            reader.onload = (event) => {
+                                const arrayBuffer = event.target.result;
+                                const messageType = 'audio';
+                                uploadFileWithProgress(
+                                    file,
+                                    arrayBuffer,
+                                    '/upload-audio',
+                                    { 'Content-Type': contentType },
+                                    (data) => {
+                                        if (data.audioUrl) {
+                                            socket.emit('message', { 
+                                                message: data.audioUrl, 
+                                                type: messageType,
+                                                contentType: data.contentType || contentType
+                                            });
+                                        }
+                                    },
+                                    (error) => {
+                                        console.error('上传文件失败:', error);
+                                        alert('上传文件失败，请重试');
+                                    }
+                                );
+                            };
+                            reader.readAsArrayBuffer(file);
+                        });
+                    } else {
+                        // 其他文件类型，直接上传
+                        const reader = new FileReader();
+                        reader.onload = (event) => {
+                            const arrayBuffer = event.target.result;
+                            const messageType = 'file';
                             uploadFileWithProgress(
                                 file,
                                 arrayBuffer,
@@ -6492,9 +8163,9 @@
                                     alert('上传文件失败，请重试');
                                 }
                             );
-                        }
-                    };
-                    reader.readAsArrayBuffer(file);
+                        };
+                        reader.readAsArrayBuffer(file);
+                    }
                 } catch (error) {
                     console.error('上传文件失败:', error);
                     alert('上传文件失败，请重试');
@@ -6598,6 +8269,12 @@
                     
                     // 初始化通话系统
                     callSystem = new CallSystem(socket, username);
+                    
+                    // 初始化投票和待办事项功能
+                    initPollAndTodo();
+                    
+                    // 初始化虚拟列表
+                    initVirtualList();
                 }
             }
         });
@@ -7181,13 +8858,58 @@
             }
         }
 
+        // 监听用户输入状态
+        socket.on('user-typing', (data) => {
+            showTypingIndicator(data.username);
+        });
+        
+        // 监听用户停止输入状态
+        socket.on('user-stop-typing', (data) => {
+            hideTypingIndicator(data.username);
+        });
+        
         socket.on('message', (data) => {
             addMessage(data);
             
-            // 只有当消息不是来自当前用户时，才生成AI回复建议
+            // 隐藏正在输入提示
+            hideTypingIndicator();
+            
+            // 发送桌面通知（非自己的消息）
             if (data.username !== username) {
+                // 检查是否有@提及
+                const mentions = data.message.match(/@\{([^}]+)\}/g);
+                if (mentions) {
+                    const isMentioned = mentions.some(mention => {
+                        const mentionedUsername = mention.replace('@{', '').replace('}', '');
+                        return mentionedUsername === username;
+                    });
+                    if (isMentioned) {
+                        notificationSystem.sendMentionNotification(data.username, data.message);
+                    } else {
+                        notificationSystem.sendMessageNotification(data.username, data.message);
+                    }
+                } else {
+                    notificationSystem.sendMessageNotification(data.username, data.message);
+                }
+                
+                // 生成AI回复建议
                 generateAIResponse(data.message);
             }
+        });
+        
+        // 存储用户输入状态
+        const typingUsers = new Set();
+        
+        // 监听用户输入状态
+        socket.on('user-typing', (data) => {
+            typingUsers.add(data.username);
+            updateUserList(allUsers); // 更新用户列表显示
+        });
+        
+        // 监听用户停止输入状态
+        socket.on('user-stop-typing', (data) => {
+            typingUsers.delete(data.username);
+            updateUserList(allUsers); // 更新用户列表显示
         });
 
         socket.on('user-left', (data) => {
@@ -8170,6 +9892,12 @@
         });
         
         // 房间历史消息
+        // 消息加载状态
+        let isLoadingMessages = false;
+        let currentPage = 1;
+        let hasMoreMessages = true;
+        let currentRoomName = '';
+        
         socket.on('room-history', (data) => {
             // 清空当前消息
             messagesDiv.innerHTML = '';
@@ -8177,7 +9905,97 @@
             data.messages.forEach(message => {
                 addMessage(message);
             });
+            
+            // 初始化消息加载状态
+            currentPage = 1;
+            hasMoreMessages = data.hasMore || false;
         });
+        
+        // 监听加载更多消息的响应
+        socket.on('more-messages', (data) => {
+            isLoadingMessages = false;
+            
+            if (data.messages.length > 0) {
+                // 将新消息添加到消息列表顶部
+                data.messages.reverse().forEach(message => {
+                    const messageDiv = createMessageElement(message);
+                    messagesDiv.insertBefore(messageDiv, messagesDiv.firstChild);
+                });
+                
+                hasMoreMessages = data.hasMore;
+                currentPage = data.page;
+            }
+        });
+        
+        // 监听滚动事件，实现滚动加载
+        messagesDiv.addEventListener('scroll', () => {
+            if (messagesDiv.scrollTop === 0 && hasMoreMessages && !isLoadingMessages) {
+                loadMoreMessages();
+            }
+        });
+        
+        // 加载更多消息
+        function loadMoreMessages() {
+            if (isLoadingMessages || !hasMoreMessages) return;
+            
+            isLoadingMessages = true;
+            
+            // 显示加载指示器
+            const loadingIndicator = document.createElement('div');
+            loadingIndicator.className = 'loading-indicator';
+            loadingIndicator.textContent = '加载更多消息...';
+            loadingIndicator.style.cssText = `
+                text-align: center;
+                padding: 10px;
+                color: #666;
+                font-size: 12px;
+            `;
+            messagesDiv.insertBefore(loadingIndicator, messagesDiv.firstChild);
+            
+            // 请求加载更多消息
+            socket.emit('load-more-messages', {
+                roomName: currentRoomName || 'main',
+                page: currentPage + 1,
+                limit: 50
+            });
+        }
+        
+        // 创建消息元素（用于加载更多消息时）
+        function createMessageElement(data) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message';
+            messageDiv.dataset.messageId = data.id;
+            
+            let contentHtml;
+            if (data.type === 'image') {
+                contentHtml = `<img src="${data.message}" alt="图片" style="max-width: 100%; max-height: 200px; border-radius: 5px;">`;
+            } else if (data.type === 'audio') {
+                contentHtml = `<audio controls style="width: 100%; border-radius: 5px;"><source src="${data.message}" type="${data.contentType || 'audio/webm'}">您的浏览器不支持音频播放</audio>`;
+            } else if (data.type === 'file') {
+                const fileName = data.fileName || '文件';
+                const fileSize = data.fileSize ? formatFileSize(data.fileSize) : '';
+                contentHtml = `<a href="${data.message}" target="_blank" download="${fileName}" style="color: #667eea; text-decoration: underline; display: inline-block; padding: 10px; background: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6;">📁 ${fileName} ${fileSize}</a>`;
+            } else {
+                let text = escapeHtml(data.message);
+                const urlRegex = /(https?:\/\/[\w\-_]+(\.[\w\-_]+)+([\w\-\.,@?^=%&:/~\+#;]*[\w\-\@?^=%&/~\+#])?)/g;
+                text = text.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color: #667eea; text-decoration: underline;">$1</a>');
+                contentHtml = `<div>${text}</div>`;
+            }
+            
+            const isOwnMessage = data.username === username;
+            const messageClass = isOwnMessage ? 'message own-message' : 'message';
+            
+            messageDiv.className = messageClass;
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    <span class="username" style="color: ${data.color};">${escapeHtml(data.username)}</span>
+                    <span class="timestamp">${data.timestamp}</span>
+                </div>
+                <div class="message-content">${contentHtml}</div>
+            `;
+            
+            return messageDiv;
+        }
         
         // 处理管理员发送的弹窗消息
         socket.on('popup-message', (data) => {
@@ -8192,10 +10010,57 @@
         function recallMessage(messageId) {
             socket.emit('message-recall', messageId);
         }
+        
+        // 回复消息功能
+        let replyToMessageId = null;
+        let replyToUsername = '';
+        let replyToMessageContent = '';
+        
+        function replyToMessage(messageId, username, message) {
+            replyToMessageId = messageId;
+            replyToUsername = username;
+            replyToMessageContent = message;
+            
+            // 在输入框中显示回复提示
+            messageInput.placeholder = `回复 ${username}: ${message.length > 20 ? message.substring(0, 20) + '...' : message}`;
+            messageInput.focus();
+        }
+        
+        function cancelReply() {
+            replyToMessageId = null;
+            replyToUsername = '';
+            replyToMessageContent = '';
+            messageInput.placeholder = '输入消息...';
+        }
 
         function addMessage(data) {
             // 保存消息到历史记录数组
             allMessages.push(data);
+            
+            // 特别处理投票类型的消息
+            if (data.type === 'poll' && data.pollId) {
+                // 查找对应的投票对象
+                let poll = polls.find(p => p.id === data.pollId);
+                
+                // 如果本地没有对应的投票对象，创建一个新的
+                if (!poll && data.question && data.options) {
+                    poll = {
+                        id: data.pollId,
+                        question: data.question,
+                        options: data.options,
+                        creator: data.username,
+                        createdAt: data.timestamp || new Date().toLocaleTimeString(),
+                        closed: false
+                    };
+                    polls.push(poll);
+                }
+                
+                if (poll) {
+                    // 显示投票详情
+                    displayPoll(poll);
+                    return;
+                }
+            }
             
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message';
@@ -8221,13 +10086,25 @@
                 // 将链接转换为超链接
                 text = text.replace(urlRegex, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color: #667eea; text-decoration: underline;">$1</a>');
                 
+                // 处理代码块高亮
+                text = highlightCodeBlocks(text);
+                
                 // 如果正在搜索，高亮显示搜索关键词
                 if (isSearching && searchKeyword) {
                     const regex = new RegExp(`(${escapeRegExp(searchKeyword)})`, 'gi');
                     text = text.replace(regex, '<span style="background-color: #ffeb3b; font-weight: bold;">$1</span>');
                 }
                 
-                contentHtml = text;
+                // 处理回复消息显示
+                if (data.replyTo) {
+                    const replyHtml = `<div class="reply-indicator" style="background: #f8f9fa; border-left: 3px solid #667eea; padding: 8px; margin-bottom: 8px; font-size: 12px;">
+                        <strong style="color: #667eea;">回复 ${data.replyTo.username}:</strong>
+                        <div style="margin-top: 4px; color: #666;">${data.replyTo.content.length > 50 ? data.replyTo.content.substring(0, 50) + '...' : data.replyTo.content}</div>
+                    </div>`;
+                    contentHtml = replyHtml + text;
+                } else {
+                    contentHtml = text;
+                }
             }
             
             // 检查消息是否已收藏
@@ -8240,6 +10117,7 @@
                 <div class="message-actions">
                     <button class="favorite-btn ${isFavorited ? 'favorited' : ''}" onclick="toggleFavorite('${data.id}')" title="${isFavorited ? '取消收藏' : '收藏消息'}">⭐</button>
                     ${translateBtnHtml}
+                    <button class="reply-btn" onclick="replyToMessage('${data.id}', '${data.username}', '${escapeHtml(data.message)}')" title="回复消息">💬</button>
                     ${data.username === username ? `<button class="recall-btn" onclick="recallMessage('${data.id}')">撤回</button>` : ''}
                 </div>
             `;
@@ -8298,6 +10176,7 @@
             
             users.forEach(user => {
                 const status = user.status || 'online'; // 默认在线
+                const isTyping = typingUsers.has(user.username); // 检查用户是否正在输入
                 const userDiv = document.createElement('div');
                 userDiv.className = 'user-item';
                 userDiv.onclick = () => {
@@ -8307,7 +10186,10 @@
                 userDiv.innerHTML = `
                     <div class="status-indicator status-${status}"></div>
                     <div class="user-color" style="background: ${user.color}"></div>
-                    <div class="user-name">${escapeHtml(user.username)}</div>
+                    <div class="user-name" style="flex: 1; font-size: 14px; font-weight: 500; display: flex; align-items: center;">
+                        ${escapeHtml(user.username)}
+                        ${isTyping ? '<span title="正在输入..." style="margin-left: 8px; font-size: 12px; animation: pulse 1.5s infinite;">⌨️</span>' : ''}
+                    </div>
                 `;
                 
                 usersListDiv.appendChild(userDiv);
@@ -8336,6 +10218,41 @@
         // 转义正则表达式特殊字符
         function escapeRegExp(string) {
             return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+        
+        // 代码高亮功能
+        function highlightCodeBlocks(text) {
+            // 匹配代码块：```语言\n代码\n```
+            const codeBlockRegex = /```([a-zA-Z0-9]*?)\n([\s\S]*?)```/g;
+            
+            return text.replace(codeBlockRegex, (match, language, code) => {
+                // 对代码内容进行HTML转义
+                const escapedCode = escapeHtml(code);
+                
+                // 简单的语法高亮（可以根据需要扩展）
+                let highlightedCode = escapedCode;
+                
+                // 关键词高亮
+                const keywords = ['if', 'else', 'for', 'while', 'function', 'const', 'let', 'var', 'return', 'true', 'false', 'null', 'undefined', 'class', 'extends', 'import', 'export', 'default'];
+                keywords.forEach(keyword => {
+                    const regex = new RegExp(`\\b(${keyword})\\b`, 'g');
+                    highlightedCode = highlightedCode.replace(regex, '<span style="color: #0000ff;">$1</span>');
+                });
+                
+                // 字符串高亮
+                highlightedCode = highlightedCode.replace(/(['"])(.*?)\1/g, '<span style="color: #008000;">$&</span>');
+                
+                // 数字高亮
+                highlightedCode = highlightedCode.replace(/\b\d+\b/g, '<span style="color: #ff0000;">$&</span>');
+                
+                // 注释高亮
+                highlightedCode = highlightedCode.replace(/\/\/.*$/gm, '<span style="color: #808080;">$&</span>');
+                
+                return `<div style="background: #f4f4f4; border: 1px solid #ddd; border-radius: 5px; padding: 10px; margin: 10px 0; overflow-x: auto; font-family: 'Courier New', monospace; font-size: 14px;">
+                    <div style="margin-bottom: 5px; font-size: 12px; color: #666;">${language || 'Code'}</div>
+                    <pre style="margin: 0; white-space: pre-wrap; word-wrap: break-word;">${highlightedCode}</pre>
+                </div>`;
+            });
         }
         
         // 格式化文件大小
@@ -8385,9 +10302,80 @@
             });
         }
         
+        // 增强版消息搜索函数
+        function enhancedSearchMessages(keyword) {
+            searchKeyword = keyword;
+            if (!keyword) {
+                isSearching = false;
+                // 清空搜索状态，重新显示所有消息
+                messagesDiv.innerHTML = '<div class="system-message">欢迎来到聊天室！请输入昵称加入。</div>';
+                allMessages.forEach(message => {
+                    addMessage(message);
+                });
+                return;
+            }
+            
+            isSearching = true;
+            let searchResults;
+            
+            // 检查是否是按用户名搜索（格式：@用户名）
+            const usernameMatch = keyword.match(/^@(.+)$/);
+            if (usernameMatch) {
+                const targetUsername = usernameMatch[1];
+                searchResults = allMessages.filter(message => {
+                    return message.username.toLowerCase().includes(targetUsername.toLowerCase());
+                });
+            } 
+            // 检查是否是按消息类型搜索（格式：type:类型）
+            else if (keyword.startsWith('type:')) {
+                const type = keyword.substring(5).toLowerCase();
+                searchResults = allMessages.filter(message => {
+                    return message.type === type;
+                });
+            }
+            // 否则按内容搜索
+            else {
+                searchResults = allMessages.filter(message => {
+                    // 搜索文本消息内容
+                    if (message.type === 'text' && message.message) {
+                        return message.message.toLowerCase().includes(keyword.toLowerCase());
+                    }
+                    // 搜索图片消息描述
+                    else if (message.type === 'image' && message.description) {
+                        return message.description.toLowerCase().includes(keyword.toLowerCase());
+                    }
+                    // 搜索文件消息文件名
+                    else if (message.type === 'file' && message.filename) {
+                        return message.filename.toLowerCase().includes(keyword.toLowerCase());
+                    }
+                    // 搜索代码消息内容
+                    else if (message.type === 'code' && message.code) {
+                        return message.code.toLowerCase().includes(keyword.toLowerCase());
+                    }
+                    // 搜索投票消息问题
+                    else if (message.type === 'poll' && message.question) {
+                        return message.question.toLowerCase().includes(keyword.toLowerCase());
+                    }
+                    // 搜索待办事项消息内容
+                    else if (message.type === 'todo' && message.content) {
+                        return message.content.toLowerCase().includes(keyword.toLowerCase());
+                    }
+                    return false;
+                });
+            }
+            
+            // 清空消息区域
+            messagesDiv.innerHTML = `<div class="system-message">搜索结果: ${searchResults.length} 条</div>`;
+            
+            // 显示搜索结果
+            searchResults.forEach(message => {
+                addMessage(message);
+            });
+        }
+        
         // 消息搜索输入事件监听
         messageSearchInput.addEventListener('input', (e) => {
-            searchMessages(e.target.value);
+            enhancedSearchMessages(e.target.value);
         });
 
         // 媒体录制器
@@ -8652,6 +10640,30 @@
 
         // 结束通话
 
+
+        // 保存用户权限函数
+        function saveUserPermissions(userId) {
+            // 收集权限设置
+            const permissions = {
+                allowAudio: document.getElementById('perm-allowAudio').checked,
+                allowImage: document.getElementById('perm-allowImage').checked,
+                allowFile: document.getElementById('perm-allowFile').checked,
+                allowSendMessages: document.getElementById('perm-allowSendMessages').checked,
+                allowViewMessages: document.getElementById('perm-allowViewMessages').checked,
+                allowCall: document.getElementById('perm-allowCall').checked,
+                allowAIChat: document.getElementById('perm-allowAIChat').checked,
+                admin: document.getElementById('perm-admin').checked
+            };
+            
+            // 发送权限设置到服务器
+            socket.emit('admin-set-user-permissions', {
+                userId: userId,
+                permissions: permissions
+            });
+            
+            // 显示保存成功提示
+            alert('权限设置已保存');
+        }
 
         // 显示用户详情函数
         function showUserDetail(socketId, username, color, permissions) {
@@ -9520,4 +11532,4 @@
         }
     </script>
 </body>
-</html
+</html>
