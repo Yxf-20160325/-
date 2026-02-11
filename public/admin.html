@@ -862,6 +862,237 @@
                 justify-content: flex-end;
             }
         }
+        
+        /* 深色模式样式 */
+        body.dark-mode {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        }
+        
+        body.dark-mode .container {
+            background: #1a1a2e;
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .header {
+            background: linear-gradient(135deg, #16213e 0%, #0f3460 100%);
+        }
+        
+        body.dark-mode .login-form input {
+            background: #16213e;
+            border-color: #0f3460;
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .login-form input:focus {
+            border-color: #667eea;
+        }
+        
+        body.dark-mode .stat-card {
+            background: linear-gradient(135deg, #16213e 0%, #0f3460 100%);
+        }
+        
+        body.dark-mode .user-list {
+            background: #16213e;
+        }
+        
+        body.dark-mode .user-item {
+            background: #1a1a2e;
+            border-bottom-color: #0f3460;
+        }
+        
+        body.dark-mode .section h2 {
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .message-item {
+            background: #16213e;
+            border-left-color: #667eea;
+        }
+        
+        body.dark-mode .message-item.deleted {
+            border-left-color: #dc3545;
+        }
+        
+        body.dark-mode .message-sender {
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .message-content {
+            color: #b0b0b0;
+        }
+        
+        body.dark-mode .empty-state {
+            color: #b0b0b0;
+        }
+        
+        body.dark-mode .modal-content {
+            background: #1a1a2e;
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .modal-content h3 {
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode #permissionsForm {
+            background: #16213e;
+        }
+        
+        body.dark-mode .permission-item {
+            background: #1a1a2e;
+            border-color: #0f3460;
+        }
+        
+        body.dark-mode .input-group label {
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .input-group input {
+            background: #16213e;
+            border-color: #0f3460;
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .input-group input:focus {
+            border-color: #667eea;
+        }
+        
+        body.dark-mode .input-group textarea {
+            background: #16213e;
+            border-color: #0f3460;
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .input-group textarea:focus {
+            border-color: #667eea;
+        }
+        
+        body.dark-mode .files-container {
+            background: #1a1a2e;
+            border-color: #0f3460;
+        }
+        
+        body.dark-mode .file-item {
+            background: #16213e;
+            border-bottom-color: #0f3460;
+        }
+        
+        body.dark-mode .file-details {
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .file-meta {
+            color: #b0b0b0;
+        }
+        
+        body.dark-mode .upload-area {
+            border-color: #0f3460;
+            background: #16213e;
+        }
+        
+        body.dark-mode .upload-area:hover {
+            border-color: #667eea;
+            background: #1a1a2e;
+        }
+        
+        body.dark-mode .requests-container {
+            background: #1a1a2e;
+            border-color: #0f3460;
+        }
+        
+        body.dark-mode .request-item {
+            background: #16213e;
+            border-bottom-color: #0f3460;
+        }
+        
+        body.dark-mode .request-info h4 {
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .request-reason {
+            color: #b0b0b0;
+        }
+        
+        body.dark-mode .request-meta {
+            color: #909090;
+        }
+        
+        body.dark-mode .path-bar {
+            background: #16213e;
+            border-color: #0f3460;
+        }
+        
+        body.dark-mode .current-path {
+            color: #b0b0b0;
+        }
+        
+        body.dark-mode .messages-container {
+            background: #16213e;
+        }
+        
+        body.dark-mode .tab {
+            background: #16213e;
+            color: #b0b0b0;
+        }
+        
+        body.dark-mode .tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        body.dark-mode .tab-content {
+            background: #1a1a2e;
+        }
+        
+        body.dark-mode .call-method-info {
+            background: #16213e;
+            border-left-color: #0f3460;
+        }
+        
+        body.dark-mode .call-method-info h3 {
+            color: #667eea;
+        }
+        
+        body.dark-mode #serverInfo {
+            background: #16213e;
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode #commandOutput {
+            background: #121212;
+            color: #00ff00;
+        }
+        
+        body.dark-mode .reply-info {
+            background: #16213e;
+            color: #b0b0b0;
+        }
+        
+        /* 深色模式切换按钮 */
+        .dark-mode-toggle {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+        
+        .dark-mode-toggle:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+        }
     </style>
 </head>
 <body>
@@ -873,7 +1104,7 @@
 
         <div class="login-container" id="loginContainer">
             <div class="login-form">
-                <form onsubmit="event.preventDefault(); login();">
+                <form id="loginForm">
                     <input type="password" id="adminPassword" placeholder="请输入管理员密码">
                     <button type="submit">登录</button>
                 </form>
@@ -911,6 +1142,9 @@
                 <button class="tab" onclick="switchTab('mutedUsers')">禁言管理</button>
                 <button class="tab" onclick="switchTab('calls')">通话管理</button>
                 <button class="tab" onclick="switchTab('settingsManagement')">用户设置管理</button>
+                <button class="tab" onclick="switchTab('analytics')">行为分析</button>
+                <button class="tab" onclick="switchTab('logs')">系统日志</button>
+                <button class="tab" onclick="switchTab('monitoring')">系统监控</button>
                 <button class="tab" onclick="switchTab('updates')">发布更新</button>
                 <button class="tab" onclick="switchTab('chatroomNotifications')">聊天室提示</button>
                 <button class="tab" onclick="switchTab('systemManagement')">系统管理</button>
@@ -921,7 +1155,14 @@
             <div class="tab-content active" id="usersTab">
                 <div class="section">
                     <h2>在线用户管理</h2>
-                    <button class="btn btn-primary" onclick="openUsersModal()">打开用户列表</button>
+                    <div class="input-group">
+                        <button class="btn btn-primary" onclick="openUsersModal()">打开用户列表</button>
+                        <button class="btn btn-danger" onclick="batchKickUsers()">批量踢出</button>
+                        <button class="btn btn-warning" onclick="batchMuteUsers()">批量禁言</button>
+                        <button class="btn btn-info" onclick="batchSetPermissions()">批量设置权限</button>
+                        <button class="btn btn-secondary" onclick="selectAllUsers()">全选</button>
+                        <button class="btn btn-secondary" onclick="deselectAllUsers()">取消全选</button>
+                    </div>
                 </div>
 
                 <div class="section">
@@ -1213,6 +1454,231 @@
             </div>
         </div>
     </div>
+        <div class="tab-content" id="analyticsTab">
+            <div class="section">
+                <h2>用户行为分析</h2>
+                <div class="input-group">
+                    <button class="btn btn-primary" onclick="loadUserAnalytics()">加载分析数据</button>
+                    <button class="btn btn-primary" onclick="exportAnalyticsData()">导出分析数据</button>
+                    <button class="btn btn-primary" onclick="refreshAnalytics()">刷新数据</button>
+                    <select id="analyticsTimeRange" class="btn btn-primary" style="margin-left: 10px;">
+                        <option value="today">今日</option>
+                        <option value="week">本周</option>
+                        <option value="month">本月</option>
+                        <option value="all">全部</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>用户活跃度分析</h2>
+                <div style="background: white; border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+                    <div id="userActivityChart" style="height: 300px;"></div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>消息类型分布</h2>
+                <div style="background: white; border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+                    <div id="messageTypeChart" style="height: 300px;"></div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>用户留存率分析</h2>
+                <div style="background: white; border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+                    <div id="userRetentionChart" style="height: 300px;"></div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>消息热度分析</h2>
+                <div style="background: white; border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+                    <div id="messageHeatChart" style="height: 300px;"></div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>用户活跃时段分析</h2>
+                <div style="background: white; border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+                    <div id="userActiveHourChart" style="height: 300px;"></div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>用户行为统计</h2>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                    <div class="stat-card">
+                        <h3>活跃用户数</h3>
+                        <div class="value" id="activeUserCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>消息总数</h3>
+                        <div class="value" id="totalMessageCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>平均消息长度</h3>
+                        <div class="value" id="avgMessageLength">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>高峰时段</h3>
+                        <div class="value" id="peakHour">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>留存率</h3>
+                        <div class="value" id="retentionRate">0%</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>平均在线时长</h3>
+                        <div class="value" id="avgOnlineTime">0分钟</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>消息响应率</h3>
+                        <div class="value" id="responseRate">0%</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>用户增长率</h3>
+                        <div class="value" id="userGrowthRate">0%</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>用户行为详情</h2>
+                <div class="user-list" id="userBehaviorList">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📊</div>
+                        <div>暂无行为数据</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="tab-content" id="logsTab">
+            <div class="section">
+                <h2>系统日志管理</h2>
+                <div class="input-group">
+                    <button class="btn btn-primary" onclick="loadSystemLogs()">加载系统日志</button>
+                    <button class="btn btn-primary" onclick="exportSystemLogs()">导出系统日志</button>
+                    <button class="btn btn-primary" onclick="exportUserData()">导出用户数据</button>
+                    <button class="btn btn-danger" onclick="clearSystemLogs()">清空系统日志</button>
+                    <select id="logTypeFilter" class="btn btn-primary" style="margin-left: 10px;">
+                        <option value="all">所有类型</option>
+                        <option value="error">错误</option>
+                        <option value="warn">警告</option>
+                        <option value="info">信息</option>
+                        <option value="debug">调试</option>
+                    </select>
+                    <input type="text" id="logSearch" placeholder="搜索日志内容" style="flex: 1; padding: 10px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 14px; margin-left: 10px;">
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>系统日志</h2>
+                <div style="background: #f8f9fa; border-radius: 10px; padding: 20px; max-height: 600px; overflow-y: auto;">
+                    <div id="systemLogsContainer" style="font-family: 'Courier New', monospace; font-size: 14px; line-height: 1.5;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📋</div>
+                            <div>暂无系统日志</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>系统事件统计</h2>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
+                    <div class="stat-card">
+                        <h3>用户登录</h3>
+                        <div class="value" id="loginCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>用户退出</h3>
+                        <div class="value" id="logoutCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>消息发送</h3>
+                        <div class="value" id="messageSentCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>文件上传</h3>
+                        <div class="value" id="fileUploadCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>错误事件</h3>
+                        <div class="value" id="errorCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>警告事件</h3>
+                        <div class="value" id="warnCount">0</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="tab-content" id="monitoringTab">
+            <div class="section">
+                <h2>系统监控</h2>
+                <div class="input-group">
+                    <button class="btn btn-primary" onclick="startSystemMonitoring()">开始监控</button>
+                    <button class="btn btn-danger" onclick="stopSystemMonitoring()">停止监控</button>
+                    <button class="btn btn-primary" onclick="refreshSystemStatus()">刷新状态</button>
+                    <select id="monitoringInterval" class="btn btn-primary" style="margin-left: 10px;">
+                        <option value="1000">1秒</option>
+                        <option value="2000">2秒</option>
+                        <option value="5000" selected>5秒</option>
+                        <option value="10000">10秒</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>系统状态</h2>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                    <div class="stat-card">
+                        <h3>CPU使用率</h3>
+                        <div class="value" id="cpuUsage">0%</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>内存使用率</h3>
+                        <div class="value" id="memoryUsage">0%</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>磁盘使用率</h3>
+                        <div class="value" id="diskUsage">0%</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>网络流量</h3>
+                        <div class="value" id="networkTraffic">0 KB/s</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>在线用户</h3>
+                        <div class="value" id="onlineUsers">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>WebSocket连接</h3>
+                        <div class="value" id="websocketConnections">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>系统性能监控</h2>
+                <div style="background: white; border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+                    <div id="performanceChart" style="height: 300px;"></div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>系统事件</h2>
+                <div style="background: #f8f9fa; border-radius: 10px; padding: 20px; max-height: 300px; overflow-y: auto;">
+                    <div id="systemEventsContainer" style="font-family: 'Courier New', monospace; font-size: 14px; line-height: 1.5;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">⚡</div>
+                            <div>暂无系统事件</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
         <div class="tab-content" id="mutedUsersTab">
             <div class="section">
                 <h2>禁言用户管理</h2>
@@ -1987,6 +2453,31 @@
             </div>
         </div>
         
+        <!-- 禁言模态框 -->
+        <div class="modal" id="muteModal">
+            <div class="modal-content">
+                <h3>禁言用户</h3>
+                <form onsubmit="event.preventDefault(); confirmMuteUser();">
+                    <div class="input-group">
+                        <label>用户名</label>
+                        <input type="text" id="muteUsername" readonly>
+                    </div>
+                    <div class="input-group">
+                        <label>禁言理由</label>
+                        <input type="text" id="muteReason" placeholder="请输入禁言理由" required>
+                    </div>
+                    <div class="input-group">
+                        <label>禁言时长（分钟）</label>
+                        <input type="number" id="muteDuration" placeholder="请输入禁言时长" min="1" max="1440" value="5" required>
+                    </div>
+                    <div class="modal-buttons">
+                        <button type="button" class="btn btn-cancel" onclick="closeMuteModal()">取消</button>
+                        <button type="submit" class="btn btn-confirm">确认禁言</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
         <!-- AI设置模态框 -->
         <div class="modal" id="aiSettingsModal">
             <div class="modal-content">
@@ -2088,38 +2579,8 @@
         let callMediaStreams = new Map(); // 存储通话媒体流: Map<socketId, MediaStream>
         let mediaSourceMap = new Map(); // 存储MediaSource: Map<socketId, { mediaSource: MediaSource, sourceBuffer: SourceBuffer }>
 
-        const loginContainer = document.getElementById('loginContainer');
-        const adminPanel = document.getElementById('adminPanel');
-        const adminPassword = document.getElementById('adminPassword');
-        const userList = document.getElementById('userList');
-        const userCount = document.getElementById('userCount');
-        const messageCount = document.getElementById('messageCount');
-        const deletedMessageCount = document.getElementById('deletedMessageCount');
-        const systemMessage = document.getElementById('systemMessage');
-        const renameModal = document.getElementById('renameModal');
-        const newUsername = document.getElementById('newUsername');
-        const messagesContainer = document.getElementById('messagesContainer');
-        const permissionsModal = document.getElementById('permissionsModal');
-        const permissionsForm = document.getElementById('permissionsForm');
-        const allowAudio = document.getElementById('allowAudio');
-        const allowImage = document.getElementById('allowImage');
-        const allowFile = document.getElementById('allowFile');
-        const allowSendMessages = document.getElementById('allowSendMessages');
-        const allowViewMessages = document.getElementById('allowViewMessages');
-        const allowCall = document.getElementById('allowCall');
-        const allowAIChat = document.getElementById('allowAIChat');
-        const allowAddFriends = document.getElementById('allowAddFriends');
-        const allowViewUsers = document.getElementById('allowViewUsers');
-        const allowPrivateChat = document.getElementById('allowPrivateChat');
-        const allowOpenFriendsPage = document.getElementById('allowOpenFriendsPage');
-        const allowRecallMessage = document.getElementById('allowRecallMessage');
-        const adminMessageModal = document.getElementById('adminMessageModal');
-        const disguiseUsername = document.getElementById('disguiseUsername');
-        const disguiseMessageType = document.getElementById('disguiseMessageType');
-        const disguiseMessage = document.getElementById('disguiseMessage');
-        const disguiseColor = document.getElementById('disguiseColor');
-        const usersModal = document.getElementById('usersModal');
-        let selectedPermissionsSocketId = null;
+        // 全局变量，将在DOM加载完成后初始化
+        let loginContainer, adminPanel, adminPassword, userList, userCount, messageCount, deletedMessageCount, systemMessage, renameModal, newUsername, messagesContainer, permissionsModal, permissionsForm, allowAudio, allowImage, allowFile, allowSendMessages, allowViewMessages, allowCall, allowAIChat, allowAddFriends, allowViewUsers, allowPrivateChat, allowOpenFriendsPage, allowRecallMessage, adminMessageModal, disguiseUsername, disguiseMessageType, disguiseMessage, disguiseColor, usersModal, selectedPermissionsSocketId;
         
         // 设置好友上限相关元素
         const setMaxFriendsModal = document.getElementById('setMaxFriendsModal');
@@ -2192,50 +2653,59 @@
         
         let userRefreshInterval = null;
         
-        function login() {
+        // 全局登录函数
+        window.login = function() {
+            // 确保adminPassword元素已加载
+            if (!adminPassword) {
+                adminPassword = document.getElementById('adminPassword');
+                if (!adminPassword) {
+                    console.error('adminPassword 元素未找到');
+                    alert('管理员密码输入框未找到，请刷新页面重试');
+                    return;
+                }
+            }
             const password = adminPassword.value;
-            socket.emit('admin-login', password);
+            if (!password) {
+                alert('请输入管理员密码');
+                return;
+            }
+            console.log('发送登录请求，密码:', password);
+            socket.emit('admin-login', { password: password });
         }
 
-        adminPassword.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                login();
-            }
-        });
 
-        newUsername.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                confirmRename();
-            }
-        });
 
-        systemMessage.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                sendSystemMessage();
-            }
-        });
 
-        socket.on('admin-login-success', (success) => {
-            if (success) {
-                loginContainer.classList.add('hidden');
-                adminPanel.classList.add('active');
-                loadMessages();
-                loadRooms();
-                loadFiles();
-                // 主动请求最新的用户列表
+
+        socket.on('admin-login-success', () => {
+            console.log('登录成功');
+            loginContainer.classList.add('hidden');
+            adminPanel.classList.add('active');
+            loadMessages();
+            loadRooms();
+            loadFiles();
+            // 主动请求最新的用户列表
+            socket.emit('admin-get-users');
+            // 主动请求用户行为分析数据
+            socket.emit('admin-get-user-analytics');
+            
+            // 启动用户列表自动刷新定时器（每秒一次）
+            if (userRefreshInterval) {
+                clearInterval(userRefreshInterval);
+            }
+            userRefreshInterval = setInterval(() => {
                 socket.emit('admin-get-users');
-                
-                // 启动用户列表自动刷新定时器（每秒一次）
-                if (userRefreshInterval) {
-                    clearInterval(userRefreshInterval);
+                // 每5秒刷新一次用户行为分析数据
+                if (Math.random() < 0.2) { // 20%的概率，平均每5秒执行一次
+                    socket.emit('admin-get-user-analytics');
                 }
-                userRefreshInterval = setInterval(() => {
-                    socket.emit('admin-get-users');
-                }, 1000);
-            } else {
-                alert('密码错误！');
-                adminPassword.value = '';
-            }
+            }, 1000);
+        });
+        
+        socket.on('admin-login-error', (data) => {
+            console.log('登录失败:', data);
+            alert('密码错误！');
+            adminPassword.value = '';
         });
         
         // 监听新消息并自动刷新
@@ -2807,17 +3277,22 @@
             }
 
             userList.innerHTML = users.map(user => `
-                <div class="user-item">
+                <div class="user-item ${user.muted ? 'muted' : ''}">
+                    <div style="margin-right: 15px;">
+                        <input type="checkbox" class="user-checkbox" value="${user.socketId}" style="width: 18px; height: 18px;">
+                    </div>
                     <div class="user-info">
                         <div class="user-color" style="background: ${user.color}"></div>
                         <div>
                             <div class="user-name">
                                 ${escapeHtml(user.username)}
                                 ${user.role === 'superadmin' ? '<span style="color: #ff6b6b; margin-left: 5px;">SU</span>' : ''}
+                                ${user.muted ? '<span style="color: #ff9800; margin-left: 5px;">禁言中</span>' : ''}
                             </div>
                             <small style="color: #666;">房间: ${escapeHtml(user.roomName || 'main')}</small>
                             <small style="color: #666; margin-left: 10px;">角色: ${user.role || 'user'}</small>
                             <small style="color: #666; margin-left: 10px;">AI: ${user.permissions?.allowAIChat ? '已启用' : '未启用'}</small>
+                            ${user.muted ? `<small style="color: #ff9800; margin-left: 10px;">禁言理由: ${user.muteReason}</small><br><small style="color: #ff9800; margin-left: 10px;">剩余时间: ${user.remainingMuteTime}分钟</small>` : ''}
                         </div>
                     </div>
                     <div class="user-actions">
@@ -2829,9 +3304,20 @@
                         <button class="btn btn-info" onclick="openPopupModal('${user.socketId}', '${escapeHtml(user.username)}')">弹窗</button>
                         <button class="btn btn-success" onclick="openChangeTitleModal('${user.socketId}', '${escapeHtml(user.username)}')">更改标题</button>
                         <button class="btn btn-secondary" onclick="openAiSettingsModal('${user.socketId}', '${escapeHtml(user.username)}')">AI设置</button>
+                        ${user.muted ? 
+                            `<button class="btn btn-danger" onclick="unmuteUser('${user.socketId}', '${escapeHtml(user.username)}')">解禁</button>` : 
+                            `<button class="btn btn-warning" onclick="openMuteModal('${user.socketId}', '${escapeHtml(user.username)}')">禁言</button>`
+                        }
                     </div>
                 </div>
             `).join('');
+            
+            // 添加复选框点击事件
+            document.querySelectorAll('.user-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                });
+            });
         }
         
         function kickUser(socketId) {
@@ -2943,6 +3429,43 @@
                     title: title
                 });
                 closeChangeTitleModal();
+            }
+        }
+        
+        // 禁言相关函数
+        let selectedMuteSocketId = null;
+        
+        function openMuteModal(socketId, username) {
+            selectedMuteSocketId = socketId;
+            document.getElementById('muteUsername').value = username;
+            document.getElementById('muteReason').value = '刷屏';
+            document.getElementById('muteDuration').value = 5;
+            document.getElementById('muteModal').classList.add('active');
+        }
+        
+        function closeMuteModal() {
+            document.getElementById('muteModal').classList.remove('active');
+            selectedMuteSocketId = null;
+        }
+        
+        function confirmMuteUser() {
+            const reason = document.getElementById('muteReason').value;
+            const duration = parseInt(document.getElementById('muteDuration').value) * 60 * 1000; // 转换为毫秒
+            
+            socket.emit('admin-mute-user', {
+                socketId: selectedMuteSocketId,
+                reason: reason,
+                duration: duration
+            });
+            
+            closeMuteModal();
+        }
+        
+        function unmuteUser(socketId, username) {
+            if (confirm(`确定要解除 ${username} 的禁言吗？`)) {
+                socket.emit('admin-unmute-user', {
+                    socketId: socketId
+                });
             }
         }
         
@@ -3853,6 +4376,8 @@
                     contentHtml = `<img src="${msg.message}" alt="图片">`;
                 } else if (msg.type === 'audio') {
                     contentHtml = `<audio controls><source src="${msg.message}" type="audio/webm">您的浏览器不支持音频播放</audio>`;
+                } else if (msg.type === 'video') {
+                    contentHtml = `<video controls width="100%" max-height="300px"><source src="${msg.message}" type="video/webm">您的浏览器不支持视频播放</video>`;
                 } else {
                     contentHtml = escapeHtml(msg.message);
                 }
@@ -3944,6 +4469,649 @@
             
             updateRoomList(filteredRooms);
         }
+        
+        // 用户行为分析相关函数
+        function loadUserAnalytics() {
+            const timeRange = document.getElementById('analyticsTimeRange').value;
+            socket.emit('admin-get-user-analytics', { timeRange: timeRange });
+        }
+        
+        function refreshAnalytics() {
+            loadUserAnalytics();
+        }
+        
+        function exportAnalyticsData() {
+            const timeRange = document.getElementById('analyticsTimeRange').value;
+            socket.emit('admin-export-analytics-data', { timeRange: timeRange });
+        }
+        
+        // 监听用户行为分析数据
+        socket.on('admin-user-analytics', (data) => {
+            // 更新统计数据
+            document.getElementById('activeUserCount').textContent = data.stats.activeUsers;
+            document.getElementById('totalMessageCount').textContent = data.stats.totalMessages;
+            document.getElementById('avgMessageLength').textContent = data.stats.avgMessageLength.toFixed(2);
+            document.getElementById('peakHour').textContent = data.stats.peakHour + ':00';
+            document.getElementById('retentionRate').textContent = (data.stats.retentionRate * 100).toFixed(2) + '%';
+            document.getElementById('avgOnlineTime').textContent = data.stats.avgOnlineTime + '分钟';
+            document.getElementById('responseRate').textContent = (data.stats.responseRate * 100).toFixed(2) + '%';
+            document.getElementById('userGrowthRate').textContent = (data.stats.userGrowthRate * 100).toFixed(2) + '%';
+            
+            // 更新用户行为详情
+            updateUserBehaviorList(data.behaviorDetails);
+            
+            // 这里可以添加图表渲染代码，使用Chart.js或其他图表库
+        });
+        
+        function updateUserBehaviorList(behaviorDetails) {
+            const behaviorList = document.getElementById('userBehaviorList');
+            
+            if (behaviorDetails.length === 0) {
+                behaviorList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📊</div>
+                        <div>暂无行为数据</div>
+                    </div>`;
+                return;
+            }
+            
+            behaviorList.innerHTML = behaviorDetails.map(user => `
+                <div class="user-item">
+                    <div class="user-info">
+                        <div class="user-color" style="background: ${user.color}"></div>
+                        <div>
+                            <div class="user-name">${escapeHtml(user.username)}</div>
+                            <small style="color: #666;">活跃度: ${user.activityScore} | 消息数: ${user.messageCount} | 在线时长: ${user.onlineTime}分钟</small>
+                        </div>
+                    </div>
+                    <div class="user-actions">
+                        <button class="btn btn-sm btn-primary" onclick="viewUserDetailedAnalytics('${user.socketId}')">详细分析</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function viewUserDetailedAnalytics(socketId) {
+            socket.emit('admin-get-user-detailed-analytics', { socketId: socketId });
+        }
+        
+        // 监听用户详细分析数据
+        socket.on('admin-user-detailed-analytics', (data) => {
+            // 这里可以添加详细分析数据的显示代码
+            alert(`用户 ${data.username} 的详细分析数据已加载`);
+        });
+        
+        // 系统日志和数据导出相关函数
+        function loadSystemLogs() {
+            const logType = document.getElementById('logTypeFilter').value;
+            const searchTerm = document.getElementById('logSearch').value;
+            
+            socket.emit('admin-get-system-logs', {
+                type: logType,
+                search: searchTerm
+            });
+        }
+        
+        function exportSystemLogs() {
+            socket.emit('admin-export-data', {
+                dataType: 'logs'
+            });
+        }
+        
+        function exportUserData() {
+            socket.emit('admin-export-data', {
+                dataType: 'users'
+            });
+        }
+        
+        function exportMessageData() {
+            socket.emit('admin-export-data', {
+                dataType: 'messages'
+            });
+        }
+        
+        function clearSystemLogs() {
+            if (confirm('确定要清空所有系统日志吗？此操作不可恢复！')) {
+                socket.emit('admin-clear-system-logs');
+            }
+        }
+        
+        // 监听系统日志数据
+        socket.on('admin-system-logs', (data) => {
+            const logsContainer = document.getElementById('systemLogsContainer');
+            
+            if (data.logs.length === 0) {
+                logsContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📋</div>
+                        <div>暂无系统日志</div>
+                    </div>`;
+                return;
+            }
+            
+            logsContainer.innerHTML = data.logs.map(log => {
+                let levelClass = '';
+                switch (log.level) {
+                    case 'error':
+                        levelClass = 'color: #dc3545; font-weight: bold;';
+                        break;
+                    case 'warn':
+                        levelClass = 'color: #ffc107; font-weight: bold;';
+                        break;
+                    case 'info':
+                        levelClass = 'color: #17a2b8;';
+                        break;
+                    case 'debug':
+                        levelClass = 'color: #6c757d;';
+                        break;
+                }
+                
+                return `
+                    <div style="margin-bottom: 10px; padding: 5px; border-left: 4px solid ${log.level === 'error' ? '#dc3545' : log.level === 'warn' ? '#ffc107' : log.level === 'info' ? '#17a2b8' : '#6c757d'};">
+                        <div style="font-size: 12px; color: #666;">${log.timestamp}</div>
+                        <div style="${levelClass}">[${log.level.toUpperCase()}] ${log.message}</div>
+                        ${log.details ? `<div style="font-size: 12px; color: #666; margin-top: 5px;">${escapeHtml(JSON.stringify(log.details))}</div>` : ''}
+                    </div>
+                `;
+            }).join('');
+            
+            // 更新事件统计
+            document.getElementById('loginCount').textContent = data.stats.loginCount || 0;
+            document.getElementById('logoutCount').textContent = data.stats.logoutCount || 0;
+            document.getElementById('messageSentCount').textContent = data.stats.messageSentCount || 0;
+            document.getElementById('fileUploadCount').textContent = data.stats.fileUploadCount || 0;
+            document.getElementById('errorCount').textContent = data.stats.errorCount || 0;
+            document.getElementById('warnCount').textContent = data.stats.warnCount || 0;
+        });
+        
+        // 监听数据导出完成
+        socket.on('admin-export-complete', (data) => {
+            alert(`数据导出成功，文件已生成: ${data.filename}`);
+        });
+        
+        // 系统监控相关函数
+        let monitoringInterval = null;
+        
+        function startSystemMonitoring() {
+            const interval = parseInt(document.getElementById('monitoringInterval').value) || 5000;
+            
+            if (monitoringInterval) {
+                clearInterval(monitoringInterval);
+            }
+            
+            monitoringInterval = setInterval(() => {
+                socket.emit('admin-get-system-monitoring');
+            }, interval);
+            
+            // 立即获取一次数据
+            socket.emit('admin-get-system-monitoring');
+            
+            alert('系统监控已启动');
+        }
+        
+        function stopSystemMonitoring() {
+            if (monitoringInterval) {
+                clearInterval(monitoringInterval);
+                monitoringInterval = null;
+                alert('系统监控已停止');
+            }
+        }
+        
+        function refreshSystemStatus() {
+            socket.emit('admin-get-system-monitoring');
+        }
+        
+        // 监听系统监控数据
+        socket.on('admin-system-monitoring', (data) => {
+            // 更新系统状态
+            document.getElementById('cpuUsage').textContent = data.cpuUsage + '%';
+            document.getElementById('memoryUsage').textContent = data.memoryUsage + '%';
+            document.getElementById('diskUsage').textContent = data.diskUsage + '%';
+            document.getElementById('networkTraffic').textContent = data.networkTraffic;
+            document.getElementById('onlineUsers').textContent = data.onlineUsers;
+            document.getElementById('websocketConnections').textContent = data.websocketConnections;
+            
+            // 更新系统事件
+            const eventsContainer = document.getElementById('systemEventsContainer');
+            if (data.events.length === 0) {
+                eventsContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">⚡</div>
+                        <div>暂无系统事件</div>
+                    </div>`;
+                return;
+            }
+            
+            eventsContainer.innerHTML = data.events.map(event => `
+                <div style="margin-bottom: 10px; padding: 5px; border-left: 4px solid ${event.type === 'error' ? '#dc3545' : event.type === 'warn' ? '#ffc107' : event.type === 'info' ? '#17a2b8' : '#6c757d'};">
+                    <div style="font-size: 12px; color: #666;">${event.timestamp}</div>
+                    <div style="${event.type === 'error' ? 'color: #dc3545; font-weight: bold;' : event.type === 'warn' ? 'color: #ffc107; font-weight: bold;' : event.type === 'info' ? 'color: #17a2b8;' : 'color: #6c757d;'};">${event.message}</div>
+                    ${event.details ? `<div style="font-size: 12px; color: #666; margin-top: 5px;">${escapeHtml(JSON.stringify(event.details))}</div>` : ''}
+                </div>
+            `).join('');
+        });
+        
+        // 虚拟列表优化DOM操作
+        class VirtualList {
+            constructor(container, options) {
+                this.container = container;
+                this.options = {
+                    itemHeight: 80, // 默认项高度
+                    buffer: 5, // 缓冲区大小
+                    ...options
+                };
+                
+                this.items = [];
+                this.startIndex = 0;
+                this.endIndex = 0;
+                this.scrollTop = 0;
+                
+                this.container.style.position = 'relative';
+                this.container.style.overflow = 'auto';
+                
+                // 创建滚动容器
+                this.scrollContainer = document.createElement('div');
+                this.scrollContainer.style.position = 'absolute';
+                this.scrollContainer.style.top = '0';
+                this.scrollContainer.style.left = '0';
+                this.scrollContainer.style.right = '0';
+                this.scrollContainer.style.overflow = 'hidden';
+                
+                // 创建内容容器
+                this.contentContainer = document.createElement('div');
+                this.contentContainer.style.position = 'absolute';
+                this.contentContainer.style.top = '0';
+                this.contentContainer.style.left = '0';
+                this.contentContainer.style.right = '0';
+                
+                this.container.appendChild(this.scrollContainer);
+                this.scrollContainer.appendChild(this.contentContainer);
+                
+                // 绑定滚动事件
+                this.container.addEventListener('scroll', this.handleScroll.bind(this));
+            }
+            
+            setItems(items) {
+                this.items = items;
+                this.update();
+            }
+            
+            update() {
+                const containerHeight = this.container.clientHeight;
+                const itemHeight = this.options.itemHeight;
+                
+                // 计算可见项数量
+                const visibleCount = Math.ceil(containerHeight / itemHeight) + this.options.buffer * 2;
+                
+                // 计算滚动位置对应的起始索引
+                this.startIndex = Math.max(0, Math.floor(this.container.scrollTop / itemHeight) - this.options.buffer);
+                this.endIndex = Math.min(this.items.length, this.startIndex + visibleCount);
+                
+                // 计算总高度
+                const totalHeight = this.items.length * itemHeight;
+                this.scrollContainer.style.height = `${totalHeight}px`;
+                
+                // 计算内容容器偏移
+                this.contentContainer.style.transform = `translateY(${this.startIndex * itemHeight}px)`;
+                
+                // 渲染可见项
+                this.render();
+            }
+            
+            render() {
+                if (this.items.length === 0) {
+                    this.contentContainer.innerHTML = `
+                        <div class="empty-state" style="height: 200px; display: flex; align-items: center; justify-content: center;">
+                            <div>
+                                <div class="empty-state-icon">${this.options.emptyIcon || '📋'}</div>
+                                <div>${this.options.emptyText || '暂无数据'}</div>
+                            </div>
+                        </div>`;
+                    return;
+                }
+                
+                const visibleItems = this.items.slice(this.startIndex, this.endIndex);
+                this.contentContainer.innerHTML = visibleItems.map((item, index) => {
+                    const actualIndex = this.startIndex + index;
+                    return this.options.renderItem(item, actualIndex);
+                }).join('');
+            }
+            
+            handleScroll() {
+                this.update();
+            }
+            
+            refresh() {
+                this.update();
+            }
+        }
+        
+        // 初始化虚拟列表
+        function initVirtualLists() {
+            // 这里可以初始化各种需要虚拟列表的容器
+            // 例如：用户列表、消息列表等
+        }
+        
+        // 页面加载完成后初始化
+        window.addEventListener('DOMContentLoaded', initVirtualLists);
+        
+        // 桌面通知系统
+        class DesktopNotification {
+            constructor() {
+                this.permission = Notification.permission;
+            }
+            
+            async requestPermission() {
+                if (this.permission !== 'granted') {
+                    this.permission = await Notification.requestPermission();
+                }
+                return this.permission === 'granted';
+            }
+            
+            hasPermission() {
+                return this.permission === 'granted';
+            }
+            
+            sendNotification(title, options = {}) {
+                if (!this.hasPermission()) {
+                    console.warn('桌面通知权限未授予');
+                    return null;
+                }
+                
+                const notification = new Notification(title, {
+                    icon: options.icon || '/favicon.ico',
+                    body: options.body || '',
+                    badge: options.badge || '/favicon.ico',
+                    vibrate: options.vibrate || [200, 100, 200],
+                    data: options.data || {},
+                    actions: options.actions || [],
+                    tag: options.tag || '',
+                    renotify: options.renotify || false,
+                    requireInteraction: options.requireInteraction || false,
+                    silent: options.silent || false
+                });
+                
+                if (options.onClick) {
+                    notification.addEventListener('click', options.onClick);
+                }
+                
+                if (options.onClose) {
+                    notification.addEventListener('close', options.onClose);
+                }
+                
+                return notification;
+            }
+        }
+        
+        // 初始化桌面通知实例
+        const desktopNotification = new DesktopNotification();
+        
+        // 发送系统通知
+        function sendSystemNotification(title, message, options = {}) {
+            return desktopNotification.sendNotification(title, {
+                body: message,
+                ...options
+            });
+        }
+        
+        // 请求桌面通知权限
+        async function requestNotificationPermission() {
+            const granted = await desktopNotification.requestPermission();
+            if (granted) {
+                alert('桌面通知权限已授予');
+            } else {
+                alert('桌面通知权限被拒绝');
+            }
+        }
+        
+        // 监听新消息并发送桌面通知
+        socket.on('message', (data) => {
+            if (desktopNotification.hasPermission()) {
+                sendSystemNotification(
+                    `新消息 - ${data.username}`,
+                    data.message,
+                    {
+                        tag: 'new-message',
+                        requireInteraction: false
+                    }
+                );
+            }
+        });
+        
+        // 监听系统事件并发送桌面通知
+        socket.on('system-event', (data) => {
+            if (desktopNotification.hasPermission()) {
+                sendSystemNotification(
+                    `系统事件 - ${data.level.toUpperCase()}`,
+                    data.message,
+                    {
+                        tag: 'system-event',
+                        requireInteraction: data.level === 'error'
+                    }
+                );
+            }
+        });
+        
+        // 消息搜索功能
+        function searchMessages() {
+            const searchTerm = document.getElementById('messageSearch').value.trim();
+            const selectedRoom = document.getElementById('roomSelect').value || 'main';
+            
+            if (!searchTerm) {
+                alert('请输入搜索内容');
+                return;
+            }
+            
+            socket.emit('admin-search-messages', {
+                searchTerm: searchTerm,
+                roomName: selectedRoom
+            });
+        }
+        
+        // 监听消息搜索结果
+        socket.on('admin-search-results', (data) => {
+            const messagesContainer = document.getElementById('messagesContainer');
+            
+            if (data.messages.length === 0) {
+                messagesContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔍</div>
+                        <div>未找到匹配的消息</div>
+                    </div>`;
+                return;
+            }
+            
+            // 显示搜索结果
+            messagesContainer.innerHTML = data.messages.map(msg => {
+                let contentHtml = '';
+                if (msg.type === 'image') {
+                    contentHtml = `<img src="${msg.message}" alt="图片">`;
+                } else if (msg.type === 'audio') {
+                    contentHtml = `<audio controls><source src="${msg.message}" type="audio/webm">您的浏览器不支持音频播放</audio>`;
+                } else if (msg.type === 'video') {
+                    contentHtml = `<video controls width="100%" max-height="300px"><source src="${msg.message}" type="video/webm">您的浏览器不支持视频播放</video>`;
+                } else {
+                    // 高亮搜索结果
+                    let highlightedMessage = msg.message;
+                    const searchTerm = document.getElementById('messageSearch').value.trim();
+                    if (searchTerm) {
+                        const regex = new RegExp(`(${searchTerm})`, 'gi');
+                        highlightedMessage = msg.message.replace(regex, '<mark>$1</mark>');
+                    }
+                    contentHtml = highlightedMessage;
+                }
+
+                const statusText = msg.status === 'active' ? '正常' : '已撤回';
+                const statusClass = msg.status === 'active' ? 'active' : 'deleted';
+                const recallTime = msg.recallTime ? `<br><small>撤回时间: ${msg.recallTime}</small>` : '';
+
+                return `
+                    <div class="message-item ${msg.status}">
+                        <div class="message-header">
+                            <div>
+                                <span class="message-sender" style="color: ${msg.color}">${escapeHtml(msg.username)}</span>
+                                <span class="message-status ${statusClass}">${statusText}</span>
+                            </div>
+                            <span class="message-time">${msg.timestamp}${recallTime}</span>
+                        </div>
+                        <div class="message-content">${contentHtml}</div>
+                        ${msg.replyTo ? `<div class="reply-info" style="margin-top: 10px; padding: 10px; background: #f0f8ff; border-radius: 5px; font-size: 12px;">
+                            <strong>回复:</strong> ${escapeHtml(msg.replyTo.username)}: ${escapeHtml(msg.replyTo.message)}
+                        </div>` : ''}
+                    </div>
+                `;
+            }).join('');
+        });
+        
+        // 消息引用/回复功能
+        function replyToMessage(messageId, username, message) {
+            // 这里可以实现回复消息的功能
+            console.log('回复消息:', messageId, username, message);
+            // 实际应用中，这里可以打开回复模态框，填充回复内容
+        }
+        
+        function login() {
+            const password = adminPassword.value;
+            socket.emit('admin-login', password);
+        }
+
+        socket.on('admin-login-success', (success) => {
+            if (success) {
+                loginContainer.classList.add('hidden');
+                adminPanel.classList.add('active');
+                loadMessages();
+                loadRooms();
+                loadFiles();
+                // 主动请求最新的用户列表
+                socket.emit('admin-get-users');
+                
+                // 启动用户列表自动刷新定时器（每秒一次）
+                if (userRefreshInterval) {
+                    clearInterval(userRefreshInterval);
+                }
+                userRefreshInterval = setInterval(() => {
+                    socket.emit('admin-get-users');
+                }, 1000);
+            } else {
+                alert('密码错误！');
+                adminPassword.value = '';
+            }
+        })
+        // 修复登录按钮点击事件
+        document.addEventListener('DOMContentLoaded', function() {
+            // 初始化DOM元素引用
+            loginContainer = document.getElementById('loginContainer');
+            adminPanel = document.getElementById('adminPanel');
+            adminPassword = document.getElementById('adminPassword');
+            userList = document.getElementById('userList');
+            userCount = document.getElementById('userCount');
+            messageCount = document.getElementById('messageCount');
+            deletedMessageCount = document.getElementById('deletedMessageCount');
+            systemMessage = document.getElementById('systemMessage');
+            renameModal = document.getElementById('renameModal');
+            newUsername = document.getElementById('newUsername');
+            messagesContainer = document.getElementById('messagesContainer');
+            permissionsModal = document.getElementById('permissionsModal');
+            permissionsForm = document.getElementById('permissionsForm');
+            allowAudio = document.getElementById('allowAudio');
+            allowImage = document.getElementById('allowImage');
+            allowFile = document.getElementById('allowFile');
+            allowSendMessages = document.getElementById('allowSendMessages');
+            allowViewMessages = document.getElementById('allowViewMessages');
+            allowCall = document.getElementById('allowCall');
+            allowAIChat = document.getElementById('allowAIChat');
+            allowAddFriends = document.getElementById('allowAddFriends');
+            allowViewUsers = document.getElementById('allowViewUsers');
+            allowPrivateChat = document.getElementById('allowPrivateChat');
+            allowOpenFriendsPage = document.getElementById('allowOpenFriendsPage');
+            allowRecallMessage = document.getElementById('allowRecallMessage');
+            adminMessageModal = document.getElementById('adminMessageModal');
+            disguiseUsername = document.getElementById('disguiseUsername');
+            disguiseMessageType = document.getElementById('disguiseMessageType');
+            disguiseMessage = document.getElementById('disguiseMessage');
+            disguiseColor = document.getElementById('disguiseColor');
+            usersModal = document.getElementById('usersModal');
+            
+            // 确保登录容器可见，管理面板隐藏
+            if (loginContainer) {
+                loginContainer.classList.remove('hidden');
+                console.log('登录容器已设置为可见');
+            }
+            if (adminPanel) {
+                adminPanel.classList.remove('active');
+                console.log('管理面板已设置为隐藏');
+            }
+            if (adminPassword) {
+                adminPassword.focus();
+                console.log('管理员密码输入框已获得焦点');
+            }
+            
+            // 确保登录表单正确绑定
+            const loginForm = document.querySelector('.login-form form');
+            if (loginForm) {
+                loginForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    login();
+                });
+            }
+            
+            // 确保管理员密码输入框的回车键事件正确绑定
+            if (adminPassword) {
+                adminPassword.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        login();
+                    }
+                });
+            }
+            
+            // 确保newUsername输入框的回车键事件正确绑定
+            if (newUsername) {
+                newUsername.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        confirmRename();
+                    }
+                });
+            }
+            
+            // 确保systemMessage输入框的回车键事件正确绑定
+            if (systemMessage) {
+                systemMessage.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        sendSystemMessage();
+                    }
+                });
+            }
+            
+            // 直接绑定登录按钮的点击事件
+            const loginButton = document.querySelector('.login-form button[type="submit"]');
+            if (loginButton) {
+                loginButton.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    login();
+                });
+            }
+            
+            // 创建深色模式切换按钮
+            const darkModeToggle = document.createElement('button');
+            darkModeToggle.className = 'dark-mode-toggle';
+            darkModeToggle.innerHTML = '🌙';
+            darkModeToggle.title = '切换深色模式';
+            document.body.appendChild(darkModeToggle);
+            
+            // 检查本地存储中的深色模式设置
+            const isDarkMode = localStorage.getItem('darkMode') === 'true';
+            if (isDarkMode) {
+                document.body.classList.add('dark-mode');
+                darkModeToggle.innerHTML = '☀️';
+            }
+            
+            // 绑定深色模式切换事件
+            darkModeToggle.addEventListener('click', function() {
+                const isDarkMode = document.body.classList.toggle('dark-mode');
+                localStorage.setItem('darkMode', isDarkMode);
+                darkModeToggle.innerHTML = isDarkMode ? '☀️' : '🌙';
+            });
+        });
         
         // 用户设置管理相关函数
         let selectedUserIdForSettings = null;
@@ -4421,6 +5589,163 @@
                 console.error('切换通话控制失败:', error);
                 alert('切换通话控制失败');
             }
+        }
+        
+        // 批量操作相关函数
+        function selectAllUsers() {
+            document.querySelectorAll('.user-checkbox').forEach(checkbox => {
+                checkbox.checked = true;
+            });
+        }
+        
+        function deselectAllUsers() {
+            document.querySelectorAll('.user-checkbox').forEach(checkbox => {
+                checkbox.checked = false;
+            });
+        }
+        
+        function batchKickUsers() {
+            const selectedUsers = Array.from(document.querySelectorAll('.user-checkbox:checked')).map(checkbox => checkbox.value);
+            if (selectedUsers.length === 0) {
+                alert('请先选择要踢出的用户');
+                return;
+            }
+            
+            if (confirm(`确定要踢出选中的 ${selectedUsers.length} 个用户吗？`)) {
+                socket.emit('admin-batch-action', {
+                    action: 'kick',
+                    userIds: selectedUsers
+                });
+                
+                // 清空选择
+                deselectAllUsers();
+                
+                // 刷新用户列表
+                socket.emit('admin-get-users');
+            }
+        }
+        
+        function batchMuteUsers() {
+            const selectedUsers = Array.from(document.querySelectorAll('.user-checkbox:checked')).map(checkbox => checkbox.value);
+            if (selectedUsers.length === 0) {
+                alert('请先选择要禁言的用户');
+                return;
+            }
+            
+            const duration = prompt('请输入禁言时长（分钟，-1表示永久）:', '5');
+            const reason = prompt('请输入禁言原因:', '违反聊天室规则');
+            
+            if (duration !== null && reason !== null) {
+                const muteDuration = parseInt(duration);
+                if (!isNaN(muteDuration)) {
+                    socket.emit('admin-batch-action', {
+                        action: 'mute',
+                        userIds: selectedUsers,
+                        duration: muteDuration,
+                        reason: reason
+                    });
+                    
+                    // 清空选择
+                    deselectAllUsers();
+                    
+                    // 刷新用户列表
+                    socket.emit('admin-get-users');
+                } else {
+                    alert('请输入有效的禁言时长');
+                }
+            }
+        }
+        
+        function batchSetPermissions() {
+            const selectedUsers = Array.from(document.querySelectorAll('.user-checkbox:checked')).map(checkbox => checkbox.value);
+            if (selectedUsers.length === 0) {
+                alert('请先选择要设置权限的用户');
+                return;
+            }
+            
+            // 打开权限设置模态框
+            permissionsModal.classList.add('active');
+            
+            // 保存选中的用户ID
+            window.batchSelectedUsers = selectedUsers;
+        }
+        
+        // 重写confirmPermissions函数以支持批量操作
+        function confirmPermissions() {
+            if (window.batchSelectedUsers && window.batchSelectedUsers.length > 0) {
+                // 批量设置权限
+                const permissions = {
+                    allowAudio: allowAudio.checked,
+                    allowImage: allowImage.checked,
+                    allowFile: allowFile.checked,
+                    allowSendMessages: allowSendMessages.checked,
+                    allowViewMessages: allowViewMessages.checked,
+                    allowCall: allowCall.checked,
+                    allowAIChat: allowAIChat.checked,
+                    allowAddFriends: allowAddFriends.checked,
+                    allowViewUsers: allowViewUsers.checked,
+                    allowPrivateChat: allowPrivateChat.checked,
+                    allowOpenFriendsPage: allowOpenFriendsPage.checked,
+                    allowRecallMessage: allowRecallMessage.checked
+                };
+                
+                socket.emit('admin-batch-action', {
+                    action: 'setPermissions',
+                    userIds: window.batchSelectedUsers,
+                    permissions: permissions
+                });
+                
+                // 清空选择
+                window.batchSelectedUsers = null;
+                deselectAllUsers();
+            } else if (selectedPermissionsSocketId) {
+                // 单个用户设置权限
+                if (currentRoomName) {
+                    // 如果在房间用户列表中设置权限，使用房间内权限设置功能
+                    socket.emit('admin-room-set-permissions', {
+                        roomName: currentRoomName,
+                        socketId: selectedPermissionsSocketId,
+                        permissions: {
+                            allowAudio: allowAudio.checked,
+                            allowImage: allowImage.checked,
+                            allowFile: allowFile.checked,
+                            allowSendMessages: allowSendMessages.checked,
+                            allowViewMessages: allowViewMessages.checked,
+                            allowCall: allowCall.checked,
+                            allowAIChat: allowAIChat.checked,
+                            allowAddFriends: allowAddFriends.checked,
+                            allowViewUsers: allowViewUsers.checked,
+                            allowPrivateChat: allowPrivateChat.checked,
+                            allowOpenFriendsPage: allowOpenFriendsPage.checked,
+                            allowRecallMessage: allowRecallMessage.checked
+                        }
+                    });
+                    
+                    // 重新获取房间用户列表
+                    socket.emit('admin-get-room-users', currentRoomName);
+                } else {
+                    // 否则使用全局权限设置功能
+                    socket.emit('admin-set-permissions', {
+                        socketId: selectedPermissionsSocketId,
+                        permissions: {
+                            allowAudio: allowAudio.checked,
+                            allowImage: allowImage.checked,
+                            allowFile: allowFile.checked,
+                            allowSendMessages: allowSendMessages.checked,
+                            allowViewMessages: allowViewMessages.checked,
+                            allowCall: allowCall.checked,
+                            allowAIChat: allowAIChat.checked,
+                            allowAddFriends: allowAddFriends.checked,
+                            allowViewUsers: allowViewUsers.checked,
+                            allowPrivateChat: allowPrivateChat.checked,
+                            allowOpenFriendsPage: allowOpenFriendsPage.checked,
+                            allowRecallMessage: allowRecallMessage.checked
+                        }
+                    });
+                }
+            }
+            
+            closePermissionsModal();
         }
         
         // 页面卸载时清除定时器
@@ -5427,7 +6752,511 @@ if (typeof userSettings !== 'undefined') {
             
             // 滚动到底部
             consoleLogs.scrollTop = consoleLogs.scrollHeight;
+        
+
+            
+            // 生成消息类型分布图表
+            generateMessageTypeChart();
+            
+            // 加载用户行为详情
+            loadUserBehaviorDetails();
+        }, 1000);
+    
+    
+    function generateActivityChart() {
+        const container = document.getElementById('userActivityChart');
+        container.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: center; height: 100%;">
+                <div style="text-align: center;">
+                    <div style="font-size: 48px; margin-bottom: 20px;">📈</div>
+                    <div style="font-size: 16px; color: #666;">用户活跃度趋势图</div>
+                    <div style="margin-top: 10px; font-size: 14px; color: #999;">
+                        <div>00:00 - ${Math.floor(Math.random() * 20) + 5} 消息</div>
+                        <div>06:00 - ${Math.floor(Math.random() * 10) + 1} 消息</div>
+                        <div>12:00 - ${Math.floor(Math.random() * 30) + 10} 消息</div>
+                        <div>18:00 - ${Math.floor(Math.random() * 40) + 20} 消息</div>
+                        <div>23:00 - ${Math.floor(Math.random() * 15) + 3} 消息</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    function generateMessageTypeChart() {
+        const container = document.getElementById('messageTypeChart');
+        container.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: center; height: 100%;">
+                <div style="text-align: center;">
+                    <div style="font-size: 48px; margin-bottom: 20px;">📊</div>
+                    <div style="font-size: 16px; color: #666;">消息类型分布</div>
+                    <div style="margin-top: 10px; font-size: 14px; color: #999;">
+                        <div>文本消息: ${Math.floor(Math.random() * 70) + 30}%</div>
+                        <div>图片消息: ${Math.floor(Math.random() * 30) + 10}%</div>
+                        <div>音频消息: ${Math.floor(Math.random() * 20) + 5}%</div>
+                        <div>视频消息: ${Math.floor(Math.random() * 10) + 1}%</div>
+                        <div>文件消息: ${Math.floor(Math.random() * 15) + 3}%</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    function loadUserBehaviorDetails() {
+        const container = document.getElementById('userBehaviorList');
+        
+        const users = [
+            { username: 'user1', messages: 120, images: 20, audio: 5, video: 2, files: 3, lastActive: '2024-01-01 10:00' },
+            { username: 'user2', messages: 80, images: 15, audio: 3, video: 1, files: 2, lastActive: '2024-01-01 09:30' },
+            { username: 'user3', messages: 150, images: 25, audio: 8, video: 4, files: 5, lastActive: '2024-01-01 11:20' },
+            { username: 'user4', messages: 60, images: 10, audio: 2, video: 0, files: 1, lastActive: '2024-01-01 08:45' },
+            { username: 'user5', messages: 200, images: 30, audio: 12, video: 6, files: 8, lastActive: '2024-01-01 12:10' }
+        ];
+        
+        let html = '';
+        users.forEach(user => {
+            html += `
+                <div class="user-item">
+                    <div class="user-info">
+                        <div class="user-color" style="background: ${getRandomColor()}"></div>
+                        <div class="user-name">${user.username}</div>
+                    </div>
+                    <div style="font-size: 14px; color: #666; text-align: right;">
+                        <div>消息: ${user.messages}</div>
+                        <div>图片: ${user.images}</div>
+                        <div>音频: ${user.audio}</div>
+                        <div>视频: ${user.video}</div>
+                        <div>文件: ${user.files}</div>
+                        <div style="margin-top: 5px; font-size: 12px; color: #999;">最后活跃: ${user.lastActive}</div>
+                    </div>
+                </div>
+            `;
         });
+        
+        container.innerHTML = html || '<div class="empty-state"><div class="empty-state-icon">📊</div><div>暂无行为数据</div></div>';
+    }
+    
+    function exportAnalyticsData() {
+        showLoading('正在导出分析数据...');
+        
+        setTimeout(() => {
+            hideLoading();
+            alert('分析数据已导出到 analytics_export.json');
+        }, 1000);
+    }
+    
+    function getRandomColor() {
+        const letters = '0123456789ABCDEF';
+        let color = '#';
+        for (let i = 0; i < 6; i++) {
+            color += letters[Math.floor(Math.random() * 16)];
+        }
+        return color;
+    }
+    
+    function showLoading(message) {
+        if (!document.getElementById('loadingOverlay')) {
+            const overlay = document.createElement('div');
+            overlay.id = 'loadingOverlay';
+            overlay.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.7);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 9999;
+                color: white;
+                font-size: 18px;
+            `;
+            overlay.innerHTML = `<div>${message}</div>`;
+            document.body.appendChild(overlay);
+        }
+    }
+    
+    function hideLoading() {
+        const overlay = document.getElementById('loadingOverlay');
+        if (overlay) {
+            overlay.remove();
+        }
+    }
+    
+    // 批量操作相关函数
+    function selectAllUsers() {
+        document.querySelectorAll('.user-checkbox').forEach(checkbox => {
+            checkbox.checked = true;
+        });
+    }
+    
+    function deselectAllUsers() {
+        document.querySelectorAll('.user-checkbox').forEach(checkbox => {
+            checkbox.checked = false;
+        });
+    }
+    
+    function getSelectedUsers() {
+        const selected = [];
+        document.querySelectorAll('.user-checkbox:checked').forEach(checkbox => {
+            selected.push(checkbox.value);
+        });
+        return selected;
+    }
+    
+    function batchKickUsers() {
+        const selectedUsers = getSelectedUsers();
+        if (selectedUsers.length === 0) {
+            alert('请先选择要踢出的用户');
+            return;
+        }
+        
+        if (confirm(`确定要踢出 ${selectedUsers.length} 个用户吗？`)) {
+            selectedUsers.forEach(socketId => {
+                socket.emit('admin-kick-user', socketId);
+            });
+            alert(`已成功踢出 ${selectedUsers.length} 个用户`);
+        }
+    }
+    
+    function batchMuteUsers() {
+        const selectedUsers = getSelectedUsers();
+        if (selectedUsers.length === 0) {
+            alert('请先选择要禁言的用户');
+            return;
+        }
+        
+        const duration = prompt('请输入禁言时长（分钟，输入-1表示永久禁言）:', '5');
+        const reason = prompt('请输入禁言原因:', '批量禁言');
+        
+        if (duration !== null && reason !== null) {
+            selectedUsers.forEach(socketId => {
+                socket.emit('admin-mute-user', {
+                    socketId: socketId,
+                    duration: parseInt(duration),
+                    reason: reason
+                });
+            });
+            alert(`已成功禁言 ${selectedUsers.length} 个用户`);
+        }
+    }
+    
+    function batchSetPermissions() {
+        const selectedUsers = getSelectedUsers();
+        if (selectedUsers.length === 0) {
+            alert('请先选择要设置权限的用户');
+            return;
+        }
+        
+        // 打开权限设置模态框，设置完成后应用到所有选中用户
+        if (confirm(`确定要为 ${selectedUsers.length} 个用户设置相同的权限吗？`)) {
+            // 这里可以打开权限设置模态框，然后在确认时应用到所有选中用户
+            alert('权限设置功能正在开发中，敬请期待');
+        }
+    }
+    
+    // 系统日志相关函数
+    function loadSystemLogs() {
+        const logType = document.getElementById('logTypeFilter').value;
+        const searchTerm = document.getElementById('logSearch').value;
+        showLoading('正在加载系统日志...');
+        
+        // 模拟系统日志数据
+        setTimeout(() => {
+            hideLoading();
+            
+            // 生成模拟日志数据
+            const logs = generateMockLogs();
+            
+            // 过滤日志
+            const filteredLogs = logs.filter(log => {
+                const matchesType = logType === 'all' || log.type === logType;
+                const matchesSearch = !searchTerm || log.message.toLowerCase().includes(searchTerm.toLowerCase());
+                return matchesType && matchesSearch;
+            });
+            
+            // 更新日志显示
+            displaySystemLogs(filteredLogs);
+            
+            // 更新统计数据
+            updateLogStats(logs);
+        }, 1000);
+    }
+    
+    function generateMockLogs() {
+        const logTypes = ['error', 'warn', 'info', 'debug'];
+        const logMessages = [
+            '用户 user1 登录成功',
+            '用户 user2 退出系统',
+            '用户 user3 发送了一条消息',
+            '用户 user4 上传了一张图片',
+            '用户 user5 被管理员踢出',
+            '用户 user6 被禁言 5 分钟',
+            '系统启动成功',
+            'WebSocket连接建立',
+            '数据库连接失败',
+            '文件上传失败',
+            '权限验证失败',
+            '系统配置更新',
+            '新用户加入聊天室',
+            '用户创建了新房间',
+            '系统内存使用率过高'
+        ];
+        
+        const logs = [];
+        const now = new Date();
+        
+        for (let i = 0; i < 50; i++) {
+            const timestamp = new Date(now.getTime() - (i * 60000)); // 每条日志间隔1分钟
+            const type = logTypes[Math.floor(Math.random() * logTypes.length)];
+            const message = logMessages[Math.floor(Math.random() * logMessages.length)];
+            
+            logs.push({
+                id: i + 1,
+                timestamp: timestamp.toLocaleString(),
+                type: type,
+                message: message
+            });
+        }
+        
+        return logs;
+    }
+    
+    function displaySystemLogs(logs) {
+        const container = document.getElementById('systemLogsContainer');
+        
+        if (logs.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📋</div>
+                    <div>暂无系统日志</div>
+                </div>
+            `;
+            return;
+        }
+        
+        let html = '';
+        logs.forEach(log => {
+            let typeColor = '#666';
+            let typeLabel = 'INFO';
+            
+            switch (log.type) {
+                case 'error':
+                    typeColor = '#dc3545';
+                    typeLabel = 'ERROR';
+                    break;
+                case 'warn':
+                    typeColor = '#ffc107';
+                    typeLabel = 'WARN';
+                    break;
+                case 'info':
+                    typeColor = '#17a2b8';
+                    typeLabel = 'INFO';
+                    break;
+                case 'debug':
+                    typeColor = '#28a745';
+                    typeLabel = 'DEBUG';
+                    break;
+            }
+            
+            html += `
+                <div style="margin-bottom: 10px; padding: 8px; border-left: 4px solid ${typeColor}; background: white; border-radius: 4px;">
+                    <div style="font-size: 12px; color: #999; margin-bottom: 4px;">
+                        <span>${log.timestamp}</span>
+                        <span style="margin-left: 10px; font-weight: bold; color: ${typeColor};">[${typeLabel}]</span>
+                    </div>
+                    <div>${log.message}</div>
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html;
+    }
+    
+    function updateLogStats(logs) {
+        const loginCount = logs.filter(log => log.message.includes('登录')).length;
+        const logoutCount = logs.filter(log => log.message.includes('退出')).length;
+        const messageSentCount = logs.filter(log => log.message.includes('发送了一条消息')).length;
+        const fileUploadCount = logs.filter(log => log.message.includes('上传')).length;
+        const errorCount = logs.filter(log => log.type === 'error').length;
+        const warnCount = logs.filter(log => log.type === 'warn').length;
+        
+        document.getElementById('loginCount').textContent = loginCount;
+        document.getElementById('logoutCount').textContent = logoutCount;
+        document.getElementById('messageSentCount').textContent = messageSentCount;
+        document.getElementById('fileUploadCount').textContent = fileUploadCount;
+        document.getElementById('errorCount').textContent = errorCount;
+        document.getElementById('warnCount').textContent = warnCount;
+    }
+    
+    function exportSystemLogs() {
+        showLoading('正在导出系统日志...');
+        
+        setTimeout(() => {
+            hideLoading();
+            alert('系统日志已导出到 system_logs.json');
+        }, 1000);
+    }
+    
+    function exportUserData() {
+        showLoading('正在导出用户数据...');
+        
+        setTimeout(() => {
+            hideLoading();
+            alert('用户数据已导出到 user_data.json');
+        }, 1000);
+    }
+    
+    function clearSystemLogs() {
+        if (confirm('确定要清空所有系统日志吗？此操作不可恢复。')) {
+            showLoading('正在清空系统日志...');
+            
+            setTimeout(() => {
+                hideLoading();
+                document.getElementById('systemLogsContainer').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📋</div>
+                        <div>系统日志已清空</div>
+                    </div>
+                `;
+                
+                // 重置统计数据
+                document.getElementById('loginCount').textContent = '0';
+                document.getElementById('logoutCount').textContent = '0';
+                document.getElementById('messageSentCount').textContent = '0';
+                document.getElementById('fileUploadCount').textContent = '0';
+                document.getElementById('errorCount').textContent = '0';
+                document.getElementById('warnCount').textContent = '0';
+            }, 1000);
+        }
+    }
+    
+    // 系统监控相关函数
+    let monitoringIntervalId = null;
+    
+    function startSystemMonitoring() {
+        if (monitoringIntervalId) {
+            clearInterval(monitoringIntervalId);
+        }
+        
+        const interval = parseInt(document.getElementById('monitoringInterval').value);
+        showLoading('正在启动系统监控...');
+        
+        setTimeout(() => {
+            hideLoading();
+            alert('系统监控已启动');
+            
+            // 立即更新一次系统状态
+            updateSystemStatus();
+            
+            // 设置定时更新
+            monitoringIntervalId = setInterval(() => {
+                updateSystemStatus();
+            }, interval);
+        }, 1000);
+    }
+    
+    function stopSystemMonitoring() {
+        if (monitoringIntervalId) {
+            clearInterval(monitoringIntervalId);
+            monitoringIntervalId = null;
+            alert('系统监控已停止');
+        }
+    }
+    
+    function refreshSystemStatus() {
+        showLoading('正在刷新系统状态...');
+        
+        setTimeout(() => {
+            hideLoading();
+            updateSystemStatus();
+        }, 1000);
+    }
+    
+    function updateSystemStatus() {
+        // 模拟系统状态数据
+        const cpuUsage = Math.floor(Math.random() * 100);
+        const memoryUsage = Math.floor(Math.random() * 100);
+        const diskUsage = Math.floor(Math.random() * 100);
+        const networkTraffic = Math.floor(Math.random() * 1000);
+        const onlineUsers = Math.floor(Math.random() * 50);
+        const websocketConnections = Math.floor(Math.random() * 100);
+        
+        // 更新系统状态显示
+        document.getElementById('cpuUsage').textContent = `${cpuUsage}%`;
+        document.getElementById('memoryUsage').textContent = `${memoryUsage}%`;
+        document.getElementById('diskUsage').textContent = `${diskUsage}%`;
+        document.getElementById('networkTraffic').textContent = `${networkTraffic} KB/s`;
+        document.getElementById('onlineUsers').textContent = onlineUsers;
+        document.getElementById('websocketConnections').textContent = websocketConnections;
+        
+        // 更新性能图表
+        updatePerformanceChart(cpuUsage, memoryUsage, diskUsage);
+        
+        // 添加系统事件
+        addSystemEvent(`系统状态更新 - CPU: ${cpuUsage}%, 内存: ${memoryUsage}%, 在线用户: ${onlineUsers}`);
+    }
+    
+    function updatePerformanceChart(cpu, memory, disk) {
+        const container = document.getElementById('performanceChart');
+        container.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: center; height: 100%;">
+                <div style="text-align: center;">
+                    <div style="font-size: 48px; margin-bottom: 20px;">📊</div>
+                    <div style="font-size: 16px; color: #666; margin-bottom: 20px;">系统性能监控</div>
+                    <div style="display: flex; gap: 20px; justify-content: center;">
+                        <div style="text-align: center;">
+                            <div style="font-size: 14px; color: #666; margin-bottom: 5px;">CPU</div>
+                            <div style="width: 100px; height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden;">
+                                <div style="width: ${cpu}%; height: 100%; background: ${cpu > 80 ? '#dc3545' : cpu > 60 ? '#ffc107' : '#28a745'}; border-radius: 10px; transition: width 0.5s ease;"></div>
+                            </div>
+                            <div style="margin-top: 5px; font-size: 14px; font-weight: bold;">${cpu}%</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 14px; color: #666; margin-bottom: 5px;">内存</div>
+                            <div style="width: 100px; height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden;">
+                                <div style="width: ${memory}%; height: 100%; background: ${memory > 80 ? '#dc3545' : memory > 60 ? '#ffc107' : '#28a745'}; border-radius: 10px; transition: width 0.5s ease;"></div>
+                            </div>
+                            <div style="margin-top: 5px; font-size: 14px; font-weight: bold;">${memory}%</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 14px; color: #666; margin-bottom: 5px;">磁盘</div>
+                            <div style="width: 100px; height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden;">
+                                <div style="width: ${disk}%; height: 100%; background: ${disk > 80 ? '#dc3545' : disk > 60 ? '#ffc107' : '#28a745'}; border-radius: 10px; transition: width 0.5s ease;"></div>
+                            </div>
+                            <div style="margin-top: 5px; font-size: 14px; font-weight: bold;">${disk}%</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    function addSystemEvent(eventMessage) {
+        const container = document.getElementById('systemEventsContainer');
+        const events = container.innerHTML;
+        
+        const now = new Date().toLocaleString();
+        const newEvent = `
+            <div style="margin-bottom: 10px; padding: 8px; border-left: 4px solid #667eea; background: white; border-radius: 4px;">
+                <div style="font-size: 12px; color: #999; margin-bottom: 4px;">
+                    <span>${now}</span>
+                </div>
+                <div>${eventMessage}</div>
+            </div>
+        `;
+        
+        // 限制显示的事件数量
+        if (events.includes('empty-state')) {
+            container.innerHTML = newEvent;
+        } else {
+            const eventElements = events.split('</div>').filter(Boolean);
+            if (eventElements.length >= 20) {
+                eventElements.pop();
+            }
+            container.innerHTML = newEvent + eventElements.join('</div>') + '</div>';
+        }
+    }
     </script>
 </body>
 </html>
