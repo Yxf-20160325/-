@@ -1,4 +1,4 @@
-const express = require('express');
+    const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
@@ -20,48 +20,8 @@ app.use((req, res, next) => {
     next();
 });
 app.use(express.static(path.join(__dirname, 'public')));
-
-// 为文件上传API单独配置raw解析器
-app.post('/api/files/upload', express.raw({ type: '*/*', limit: '30mb' }), (req, res) => {
-    try {
-        const relativePath = req.headers['x-path'] || '';
-        let filename = req.headers['x-filename'] || Date.now() + '-' + Math.round(Math.random() * 1E9);
-        // 解码文件名，处理中文等非ASCII字符
-        if (filename) {
-            filename = decodeURIComponent(filename);
-        }
-        
-        // 检查是否为PHP文件
-        if (filename.toLowerCase().endsWith('.php')) {
-            return res.status(403).json({ error: '不允许上传PHP文件' });
-        }
-        
-        const filePath = path.join(__dirname, 'uploads', relativePath, filename);
-        
-        // 确保目录存在
-        const dirPath = path.dirname(filePath);
-        if (!fs.existsSync(dirPath)) {
-            fs.mkdirSync(dirPath, { recursive: true });
-        }
-        
-        fs.writeFileSync(filePath, req.body);
-        const stats = fs.statSync(filePath);
-        
-        res.json({
-            name: filename,
-            size: stats.size,
-            createdAt: stats.birthtime,
-            modifiedAt: stats.mtime,
-            url: `/uploads/${relativePath ? relativePath + '/' + filename : filename}`
-        });
-    } catch (error) {
-        console.error('上传文件失败:', error);
-        res.status(500).json({ error: '上传文件失败' });
-    }
-});
-
-// 其他路由使用json解析器
 app.use(express.json({ limit: '30mb' }));
+app.use(express.raw({ type: ['image/*', 'audio/*'], limit: '30mb' }));
 
 // 确保 uploads 目录存在
 if (!fs.existsSync(path.join(__dirname, 'uploads'))) {
@@ -71,38 +31,11 @@ if (!fs.existsSync(path.join(__dirname, 'uploads'))) {
 // 静态文件服务 - 提供上传的文件
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// 图片上传接口 - 单独配置raw解析器
-app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), (req, res) => {
+// 图片上传接口
+app.post('/upload-image', (req, res) => {
     try {
-        // 获取原始文件扩展名
-        let extension = '.jpg';
-        const contentType = req.headers['content-type'];
-        if (contentType) {
-            const mimeToExt = {
-                'image/jpeg': '.jpg',
-                'image/png': '.png',
-                'image/gif': '.gif',
-                'image/webp': '.webp',
-                'image/svg+xml': '.svg'
-            };
-            extension = mimeToExt[contentType] || extension;
-        }
-        
-        const filename = Date.now() + '-' + Math.round(Math.random() * 1E9) + extension;
-        
-        // 检查是否为PHP文件
-        if (filename.toLowerCase().endsWith('.php')) {
-            return res.status(403).json({ error: '不允许上传PHP文件' });
-        }
-        
+        const filename = Date.now() + '-' + Math.round(Math.random() * 1E9) + '.jpg';
         const filePath = path.join(__dirname, 'uploads', filename);
-        
-        // 确保目录存在
-        const dirPath = path.dirname(filePath);
-        if (!fs.existsSync(dirPath)) {
-            fs.mkdirSync(dirPath, { recursive: true });
-        }
-        
         fs.writeFileSync(filePath, req.body);
         res.json({ imageUrl: `/uploads/${filename}` });
     } catch (error) {
@@ -111,123 +44,29 @@ app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), (req, res
     }
 });
 
-// 音频上传接口 - 单独配置raw解析器
-app.post('/upload-audio', express.raw({ type: '*/*', limit: '30mb' }), (req, res) => {
+// 音频上传接口
+app.post('/upload-audio', (req, res) => {
     try {
-        // 根据Content-Type确定文件扩展名
-        let extension = '.webm';
-        const contentType = req.headers['content-type'];
-        if (contentType) {
-            const mimeToExt = {
-                'audio/webm': '.webm',
-                'audio/mp3': '.mp3',
-                'audio/mpeg': '.mp3',
-                'audio/ogg': '.ogg',
-                'audio/wav': '.wav',
-                'audio/flac': '.flac'
-            };
-            extension = mimeToExt[contentType] || extension;
-        }
-        
-        const filename = Date.now() + '-' + Math.round(Math.random() * 1E9) + extension;
-        
-        // 检查是否为PHP文件
-        if (filename.toLowerCase().endsWith('.php')) {
-            return res.status(403).json({ error: '不允许上传PHP文件' });
-        }
-        
+        const filename = Date.now() + '-' + Math.round(Math.random() * 1E9) + '.webm';
         const filePath = path.join(__dirname, 'uploads', filename);
-        
-        // 确保目录存在
-        const dirPath = path.dirname(filePath);
-        if (!fs.existsSync(dirPath)) {
-            fs.mkdirSync(dirPath, { recursive: true });
-        }
-        
         fs.writeFileSync(filePath, req.body);
-        res.json({ 
-            audioUrl: `/uploads/${filename}`,
-            contentType: contentType
-        });
+        res.json({ audioUrl: `/uploads/${filename}` });
     } catch (error) {
         console.error('上传音频失败:', error);
         res.status(500).json({ error: '上传音频失败' });
     }
 });
 
-// 管理员获取通话列表API
-app.get('/api/admin/calls', (req, res) => {
+// 视频上传接口
+app.post('/upload-video', (req, res) => {
     try {
-        const calls = Array.from(ongoingCalls.values());
-        res.json({ calls });
+        const filename = Date.now() + '-' + Math.round(Math.random() * 1E9) + '.webm';
+        const filePath = path.join(__dirname, 'uploads', filename);
+        fs.writeFileSync(filePath, req.body);
+        res.json({ videoUrl: `/uploads/${filename}` });
     } catch (error) {
-        console.error('获取通话列表失败:', error);
-        res.status(500).json({ error: '获取通话列表失败' });
-    }
-});
-
-// 管理员结束通话API
-app.post('/api/admin/calls/:callId/end', (req, res) => {
-    try {
-        const { callId } = req.params;
-        const call = ongoingCalls.get(callId);
-        if (call) {
-            // 通知通话双方结束通话
-            io.to(call.initiator).emit('call-ended', { from: 'admin', callId });
-            io.to(call.recipient).emit('call-ended', { from: 'admin', callId });
-            
-            // 从通话列表中移除
-            ongoingCalls.delete(callId);
-            
-            res.json({ success: true, message: '通话已结束' });
-        } else {
-            res.status(404).json({ error: '通话不存在' });
-        }
-    } catch (error) {
-        console.error('结束通话失败:', error);
-        res.status(500).json({ error: '结束通话失败' });
-    }
-});
-
-// 管理员控制通话API
-app.post('/api/admin/calls/:callId/control', (req, res) => {
-    try {
-        const { callId } = req.params;
-        const { type, enabled } = req.body;
-        const call = ongoingCalls.get(callId);
-        
-        if (call) {
-            // 更新通话控制状态
-            call.controls[type] = enabled;
-            ongoingCalls.set(callId, call);
-            
-            // 通知通话双方控制状态变化
-            io.to(call.initiator).emit('call-control-updated', { callId, type, enabled });
-            io.to(call.recipient).emit('call-control-updated', { callId, type, enabled });
-            
-            res.json({ success: true, message: `通话${type}控制已更新`, call });
-        } else {
-            res.status(404).json({ error: '通话不存在' });
-        }
-    } catch (error) {
-        console.error('控制通话失败:', error);
-        res.status(500).json({ error: '控制通话失败' });
-    }
-});
-
-// 管理员查看通话详情API
-app.get('/api/admin/calls/:callId', (req, res) => {
-    try {
-        const { callId } = req.params;
-        const call = ongoingCalls.get(callId);
-        if (call) {
-            res.json({ call });
-        } else {
-            res.status(404).json({ error: '通话不存在' });
-        }
-    } catch (error) {
-        console.error('获取通话详情失败:', error);
-        res.status(500).json({ error: '获取通话详情失败' });
+        console.error('上传视频失败:', error);
+        res.status(500).json({ error: '上传视频失败' });
     }
 });
 
@@ -269,2683 +108,1295 @@ app.get('/api/files', (req, res) => {
     }
 });
 
-// 文件管理API - 创建目录
-app.post('/api/files/create-directory', express.json(), (req, res) => {
-    try {
-        const { dirname, path: relativePath } = req.body;
-        if (!dirname) {
-            return res.status(400).json({ error: '目录名不能为空' });
-        }
-        
-        const dirPath = path.join(__dirname, 'uploads', relativePath || '', dirname);
-        
-        if (fs.existsSync(dirPath)) {
-            return res.status(400).json({ error: '目录已存在' });
-        }
-        
-        fs.mkdirSync(dirPath, { recursive: true });
-        res.json({ success: true });
-    } catch (error) {
-        console.error('创建目录失败:', error);
-        res.status(500).json({ error: '创建目录失败' });
-    }
-});
-
-
-
-// 文件管理API - 删除文件或目录
-app.delete('/api/files/*', (req, res) => {
-    try {
-        const itemPath = req.params[0];
-        const fullPath = path.join(__dirname, 'uploads', itemPath);
-        
-        if (!fs.existsSync(fullPath)) {
-            return res.status(404).json({ error: '文件或目录不存在' });
-        }
-        
-        const stats = fs.statSync(fullPath);
-        if (stats.isDirectory()) {
-            fs.rmSync(fullPath, { recursive: true, force: true });
-        } else {
-            fs.unlinkSync(fullPath);
-        }
-        
-        res.json({ success: true });
-    } catch (error) {
-        console.error('删除失败:', error);
-        res.status(500).json({ error: '删除失败' });
-    }
-});
-
-// 文件管理API - 创建文本文件
-app.post('/api/files/create', express.json(), (req, res) => {
-    try {
-        const { filename, content, path: relativePath } = req.body;
-        if (!filename) {
-            return res.status(400).json({ error: '文件名不能为空' });
-        }
-        
-        const filePath = path.join(__dirname, 'uploads', relativePath || '', filename);
-        fs.writeFileSync(filePath, content || '');
-        const stats = fs.statSync(filePath);
-        
-        res.json({
-            name: filename,
-            size: stats.size,
-            createdAt: stats.birthtime,
-            modifiedAt: stats.mtime,
-            url: `/uploads/${relativePath ? relativePath + '/' + filename : filename}`
-        });
-    } catch (error) {
-        console.error('创建文件失败:', error);
-        res.status(500).json({ error: '创建文件失败' });
-    }
-});
-
-// 文件管理API - 编辑文件内容
-app.put('/api/files/*', express.json(), (req, res) => {
-    try {
-        const itemPath = req.params[0];
-        const { content } = req.body;
-        const filePath = path.join(__dirname, 'uploads', itemPath);
-        
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).json({ error: '文件不存在' });
-        }
-        
-        const stats = fs.statSync(filePath);
-        if (stats.isDirectory()) {
-            return res.status(400).json({ error: '不能编辑目录' });
-        }
-        
-        fs.writeFileSync(filePath, content || '');
-        const newStats = fs.statSync(filePath);
-        
-        const filename = path.basename(itemPath);
-        const relativePath = path.dirname(itemPath);
-        
-        res.json({
-            name: filename,
-            size: newStats.size,
-            createdAt: newStats.birthtime,
-            modifiedAt: newStats.mtime,
-            url: `/uploads/${itemPath}`
-        });
-    } catch (error) {
-        console.error('编辑文件失败:', error);
-        res.status(500).json({ error: '编辑文件失败' });
-    }
-});
-
-// 文件管理API - 获取文件内容
-app.get('/api/files/*/content', (req, res) => {
-    try {
-        const itemPath = req.params[0];
-        const filePath = path.join(__dirname, 'uploads', itemPath);
-        
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).json({ error: '文件不存在' });
-        }
-        
-        const stats = fs.statSync(filePath);
-        if (stats.isDirectory()) {
-            return res.status(400).json({ error: '不能读取目录内容' });
-        }
-        
-        const content = fs.readFileSync(filePath, 'utf8');
-        res.json({ content });
-    } catch (error) {
-        console.error('获取文件内容失败:', error);
-        res.status(500).json({ error: '获取文件内容失败' });
-    }
-});
-
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
-
-// 房间访问路由
-app.get('/:roomName', (req, res) => {
-    const roomName = req.params.roomName;
-    // 检查房间是否存在
-    if (rooms.has(roomName) || roomName === 'admin') {
-        if (roomName === 'admin') {
-            res.sendFile(path.join(__dirname, 'public', 'admin.html'));
-        } else {
-            res.sendFile(path.join(__dirname, 'public', 'index.html'));
-        }
-    } else {
-        // 如果房间不存在，重定向到首页
-        res.redirect('/');
-    }
-});
-
-let ADMIN_PASSWORD = 'admin123';
-let adminSocketId = null;
-
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: "*",
-        methods: ["GET", "POST"],
-        credentials: true
-    },
-    maxHttpBufferSize: 1e8,
-    pingTimeout: 60000,
-    pingInterval: 25000,
-    transports: ['websocket', 'polling']
-});
-
-const users = new Map();
-const messages = new Map();
-const deletedMessages = new Map();
-
-// 房间系统数据结构
-const rooms = new Map();
-
-// 好友系统数据结构
-const friendships = new Map(); // 存储好友关系: Map<socketId, Set<friendSocketId>>
-const privateMessages = new Map(); // 存储私聊消息: Map<chatId, Array<message>>
-
-// 好友数量限制系统
-const userMaxFriends = new Map(); // 存储用户的好友数量上限: Map<socketId, number>
-const friendLimitRequests = new Map(); // 存储好友扩容申请: Map<requestId, request>
-let requestIdCounter = 1; // 申请ID计数器
-
-// 通话管理系统
-const ongoingCalls = new Map(); // 存储正在进行的通话: Map<callId, callInfo>
-let callIdCounter = 1; // 通话ID计数器
-
-// 控制台日志系统
-const userConsoleLogs = new Map(); // Map<socketId, Array<log>>
-
-// 默认好友数量上限
-const DEFAULT_MAX_FRIENDS = 5;
-const INFINITE_FRIENDS = -1; // 无限好友数量
-
-// @功能开关
-let allowMentions = true; // 默认开启@功能
-
-// 禁言系统数据结构
-const mutedUsers = new Map(); // 存储被禁言用户: Map<socketId, { username, endTime, reason }>
-
-// 脏话过滤系统
-const badWords = [
-    // 英文脏话
-    'fuck', 'shit', 'asshole', 'bitch', 'dick', 'pussy', 'cunt', 'nigger', 'faggot', 'damn',
-    // 中文脏话
-    '傻逼', 'sb', '傻b', '煞笔', '操你妈', '去死', '垃圾', '废物', '脑残', '王八蛋', '滚蛋', '畜生', '贱人', '狗东西', '杂种',
-    '草泥马', '妈蛋', '二货', '智障', '白痴', '混蛋', '恶棍', '禽兽', '畜生不如',
-    '操蛋', '操你大爷', '你妈逼', '你妹', '你大爷', '草泥马', '草', '日', '靠', '操'
-];
-
-// 脏话计数系统
-const swearWordCount = new Map(); // 存储用户脏话计数: Map<socketId, number>
-
-// 默认权限
-let defaultPermissions = {
-    allowAudio: true,
-    allowImage: true,
-    allowFile: true,
-    allowSendMessages: true,
-    allowViewMessages: true,
-    allowCall: false, // 默认启用通话功能
-    allowAddFriends: true,
-    allowViewUsers: true,
-    allowPrivateChat: true,
-    allowOpenFriendsPage: true,
-    allowRecallMessage: true,
-    allowAIChat: false // 默认禁用AI聊天功能，需要管理员同意
-};
-
-// 默认房间
-rooms.set('main', {
-    roomName: 'main',
-    password: null,
-    creator: 'system',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    users: [],
-    messages: [],
-    settings: {
-        maxUsers: 100,
-        allowPublicAccess: true
+        origin: '*',
+        methods: ['GET', 'POST']
     }
 });
 
+// 存储在线用户
+const users = new Map();
+
+// 存储房间信息
+const rooms = new Map();
+
+// 存储好友关系
+const friends = new Map();
+
+// 存储私聊消息
+const privateMessages = new Map();
+
+// 存储好友请求
+const friendRequests = new Map();
+
+// 存储用户活动数据
+const userActivity = new Map();
+
+// 存储系统日志
+const systemLogs = [];
+
+// 存储管理员socket ID
+let adminSocketId = null;
+
+// 存储活跃的聊天室提示
+const activeNotifications = [];
+
+// 存储用户消息历史（用于刷屏检测）
+const userMessageHistory = new Map();
+
+// 存储用户禁言状态
+const mutedUsers = new Map();
+
+// 创建用户活动数据结构
+function createUserActivityData() {
+    return {
+        socketId: '',
+        username: '',
+        joinTime: new Date(),
+        messages: 0,
+        filesUploaded: 0,
+        audioSent: 0,
+        videoSent: 0,
+        imagesSent: 0,
+        privateMessages: 0,
+        friendRequests: 0,
+        friendsAdded: 0,
+        callsInitiated: 0,
+        callsReceived: 0,
+        swears: 0,
+        lastActive: new Date(),
+        activityHistory: [],
+        messageLengths: []
+    };
+}
+
+// 计算两个字符串的相似度（基于Levenshtein距离）
+function calculateSimilarity(str1, str2) {
+    if (!str1 || !str2) return 0;
+    if (str1 === str2) return 1;
+    
+    const matrix = [];
+    const n = str1.length;
+    const m = str2.length;
+    
+    // 初始化矩阵
+    for (let i = 0; i <= n; i++) {
+        matrix[i] = [i];
+    }
+    for (let j = 0; j <= m; j++) {
+        matrix[0][j] = j;
+    }
+    
+    // 计算编辑距离
+    for (let i = 1; i <= n; i++) {
+        for (let j = 1; j <= m; j++) {
+            const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+            matrix[i][j] = Math.min(
+                matrix[i - 1][j] + 1,
+                matrix[i][j - 1] + 1,
+                matrix[i - 1][j - 1] + cost
+            );
+        }
+    }
+    
+    // 计算相似度
+    const maxLength = Math.max(n, m);
+    const similarity = 1 - (matrix[n][m] / maxLength);
+    return similarity;
+}
+
+// 检测用户是否在刷屏
+function detectSpamming(socketId, message) {
+    // 获取用户的消息历史
+    let messageHistory = userMessageHistory.get(socketId);
+    if (!messageHistory) {
+        messageHistory = [];
+        userMessageHistory.set(socketId, messageHistory);
+    }
+    
+    // 添加当前消息到历史记录
+    messageHistory.push({
+        message: message,
+        timestamp: new Date()
+    });
+    
+    // 只保留最近的20条消息
+    if (messageHistory.length > 20) {
+        messageHistory.shift();
+    }
+    
+    // 检测重复消息
+    const recentMessages = messageHistory.slice(-10); // 最近10条消息
+    const uniqueMessages = new Set(recentMessages.map(msg => msg.message));
+    
+    // 如果最近10条消息中有8条以上是重复的，则认为是刷屏
+    if (recentMessages.length >= 8 && uniqueMessages.size <= 2) {
+        return true;
+    }
+    
+    // 检测相似度高的消息
+    if (recentMessages.length >= 10) {
+        let highSimilarityCount = 0;
+        
+        for (let i = 0; i < recentMessages.length - 1; i++) {
+            const similarity = calculateSimilarity(recentMessages[i].message, recentMessages[i + 1].message);
+            if (similarity >= 0.9) {
+                highSimilarityCount++;
+            }
+        }
+        
+        // 如果最近10条消息中有8对以上相似度高于90%，则认为是刷屏
+        if (highSimilarityCount >= 8) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+// 禁言用户
+function muteUser(socketId, reason, duration = 5 * 60 * 1000) { // 默认禁言5分钟
+    const user = users.get(socketId);
+    if (!user) return;
+    
+    const muteEndTime = Date.now() + duration;
+    
+    // 设置禁言状态
+    mutedUsers.set(socketId, {
+        username: user.username,
+        reason: reason,
+        muteEndTime: muteEndTime,
+        roomName: user.roomName
+    });
+    
+    console.log(`[禁言] ${user.username} 被禁言 ${duration / 1000 / 60} 分钟，理由: ${reason}`);
+    
+    // 广播禁言信息给所有用户
+    io.emit('user-muted', {
+        username: user.username,
+        reason: reason,
+        duration: duration / 1000 / 60, // 转换为分钟
+        roomName: user.roomName
+    });
+    
+    // 记录系统事件
+    logSystemEvent('user-muted', `${user.username} 被禁言，理由: ${reason}，时长: ${duration / 1000 / 60} 分钟`, socketId, user.roomName);
+    
+    // 禁言时间到后自动解除禁言
+    setTimeout(() => {
+        if (mutedUsers.has(socketId)) {
+            mutedUsers.delete(socketId);
+            
+            // 广播解禁信息给所有用户
+            io.emit('user-unmuted', {
+                username: user.username,
+                roomName: user.roomName
+            });
+            
+            // 记录系统事件
+            logSystemEvent('user-unmuted', `${user.username} 禁言解除`, socketId, user.roomName);
+        }
+    }, duration);
+}
+
+// 检查用户是否被禁言
+function isUserMuted(socketId) {
+    const muteInfo = mutedUsers.get(socketId);
+    if (!muteInfo) return false;
+    
+    // 检查禁言是否过期
+    if (Date.now() > muteInfo.muteEndTime) {
+        mutedUsers.delete(socketId);
+        return false;
+    }
+    
+    return true;
+}
+
+// 记录系统事件
+function logSystemEvent(eventType, description, userId = null, roomId = null) {
+    const logEntry = {
+        id: Date.now().toString(),
+        timestamp: new Date(),
+        eventType,
+        description,
+        userId,
+        roomId
+    };
+    systemLogs.push(logEntry);
+    
+    // 限制日志数量，最多保留1000条
+    if (systemLogs.length > 1000) {
+        systemLogs.shift();
+    }
+    
+    return logEntry;
+}
+
+// 处理用户连接
 io.on('connection', (socket) => {
     console.log(`用户连接: ${socket.id}`);
-
+    
+    // 处理用户加入
     socket.on('join', (data) => {
-        const { username, roomName = 'main', password = null } = typeof data === 'object' ? data : { username: data };
-        
-        // 检查房间是否存在
-        let room = rooms.get(roomName);
-        if (!room) {
-            // 房间不存在
-            socket.emit('join-error', { message: '没有这个房间' });
-            return;
-        }
-        
-        // 检查密码是否正确
-        if (room.password && room.password !== password) {
-            socket.emit('join-error', { message: '密码错误' });
-            return;
-        }
-        
-        // 检查房间是否已满
-        if (room.users.length >= room.settings.maxUsers) {
-            socket.emit('join-error', { message: '房间已满' });
-            return;
-        }
-        
-        // 检查是否允许创建新房间（至少有一个房间存在）
-        const allRooms = Array.from(rooms.values());
-        if (allRooms.length === 0) {
-            socket.emit('join-error', { message: '至少需要有一个房间才能加入' });
-            return;
-        }
+        const { username, roomName = 'main', password = null } = data;
         
         // 检查用户名是否已存在
-        const existingUser = Array.from(users.values()).find(user => user.username === username);
-        if (existingUser) {
-            socket.emit('join-error', { message: '用户名已存在，请选择其他用户名' });
+        let usernameExists = false;
+        users.forEach(user => {
+            if (user.username === username && user.roomName === roomName) {
+                usernameExists = true;
+            }
+        });
+        
+        if (usernameExists) {
+            socket.emit('join-error', { message: '用户名已存在，请选择其他昵称' });
             return;
         }
         
-        // 设置用户信息
-            const user = {
-                username: username,
-                color: getRandomColor(),
-                socketId: socket.id,
-                roomName: roomName,
-                role: 'user', // 默认角色为user
-                permissions: { ...defaultPermissions },
-                status: 'online', // 添加在线状态
-                settings: { locked: false, lockMessage: '设置已被管理员锁定' },
-                userSettings: { // 用户具体设置
-                    targetLanguage: 'zh',
-                    autoTranslate: false,
-                    soundNotification: true,
-                    mentionNotification: true
-                },
-                aiSettings: { // AI设置
-                    enable: false,
-                    model: 'glm4',
-                    glm4: {
-                        apiKey: ''
-                    },
-                    deepseek: {
-                        modelName: '',
-                        apiKey: ''
-                    },
-                    siliconflow: {
-                        modelName: '',
-                        apiKey: ''
-                    },
-                    custom: {
-                        apiUrl: '',
-                        apiKey: '',
-                        modelName: ''
-                    }
-                }
-            };
-        
-        // 为新用户分配25%概率的通话权限
-        if (Math.random() < 0.25) {
-            user.permissions.allowCall = true;
-        }
-        
-        // 保存用户对象
-        users.set(socket.id, user);
-        
-        // 将用户添加到房间
-        room.users.push(socket.id);
-        
-        // 让socket加入房间频道
-        socket.join(roomName);
-        
-        // 发送房间内的用户列表和消息
-        let roomUsers = room.users.map(userId => users.get(userId)).filter(user => user);
-        const roomMessages = room.messages;
-        
-        // 检查用户是否有查看用户列表的权限
-        if (!user.permissions.allowViewUsers) {
-            roomUsers = [];
-        }
-        
-        // 发送给当前用户
-        socket.emit('user-joined', {
-            username: username,
-            userCount: room.users.length,
-            users: roomUsers,
-            roomName: roomName
-        });
-        
-        // 发送给房间内其他用户（只发送有权限的用户）
-        const otherUsers = roomUsers.filter(u => u.permissions.allowViewUsers);
-        socket.to(roomName).emit('user-joined', {
-            username: username,
-            userCount: room.users.length,
-            users: otherUsers,
-            roomName: roomName
-        });
-        
-        // 发送房间历史消息
-        socket.emit('room-history', {
-            messages: roomMessages
-        });
-        
-        console.log(`${username} 加入房间 ${roomName}，当前在线: ${roomUsers.length} 人`);
-    });
-
-    socket.on('message', (data) => {
-        const user = users.get(socket.id);
-        if (user) {
-            // 确保用户权限对象存在，如果不存在则设置默认权限
-            if (!user.permissions) {
-                user.permissions = {
-                    allowAudio: true,
-                    allowImage: true,
-                    allowFile: true,
-                    allowSendMessages: true,
-                    allowViewMessages: true,
-                    allowCall: true,
-                    allowAddFriends: true,
-                    allowViewUsers: true,
-                    allowPrivateChat: true,
-                    allowOpenFriendsPage: true,
-                    allowRecallMessage: true,
-                    allowAIChat: defaultPermissions.allowAIChat // 使用全局默认值
-                };
-            } else {
-                // 确保所有权限字段都存在，如果不存在则设置默认值
-                const defaultPermissions = {
-                    allowAudio: true,
-                    allowImage: true,
-                    allowFile: true,
-                    allowSendMessages: true,
-                    allowViewMessages: true,
-                    allowCall: true,
-                    allowAddFriends: true,
-                    allowViewUsers: true,
-                    allowPrivateChat: true,
-                    allowOpenFriendsPage: true,
-                    allowRecallMessage: true,
-                    allowAIChat: false // 默认禁用AI聊天功能
-                };
-                
-                user.permissions = {
-                    ...defaultPermissions,
-                    ...user.permissions
-                };
+        // 检查房间密码
+        if (rooms.has(roomName)) {
+            const room = rooms.get(roomName);
+            if (room.password && room.password !== password) {
+                socket.emit('join-error', { message: '密码错误' });
+                return;
             }
-        
-        // 确保用户设置对象存在，如果不存在则设置默认设置
-        if (!user.settings) {
-            user.settings = {
-                locked: false,
-                lockMessage: '设置已被管理员锁定'
-            };
         } else {
-            // 确保所有设置字段都存在，如果不存在则设置默认值
-            const defaultSettings = {
-                locked: false,
-                lockMessage: '设置已被管理员锁定'
-            };
-            
-            user.settings = {
-                ...defaultSettings,
-                ...user.settings
-            };
-        }
-            
-            // 权限检查
-            if (!user.permissions.allowSendMessages) {
-                socket.emit('permission-denied', { message: '您没有发送消息的权限' });
-                return;
-            }
-            if (data.type === 'audio' && !user.permissions.allowAudio) {
-                socket.emit('permission-denied', { message: '您没有发送语音的权限' });
-                return;
-            }
-            if (data.type === 'image' && !user.permissions.allowImage) {
-                socket.emit('permission-denied', { message: '您没有发送图片的权限' });
-                return;
-            }
-            if (data.type === 'file' && !user.permissions.allowFile) {
-                socket.emit('permission-denied', { message: '您没有发送文件的权限' });
-                return;
-            }
-            
-            // 禁言检查
-            const now = Date.now();
-            const mutedData = mutedUsers.get(socket.id);
-            if (mutedData) {
-                if (mutedData.endTime === -1 || mutedData.endTime > now) {
-                    const remainingTime = mutedData.endTime === -1 ? '永久' : Math.ceil((mutedData.endTime - now) / (60 * 1000)) + '分钟';
-                    socket.emit('muted-error', {
-                        message: `您已被禁言，剩余时长：${remainingTime}，原因：${mutedData.reason}`
-                    });
-                    return;
-                } else {
-                    // 禁言已过期，自动移除
-                    mutedUsers.delete(socket.id);
-                }
-            }
-            
-            // 脏话过滤和计数功能
-            let processedMessage = data.message;
-            let containsSwearWord = false;
-            
-            if (data.type === 'text' && processedMessage) {
-                // 检查是否是请求通话权限的消息
-                const callPermissionRegex = /^通话权限\s+(.+)$/;
-                const match = processedMessage.match(callPermissionRegex);
-                
-                if (match) {
-                    // 提取密码
-                    const password = match[1].trim();
-                    
-                    // 验证密码
-                    if (password === ADMIN_PASSWORD) {
-                        // 密码正确，授予通话权限
-                    user.permissions.allowCall = true;
-                    
-                    // 发送成功通知给用户
-                    socket.emit('system-message', {
-                        message: '✅ 通话权限申请成功！您现在可以发起和接受通话了。',
-                        timestamp: new Date().toLocaleTimeString()
-                    });
-                    
-                    // 发送权限更新事件，通知客户端更新用户权限
-                    io.emit('user-permissions-changed', {
-                        socketId: socket.id,
-                        permissions: user.permissions,
-                        users: Array.from(users.values())
-                    });
-                    
-                    console.log(`[权限] 用户 ${user.username} 成功获取通话权限`);
-                    } else {
-                        // 密码错误，发送失败通知给用户
-                        socket.emit('system-message', {
-                            message: '❌ 通话权限申请失败！密码错误，请重新输入。',
-                            timestamp: new Date().toLocaleTimeString()
-                        });
-                        
-                        console.log(`[权限] 用户 ${user.username} 申请通话权限失败，密码错误`);
-                    }
-                    
-                    // 将消息替换为星号，对所有人隐藏实际内容
-                    processedMessage = '***********';
-                } else {
-                    // 检测并替换脏话
-                    badWords.forEach(badWord => {
-                        // 使用单词边界确保只匹配完整的单词
-                        // 对于单字或非单词字符，不使用单词边界
-                        let regex;
-                        if (badWord.length === 1 || !/^\w+$/.test(badWord)) {
-                            // 单字或非单词字符，直接匹配
-                            regex = new RegExp(badWord, 'gi');
-                        } else {
-                            // 多字单词，使用单词边界
-                            regex = new RegExp('\\b' + badWord + '\\b', 'gi');
-                        }
-                        if (regex.test(processedMessage)) {
-                            containsSwearWord = true;
-                        }
-                        processedMessage = processedMessage.replace(regex, '***');
-                    });
-                    
-                    // 如果包含脏话，更新计数
-                    if (containsSwearWord) {
-                        // 获取当前用户的脏话计数，默认0
-                        const currentCount = swearWordCount.get(socket.id) || 0;
-                        const newCount = currentCount + 1;
-                        
-                        // 更新计数
-                        swearWordCount.set(socket.id, newCount);
-                        
-                        // 检查是否达到禁言阈值
-                        if (newCount === 5) {
-                            // 发出5次脏话，禁言5分钟
-                            const now = Date.now();
-                            const endTime = now + (5 * 60 * 1000);
-                            
-                            // 添加到禁言列表
-                            mutedUsers.set(socket.id, {
-                                username: user.username,
-                                endTime: endTime,
-                                reason: '累计发送5次脏话'
-                            });
-                            
-                            // 发送禁言通知给用户
-                            io.to(socket.id).emit('muted', {
-                                duration: 5,
-                                reason: '累计发送5次脏话',
-                                endTime: endTime
-                            });
-                            
-                            console.log(`[自动禁言] 用户 ${user.username} 累计发送5次脏话，禁言5分钟`);
-                        } else if (newCount === 20) {
-                            // 发出20次脏话，永久禁言
-                            mutedUsers.set(socket.id, {
-                                username: user.username,
-                                endTime: -1,
-                                reason: '累计发送20次脏话，永久禁言'
-                            });
-                            
-                            // 发送禁言通知给用户
-                            io.to(socket.id).emit('muted', {
-                                duration: -1,
-                                reason: '累计发送20次脏话，永久禁言',
-                                endTime: -1
-                            });
-                            
-                            console.log(`[自动禁言] 用户 ${user.username} 累计发送20次脏话，永久禁言`);
-                        }
-                    }
-                }
-            }
-            
-            const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-            const messageData = {
-                id: messageId,
-                username: user.username,
-                color: user.color,
-                message: processedMessage,
-                type: data.type || 'text',
-                timestamp: new Date().toLocaleTimeString(),
-                senderSocketId: socket.id,
-                readBy: [socket.id], // 初始时只有发送者已读
-                // 包含额外的文件和音频属性
-                fileName: data.fileName,
-                fileSize: data.fileSize,
-                contentType: data.contentType
-            };
-            
-            // 检查消息中是否包含@{用户名}
-            const mentions = data.message.match(/@\{([^}]+)\}/g);
-            if (mentions && allowMentions) {
-                mentions.forEach(mention => {
-                    const mentionedUsername = mention.replace('@{', '').replace('}', '');
-                    const mentionedUser = Array.from(users.values()).find(u => u.username === mentionedUsername);
-                    
-                    if (mentionedUser) {
-                        // 发送@通知给被@的用户
-                        io.to(mentionedUser.socketId).emit('mention-notification', {
-                            fromUsername: user.username,
-                            fromColor: user.color,
-                            message: data.message,
-                            timestamp: new Date().toLocaleTimeString()
-                        });
-                        
-                        console.log(`[通知] ${user.username} @了 ${mentionedUser.username}`);
-                    }
-                });
-            }
-            
-            // 获取用户所在的房间
-            const room = rooms.get(user.roomName);
-            if (room) {
-                // 将消息存储在房间的messages数组中
-                room.messages.push(messageData);
-                if (room.messages.length > 100) {
-                    room.messages.shift();
-                }
-                
-                // 只发送给房间内有权限查看消息的用户
-                room.users.forEach(userId => {
-                    const roomUser = users.get(userId);
-                    if (roomUser && roomUser.permissions.allowViewMessages) {
-                        io.to(userId).emit('message', messageData);
-                    }
-                });
-                
-                // 发送给管理员
-                if (adminSocketId) {
-                    io.to(adminSocketId).emit('message', messageData);
-                }
-                
-                console.log(`[房间 ${user.roomName}] ${user.username}: ${data.type === 'text' ? data.message : data.type}`);
-            }
-        }
-    });
-
-    socket.on('admin-login', (password) => {
-        if (password === ADMIN_PASSWORD) {
-            adminSocketId = socket.id;
-            socket.emit('admin-login-success', true);
-            
-            // 发送完整的用户列表给管理员
-            socket.emit('user-joined', {
-                username: '管理员',
-                userCount: users.size,
-                users: Array.from(users.values())
-            });
-            
-            console.log('管理员登录成功');
-        } else {
-            socket.emit('admin-login-success', false);
-        }
-    });
-
-    socket.on('admin-kick-user', (socketId) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const user = users.get(socketId);
-            if (user) {
-                io.to(socketId).emit('kicked', '你已被管理员踢出聊天室');
-                io.sockets.sockets.get(socketId)?.disconnect();
-                users.delete(socketId);
-                io.emit('user-left', {
-                    username: user.username,
-                    userCount: users.size,
-                    users: Array.from(users.values())
-                });
-                console.log(`管理员踢出用户: ${user.username}`);
-            }
-        }
-    });
-
-    socket.on('admin-rename-user', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const user = users.get(data.socketId);
-            if (user) {
-                const oldName = user.username;
-                user.username = data.newName;
-                io.emit('user-renamed', {
-                    oldName: oldName,
-                    newName: data.newName,
-                    users: Array.from(users.values())
-                });
-                console.log(`管理员将 ${oldName} 重命名为 ${data.newName}`);
-            }
-        }
-    });
-
-    socket.on('admin-set-permissions', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const user = users.get(data.socketId);
-            if (user) {
-                user.permissions = {
-                    allowAudio: data.permissions.allowAudio,
-                    allowImage: data.permissions.allowImage,
-                    allowFile: data.permissions.allowFile,
-                    allowSendMessages: data.permissions.allowSendMessages,
-                    allowViewMessages: data.permissions.allowViewMessages,
-                    allowCall: data.permissions.allowCall,
-                    allowAddFriends: data.permissions.allowAddFriends,
-                    allowViewUsers: data.permissions.allowViewUsers,
-                    allowPrivateChat: data.permissions.allowPrivateChat,
-                    allowOpenFriendsPage: data.permissions.allowOpenFriendsPage,
-                    allowRecallMessage: data.permissions.allowRecallMessage,
-                    allowAIChat: data.permissions.allowAIChat // 添加AI聊天权限
-                };
-                io.emit('user-permissions-changed', {
-                    socketId: data.socketId,
-                    permissions: user.permissions,
-                    users: Array.from(users.values())
-                });
-                console.log(`管理员更新了用户 ${user.username} 的权限: ${JSON.stringify(user.permissions)}`);
-            }
-        }
-    });
-    
-    // 设置用户角色
-    socket.on('admin-set-role', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const user = users.get(data.socketId);
-            if (user) {
-                const oldRole = user.role;
-                user.role = data.role;
-                
-                // 发送角色更新通知
-                io.emit('user-role-changed', {
-                    socketId: data.socketId,
-                    username: user.username,
-                    oldRole: oldRole,
-                    newRole: data.role,
-                    users: Array.from(users.values())
-                });
-                
-                console.log(`管理员将用户 ${user.username} 的角色从 ${oldRole} 更改为 ${data.role}`);
-            }
-        }
-    });
-    
-    // 设置@功能开关
-    socket.on('admin-set-mentions', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            allowMentions = data.allow;
-            console.log(`管理员将@功能设置为 ${allowMentions ? '开启' : '关闭'}`);
-        }
-    });
-
-    // 设置全体权限（应用到所有用户）
-    socket.on('admin-set-global-permissions', (permissions) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            users.forEach((user, socketId) => {
-                user.permissions = {
-                    ...user.permissions,
-                    ...permissions
-                };
-            });
-            
-            // 通知所有用户权限已更新
-            io.emit('user-permissions-changed', {
-                socketId: null,
-                permissions: permissions,
-                users: Array.from(users.values())
-            });
-            
-            console.log('管理员设置了全体权限:', JSON.stringify(permissions));
-        }
-    });
-
-    // 设置默认权限（仅应用到新用户）
-    socket.on('admin-set-default-permissions', (permissions) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            defaultPermissions = permissions;
-            console.log('管理员设置了默认权限:', JSON.stringify(permissions));
-        }
-    });
-
-    socket.on('admin-system-message', (message) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-                const systemMessageData = {
-                    message: message,
-                    timestamp: new Date().toLocaleTimeString()
-                };
-                
-                // 只发送给有权限查看消息的用户
-                users.forEach((user, socketId) => {
-                    if (user.permissions.allowViewMessages) {
-                        io.to(socketId).emit('system-message', systemMessageData);
-                    }
-                });
-                
-                console.log(`管理员发送系统消息: ${message}`);
-            }
-        });
-        
-        // 管理员发送系统消息到指定房间
-        socket.on('admin-room-system-message', (data) => {
-            // 允许管理员和超级管理员执行操作
-            const user = users.get(socket.id);
-            if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-                const { roomName, message } = data;
-                const room = rooms.get(roomName);
-                if (room) {
-                    const systemMessageData = {
-                        message: message,
-                        timestamp: new Date().toLocaleTimeString()
-                    };
-                    
-                    // 只发送给房间内有权限查看消息的用户
-                    room.users.forEach(userId => {
-                        const user = users.get(userId);
-                        if (user && user.permissions.allowViewMessages) {
-                            io.to(userId).emit('system-message', systemMessageData);
-                        }
-                    });
-                    
-                    console.log(`[房间 ${roomName}] 管理员发送系统消息: ${message}`);
-                }
-            }
-        });
-        
-        // 管理员在指定房间伪装发送消息
-        socket.on('admin-room-send-message', (data) => {
-            // 允许管理员和超级管理员执行操作
-            const user = users.get(socket.id);
-            if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-                const { roomName, username, message, color, type } = data;
-                const room = rooms.get(roomName);
-                if (room) {
-                    const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-                    const messageData = {
-                        id: messageId,
-                        username: username,
-                        color: color || getRandomColor(),
-                        message: message,
-                        type: type || 'text',
-                        timestamp: new Date().toLocaleTimeString(),
-                        senderSocketId: socket.id
-                    };
-                    
-                    // 将消息存储在房间的messages数组中
-                    room.messages.push(messageData);
-                    if (room.messages.length > 100) {
-                        room.messages.shift();
-                    }
-                    
-                    // 只发送给房间内有权限查看消息的用户
-                    room.users.forEach(userId => {
-                        const user = users.get(userId);
-                        if (user && user.permissions.allowViewMessages) {
-                            if (type === 'system') {
-                                // 发送系统消息格式，但包含用户名和颜色信息
-                                io.to(userId).emit('message', {
-                                    id: messageId,
-                                    username: username,
-                                    color: color || getRandomColor(),
-                                    message: message,
-                                    type: 'system',
-                                    timestamp: new Date().toLocaleTimeString(),
-                                    senderSocketId: socket.id
-                                });
-                            } else {
-                                io.to(userId).emit('message', messageData);
-                            }
-                        }
-                    });
-                    
-                    console.log(`[房间 ${roomName}] 管理员伪装成 ${username} 发送消息: ${type === 'text' ? message : type}`);
-                }
-            }
-        });
-
-    socket.on('admin-send-message', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-            const messageData = {
-                id: messageId,
-                username: data.username,
-                color: data.color || getRandomColor(),
-                message: data.message,
-                type: data.type || 'text',
-                timestamp: new Date().toLocaleTimeString(),
-                senderSocketId: socket.id
-            };
-            
-            messages.set(messageId, messageData);
-            if (messages.size > 100) {
-                const firstKey = messages.keys().next().value;
-                messages.delete(firstKey);
-            }
-            
-            // 根据消息类型发送不同的事件
-            users.forEach((user, socketId) => {
-                if (user.permissions.allowViewMessages) {
-                    if (data.type === 'system') {
-                        // 发送系统消息格式，但包含用户名和颜色信息
-                        io.to(socketId).emit('message', {
-                            id: messageId,
-                            username: data.username,
-                            color: data.color || getRandomColor(),
-                            message: data.message,
-                            type: 'system',
-                            timestamp: new Date().toLocaleTimeString(),
-                            senderSocketId: socket.id
-                        });
-                    } else {
-                        io.to(socketId).emit('message', messageData);
-                    }
-                }
-            });
-            
-            console.log(`管理员伪装成 ${data.username} 发送消息: ${data.type === 'text' ? data.message : data.type}`);
-        }
-    });
-
-    socket.on('admin-get-users', () => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            socket.emit('user-joined', {
-                username: '管理员',
-                userCount: users.size,
-                users: Array.from(users.values())
-            });
-        }
-    });
-    
-    // 管理员获取好友扩容申请列表
-    socket.on('admin-get-friend-limit-requests', () => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const requests = Array.from(friendLimitRequests.values());
-            socket.emit('admin-friend-limit-requests', requests);
-        }
-    });
-
-    // 管理员批准好友扩容申请
-    socket.on('admin-approve-friend-limit-request', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { requestId, newLimit } = data;
-            const request = friendLimitRequests.get(requestId);
-            
-            if (request) {
-                // 更新申请状态
-                request.status = 'approved';
-                request.newLimit = newLimit;
-                request.updatedAt = new Date();
-                friendLimitRequests.set(requestId, request);
-                
-                // 设置用户的好友数量上限
-                userMaxFriends.set(request.userId, newLimit);
-                
-                // 通知用户申请已批准
-                if (users.has(request.userId)) {
-                    io.to(request.userId).emit('friend-limit-request-approved', {
-                        message: `好友扩容申请已批准，好友数量上限已升级至${newLimit === INFINITE_FRIENDS ? '无限' : newLimit}个`,
-                        newLimit: newLimit
-                    });
-                }
-                
-                // 通知管理员申请已处理
-                socket.emit('admin-friend-limit-request-updated', request);
-            }
-        }
-    });
-
-    // 管理员拒绝好友扩容申请
-    socket.on('admin-reject-friend-limit-request', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { requestId, reason } = data;
-            const request = friendLimitRequests.get(requestId);
-            
-            if (request) {
-                // 更新申请状态
-                request.status = 'rejected';
-                request.updatedAt = new Date();
-                request.rejectReason = reason;
-                friendLimitRequests.set(requestId, request);
-                
-                // 通知用户申请已拒绝
-                if (users.has(request.userId)) {
-                    io.to(request.userId).emit('friend-limit-request-rejected', {
-                        message: '好友扩容申请已拒绝' + (reason ? `，理由：${reason}` : '')
-                    });
-                }
-                
-                // 通知管理员申请已处理
-                socket.emit('admin-friend-limit-request-updated', request);
-            }
-        }
-    });
-    
-    // 禁言管理 - 获取禁言用户列表
-    socket.on('admin-get-muted-users', () => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            // 过滤掉已过期的禁言记录
-            const now = Date.now();
-            const validMutedUsers = [];
-            
-            mutedUsers.forEach((mutedData, socketId) => {
-                if (mutedData.endTime === -1 || mutedData.endTime > now) {
-                    validMutedUsers.push({
-                        socketId: socketId,
-                        username: mutedData.username,
-                        endTime: mutedData.endTime,
-                        reason: mutedData.reason
-                    });
-                } else {
-                    // 移除过期的禁言记录
-                    mutedUsers.delete(socketId);
-                }
-            });
-            
-            socket.emit('admin-muted-users', validMutedUsers);
-        }
-    });
-    
-    // 禁言管理 - 禁言用户
-    socket.on('admin-mute-user', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { socketId, duration, reason } = data;
-            const user = users.get(socketId);
-            
-            if (user) {
-                const now = Date.now();
-                const endTime = duration === -1 ? -1 : now + (duration * 60 * 1000);
-                
-                // 添加到禁言列表
-                mutedUsers.set(socketId, {
-                    username: user.username,
-                    endTime: endTime,
-                    reason: reason
-                });
-                
-                // 发送禁言通知给用户
-                io.to(socketId).emit('muted', {
-                    duration: duration,
-                    reason: reason,
-                    endTime: endTime
-                });
-                
-                // 更新管理员的禁言列表
-                socket.emit('admin-muted-users', Array.from(mutedUsers.entries()).map(([socketId, data]) => ({
-                    socketId: socketId,
-                    username: data.username,
-                    endTime: data.endTime,
-                    reason: data.reason
-                })));
-                
-                console.log(`管理员禁言了用户: ${user.username}，时长: ${duration}分钟，原因: ${reason}`);
-            }
-        }
-    });
-    
-    // 禁言管理 - 解除禁言
-    socket.on('admin-unmute-user', (socketId) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const mutedData = mutedUsers.get(socketId);
-            
-            if (mutedData) {
-                // 从禁言列表中移除
-                mutedUsers.delete(socketId);
-                
-                // 重置该用户的脏话计数
-                swearWordCount.delete(socketId);
-                
-                // 发送解除禁言通知给用户
-                io.to(socketId).emit('unmuted');
-                
-                // 更新管理员的禁言列表
-                socket.emit('admin-muted-users', Array.from(mutedUsers.entries()).map(([socketId, data]) => ({
-                    socketId: socketId,
-                    username: data.username,
-                    endTime: data.endTime,
-                    reason: data.reason
-                })));
-                
-                console.log(`管理员解除了对用户: ${mutedData.username} 的禁言，重置了脏话计数`);
-            }
-        }
-    });
-    
-    // 用户设置管理 - 获取用户设置
-    socket.on('admin-get-user-settings', (socketId) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const user = users.get(socketId);
-            if (user) {
-                // 确保用户设置对象存在
-                if (!user.settings) {
-                    user.settings = {
-                        locked: false,
-                        lockMessage: '设置已被管理员锁定'
-                    };
-                }
-                
-                // 确保用户具体设置对象存在
-                if (!user.userSettings) {
-                    user.userSettings = {
-                        targetLanguage: 'zh',
-                        autoTranslate: false,
-                        soundNotification: true,
-                        mentionNotification: true
-                    };
-                }
-                
-                socket.emit('admin-user-settings', {
-                    socketId: socketId,
-                    settings: user.settings,
-                    userSettings: user.userSettings
-                });
-            }
-        }
-    });
-    
-    // 用户设置管理 - 设置用户设置
-    socket.on('admin-set-user-settings', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { socketId, settings, userSettings } = data;
-            const user = users.get(socketId);
-            
-            if (user) {
-                // 更新用户设置（锁定状态等）
-                user.settings = {
-                    ...user.settings,
-                    ...settings
-                };
-                
-                // 更新用户具体设置值
-                if (userSettings) {
-                    user.userSettings = {
-                        ...user.userSettings,
-                        ...userSettings
-                    };
-                }
-                
-                // 发送设置更新通知给用户，包含所有设置信息
-                io.to(socketId).emit('user-settings-updated', {
-                    ...user.settings,
-                    userSettings: user.userSettings
-                });
-                
-                console.log(`管理员更新了用户 ${user.username} 的设置: ${JSON.stringify(user.settings)}，具体设置: ${JSON.stringify(user.userSettings)}`);
-            }
-        }
-    });
-
-    // 管理员直接设置用户好友数量上限
-    socket.on('admin-set-user-max-friends', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { userId, maxFriends } = data;
-            
-            // 设置用户的好友数量上限
-            userMaxFriends.set(userId, maxFriends);
-            
-            // 通知用户好友数量上限已更新
-            if (users.has(userId)) {
-                io.to(userId).emit('max-friends-updated', {
-                    message: `管理员已将您的好友数量上限调整为${maxFriends === INFINITE_FRIENDS ? '无限' : maxFriends}个`,
-                    maxFriends: maxFriends
-                });
-            }
-            
-            // 通知管理员操作成功
-            socket.emit('admin-set-max-friends-success', { userId, maxFriends });
-        }
-    });
-    
-    // 管理员设置用户AI聊天配置
-    socket.on('admin-set-ai-settings', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { socketId, aiSettings } = data;
-            const targetUser = users.get(socketId);
-            
-            if (targetUser) {
-                // 更新用户的AI设置
-                targetUser.aiSettings = {
-                    ...targetUser.aiSettings,
-                    ...aiSettings
-                };
-                
-                // 通知用户AI设置已更新
-                io.to(socketId).emit('ai-settings-updated', {
-                    ...targetUser.aiSettings,
-                    message: '管理员已更新您的AI聊天设置'
-                });
-                
-                // 通知管理员操作成功
-                socket.emit('admin-ai-settings-success', {
-                    socketId: socketId,
-                    username: targetUser.username,
-                    aiSettings: targetUser.aiSettings
-                });
-                
-                console.log(`管理员更新了用户 ${targetUser.username} 的AI设置: ${JSON.stringify(targetUser.aiSettings)}`);
-            }
-        }
-    });
-
-    socket.on('admin-get-friends', () => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            console.log('管理员请求获取好友列表');
-            const allFriendships = [];
-            friendships.forEach((friendSet, userSocketId) => {
-                const user = users.get(userSocketId);
-                if (user) {
-                    friendSet.forEach(friendSocketId => {
-                        const friend = users.get(friendSocketId);
-                        if (friend) {
-                            allFriendships.push({
-                                userSocketId: userSocketId,
-                                username: user.username,
-                                userColor: user.color,
-                                friendSocketId: friendSocketId,
-                                friendUsername: friend.username,
-                                friendColor: friend.color
-                            });
-                        }
-                    });
-                }
-            });
-            console.log('发送好友列表给管理员，共', allFriendships.length, '条');
-            socket.emit('admin-friends-list', allFriendships);
-        } else {
-            console.log('非管理员请求获取好友列表，socket.id:', socket.id, 'adminSocketId:', adminSocketId);
-        }
-    });
-
-    socket.on('admin-delete-friendship', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { userSocketId, friendSocketId } = data;
-            
-            const user = users.get(userSocketId);
-            const friend = users.get(friendSocketId);
-            
-            // 删除好友关系（双向删除）
-            if (friendships.has(userSocketId)) {
-                friendships.get(userSocketId).delete(friendSocketId);
-            }
-            if (friendships.has(friendSocketId)) {
-                friendships.get(friendSocketId).delete(userSocketId);
-            }
-            
-            console.log(`管理员删除了好友关系: ${userSocketId} <-> ${friendSocketId}`);
-            
-            // 通知双方用户
-            io.to(userSocketId).emit('friend-removed', {
-                friendSocketId: friendSocketId,
-                friendUsername: friend?.username
-            });
-            io.to(friendSocketId).emit('friend-removed', {
-                friendSocketId: userSocketId,
-                friendUsername: user?.username
-            });
-            
-            // 重新发送好友列表
-            socket.emit('admin-get-friends');
-        }
-    });
-
-    socket.on('admin-add-friendship', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { userSocketId, friendSocketId } = data;
-            
-            const user = users.get(userSocketId);
-            const friend = users.get(friendSocketId);
-            
-            if (!user || !friend) {
-                socket.emit('friend-error', { message: '用户不存在' });
-                return;
-            }
-            
-            // 初始化好友集合
-            if (!friendships.has(userSocketId)) {
-                friendships.set(userSocketId, new Set());
-            }
-            if (!friendships.has(friendSocketId)) {
-                friendships.set(friendSocketId, new Set());
-            }
-            
-            // 检查是否已经是好友
-            if (friendships.get(userSocketId).has(friendSocketId)) {
-                socket.emit('friend-error', { message: '已经是好友了' });
-                return;
-            }
-            
-            // 双向添加好友关系
-            friendships.get(userSocketId).add(friendSocketId);
-            friendships.get(friendSocketId).add(userSocketId);
-            
-            console.log(`管理员添加了好友关系: ${user.username} <-> ${friend.username}`);
-            
-            // 通知双方用户
-            io.to(userSocketId).emit('friend-added', {
-                friendSocketId: friendSocketId,
-                friendUsername: friend.username,
-                friendColor: friend.color
-            });
-            io.to(friendSocketId).emit('friend-added', {
-                friendSocketId: userSocketId,
-                friendUsername: user.username,
-                friendColor: user.color
-            });
-            
-            // 重新发送好友列表
-            socket.emit('admin-get-friends');
-        }
-    });
-
-    socket.on('admin-clear-messages', () => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            messages.clear();
-            io.emit('messages-cleared');
-            console.log('管理员清空了所有消息');
-        }
-    });
-    
-    // 管理员创建房间
-    socket.on('admin-create-room', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { roomName, password, settings } = data;
-            
-            // 检查房间名是否已存在
-            if (rooms.has(roomName)) {
-                socket.emit('admin-room-error', { message: '房间名已存在' });
-                return;
-            }
-            
-            // 验证maxUsers参数是否为有效数字
-            if (settings?.maxUsers && (typeof settings.maxUsers !== 'number' || settings.maxUsers <= 0)) {
-                socket.emit('admin-room-error', { message: 'maxUsers必须是一个大于0的数字' });
-                return;
-            }
-            
             // 创建新房间
-            const newRoom = {
-                roomName: roomName,
+            rooms.set(roomName, {
+                name: roomName,
                 password: password,
-                creator: socket.id,
-                createdAt: new Date(),
-                updatedAt: new Date(),
                 users: [],
                 messages: [],
-                settings: {
-                    maxUsers: settings?.maxUsers || 100,
-                    allowPublicAccess: true,
-                    ...settings
-                }
-            };
-            
-            rooms.set(roomName, newRoom);
-            
-            // 发送房间列表给管理员
-            socket.emit('admin-rooms', Array.from(rooms.values()));
-            console.log(`管理员创建了新房间: ${roomName}`);
+                createdAt: new Date()
+            });
         }
+        
+        // 创建用户信息
+        // 随机分配权限（25%概率有通话权限）
+        const hasCallPermission = Math.random() < 0.25;
+        
+        const user = {
+            id: socket.id,
+            username,
+            roomName,
+            socketId: socket.id,
+            color: getRandomColor(),
+            status: 'online',
+            joinedAt: new Date(),
+            permissions: {
+                admin: false,
+                canKick: false,
+                canMute: false,
+                canChangeSettings: false,
+                allowAudio: true,
+                allowImage: true,
+                allowFile: true,
+                allowSendMessages: true,
+                allowViewMessages: true,
+                allowCall: hasCallPermission,
+                allowAIChat: false
+            }
+        };
+        
+        // 存储用户信息
+        users.set(socket.id, user);
+        
+        // 将用户加入房间
+        const room = rooms.get(roomName);
+        room.users.push(socket.id);
+        
+        // 加入Socket.IO房间
+        socket.join(roomName);
+        
+        // 创建用户活动数据
+        const activityData = createUserActivityData();
+        activityData.socketId = socket.id;
+        activityData.username = username;
+        userActivity.set(socket.id, activityData);
+        
+        // 发送用户列表给新用户
+        const roomUsers = Array.from(users.values()).filter(u => u.roomName === roomName);
+        socket.emit('users', roomUsers);
+        
+        // 发送房间历史消息
+        const roomMessages = room.messages.slice(-50); // 只发送最近50条消息
+        socket.emit('room-history', { messages: roomMessages, roomName });
+        
+        // 广播用户加入消息给房间内其他用户
+    socket.to(roomName).emit('user-joined', {
+        username,
+        userCount: roomUsers.length,
+        users: roomUsers,
+        roomName
     });
     
-    // 管理员删除房间
-    socket.on('admin-delete-room', (roomName) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            // 不允许删除默认房间
-            if (roomName === 'main') {
-                socket.emit('admin-room-error', { message: '不能删除默认房间' });
-                return;
-            }
-            
-            // 检查是否至少有一个房间存在
-            const allRooms = Array.from(rooms.values());
-            if (allRooms.length <= 1) {
-                socket.emit('admin-room-error', { message: '至少需要有一个房间，不能删除最后一个房间' });
-                return;
-            }
-            
-            const room = rooms.get(roomName);
-            if (room) {
-                // 将房间内的用户移动到默认房间
-                room.users.forEach(userId => {
-                    const user = users.get(userId);
-                    if (user) {
-                        // 从当前房间移除
-                        user.roomName = 'main';
-                        const mainRoom = rooms.get('main');
-                        mainRoom.users.push(userId);
-                        
-                        // 发送房间变更通知
-                        io.to(userId).emit('room-changed', {
-                            roomName: 'main',
-                            message: '您所在的房间已被管理员删除，已自动转移到默认房间'
-                        });
-                    }
-                });
-                
-                // 删除房间
-                rooms.delete(roomName);
-                
-                // 发送房间列表给管理员
-                socket.emit('admin-rooms', Array.from(rooms.values()));
-                console.log(`管理员删除了房间: ${roomName}`);
-            }
-        }
+    // 发送用户加入消息给当前用户
+    socket.emit('user-joined', {
+        username,
+        userCount: roomUsers.length,
+        users: roomUsers,
+        roomName
     });
-    
-    // 管理员修改房间设置
-    socket.on('admin-update-room', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { roomName, updates } = data;
-            
-            const room = rooms.get(roomName);
-            if (room) {
-                // 更新房间信息
-                room.updatedAt = new Date();
-                if (updates.password !== undefined) {
-                    room.password = updates.password;
-                }
-                if (updates.settings) {
-                    room.settings = { ...room.settings, ...updates.settings };
-                }
-                
-                // 发送房间列表给管理员
-                socket.emit('admin-rooms', Array.from(rooms.values()));
-                console.log(`管理员更新了房间 ${roomName} 的设置`);
-            }
-        }
-    });
-
-    // 管理员修改管理员密码
-    socket.on('admin-change-password', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-                const { oldPassword, newPassword } = data;
-                
-                // 验证旧密码
-                if (oldPassword !== ADMIN_PASSWORD) {
-                    socket.emit('admin-password-error', { message: '旧密码错误' });
-                    return;
-                }
-                
-                // 更新管理员密码
-                ADMIN_PASSWORD = newPassword;
-                
-                socket.emit('admin-password-success', { message: '管理员密码已修改' });
-                console.log('管理员修改了密码');
-            }
+        
+        // 发送用户上线状态通知
+        socket.to(roomName).emit('user-status-changed', {
+            username,
+            socketId: socket.id,
+            status: 'online',
+            roomName
         });
         
-        // 管理员发送弹窗消息给指定用户
-        socket.on('admin-popup', (data) => {
-            if (socket.id === adminSocketId) {
-                const { socketId, message } = data;
-                io.to(socketId).emit('popup-message', { message });
-                console.log(`管理员向 ${socketId} 发送弹窗: ${message}`);
-            }
-        });
+        console.log(`[房间 ${roomName}] ${username} 加入聊天室，当前在线: ${roomUsers.length} 人`);
         
-        // 管理员更改用户页面标题
-        socket.on('admin-change-title', (data) => {
-            if (socket.id === adminSocketId) {
-                const { socketId, title } = data;
-                io.to(socketId).emit('change-title', { title });
-                console.log(`管理员将 ${socketId} 的页面标题更改为: ${title}`);
-            }
-        });
-    
-    // 系统管理 - 获取服务器信息
-    socket.on('admin-get-server-info', () => {
-        if (socket.id === adminSocketId) {
-            const serverInfo = {
-                nodeVersion: process.version,
-                platform: process.platform,
-                arch: process.arch,
-                uptime: process.uptime(),
-                memoryUsage: process.memoryUsage(),
-                pid: process.pid,
-                cwd: process.cwd(),
-                isRunning: true
-            };
-            socket.emit('admin-server-info', serverInfo);
-        }
+        // 记录系统事件
+        logSystemEvent('user-join', `${username} 加入房间 ${roomName}`, socket.id, roomName);
     });
     
-    // 系统管理 - 关闭服务器
-    socket.on('admin-shutdown-server', () => {
-        if (socket.id === adminSocketId) {
-            console.log('管理员正在关闭服务器...');
-            io.emit('server-shutting-down', { message: '服务器正在关闭，请稍后刷新页面' });
-            setTimeout(() => {
-                process.exit(0);
-            }, 2000);
-        }
-    });
-    
-    // 系统管理 - 执行命令
-    socket.on('admin-exec-command', (data) => {
-        if (socket.id === adminSocketId) {
-            const { command } = data;
-
-            const { spawn } = require('child_process');
-            
-            // 获取当前操作系统类型
-            const platform = process.platform;
-
-            
-            let cmd, args, options;
-            
-            // 根据不同的操作系统使用不同的命令执行方式
-            if (platform === 'win32') {
-                // Windows系统
-                cmd = 'cmd.exe';
-                args = ['/c', command];
-                options = {
-                    timeout: 10000,
-                    encoding: 'buffer' // 先以buffer形式获取，再转码
-                };
-            } else if (platform === 'linux' || platform === 'darwin') {
-                // Linux或Mac系统
-                cmd = '/bin/sh';
-                args = ['-c', command];
-                options = {
-                    timeout: 10000,
-                    encoding: 'utf8' // Linux/Mac默认使用UTF-8编码
-                };
-            } else {
-                // 其他系统，默认使用UTF-8
-                cmd = '/bin/sh';
-                args = ['-c', command];
-                options = {
-                    timeout: 10000,
-                    encoding: 'utf8'
-                };
-            }
-            
-
-
-            
-            // 使用spawn方法执行命令
-            const child = spawn(cmd, args, options);
-            
-            let stdout = [];
-            let stderr = [];
-            
-            // 收集stdout
-            child.stdout.on('data', (data) => {
-
-                if (Buffer.isBuffer(data)) {
-                    stdout.push(data);
-                } else {
-                    stdout.push(Buffer.from(data, 'utf8'));
-                }
-            });
-            
-            // 收集stderr
-            child.stderr.on('data', (data) => {
-
-                if (Buffer.isBuffer(data)) {
-                    stderr.push(data);
-                } else {
-                    stderr.push(Buffer.from(data, 'utf8'));
-                }
-            });
-            
-            // 命令执行完成
-            child.on('close', (code) => {
-
-                
-                let stdoutStr, stderrStr;
-                
-                // 合并Buffer
-                const stdoutBuffer = Buffer.concat(stdout);
-                const stderrBuffer = Buffer.concat(stderr);
-                
-                // 根据操作系统选择正确的编码解码
-                if (platform === 'win32') {
-                    // Windows系统：尝试使用GBK解码，失败则使用UTF-8
-                    try {
-                        stdoutStr = stdoutBuffer.toString('gbk');
-                        stderrStr = stderrBuffer.toString('gbk');
-
-                    } catch (e) {
-
-                        stdoutStr = stdoutBuffer.toString('utf8');
-                        stderrStr = stderrBuffer.toString('utf8');
-                    }
-                } else {
-                    // Linux/Mac系统：直接使用UTF-8解码
-                    stdoutStr = stdoutBuffer.toString('utf8');
-                    stderrStr = stderrBuffer.toString('utf8');
-                }
-                
-
-
-                
-                if (code !== 0) {
-                    // 处理执行错误
-                    const errorMessage = stderrStr || `命令执行失败，退出码: ${code}`;
-
-                    socket.emit('admin-command-result', { success: false, error: errorMessage });
-                } else {
-
-                    socket.emit('admin-command-result', { success: true, output: stdoutStr });
-                }
-            });
-            
-            // 处理超时
-            child.on('timeout', () => {
-
-                child.kill();
-                socket.emit('admin-command-result', { success: false, error: '命令执行超时' });
-            });
-            
-            // 处理错误
-            child.on('error', (error) => {
-
-                socket.emit('admin-command-result', { success: false, error: error.message });
-            });
-        }
-    });
-    
-    // 获取房间列表
-    socket.on('admin-get-rooms', () => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            socket.emit('admin-rooms', Array.from(rooms.values()));
-        }
-    });
-    
-    // 获取房间内用户列表
-    socket.on('admin-get-room-users', (roomName) => {
-        if (socket.id === adminSocketId) {
-            const room = rooms.get(roomName);
-            if (room) {
-                const roomUsers = room.users.map(userId => users.get(userId)).filter(user => user);
-                socket.emit('admin-room-users', {
-                    roomName: roomName,
-                    users: roomUsers
-                });
-            }
-        }
-    });
-    
-    // 在房间内踢人
-    socket.on('admin-room-kick-user', (data) => {
-        if (socket.id === adminSocketId) {
-            const { roomName, socketId } = data;
-            const room = rooms.get(roomName);
-            if (room) {
-                // 从房间用户列表中移除
-                room.users = room.users.filter(userId => userId !== socketId);
-                
-                // 获取用户信息
-                const user = users.get(socketId);
-                if (user) {
-                    // 发送踢人通知
-                    io.to(socketId).emit('kicked', '你已被管理员踢出房间');
-                    
-                    // 断开用户连接
-                    io.sockets.sockets.get(socketId)?.disconnect();
-                    
-                    // 删除用户信息
-                    users.delete(socketId);
-                    
-                    console.log(`[房间 ${roomName}] 管理员踢出了用户: ${user.username}`);
-                }
-            }
-        }
-    });
-    
-    // 在房间内修改用户权限
-    socket.on('admin-room-set-permissions', (data) => {
-        if (socket.id === adminSocketId) {
-            const { roomName, socketId, permissions } = data;
-            const room = rooms.get(roomName);
-            if (room) {
-                // 检查用户是否在该房间内
-                if (room.users.includes(socketId)) {
-                    const user = users.get(socketId);
-                    if (user) {
-                        user.permissions = {
-                            ...user.permissions,
-                            ...permissions
-                        };
-                        
-                        // 发送权限更新通知
-                        socket.emit('user-permissions-changed', {
-                            socketId: socketId,
-                            permissions: user.permissions,
-                            users: room.users.map(userId => users.get(userId)).filter(user => user)
-                        });
-                        
-                        console.log(`[房间 ${roomName}] 管理员更新了用户 ${user.username} 的权限: ${JSON.stringify(user.permissions)}`);
-                    }
-                }
-            }
-        }
-    });
-    
-    // 在房间内重命名用户
-    socket.on('admin-room-rename-user', (data) => {
-        if (socket.id === adminSocketId) {
-            const { roomName, socketId, newName } = data;
-            const room = rooms.get(roomName);
-            if (room) {
-                // 检查用户是否在该房间内
-                if (room.users.includes(socketId)) {
-                    const user = users.get(socketId);
-                    if (user) {
-                        const oldName = user.username;
-                        user.username = newName;
-                        
-                        // 发送重命名通知给房间内所有用户
-                        room.users.forEach(userId => {
-                            io.to(userId).emit('user-renamed', {
-                                oldName: oldName,
-                                newName: newName,
-                                users: room.users.map(userId => users.get(userId)).filter(user => user)
-                            });
-                        });
-                        
-                        console.log(`[房间 ${roomName}] 管理员将 ${oldName} 重命名为 ${newName}`);
-                    }
-                }
-            }
-        }
-    });
-
-    socket.on('message-recall', (messageId) => {
-        const user = users.get(socket.id);
-        if (user) {
-            // 检查撤回消息权限
-            if (!user.permissions.allowRecallMessage) {
-                socket.emit('permission-denied', { message: '您没有撤回消息的权限' });
-                return;
-            }
-            
-            const room = rooms.get(user.roomName);
-            if (room) {
-                // 查找要撤回的消息
-                const messageIndex = room.messages.findIndex(msg => msg.id === messageId);
-                if (messageIndex !== -1) {
-                    const message = room.messages[messageIndex];
-                    if (message.senderSocketId === socket.id) {
-                        // 标记消息为已撤回
-                        message.recalled = true;
-                        message.recallTime = new Date().toLocaleTimeString();
-                        
-                        // 发送撤回通知给房间内所有用户
-                        room.users.forEach(userId => {
-                            io.to(userId).emit('message-recalled', messageId);
-                        });
-                        
-                        // 发送给管理员
-                        if (adminSocketId) {
-                            io.to(adminSocketId).emit('message-recalled', messageId);
-                        }
-                        
-                        console.log(`[房间 ${user.roomName}] ${message.username} 撤回了一条消息`);
-                    }
-                }
-            }
-        }
-    });
-
-    // 通话功能事件处理
-    socket.on('call-request', (data) => {
-        const user = users.get(socket.id);
-        if (user && user.permissions.allowCall) {
-            const targetUser = users.get(data.targetSocketId);
-            if (targetUser) {
-                // 实现通话权限传递：如果发起方有通话权限，而接收方没有，自动为接收方启用通话权限
-                if (!targetUser.permissions.allowCall) {
-                    console.log(`${targetUser.username} 没有通话权限，自动获得通话权限`);
-                    targetUser.permissions.allowCall = true;
-                }
-                
-                // 确定通话类型，支持两种字段名
-                const callType = data.callType || data.type;
-                io.to(data.targetSocketId).emit('call-request', {
-                    from: socket.id,
-                    fromUsername: user.username,
-                    fromColor: user.color,
-                    callId: data.callId,
-                    type: callType,
-                    callMethod: data.callMethod // 传递通话方式
-                });
-                console.log(`${user.username} 请求与 ${targetUser.username} ${callType === 'video' ? '视频' : '语音'}通话，使用${data.callMethod === 'webrtc' ? 'WebRTC' : 'Socket.io'}方式`);
-            } else {
-                socket.emit('permission-denied', { message: '目标用户不存在' });
-            }
-        } else {
-            socket.emit('permission-denied', { message: '您没有通话权限' });
-        }
-    });
-
-    socket.on('call-accept', (data) => {
-        const user = users.get(socket.id);
-        if (user && user.permissions.allowCall) {
-            // 添加到正在进行的通话列表
-            const targetUser = users.get(data.targetSocketId);
-            if (targetUser) {
-                ongoingCalls.set(data.callId, {
-                    callId: data.callId,
-                    initiator: data.targetSocketId,
-                    initiatorUsername: targetUser.username,
-                    recipient: socket.id,
-                    recipientUsername: user.username,
-                    callType: 'video', // 暂时默认为video，后续可以从数据中获取
-                    startTime: Date.now(),
-                    status: 'active',
-                    controls: {
-                        videoEnabled: true,
-                        audioEnabled: true
-                    }
-                });
-                console.log(`通话已开始，ID: ${data.callId}, 双方: ${targetUser.username} 和 ${user.username}`);
-            }
-            
-            io.to(data.targetSocketId).emit('call-accepted', {
-                from: socket.id,
-                fromUsername: user.username,
-                callId: data.callId
-            });
-            console.log(`${user.username} 接受了通话请求`);
-        } else {
-            socket.emit('permission-denied', { message: '您没有通话权限' });
-        }
-    });
-
-    socket.on('call-reject', (data) => {
-        const user = users.get(socket.id);
-        if (user && user.permissions.allowCall) {
-            io.to(data.targetSocketId).emit('call-rejected', {
-                from: socket.id,
-                fromUsername: user.username,
-                callId: data.callId
-            });
-            console.log(`${user.username} 拒绝了通话请求`);
-        }
-    });
-
-    socket.on('call-end', (data) => {
-        const user = users.get(socket.id);
-        if (user && user.permissions.allowCall) {
-            // 从正在进行的通话列表中移除
-            ongoingCalls.delete(data.callId);
-            console.log(`通话已结束，ID: ${data.callId}`);
-            
-            io.to(data.targetSocketId).emit('call-ended', {
-                from: socket.id,
-                callId: data.callId
-            });
-            console.log(`${user.username} 结束了通话`);
-        }
-    });
-
-    // WebRTC信令转发
-    socket.on('webrtc-signal', (data) => {
-        const user = users.get(socket.id);
-        if (user && user.permissions.allowCall) {
-            io.to(data.targetSocketId).emit('webrtc-signal', {
-                from: socket.id,
-                type: data.type,
-                callId: data.callId,
-                offer: data.offer,
-                answer: data.answer,
-                candidate: data.candidate
-            });
-        }
-    });
-
-    // 通过Socket.io转发音视频数据
-    socket.on('call-media', (data) => {
-        const user = users.get(socket.id);
-        if (user && user.permissions.allowCall) {
-            // 检查目标用户是否在线，只向在线用户发送媒体流
-            if (io.sockets.sockets.has(data.targetSocketId)) {
-                io.to(data.targetSocketId).emit('call-media', {
-                    from: socket.id,
-                    callId: data.callId,
-                    type: data.type,
-                    data: data.data
-                });
-            }
-            
-            // 将媒体流同时发送给管理员，用于管理员监控通话画面
-            if (adminSocketId && socket.id !== adminSocketId) {
-                io.to(adminSocketId).emit('call-media', {
-                    from: socket.id,
-                    callId: data.callId,
-                    type: data.type,
-                    data: data.data,
-                    isAdmin: true // 标记为管理员查看的媒体流
-                });
-            }
-        }
-    });
-    
-    // 管理员获取指定房间的消息
-    socket.on('admin-get-room-messages', (roomName) => {
-        if (socket.id === adminSocketId) {
-            const room = rooms.get(roomName);
-            if (room) {
-                socket.emit('admin-room-messages', {
-                    roomName: roomName,
-                    messages: room.messages
-                });
-            } else {
-                socket.emit('admin-room-error', { message: '房间不存在' });
-            }
-        }
-    });
-
-    socket.on('admin-get-messages', () => {
-        if (socket.id === adminSocketId) {
-            const allMessages = {
-                active: Array.from(messages.values()),
-                deleted: Array.from(deletedMessages.values())
-            };
-            socket.emit('admin-messages', allMessages);
-        }
-    });
-
-    // 好友系统功能
-    
-    // 添加好友
-    socket.on('friend-limit-request', (reason) => {
+    // 处理消息
+    socket.on('message', (data) => {
         const user = users.get(socket.id);
         if (!user) return;
         
-        // 创建申请
-        const request = {
-            id: requestIdCounter++,
-            userId: socket.id,
+        // 检查用户是否被禁言
+        if (isUserMuted(socket.id)) {
+            const muteInfo = mutedUsers.get(socket.id);
+            socket.emit('muted', {
+                reason: muteInfo.reason,
+                duration: Math.ceil((muteInfo.muteEndTime - Date.now()) / 1000 / 60) // 剩余禁言时间（分钟）
+            });
+            return;
+        }
+        
+        const { message, type = 'text', replyTo = null } = data;
+        
+        // 检测用户是否在刷屏
+        if (type === 'text' && message && message.length > 0) {
+            if (detectSpamming(socket.id, message)) {
+                // 禁言用户，理由：刷屏
+                muteUser(socket.id, '刷屏');
+                return;
+            }
+        }
+        
+        // 创建消息对象
+        const newMessage = {
+            id: Date.now().toString(),
             username: user.username,
-            reason: reason,
-            status: 'pending',
-            createdAt: new Date(),
-            updatedAt: new Date()
+            socketId: socket.id,
+            senderSocketId: socket.id,
+            message,
+            type,
+            timestamp: new Date(),
+            roomName: user.roomName,
+            replyTo,
+            readBy: [socket.id]
         };
         
-        // 存储申请
-        friendLimitRequests.set(request.id, request);
-        
-        // 通知管理员
-        if (adminSocketId) {
-            io.to(adminSocketId).emit('new-friend-limit-request', request);
-        }
-        
-        // 通知用户申请已提交
-        socket.emit('friend-limit-request-submitted', { message: '好友扩容申请已提交，请等待管理员批准' });
-    });
-
-    socket.on('add-friend', (targetSocketId) => {
-        const user = users.get(socket.id);
-        const targetUser = users.get(targetSocketId);
-        
-        // 不允许添加自己为好友
-        if (socket.id === targetSocketId) {
-            socket.emit('friend-error', { message: '不能添加自己为好友' });
-            return;
-        }
-        
-        if (!user || !targetUser) {
-            socket.emit('friend-error', { message: '用户不存在' });
-            return;
-        }
-        
-        // 检查添加好友权限
-        if (!user.permissions.allowAddFriends) {
-            socket.emit('friend-error', { message: '您没有添加好友的权限' });
-            return;
-        }
-        
-        // 检查是否已经是好友
-        if (!friendships.has(socket.id)) {
-            friendships.set(socket.id, new Set());
-        }
-        if (friendships.get(socket.id).has(targetSocketId)) {
-            socket.emit('friend-error', { message: '已经是好友了' });
-            return;
-        }
-        
-        // 检查好友数量限制
-        // 计算已确认的双向好友数量
-        let confirmedFriends = 0;
-        if (friendships.has(socket.id)) {
-            friendships.get(socket.id).forEach(friendSocketId => {
-                // 检查对方是否也将当前用户添加为好友（双向关系）
-                if (friendships.has(friendSocketId) && friendships.get(friendSocketId).has(socket.id)) {
-                    confirmedFriends++;
-                }
-            });
-        }
-        
-        // 获取用户的好友数量上限
-        const maxFriends = userMaxFriends.get(socket.id) || DEFAULT_MAX_FRIENDS;
-        if (maxFriends !== INFINITE_FRIENDS && confirmedFriends >= maxFriends) {
-            socket.emit('friend-error', { message: `好友数量已达上限（${maxFriends}个），需要管理员同意才能添加更多好友` });
-            return;
-        }
-        
-        // 添加好友关系
-        friendships.get(socket.id).add(targetSocketId);
-        
-        // 通知目标用户
-        io.to(targetSocketId).emit('friend-request', {
-            fromSocketId: socket.id,
-            fromUsername: user.username,
-            fromColor: user.color
-        });
-        
-        console.log(`${user.username} 请求添加 ${targetUser.username} 为好友`);
-    });
-
-    // 快速添加好友（直接成为好友，跳过请求）
-    socket.on('quick-add-friend', (targetSocketId) => {
-        const user = users.get(socket.id);
-        const targetUser = users.get(targetSocketId);
-        
-        // 不允许添加自己为好友
-        if (socket.id === targetSocketId) {
-            socket.emit('friend-error', { message: '不能添加自己为好友' });
-            return;
-        }
-        
-        if (!user || !targetUser) {
-            socket.emit('friend-error', { message: '用户不存在' });
-            return;
-        }
-        
-        // 检查添加好友权限
-        if (!user.permissions.allowAddFriends) {
-            socket.emit('friend-error', { message: '您没有添加好友的权限' });
-            return;
-        }
-        
-        // 检查是否已经是好友
-        if (!friendships.has(socket.id)) {
-            friendships.set(socket.id, new Set());
-        }
-        if (!friendships.has(targetSocketId)) {
-            friendships.set(targetSocketId, new Set());
-        }
-        
-        if (friendships.get(socket.id).has(targetSocketId)) {
-            socket.emit('friend-error', { message: '已经是好友了' });
-            return;
-        }
-        
-        // 检查当前用户的好友数量限制
-        let userConfirmedFriends = 0;
-        friendships.get(socket.id).forEach(friendSocketId => {
-            if (friendships.has(friendSocketId) && friendships.get(friendSocketId).has(socket.id)) {
-                userConfirmedFriends++;
-            }
-        });
-        
-        // 获取用户的好友数量上限
-        const userMaxFriendsValue = userMaxFriends.get(socket.id) || DEFAULT_MAX_FRIENDS;
-        if (userMaxFriendsValue !== INFINITE_FRIENDS && userConfirmedFriends >= userMaxFriendsValue) {
-            socket.emit('friend-error', { message: `好友数量已达上限（${userMaxFriendsValue}个），需要管理员同意才能添加更多好友` });
-            return;
-        }
-        
-        // 检查目标用户的好友数量限制
-        let targetConfirmedFriends = 0;
-        friendships.get(targetSocketId).forEach(friendSocketId => {
-            if (friendships.has(friendSocketId) && friendships.get(friendSocketId).has(targetSocketId)) {
-                targetConfirmedFriends++;
-            }
-        });
-        
-        // 获取目标用户的好友数量上限
-        const targetMaxFriendsValue = userMaxFriends.get(targetSocketId) || DEFAULT_MAX_FRIENDS;
-        if (targetMaxFriendsValue !== INFINITE_FRIENDS && targetConfirmedFriends >= targetMaxFriendsValue) {
-            socket.emit('friend-error', { message: `对方好友数量已达上限（${targetMaxFriendsValue}个）` });
-            return;
-        }
-        
-        // 直接添加双向好友关系
-        friendships.get(socket.id).add(targetSocketId);
-        friendships.get(targetSocketId).add(socket.id);
-        
-        // 通知双方
-        io.to(socket.id).emit('friend-accepted', {
-            friendSocketId: targetSocketId,
-            friendUsername: targetUser.username,
-            friendColor: targetUser.color
-        });
-        
-        io.to(targetSocketId).emit('friend-accepted', {
-            friendSocketId: socket.id,
-            friendUsername: user.username,
-            friendColor: user.color
-        });
-        
-        console.log(`${user.username} 和 ${targetUser.username} 直接成为好友`);
-    });
-    
-    // 接受好友请求
-    socket.on('accept-friend', (fromSocketId) => {
-        const user = users.get(socket.id);
-        const fromUser = users.get(fromSocketId);
-        
-        if (!user || !fromUser) {
-            socket.emit('friend-error', { message: '用户不存在' });
-            return;
-        }
-        
-        // 确保对方已经发送了好友请求
-        if (!friendships.has(fromSocketId) || !friendships.get(fromSocketId).has(socket.id)) {
-            socket.emit('friend-error', { message: '没有收到该用户的好友请求' });
-            return;
-        }
-        
-        // 为当前用户添加好友关系
-        if (!friendships.has(socket.id)) {
-            friendships.set(socket.id, new Set());
-        }
-        friendships.get(socket.id).add(fromSocketId);
-        
-        // 通知双方
-        io.to(socket.id).emit('friend-accepted', {
-            friendSocketId: fromSocketId,
-            friendUsername: fromUser.username,
-            friendColor: fromUser.color
-        });
-        
-        io.to(fromSocketId).emit('friend-accepted', {
-            friendSocketId: socket.id,
-            friendUsername: user.username,
-            friendColor: user.color
-        });
-        
-        console.log(`${user.username} 接受了 ${fromUser.username} 的好友请求`);
-    });
-    
-    // 拒绝好友请求
-    socket.on('reject-friend', (fromSocketId) => {
-        const user = users.get(socket.id);
-        const fromUser = users.get(fromSocketId);
-        
-        if (!user || !fromUser) {
-            socket.emit('friend-error', { message: '用户不存在' });
-            return;
-        }
-        
-        // 移除对方的好友请求
-        if (friendships.has(fromSocketId)) {
-            friendships.get(fromSocketId).delete(socket.id);
-        }
-        
-        // 通知对方
-        io.to(fromSocketId).emit('friend-rejected', {
-            friendSocketId: socket.id,
-            friendUsername: user.username
-        });
-        
-        console.log(`${user.username} 拒绝了 ${fromUser.username} 的好友请求`);
-    });
-    
-    // 删除好友
-    socket.on('remove-friend', (friendSocketId) => {
-        const user = users.get(socket.id);
-        const friendUser = users.get(friendSocketId);
-        
-        if (!user || !friendUser) {
-            socket.emit('friend-error', { message: '用户不存在' });
-            return;
-        }
-        
-        // 移除好友关系
-        if (friendships.has(socket.id)) {
-            friendships.get(socket.id).delete(friendSocketId);
-        }
-        if (friendships.has(friendSocketId)) {
-            friendships.get(friendSocketId).delete(socket.id);
-        }
-        
-        // 通知双方
-        io.to(socket.id).emit('friend-removed', {
-            friendSocketId: friendSocketId,
-            friendUsername: friendUser.username
-        });
-        
-        io.to(friendSocketId).emit('friend-removed', {
-            friendSocketId: socket.id,
-            friendUsername: user.username
-        });
-        
-        console.log(`${user.username} 删除了好友 ${friendUser.username}`);
-    });
-    
-    // JavaScript控制台相关事件处理
-    
-    // 加载用户控制台
-    socket.on('admin-load-user-console', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { socketId } = data;
-            const targetUser = users.get(socketId);
+        // 存储消息到房间
+        const room = rooms.get(user.roomName);
+        if (room) {
+            room.messages.push(newMessage);
             
-            if (targetUser) {
-                // 获取用户控制台日志
-                const logs = userConsoleLogs.get(socketId) || [];
-                
-                // 发送日志给管理员
-                socket.emit('admin-console-logs', {
-                    socketId: socketId,
-                    username: targetUser.username,
-                    logs: logs
-                });
-                
-                console.log(`管理员加载了用户 ${targetUser.username} 的控制台`);
+            // 限制房间消息数量，每个房间最多保留1000条消息
+            if (room.messages.length > 1000) {
+                room.messages.shift();
             }
         }
-    });
-    
-    // 执行控制台代码
-    socket.on('admin-execute-console-code', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { socketId, code } = data;
-            const targetUser = users.get(socketId);
-            
-            if (targetUser) {
-                // 将代码发送给用户浏览器执行
-                io.to(socketId).emit('execute-console-code', {
-                    code: code,
-                    adminSocketId: socket.id
-                });
-                
-                // 记录执行日志
-                if (!userConsoleLogs.has(socketId)) {
-                    userConsoleLogs.set(socketId, []);
-                }
-                userConsoleLogs.get(socketId).push({
-                    level: 'info',
-                    message: `执行代码: ${code}`,
-                    timestamp: new Date().toISOString()
-                });
-                
-                console.log(`管理员在用户 ${targetUser.username} 的控制台执行了代码`);
-            }
-        }
-    });
-    
-    // 监听用户浏览器执行代码的结果
-    socket.on('console-code-execute-result', (data) => {
-        const { adminSocketId, success, result, error } = data;
         
-        // 将执行结果发送给管理员
-        if (adminSocketId) {
-            io.to(adminSocketId).emit('admin-console-execute-result', {
-                success: success,
-                result: result,
-                error: error,
-                socketId: socket.id,
-                username: users.get(socket.id)?.username || '未知用户'
+        // 广播消息给房间内所有用户
+        io.to(user.roomName).emit('message', newMessage);
+        
+        // 更新用户活动数据
+        if (userActivity.has(socket.id)) {
+            const activity = userActivity.get(socket.id);
+            activity.messages++;
+            activity.lastActive = new Date();
+            activity.activityHistory.push({
+                type: 'message',
+                timestamp: new Date(),
+                messageLength: message.length
             });
-        }
-    });
-    
-    // 监听用户控制台日志
-    socket.on('console-log', (data) => {
-        const { level = 'log', message } = data;
-        
-        // 记录用户控制台日志
-        if (!userConsoleLogs.has(socket.id)) {
-            userConsoleLogs.set(socket.id, []);
-        }
-        
-        userConsoleLogs.get(socket.id).push({
-            level: level,
-            message: message,
-            timestamp: new Date().toISOString()
-        });
-        
-        // 限制日志数量，最多保存1000条
-        const logs = userConsoleLogs.get(socket.id);
-        if (logs.length > 1000) {
-            logs.splice(0, logs.length - 1000);
-        }
-    });
-
-    // 获取好友列表
-    socket.on('get-friends', () => {
-        const user = users.get(socket.id);
-        if (!user) {
-            return;
-        }
-        
-        // 检查打开好友页面权限
-        if (!user.permissions.allowOpenFriendsPage) {
-            socket.emit('permission-denied', { message: '您没有查看好友页面的权限' });
-            return;
-        }
-        
-        const friendSocketIds = friendships.get(socket.id) || new Set();
-        const friends = [];
-        
-        friendSocketIds.forEach(friendSocketId => {
-            const friendUser = users.get(friendSocketId);
-            if (friendUser) {
-                friends.push({
-                    socketId: friendSocketId,
-                    username: friendUser.username,
-                    color: friendUser.color,
-                    permissions: friendUser.permissions,
-                    online: true
-                });
+            if (message.length > 0) {
+                activity.messageLengths.push(message.length);
             }
-        });
+        }
         
-        socket.emit('friends-list', friends);
-        console.log(`${user.username} 获取好友列表，共 ${friends.length} 个好友`);
+        // 记录系统事件
+        logSystemEvent('message', `${user.username} 发送消息`, socket.id, user.roomName);
     });
     
-    // 发送私聊消息
+    // 处理用户离开
+    socket.on('disconnect', () => {
+        const user = users.get(socket.id);
+        if (user) {
+            // 从房间中移除用户
+            const room = rooms.get(user.roomName);
+            if (room) {
+                room.users = room.users.filter(userId => userId !== socket.id);
+                
+                // 广播用户离开消息
+                const roomUsers = Array.from(users.values()).filter(u => u.roomName === user.roomName);
+                io.to(user.roomName).emit('user-left', {
+                    username: user.username,
+                    userCount: roomUsers.length,
+                    users: roomUsers,
+                    roomName: user.roomName
+                });
+                
+                // 发送用户离线状态通知
+                io.to(user.roomName).emit('user-status-changed', {
+                    username: user.username,
+                    socketId: socket.id,
+                    status: 'offline',
+                    roomName: user.roomName
+                });
+                
+                console.log(`[房间 ${user.roomName}] ${user.username} 离开聊天室，当前在线: ${roomUsers.length} 人`);
+            }
+            
+            // 删除用户信息
+            users.delete(socket.id);
+            
+            // 删除用户活动数据
+            userActivity.delete(socket.id);
+            
+            // 记录系统事件
+            logSystemEvent('user-leave', `${user.username} 离开聊天室`, socket.id, user.roomName);
+        }
+        
+        if (socket.id === adminSocketId) {
+            adminSocketId = null;
+            console.log('管理员断开连接');
+        }
+        
+        console.log(`用户断开连接: ${socket.id}`);
+    });
+    
+    // 处理私聊消息
     socket.on('private-message', (data) => {
         const user = users.get(socket.id);
-        const targetUser = users.get(data.targetSocketId);
+        if (!user) return;
         
-        if (!user || !targetUser) {
-            socket.emit('private-message-error', { message: '用户不存在' });
-            return;
-        }
+        const { receiverId, message, type = 'text' } = data;
         
-        // 检查私聊权限
-        if (!user.permissions.allowPrivateChat) {
-            socket.emit('private-message-error', { message: '您没有私聊的权限' });
-            return;
-        }
-        
-        // 检查是否是好友
-        if (!friendships.has(socket.id) || !friendships.get(socket.id).has(data.targetSocketId)) {
-            socket.emit('private-message-error', { message: '只能给好友发送私聊消息' });
-            return;
-        }
-        
-        const chatId = [socket.id, data.targetSocketId].sort().join('-');
-        const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-        const messageData = {
-            id: messageId,
-            chatId: chatId,
-            fromSocketId: socket.id,
-            fromUsername: user.username,
-            fromColor: user.color,
-            toSocketId: data.targetSocketId,
-            message: data.message,
-            type: data.type || 'text',
-            timestamp: new Date().toLocaleTimeString(),
-            readBy: [socket.id], // 初始时只有发送者已读
-            // 包含额外的文件和音频属性
-            fileName: data.fileName,
-            fileSize: data.fileSize,
-            contentType: data.contentType
+        // 创建私聊消息
+        const privateMessage = {
+            id: Date.now().toString(),
+            senderId: socket.id,
+            senderUsername: user.username,
+            receiverId,
+            message,
+            type,
+            timestamp: new Date(),
+            read: false
         };
         
         // 存储私聊消息
+        const chatId = [socket.id, receiverId].sort().join('-');
         if (!privateMessages.has(chatId)) {
             privateMessages.set(chatId, []);
         }
-        privateMessages.get(chatId).push(messageData);
+        privateMessages.get(chatId).push(privateMessage);
         
-        // 限制私聊消息数量
-        if (privateMessages.get(chatId).length > 100) {
+        // 限制私聊消息数量，每对用户最多保留500条消息
+        if (privateMessages.get(chatId).length > 500) {
             privateMessages.get(chatId).shift();
         }
         
-        // 发送给双方
-        io.to(socket.id).emit('private-message', messageData);
-        io.to(data.targetSocketId).emit('private-message', messageData);
+        // 发送私聊消息给接收者
+        io.to(receiverId).emit('private-message', privateMessage);
         
-        console.log(`[私聊] ${user.username} -> ${targetUser.username}: ${data.type === 'text' ? data.message : data.type}`);
+        // 发送确认给发送者
+        socket.emit('private-message-sent', privateMessage);
+        
+        // 更新用户活动数据
+        if (userActivity.has(socket.id)) {
+            const activity = userActivity.get(socket.id);
+            activity.privateMessages++;
+            activity.lastActive = new Date();
+        }
+        
+        // 记录系统事件
+        logSystemEvent('private-message', `${user.username} 发送私聊消息`, socket.id);
     });
     
-    // 获取私聊历史消息
-    socket.on('get-private-messages', (targetSocketId) => {
+    // 处理好友请求
+    socket.on('friend-request', (data) => {
         const user = users.get(socket.id);
-        if (!user) {
+        if (!user) return;
+        
+        const { receiverId } = data;
+        
+        // 检查是否已经是好友
+        const friendKey = [socket.id, receiverId].sort().join('-');
+        if (friends.has(friendKey)) {
+            socket.emit('friend-error', { message: '已经是好友了' });
             return;
         }
         
-        const chatId = [socket.id, targetSocketId].sort().join('-');
+        // 检查是否已经发送过请求
+        if (friendRequests.has(`${socket.id}-${receiverId}`)) {
+            socket.emit('friend-error', { message: '已经发送过好友请求了' });
+            return;
+        }
+        
+        // 创建好友请求
+        const request = {
+            id: Date.now().toString(),
+            senderId: socket.id,
+            senderUsername: user.username,
+            receiverId,
+            status: 'pending',
+            createdAt: new Date()
+        };
+        
+        // 存储好友请求
+        friendRequests.set(`${socket.id}-${receiverId}`, request);
+        
+        // 发送好友请求给接收者
+        io.to(receiverId).emit('friend-request', request);
+        
+        // 发送确认给发送者
+        socket.emit('friend-request-sent', request);
+        
+        // 更新用户活动数据
+        if (userActivity.has(socket.id)) {
+            const activity = userActivity.get(socket.id);
+            activity.friendRequests++;
+            activity.lastActive = new Date();
+        }
+        
+        // 记录系统事件
+        logSystemEvent('friend-request', `${user.username} 发送好友请求`, socket.id);
+    });
+    
+    // 处理好友请求接受
+    socket.on('accept-friend-request', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+        
+        const { requestId, senderId } = data;
+        
+        // 查找好友请求
+        const request = friendRequests.get(`${senderId}-${socket.id}`);
+        if (!request) return;
+        
+        // 创建好友关系
+        const friendKey = [socket.id, senderId].sort().join('-');
+        friends.set(friendKey, {
+            id: friendKey,
+            user1Id: socket.id,
+            user1Username: user.username,
+            user2Id: senderId,
+            user2Username: request.senderUsername,
+            createdAt: new Date()
+        });
+        
+        // 删除好友请求
+        friendRequests.delete(`${senderId}-${socket.id}`);
+        
+        // 发送好友请求接受通知给发送者
+        io.to(senderId).emit('friend-request-accepted', {
+            friendId: friendKey,
+            receiverId: socket.id,
+            receiverUsername: user.username
+        });
+        
+        // 发送确认给接收者
+        socket.emit('friend-request-accepted', {
+            friendId: friendKey,
+            senderId,
+            senderUsername: request.senderUsername
+        });
+        
+        // 更新用户活动数据
+        if (userActivity.has(socket.id)) {
+            const activity = userActivity.get(socket.id);
+            activity.friendsAdded++;
+            activity.lastActive = new Date();
+        }
+        if (userActivity.has(senderId)) {
+            const activity = userActivity.get(senderId);
+            activity.friendsAdded++;
+            activity.lastActive = new Date();
+        }
+        
+        // 记录系统事件
+        logSystemEvent('friend-accept', `${user.username} 接受好友请求`, socket.id);
+    });
+    
+    // 处理好友请求拒绝
+    socket.on('reject-friend-request', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+        
+        const { requestId, senderId } = data;
+        
+        // 删除好友请求
+        friendRequests.delete(`${senderId}-${socket.id}`);
+        
+        // 发送好友请求拒绝通知给发送者
+        io.to(senderId).emit('friend-request-rejected', {
+            receiverId: socket.id,
+            receiverUsername: user.username
+        });
+        
+        // 记录系统事件
+        logSystemEvent('friend-reject', `${user.username} 拒绝好友请求`, socket.id);
+    });
+    
+    // 处理获取好友列表
+    socket.on('get-friends', () => {
+        const user = users.get(socket.id);
+        if (!user) return;
+        
+        // 获取用户的好友列表
+        const userFriends = [];
+        friends.forEach(friend => {
+            if (friend.user1Id === socket.id) {
+                userFriends.push({
+                    id: friend.user2Id,
+                    username: friend.user2Username
+                });
+            } else if (friend.user2Id === socket.id) {
+                userFriends.push({
+                    id: friend.user1Id,
+                    username: friend.user1Username
+                });
+            }
+        });
+        
+        // 发送好友列表给用户
+        socket.emit('friends-list', userFriends);
+    });
+    
+    // 处理获取私聊消息历史
+    socket.on('get-private-messages', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+        
+        const { friendId } = data;
+        
+        // 获取私聊消息历史
+        const chatId = [socket.id, friendId].sort().join('-');
         const messages = privateMessages.get(chatId) || [];
         
+        // 发送私聊消息历史给用户
         socket.emit('private-messages-history', {
-            targetSocketId: targetSocketId,
-            messages: messages
+            friendId,
+            messages
         });
-        
-        console.log(`${user.username} 获取与 ${targetSocketId} 的私聊历史消息，共 ${messages.length} 条`);
     });
     
-    // 管理员私聊功能（不需要好友关系）
-    socket.on('admin-private-message', (data) => {
-        if (socket.id === adminSocketId) {
-            const targetUser = users.get(data.targetSocketId);
-            if (!targetUser) {
-                socket.emit('private-message-error', { message: '用户不存在' });
-                return;
-            }
-            
-            const chatId = [socket.id, data.targetSocketId].sort().join('-');
-            const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-            const messageData = {
-                id: messageId,
-                chatId: chatId,
-                fromSocketId: socket.id,
-                fromUsername: 'admin',
-                fromColor: '#dc3545',
-                toSocketId: data.targetSocketId,
-                message: data.message,
-                type: data.type || 'text',
-                timestamp: new Date().toLocaleTimeString(),
-                readBy: [socket.id], // 初始时只有发送者已读
-                // 包含额外的文件和音频属性
-                fileName: data.fileName,
-                fileSize: data.fileSize,
-                contentType: data.contentType
-            };
-            
-            // 存储私聊消息
-            if (!privateMessages.has(chatId)) {
-                privateMessages.set(chatId, []);
-            }
-            privateMessages.get(chatId).push(messageData);
-            
-            // 限制私聊消息数量
-            if (privateMessages.get(chatId).length > 100) {
-                privateMessages.get(chatId).shift();
-            }
-            
-            // 发送给双方
-            io.to(socket.id).emit('private-message', messageData);
-            io.to(data.targetSocketId).emit('private-message', messageData);
-            
-            console.log(`[管理员私聊] admin -> ${targetUser.username}: ${data.type === 'text' ? data.message : data.type}`);
-        }
-    });
-    
-    // 更新历史存储
-let updateHistory = [];
-
-// 活跃的聊天室提示存储
-let activeNotifications = [];
-
-// 管理员发布更新功能
-socket.on('admin-publish-update', (data) => {
-    if (socket.id === adminSocketId) {
-        const { version, content, forceUpdate, target = 'all', probability = null, specificUsers = null } = data;
-        const timestamp = new Date();
+    // 处理消息已读
+    socket.on('message-read', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
         
-        // 保存到更新历史
-        const updateRecord = {
-            version: version,
-            content: content,
-            forceUpdate: forceUpdate,
-            target: target,
-            probability: probability,
-            specificUsers: specificUsers,
-            timestamp: timestamp,
-            timeString: timestamp.toLocaleString()
-        };
-        updateHistory.unshift(updateRecord); // 最新的更新放在前面
+        const { messageId, roomName } = data;
         
-        // 限制历史记录数量，最多保存20条
-        if (updateHistory.length > 20) {
-            updateHistory = updateHistory.slice(0, 20);
-        }
-        
-        // 根据目标类型选择推送用户
-        let targetSocketIds = [];
-        
-        if (target === 'all') {
-            // 推送给所有用户
-            targetSocketIds = Array.from(users.keys());
-        } else if (target === 'probability') {
-            // 按概率随机推送
-            Array.from(users.keys()).forEach(socketId => {
-                if (Math.random() * 100 <= probability) {
-                    targetSocketIds.push(socketId);
+        // 更新房间消息的已读状态
+        if (roomName && rooms.has(roomName)) {
+            const room = rooms.get(roomName);
+            const message = room.messages.find(msg => msg.id === messageId);
+            if (message && !message.readBy.includes(socket.id)) {
+                message.readBy.push(socket.id);
+                
+                // 发送已读通知给发送者
+                if (message.senderSocketId !== socket.id) {
+                    io.to(message.senderSocketId).emit('message-read-by-user', {
+                        messageId,
+                        readerId: socket.id,
+                        readerUsername: user.username
+                    });
                 }
-            });
-        } else if (target === 'specific') {
-            // 推送给特定用户
-            // 这里假设specificUsers是socketId列表
-            targetSocketIds = specificUsers.filter(socketId => users.has(socketId));
+            }
         }
+    });
+    
+    // 处理私聊消息已读
+    socket.on('private-message-read', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
         
-        // 向目标用户发送更新通知
-        const notificationData = {
-            version: version,
-            content: content,
-            forceUpdate: forceUpdate,
-            timestamp: timestamp.toLocaleTimeString()
-        };
+        const { messageId, friendId } = data;
         
-        targetSocketIds.forEach(socketId => {
-            io.to(socketId).emit('update-notification', notificationData);
+        // 更新私聊消息的已读状态
+        const chatId = [socket.id, friendId].sort().join('-');
+        const messages = privateMessages.get(chatId) || [];
+        const message = messages.find(msg => msg.id === messageId);
+        if (message) {
+            message.read = true;
+            
+            // 发送已读通知给发送者
+            if (message.senderId !== socket.id) {
+                io.to(message.senderId).emit('private-message-read', {
+                    messageId,
+                    readerId: socket.id
+                });
+            }
+        }
+    });
+    
+    // 处理用户正在输入
+    socket.on('user-typing', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+        
+        const { roomName } = data;
+        
+        // 广播用户正在输入状态
+        socket.to(roomName).emit('user-typing', {
+            username: user.username,
+            roomName
+        });
+    });
+    
+    // 处理用户停止输入
+    socket.on('user-stop-typing', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+        
+        const { roomName } = data;
+        
+        // 广播用户停止输入状态
+        socket.to(roomName).emit('user-stop-typing', {
+            username: user.username,
+            roomName
+        });
+    });
+    
+    // 管理员密码存储（实际应用中应该使用加密存储）
+    let adminPassword = 'admin123';
+    
+    // 处理管理员登录
+    socket.on('admin-login', (data) => {
+        const { password } = data;
+        
+        // 密码验证
+        if (password === adminPassword) {
+            adminSocketId = socket.id;
+            socket.emit('admin-login-success');
+            
+            // 发送系统信息给管理员
+            socket.emit('admin-system-info', {
+                onlineUsers: users.size,
+                rooms: Array.from(rooms.entries()).map(([name, room]) => ({
+                    name,
+                    users: room.users.length,
+                    messages: room.messages.length
+                })),
+                systemLogs: systemLogs.slice(-100), // 只发送最近100条日志
+                activeNotifications,
+                adminPassword: adminPassword
+            });
+            
+            console.log('管理员登录成功');
+            
+            // 记录系统事件
+            logSystemEvent('admin-login', '管理员登录', socket.id);
+        } else {
+            socket.emit('admin-login-error', { message: '密码错误' });
+        }
+    });
+    
+    // 处理管理员修改密码
+    socket.on('admin-change-password', (data) => {
+        if (socket.id !== adminSocketId) return;
+        
+        const { oldPassword, newPassword } = data;
+        
+        // 验证旧密码
+        if (oldPassword === adminPassword) {
+            // 更新密码
+            adminPassword = newPassword;
+            
+            // 发送密码修改成功通知
+            socket.emit('admin-password-changed', { message: '密码修改成功' });
+            
+            // 记录系统事件
+            logSystemEvent('admin-change-password', '管理员修改密码', socket.id);
+        } else {
+            socket.emit('admin-password-error', { message: '旧密码错误' });
+        }
+    });
+    
+    // 处理管理员禁言用户
+    socket.on('admin-mute-user', (data) => {
+        if (socket.id !== adminSocketId) return;
+        
+        const { socketId, reason, duration } = data;
+        
+        // 调用禁言函数
+        muteUser(socketId, reason, duration);
+        
+        // 通知管理员禁言成功
+        socket.emit('admin-mute-success', { message: '用户禁言成功' });
+    });
+    
+    // 处理管理员解禁用户
+    socket.on('admin-unmute-user', (data) => {
+        if (socket.id !== adminSocketId) return;
+        
+        const { socketId } = data;
+        const user = users.get(socketId);
+        if (!user) return;
+        
+        // 移除禁言状态
+        if (mutedUsers.has(socketId)) {
+            mutedUsers.delete(socketId);
+            
+            // 广播解禁信息给所有用户
+            io.emit('user-unmuted', {
+                username: user.username,
+                roomName: user.roomName
+            });
+            
+            // 记录系统事件
+            logSystemEvent('user-unmuted', `${user.username} 禁言解除（管理员操作）`, socketId, user.roomName);
+            
+            // 通知管理员解禁成功
+            socket.emit('admin-unmute-success', { message: '用户禁言解除成功' });
+        }
+    });
+    
+    // 处理管理员获取用户列表
+    socket.on('admin-get-users', () => {
+        if (socket.id === adminSocketId) {
+            // 构建包含禁言状态的用户列表
+            const usersWithMuteStatus = Array.from(users.values()).map(user => {
+                const muteInfo = mutedUsers.get(user.socketId);
+                let muted = false;
+                let muteReason = '';
+                let remainingMuteTime = 0;
+                
+                if (muteInfo) {
+                    // 检查禁言是否过期
+                    if (Date.now() <= muteInfo.muteEndTime) {
+                        muted = true;
+                        muteReason = muteInfo.reason;
+                        remainingMuteTime = Math.ceil((muteInfo.muteEndTime - Date.now()) / 1000 / 60); // 剩余禁言时间（分钟）
+                    } else {
+                        // 禁言已过期，移除禁言状态
+                        mutedUsers.delete(user.socketId);
+                    }
+                }
+                
+                return {
+                    ...user,
+                    muted: muted,
+                    muteReason: muteReason,
+                    remainingMuteTime: remainingMuteTime
+                };
+            });
+            
+            socket.emit('user-joined', {
+                username: '管理员',
+                userCount: users.size,
+                users: usersWithMuteStatus
+            });
+        }
+    });
+    
+    // 处理管理员获取用户活动数据
+    socket.on('admin-get-user-activity', () => {
+        if (socket.id !== adminSocketId) return;
+        
+        // 发送用户活动数据给管理员
+        socket.emit('admin-user-activity-data', Array.from(userActivity.values()));
+    });
+    
+    // 处理管理员获取系统日志
+    socket.on('admin-get-system-logs', (data) => {
+        if (socket.id !== adminSocketId) return;
+        
+        const { filter, startDate, endDate, limit = 100 } = data || {};
+        
+        // 过滤日志
+        let filteredLogs = systemLogs;
+        
+        if (filter) {
+            filteredLogs = filteredLogs.filter(log => 
+                log.eventType.includes(filter) || 
+                log.description.includes(filter)
+            );
+        }
+    });
+    
+    // 处理管理员获取用户行为分析数据
+    socket.on('admin-get-user-analytics', (data) => {
+        if (socket.id !== adminSocketId) return;
+        
+        const { timeRange } = data || {};
+        console.log('获取用户行为分析数据，时间范围:', timeRange);
+        
+        // 计算统计数据
+        const userActivityArray = Array.from(userActivity.values());
+        const totalUsers = users.size;
+        const activeUsers = userActivityArray.length;
+        const totalMessages = userActivityArray.reduce((sum, user) => sum + user.messages, 0);
+        const totalFiles = userActivityArray.reduce((sum, user) => sum + user.filesUploaded, 0);
+        
+        // 计算平均消息长度
+        let totalMessageLength = 0;
+        let messageCount = 0;
+        userActivityArray.forEach(user => {
+            if (user.messageLengths.length > 0) {
+                totalMessageLength += user.messageLengths.reduce((sum, length) => sum + length, 0);
+                messageCount += user.messageLengths.length;
+            }
+        });
+        const avgMessageLength = messageCount > 0 ? totalMessageLength / messageCount : 0;
+        
+        // 计算峰值时段
+        const hourCounts = new Array(24).fill(0);
+        userActivityArray.forEach(user => {
+            if (user.activityHistory.length > 0) {
+                user.activityHistory.forEach(activity => {
+                    const hour = new Date(activity.timestamp).getHours();
+                    hourCounts[hour]++;
+                });
+            }
+        });
+        const peakHour = hourCounts.indexOf(Math.max(...hourCounts));
+        
+        // 计算留存率（这里简单模拟，实际需要根据历史数据计算）
+        const retentionRate = activeUsers / totalUsers;
+        
+        // 计算平均在线时间
+        const now = new Date();
+        let totalOnlineTime = 0;
+        userActivityArray.forEach(user => {
+            const joinTime = new Date(user.joinTime);
+            totalOnlineTime += (now - joinTime) / (1000 * 60); // 转换为分钟
+        });
+        const avgOnlineTime = activeUsers > 0 ? Math.round(totalOnlineTime / activeUsers) : 0;
+        
+        // 计算回复率（这里简单模拟，实际需要根据消息交互计算）
+        const responseRate = 0.3; // 假设30%的消息有回复
+        
+        // 计算用户增长率（这里简单模拟，实际需要根据历史数据计算）
+        const userGrowthRate = 0.1; // 假设10%的增长率
+        
+        // 准备用户行为详情
+        const behaviorDetails = userActivityArray.map(user => {
+            // 计算活跃度分数
+            const activityScore = (
+                user.messages * 2 +
+                user.filesUploaded * 5 +
+                user.privateMessages * 3 +
+                user.callsInitiated * 10 +
+                user.callsReceived * 10
+            );
+            
+            // 计算在线时长
+            const joinTime = new Date(user.joinTime);
+            const onlineTime = Math.round((now - joinTime) / (1000 * 60)); // 转换为分钟
+            
+            return {
+                socketId: user.socketId,
+                username: user.username,
+                color: users.get(user.socketId)?.color || '#667eea',
+                activityScore: activityScore,
+                messageCount: user.messages,
+                onlineTime: onlineTime,
+                filesUploaded: user.filesUploaded,
+                audioSent: user.audioSent,
+                videoSent: user.videoSent,
+                imagesSent: user.imagesSent,
+                privateMessages: user.privateMessages,
+                friendRequests: user.friendRequests,
+                friendsAdded: user.friendsAdded,
+                callsInitiated: user.callsInitiated,
+                callsReceived: user.callsReceived,
+                lastActive: user.lastActive
+            };
         });
         
-        console.log(`[更新] 管理员发布版本 ${version}，目标: ${target}${target === 'probability' ? `(${probability}%)` : ''}${target === 'specific' ? `(${specificUsers.length}个用户)` : ''}，强制更新: ${forceUpdate}`);
-    }
-});
-
-// 获取更新历史
-socket.on('get-update-history', () => {
-    if (socket.id === adminSocketId) {
-        socket.emit('update-history', updateHistory);
-    }
-});
-
-// 发送聊天室提示
-socket.on('admin-send-chatroom-notification', (data) => {
-    if (socket.id === adminSocketId) {
-        const { title, content, buttonText, buttonColor, backgroundColor, forceAction, target = 'all', probability = null, specificUsers = null } = data;
-        const timestamp = new Date();
+        // 发送用户行为分析数据到客户端
+        socket.emit('admin-user-analytics', {
+            stats: {
+                activeUsers: activeUsers,
+                totalUsers: totalUsers,
+                totalMessages: totalMessages,
+                totalFiles: totalFiles,
+                avgMessageLength: avgMessageLength,
+                peakHour: peakHour,
+                retentionRate: retentionRate,
+                avgOnlineTime: avgOnlineTime,
+                responseRate: responseRate,
+                userGrowthRate: userGrowthRate
+            },
+            behaviorDetails: behaviorDetails
+        });
+    });
+    
+    // 处理管理员获取系统日志
+    socket.on('admin-get-system-logs', (data) => {
+        if (socket.id !== adminSocketId) return;
         
-        // 生成唯一ID
-        const notificationId = 'notification_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+        const { filter, startDate, endDate, limit = 100 } = data || {};
         
-        // 保存到活跃通知列表
-        const notification = {
-            id: notificationId,
-            title: title,
-            content: content,
-            buttonText: buttonText || '进入聊天室',
-            buttonColor: buttonColor || '#667eea',
-            backgroundColor: backgroundColor || '#ffffff',
-            forceAction: forceAction || false,
-            target: target,
-            probability: probability,
-            specificUsers: specificUsers,
-            timestamp: timestamp,
-            timeString: timestamp.toLocaleString()
+        // 过滤日志
+        let filteredLogs = systemLogs;
+        
+        if (filter) {
+            filteredLogs = filteredLogs.filter(log => 
+                log.eventType.includes(filter) || 
+                log.description.includes(filter)
+            );
+        }
+        
+        if (startDate) {
+            const start = new Date(startDate);
+            filteredLogs = filteredLogs.filter(log => new Date(log.timestamp) >= start);
+        }
+        
+        if (endDate) {
+            const end = new Date(endDate);
+            filteredLogs = filteredLogs.filter(log => new Date(log.timestamp) <= end);
+        }
+        
+        // 限制返回数量
+        filteredLogs = filteredLogs.slice(-limit);
+        
+        // 转换日志格式以匹配客户端期望的格式
+        const formattedLogs = filteredLogs.map(log => {
+            const logDate = new Date(log.timestamp);
+            const formattedDate = logDate.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+            
+            return {
+                timestamp: formattedDate,
+                level: log.eventType.toLowerCase(),
+                message: log.description,
+                details: {
+                    userId: log.userId,
+                    roomId: log.roomId
+                }
+            };
+        });
+        
+        // 计算统计数据
+        const stats = {
+            loginCount: filteredLogs.filter(log => log.eventType.includes('login')).length,
+            messageCount: filteredLogs.filter(log => log.eventType.includes('message')).length,
+            fileUploadCount: filteredLogs.filter(log => log.eventType.includes('file')).length,
+            errorCount: filteredLogs.filter(log => log.eventType === 'error').length
         };
         
+        // 发送系统日志给管理员（使用客户端期望的事件名称和数据结构）
+        socket.emit('admin-system-logs', {
+            logs: formattedLogs,
+            stats: stats
+        });
+    });
+    
+    // 处理管理员批量操作
+    socket.on('admin-batch-action', (data) => {
+        if (socket.id !== adminSocketId) return;
+        
+        const { action, userIds, roomName, reason } = data;
+        
+        // 执行批量操作
+        userIds.forEach(userId => {
+            const user = users.get(userId);
+            if (user && user.roomName === roomName) {
+                switch (action) {
+                    case 'kick':
+                        // 踢出用户
+                        io.to(userId).emit('kicked', reason || '您被管理员踢出聊天室');
+                        socket.to(roomName).emit('user-left', {
+                            username: user.username,
+                            userCount: Array.from(users.values()).filter(u => u.roomName === roomName).length - 1,
+                            users: Array.from(users.values()).filter(u => u.roomName === roomName && u.id !== userId),
+                            roomName
+                        });
+                        users.delete(userId);
+                        break;
+                    
+                    case 'mute':
+                        // 禁言用户
+                        io.to(userId).emit('muted', reason || '您被管理员禁言');
+                        break;
+                    
+                    case 'unmute':
+                        // 解除禁言
+                        io.to(userId).emit('unmuted');
+                        break;
+                    
+                    case 'ban':
+                        // 封禁用户
+                        io.to(userId).emit('kicked', reason || '您被管理员永久封禁');
+                        users.delete(userId);
+                        break;
+                }
+            }
+        });
+        
+        // 记录系统事件
+        logSystemEvent('admin-batch-action', `${action} 操作执行`, socket.id, roomName);
+    });
+    
+    // 处理管理员导出数据
+    socket.on('admin-export-data', (data) => {
+        if (socket.id !== adminSocketId) return;
+        
+        const { dataType, format = 'json' } = data;
+        
+        let exportData;
+        
+        switch (dataType) {
+            case 'users':
+                exportData = Array.from(users.values());
+                break;
+            
+            case 'rooms':
+                exportData = Array.from(rooms.entries()).map(([name, room]) => ({
+                    name,
+                    ...room
+                }));
+                break;
+            
+            case 'messages':
+                exportData = [];
+                rooms.forEach(room => {
+                    room.messages.forEach(message => {
+                        exportData.push({
+                            ...message,
+                            roomName: room.name
+                        });
+                    });
+                });
+                break;
+            
+            case 'activity':
+                exportData = Array.from(userActivity.values());
+                break;
+            
+            case 'logs':
+                exportData = systemLogs;
+                break;
+        }
+        
+        // 发送导出数据给管理员
+        socket.emit('admin-export-data-result', {
+            data: exportData,
+            format,
+            timestamp: new Date()
+        });
+        
+        // 记录系统事件
+        logSystemEvent('admin-export-data', `导出 ${dataType} 数据`, socket.id);
+    });
+    
+    // 处理管理员获取系统监控数据
+    socket.on('admin-get-system-monitoring', () => {
+        if (socket.id !== adminSocketId) return;
+        
+        // 获取系统监控数据
+        const memoryUsage = process.memoryUsage();
+        const cpuUsage = process.cpuUsage();
+        const systemLoad = process.loadavg();
+        
+        // 计算内存使用率（百分比）
+        const totalMemory = require('os').totalmem();
+        const usedMemory = memoryUsage.rss;
+        const memoryUsagePercent = Math.round((usedMemory / totalMemory) * 100);
+        
+        // 计算CPU使用率（百分比）
+        const cpuUsagePercent = Math.round((cpuUsage.user + cpuUsage.system) / 1000);
+        
+        // 获取磁盘使用情况（模拟数据，实际应用中可以使用fs.statfs）
+        const diskUsagePercent = Math.round(Math.random() * 30) + 20; // 模拟20-50%的磁盘使用率
+        
+        // 获取网络流量（模拟数据，实际应用中可以使用系统工具或第三方库）
+        const networkTraffic = `${Math.round(Math.random() * 100) + 50} KB/s`; // 模拟50-150 KB/s的网络流量
+        
+        // 获取系统事件（最近的10条系统日志）
+        const recentEvents = systemLogs.slice(-10).map(log => ({
+            timestamp: new Date(log.timestamp).toLocaleString('zh-CN'),
+            type: log.eventType === 'error' ? 'error' : log.eventType === 'warn' ? 'warn' : 'info',
+            message: log.description,
+            details: {
+                userId: log.userId,
+                roomId: log.roomId
+            }
+        }));
+        
+        // 构建客户端期望的系统监控数据
+        const systemData = {
+            cpuUsage: cpuUsagePercent,
+            memoryUsage: memoryUsagePercent,
+            diskUsage: diskUsagePercent,
+            networkTraffic: networkTraffic,
+            onlineUsers: users.size,
+            websocketConnections: users.size, // 假设每个用户对应一个WebSocket连接
+            events: recentEvents
+        };
+        
+        // 发送系统监控数据给管理员（使用客户端期望的事件名称）
+        socket.emit('admin-system-monitoring', systemData);
+    });
+    
+    // 处理管理员添加聊天室提示
+    socket.on('admin-add-notification', (data) => {
+        if (socket.id !== adminSocketId) return;
+        
+        const { title, content, buttonText, buttonColor, backgroundColor, forceAction } = data;
+        
+        // 创建聊天室提示
+        const notification = {
+            id: Date.now().toString(),
+            title,
+            content,
+            buttonText,
+            buttonColor,
+            backgroundColor,
+            forceAction,
+            createdAt: new Date()
+        };
+        
+        // 存储聊天室提示
         activeNotifications.push(notification);
         
-        // 选择目标用户
-        let targetSocketIds = [];
-        if (target === 'all') {
-            targetSocketIds = Array.from(users.keys());
-        } else if (target === 'probability') {
-            Array.from(users.keys()).forEach(socketId => {
-                if (Math.random() * 100 <= probability) {
-                    targetSocketIds.push(socketId);
-                }
-            });
-        } else if (target === 'specific') {
-            targetSocketIds = specificUsers.filter(socketId => users.has(socketId));
-        }
+        // 广播聊天室提示给所有用户
+        io.emit('chatroom-notification', notification);
         
-        // 发送提示通知
-        const notificationData = {
-            id: notificationId,
-            type: 'chatroom-notification',
-            title: title,
-            content: content,
-            buttonText: buttonText || '进入聊天室',
-            buttonColor: buttonColor || '#667eea',
-            backgroundColor: backgroundColor || '#ffffff',
-            forceAction: forceAction || false,
-            timestamp: timestamp.toLocaleTimeString()
-        };
+        // 记录系统事件
+        logSystemEvent('admin-add-notification', `添加聊天室提示: ${title}`, socket.id);
+    });
+    
+    // 处理管理员更新聊天室提示
+    socket.on('admin-update-notification', (data) => {
+        if (socket.id !== adminSocketId) return;
         
-        targetSocketIds.forEach(socketId => {
-            io.to(socketId).emit('chatroom-notification', notificationData);
-        });
-        
-        console.log(`[聊天室提示] 管理员发送提示：${title}，ID: ${notificationId}，目标: ${target}${target === 'probability' ? `(${probability}%)` : ''}${target === 'specific' ? `(${specificUsers.length}个用户)` : ''}`);
-        
-        // 通知管理员界面更新活跃通知列表
-        io.to(adminSocketId).emit('active-notifications-update', activeNotifications);
-    }
-});
-
-// 获取活跃的聊天室提示
-socket.on('get-active-notifications', () => {
-    if (socket.id === adminSocketId) {
-        socket.emit('active-notifications', activeNotifications);
-    }
-});
-
-// 删除聊天室提示
-socket.on('delete-chatroom-notification', (data) => {
-    if (socket.id === adminSocketId) {
-        const { notificationId } = data;
-        activeNotifications = activeNotifications.filter(n => n.id !== notificationId);
-        
-        // 通知所有客户端删除该提示
-        io.emit('remove-chatroom-notification', { notificationId });
-        
-        // 通知管理员界面更新
-        io.to(adminSocketId).emit('active-notifications-update', activeNotifications);
-        
-        console.log(`[聊天室提示] 管理员删除提示，ID: ${notificationId}`);
-    }
-});
-
-// 更新聊天室提示
-socket.on('update-chatroom-notification', (data) => {
-    if (socket.id === adminSocketId) {
         const { notificationId, title, content, buttonText, buttonColor, backgroundColor, forceAction } = data;
-        const notificationIndex = activeNotifications.findIndex(n => n.id === notificationId);
         
+        // 查找聊天室提示
+        const notificationIndex = activeNotifications.findIndex(n => n.id === notificationId);
         if (notificationIndex !== -1) {
-            // 更新提示内容
+            // 更新聊天室提示
             activeNotifications[notificationIndex] = {
                 ...activeNotifications[notificationIndex],
-                title: title,
-                content: content,
-                buttonText: buttonText,
-                buttonColor: buttonColor,
-                backgroundColor: backgroundColor,
-                forceAction: forceAction
+                title,
+                content,
+                buttonText,
+                buttonColor,
+                backgroundColor,
+                forceAction
             };
             
-            // 通知所有客户端更新该提示
+            // 广播更新后的聊天室提示给所有用户
             io.emit('update-chatroom-notification', {
                 notificationId,
                 title,
@@ -2956,116 +1407,96 @@ socket.on('update-chatroom-notification', (data) => {
                 forceAction
             });
             
-            // 通知管理员界面更新
-            io.to(adminSocketId).emit('active-notifications-update', activeNotifications);
-            
-            console.log(`[聊天室提示] 管理员更新提示，ID: ${notificationId}`);
+            // 记录系统事件
+            logSystemEvent('admin-update-notification', `更新聊天室提示: ${title}`, socket.id);
         }
-    }
-});
+    });
     
-    // 消息已读回执处理
-    socket.on('message-read', (data) => {
-        const user = users.get(socket.id);
-        if (!user) return;
+    // 处理管理员移除聊天室提示
+    socket.on('admin-remove-notification', (data) => {
+        if (socket.id !== adminSocketId) return;
         
-        const { messageId, roomName, chatId } = data;
+        const { notificationId } = data;
         
-        // 更新房间消息的已读状态
-        if (roomName && rooms.has(roomName)) {
-            const room = rooms.get(roomName);
-            const messageIndex = room.messages.findIndex(msg => msg.id === messageId);
-            if (messageIndex > -1) {
-                const message = room.messages[messageIndex];
-                if (!message.readBy.includes(socket.id)) {
-                    message.readBy.push(socket.id);
-                    
-                    // 发送已读通知给发送者
-                    if (message.senderSocketId !== socket.id) {
-                        io.to(message.senderSocketId).emit('message-read-by-user', {
-                            messageId: messageId,
-                            readBy: message.readBy,
-                            roomName: roomName,
-                            readerSocketId: socket.id,
-                            readerUsername: user.username
-                        });
-                    }
-                    
-                    console.log(`[已读] ${user.username} 已读 ${message.username} 的消息: ${messageId}`);
-                }
-            }
-        }
-        
-        // 更新私聊消息的已读状态
-        if (chatId && privateMessages.has(chatId)) {
-            const chatMessages = privateMessages.get(chatId);
-            const messageIndex = chatMessages.findIndex(msg => msg.id === messageId);
-            if (messageIndex > -1) {
-                const message = chatMessages[messageIndex];
-                if (!message.readBy.includes(socket.id)) {
-                    message.readBy.push(socket.id);
-                    
-                    // 发送已读通知给发送者
-                    if (message.fromSocketId !== socket.id) {
-                        io.to(message.fromSocketId).emit('private-message-read', {
-                            messageId: messageId,
-                            chatId: chatId,
-                            readBy: message.readBy,
-                            readerSocketId: socket.id,
-                            readerUsername: user.username
-                        });
-                    }
-                    
-                    console.log(`[私聊已读] ${user.username} 已读 ${message.fromUsername} 的消息: ${messageId}`);
-                }
-            }
+        // 查找并移除聊天室提示
+        const notificationIndex = activeNotifications.findIndex(n => n.id === notificationId);
+        if (notificationIndex !== -1) {
+            const notification = activeNotifications[notificationIndex];
+            activeNotifications.splice(notificationIndex, 1);
+            
+            // 广播移除聊天室提示的通知给所有用户
+            io.emit('remove-chatroom-notification', { notificationId });
+            
+            // 记录系统事件
+            logSystemEvent('admin-remove-notification', `移除聊天室提示`, socket.id);
         }
     });
-
-    socket.on('disconnect', () => {
-        const user = users.get(socket.id);
-        if (user) {
-            // 获取用户所在的房间
-            const room = rooms.get(user.roomName);
-            if (room) {
-                // 从房间用户列表中移除
-                room.users = room.users.filter(userId => userId !== socket.id);
-                
-                // 发送给房间内其他用户
-                const roomUsers = room.users.map(userId => users.get(userId)).filter(user => user);
-                room.users.forEach(userId => {
-                    io.to(userId).emit('user-left', {
-                        username: user.username,
-                        userCount: roomUsers.length,
-                        users: roomUsers,
-                        roomName: user.roomName
-                    });
-                });
-                
-                // 发送用户离线状态通知
-                room.users.forEach(userId => {
-                    io.to(userId).emit('user-status-changed', {
-                        username: user.username,
-                        socketId: socket.id,
-                        status: 'offline',
-                        roomName: user.roomName
-                    });
-                });
-                
-                console.log(`[房间 ${user.roomName}] ${user.username} 离开聊天室，当前在线: ${roomUsers.length} 人`);
-            }
-            
-            // 删除用户信息
-            users.delete(socket.id);
-        }
+    
+    // 处理管理员设置用户权限
+    socket.on('admin-set-user-permissions', (data) => {
+        if (socket.id !== adminSocketId) return;
         
-        if (socket.id === adminSocketId) {
-            adminSocketId = null;
-            console.log('管理员断开连接');
+        const { userId, permissions } = data;
+        
+        // 查找用户
+        const user = users.get(userId);
+        if (user) {
+            // 更新用户权限
+            user.permissions = {
+                ...user.permissions,
+                ...permissions
+            };
+            
+            // 发送权限变更通知给所有用户
+            const roomUsers = Array.from(users.values()).filter(u => u.roomName === user.roomName);
+            io.to(user.roomName).emit('user-permissions-changed', {
+                users: roomUsers
+            });
+            
+            // 发送权限变更通知给被修改的用户
+            io.to(userId).emit('permissions-updated', {
+                permissions: user.permissions
+            });
+            
+            // 记录系统事件
+            logSystemEvent('admin-set-permissions', `设置用户 ${user.username} 的权限`, socket.id, user.roomName);
+        }
+    });
+    
+    // 处理管理员批量设置用户权限
+    socket.on('admin-batch-set-permissions', (data) => {
+        if (socket.id !== adminSocketId) return;
+        
+        const { userIds, permissions, roomName } = data;
+        
+        const updatedUsers = [];
+        
+        // 批量更新用户权限
+        userIds.forEach(userId => {
+            const user = users.get(userId);
+            if (user && user.roomName === roomName) {
+                user.permissions = {
+                    ...user.permissions,
+                    ...permissions
+                };
+                updatedUsers.push(user);
+            }
+        });
+        
+        if (updatedUsers.length > 0) {
+            // 发送权限变更通知给所有用户
+            const roomUsers = Array.from(users.values()).filter(u => u.roomName === roomName);
+            io.to(roomName).emit('user-permissions-changed', {
+                users: roomUsers
+            });
+            
+            // 记录系统事件
+            logSystemEvent('admin-batch-set-permissions', `批量设置 ${updatedUsers.length} 个用户的权限`, socket.id, roomName);
         }
     });
 });
 
+// 生成随机颜色
 function getRandomColor() {
     const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9'];
     return colors[Math.floor(Math.random() * colors.length)];
