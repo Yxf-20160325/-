@@ -6409,9 +6409,9 @@
                 }
                 
                 // 检查文件大小，限制为30MB
-                const maxFileSize = 30 * 1024 * 1024; // 30MB
+                const maxFileSize = 300 * 1024 * 1024; // 300MB
                 if (file.size > maxFileSize) {
-                    alert('文件大小超过限制，最大支持30MB');
+                    alert('文件大小超过限制，最大支持300MB');
                     imageInput.value = '';
                     return;
                 }
