@@ -6596,6 +6596,9 @@
                     chatForm.classList.remove('hidden');
                     messageInput.focus();
                     
+                    // 初始化投票系统
+                    handleLoginSuccess();
+                    
                     // 初始化通话系统
                     callSystem = new CallSystem(socket, username);
                 }
@@ -8257,8 +8260,16 @@
                 <div class="message-content">${contentHtml}</div>
                 ${actionsHtml}
             `;
-            messagesDiv.appendChild(messageDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            
+            // 使用文档片段减少重排
+            const fragment = document.createDocumentFragment();
+            fragment.appendChild(messageDiv);
+            messagesDiv.appendChild(fragment);
+            
+            // 优化滚动，只在消息容器可见时滚动
+            if (messagesDiv.scrollHeight > messagesDiv.clientHeight) {
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
             
             // 发送已读通知（非自己发送的消息）
             if (data.username !== username && data.id) {
@@ -8277,12 +8288,17 @@
             }
         }
 
+        // 优化系统消息添加，使用文档片段减少DOM操作
         function addSystemMessage(text, isAdmin = false) {
             const messageDiv = document.createElement('div');
             messageDiv.className = 'system-message' + (isAdmin ? ' admin' : '');
             messageDiv.textContent = text;
             messagesDiv.appendChild(messageDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            
+            // 优化滚动，只在消息容器可见时滚动
+            if (messagesDiv.scrollHeight > messagesDiv.clientHeight) {
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
         }
 
         function updateUserList(users) {
@@ -9517,6 +9533,564 @@
                 console.error('获取麦克风失败:', error);
                 alert('无法访问麦克风，请检查权限设置');
             }
+        }
+    </script>
+
+    <!-- 投票功能 -->
+    <style>
+        /* 投票模态框样式 */
+        #createPollModal .modal-content {
+            max-width: 600px;
+        }
+        
+        #createPollModal input,
+        #createPollModal select {
+            width: 100%;
+            padding: 10px;
+            margin: 8px 0;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        
+        #createPollModal input:focus,
+        #createPollModal select:focus {
+            border-color: #667eea;
+            outline: none;
+        }
+        
+        .option-input-group {
+            display: flex;
+            gap: 10px;
+            margin: 8px 0;
+        }
+        
+        .option-input-group input {
+            flex: 1;
+        }
+        
+        .add-option-btn,
+        .remove-option-btn {
+            padding: 0 15px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.2s;
+        }
+        
+        .add-option-btn {
+            background: #28a745;
+            color: white;
+        }
+        
+        .add-option-btn:hover {
+            background: #218838;
+        }
+        
+        .remove-option-btn {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .remove-option-btn:hover {
+            background: #c82333;
+        }
+        
+        /* 投票消息样式 */
+        .poll-message {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            padding: 15px;
+            border-radius: 12px;
+            margin: 10px 0;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .poll-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .poll-question {
+            font-weight: bold;
+            font-size: 16px;
+            color: #333;
+        }
+        
+        .poll-status {
+            font-size: 12px;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-weight: bold;
+        }
+        
+        .poll-status.active {
+            background: #28a745;
+            color: white;
+        }
+        
+        .poll-status.ended {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .poll-options {
+            margin-bottom: 12px;
+        }
+        
+        .poll-option {
+            margin: 8px 0;
+            padding: 10px;
+            background: white;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .poll-option:hover {
+            border-color: #667eea;
+            box-shadow: 0 2px 5px rgba(102, 126, 234, 0.2);
+        }
+        
+        .poll-option.voted {
+            border-color: #28a745;
+            background: #f8fff8;
+        }
+        
+        .poll-option-text {
+            z-index: 1;
+            position: relative;
+        }
+        
+        .poll-option-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            opacity: 0.2;
+            z-index: 0;
+            transition: width 0.5s ease;
+        }
+        
+        .poll-results {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 5px;
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .poll-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .poll-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .poll-action-btn {
+            padding: 5px 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        
+        .poll-action-btn.primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .poll-action-btn.primary:hover {
+            background: #764ba2;
+        }
+        
+        .poll-action-btn.secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .poll-action-btn.secondary:hover {
+            background: #5a6268;
+        }
+    </style>
+
+    <!-- 投票创建模态框 -->
+    <div class="modal" id="createPollModal">
+        <div class="modal-content">
+            <h3>创建投票</h3>
+            <div>
+                <label for="pollQuestion">投票问题：</label>
+                <input type="text" id="pollQuestion" placeholder="请输入投票问题" maxlength="100">
+                
+                <label>投票选项：</label>
+                <div id="pollOptionsContainer">
+                    <div class="option-input-group">
+                        <input type="text" class="poll-option-input" placeholder="选项 1" maxlength="50">
+                        <button type="button" class="remove-option-btn" disabled>−</button>
+                    </div>
+                    <div class="option-input-group">
+                        <input type="text" class="poll-option-input" placeholder="选项 2" maxlength="50">
+                        <button type="button" class="remove-option-btn">−</button>
+                    </div>
+                </div>
+                <button type="button" class="add-option-btn" id="addOptionBtn">+ 添加选项</button>
+                
+                <label for="pollDuration">投票时长（分钟）：</label>
+                <select id="pollDuration">
+                    <option value="5">5分钟</option>
+                    <option value="15">15分钟</option>
+                    <option value="30">30分钟</option>
+                    <option value="60">1小时</option>
+                    <option value="1440">24小时</option>
+                    <option value="0">无限制</option>
+                </select>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-cancel" onclick="pollSystem.closeCreatePollModal()">取消</button>
+                <button type="button" class="btn btn-primary" id="createPollBtn">创建投票</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 投票功能脚本 -->
+    <script>
+        // 投票功能
+        class PollSystem {
+            constructor(socket) {
+                this.socket = socket;
+                this.initElements();
+                this.initEventListeners();
+                this.initSocketListeners();
+            }
+            
+            initElements() {
+                this.createPollBtn = document.getElementById('createPollBtn');
+                this.addOptionBtn = document.getElementById('addOptionBtn');
+                this.pollOptionsContainer = document.getElementById('pollOptionsContainer');
+                this.pollQuestion = document.getElementById('pollQuestion');
+                this.pollDuration = document.getElementById('pollDuration');
+                this.createPollModal = document.getElementById('createPollModal');
+            }
+            
+            initEventListeners() {
+                // 添加投票按钮
+                if (this.createPollBtn) {
+                    this.createPollBtn.addEventListener('click', () => this.createPoll());
+                }
+                
+                // 添加选项按钮
+                if (this.addOptionBtn) {
+                    this.addOptionBtn.addEventListener('click', () => this.addOption());
+                }
+                
+                // 动态绑定删除选项按钮事件
+                if (this.pollOptionsContainer) {
+                    this.pollOptionsContainer.addEventListener('click', (e) => {
+                        if (e.target.classList.contains('remove-option-btn')) {
+                            this.removeOption(e.target);
+                        }
+                    });
+                }
+                
+                // 监听消息区域点击事件，处理投票
+                const messages = document.getElementById('messages');
+                if (messages) {
+                    messages.addEventListener('click', (e) => {
+                        if (e.target.closest('.poll-option')) {
+                            const pollId = e.target.closest('.poll-message').dataset.pollId;
+                            const optionIndex = parseInt(e.target.closest('.poll-option').dataset.optionIndex);
+                            this.vote(pollId, optionIndex);
+                        }
+                    });
+                }
+            }
+            
+            initSocketListeners() {
+                // 接收投票创建事件
+                this.socket.on('poll-created', (poll) => {
+                    this.addPollMessage(poll);
+                });
+                
+                // 接收投票更新事件
+                this.socket.on('poll-updated', (poll) => {
+                    this.updatePollMessage(poll);
+                });
+                
+                // 接收投票结束事件
+                this.socket.on('poll-ended', (poll) => {
+                    this.updatePollMessage(poll);
+                });
+                
+                // 接收投票列表事件
+                this.socket.on('polls-list', (polls) => {
+                    polls.forEach(poll => {
+                        this.addPollMessage(poll);
+                    });
+                });
+            }
+            
+            addOption() {
+                const optionGroups = this.pollOptionsContainer.querySelectorAll('.option-input-group');
+                if (optionGroups.length >= 10) {
+                    alert('最多只能添加10个选项');
+                    return;
+                }
+                
+                const newOptionGroup = document.createElement('div');
+                newOptionGroup.className = 'option-input-group';
+                newOptionGroup.innerHTML = `
+                    <input type="text" class="poll-option-input" placeholder="选项 ${optionGroups.length + 1}" maxlength="50">
+                    <button type="button" class="remove-option-btn">−</button>
+                `;
+                this.pollOptionsContainer.appendChild(newOptionGroup);
+                
+                // 更新删除按钮状态
+                this.updateRemoveButtons();
+            }
+            
+            removeOption(button) {
+                const optionGroups = this.pollOptionsContainer.querySelectorAll('.option-input-group');
+                if (optionGroups.length <= 2) {
+                    return;
+                }
+                
+                button.parentElement.remove();
+                
+                // 更新删除按钮状态和选项序号
+                this.updateRemoveButtons();
+                this.updateOptionPlaceholders();
+            }
+            
+            updateRemoveButtons() {
+                const removeButtons = this.pollOptionsContainer.querySelectorAll('.remove-option-btn');
+                removeButtons.forEach((btn, index) => {
+                    btn.disabled = index === 0;
+                });
+            }
+            
+            updateOptionPlaceholders() {
+                const optionInputs = this.pollOptionsContainer.querySelectorAll('.poll-option-input');
+                optionInputs.forEach((input, index) => {
+                    input.placeholder = `选项 ${index + 1}`;
+                });
+            }
+            
+            createPoll() {
+                const question = this.pollQuestion.value.trim();
+                const optionInputs = this.pollOptionsContainer.querySelectorAll('.poll-option-input');
+                const options = Array.from(optionInputs).map(input => input.value.trim()).filter(opt => opt);
+                const duration = parseInt(this.pollDuration.value);
+                
+                if (!question) {
+                    alert('请输入投票问题');
+                    return;
+                }
+                
+                if (options.length < 2) {
+                    alert('至少需要2个有效选项');
+                    return;
+                }
+                
+                if (options.length > 10) {
+                    alert('最多只能有10个选项');
+                    return;
+                }
+                
+                // 检查选项是否重复
+                const uniqueOptions = [...new Set(options)];
+                if (uniqueOptions.length !== options.length) {
+                    alert('选项不能重复');
+                    return;
+                }
+                
+                this.socket.emit('create-poll', {
+                    question,
+                    options,
+                    duration
+                });
+                
+                this.closeCreatePollModal();
+                this.resetForm();
+            }
+            
+            vote(pollId, optionIndex) {
+                this.socket.emit('vote', {
+                    pollId,
+                    optionId: `option-${optionIndex}`
+                });
+            }
+            
+            addPollMessage(poll) {
+                const messages = document.getElementById('messages');
+                if (!messages) return;
+                
+                // 检查是否已存在该投票
+                if (document.querySelector(`.poll-message[data-poll-id="${poll.id}"]`)) {
+                    return;
+                }
+                
+                // 调试：查看收到的投票对象结构
+                console.log('收到投票对象:', poll);
+                console.log('投票选项:', poll.options);
+                console.log('选项类型:', typeof poll.options[0]);
+                
+                // 确保选项是字符串数组
+                if (Array.isArray(poll.options)) {
+                    poll.options = poll.options.map(option => {
+                        if (typeof option === 'object') {
+                            return option.text || JSON.stringify(option);
+                        }
+                        return option;
+                    });
+                }
+                
+                const pollElement = document.createElement('div');
+                pollElement.className = 'message poll-message';
+                pollElement.dataset.pollId = poll.id;
+                pollElement.innerHTML = this.generatePollHTML(poll);
+                
+                messages.appendChild(pollElement);
+                messages.scrollTop = messages.scrollHeight;
+            }
+            
+            updatePollMessage(poll) {
+                const pollElement = document.querySelector(`.poll-message[data-poll-id="${poll.id}"]`);
+                if (pollElement) {
+                    // 确保选项是字符串数组
+                    if (Array.isArray(poll.options)) {
+                        poll.options = poll.options.map(option => {
+                            if (typeof option === 'object') {
+                                return option.text || JSON.stringify(option);
+                            }
+                            return option;
+                        });
+                    }
+                    pollElement.innerHTML = this.generatePollHTML(poll);
+                }
+            }
+            
+            generatePollHTML(poll) {
+                const totalVotes = poll.votes.reduce((sum, vote) => sum + vote, 0);
+                const isActive = poll.status === 'active';
+                const hasVoted = poll.votedUsers.includes(username);
+                
+                let optionsHTML = '';
+                poll.options.forEach((option, index) => {
+                    const voteCount = poll.votes[index];
+                    const percentage = totalVotes > 0 ? Math.round((voteCount / totalVotes) * 100) : 0;
+                    const isVoted = poll.userVotes[socket.id] === index;
+                    
+                    optionsHTML += `
+                        <div class="poll-option ${isVoted ? 'voted' : ''}" data-option-index="${index}" ${!isActive || hasVoted ? 'style="cursor: default;"' : ''}>
+                            <div class="poll-option-bar" style="width: ${percentage}%;"></div>
+                            <div class="poll-option-text">${typeof option === 'object' ? option.text || JSON.stringify(option) : option}</div>
+                            <div class="poll-results">
+                                <span>${voteCount} 票</span>
+                                <span>${percentage}%</span>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                return `
+                    <div class="message-header">
+                        <span class="username">${poll.creator}</span>
+                        <span class="timestamp">${new Date(poll.createdAt).toLocaleString()}</span>
+                    </div>
+                    <div class="poll-header">
+                        <div class="poll-question">${poll.question}</div>
+                        <div class="poll-status ${isActive ? 'active' : 'ended'}">${isActive ? '进行中' : '已结束'}</div>
+                    </div>
+                    <div class="poll-options">
+                        ${optionsHTML}
+                    </div>
+                    <div class="poll-footer">
+                        <div>总票数: ${totalVotes}</div>
+                        ${isActive && poll.creator === username ? `
+                            <div class="poll-actions">
+                                <button type="button" class="poll-action-btn secondary" onclick="pollSystem.endPoll('${poll.id}')">结束投票</button>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }
+            
+            endPoll(pollId) {
+                this.socket.emit('end-poll', { pollId });
+            }
+            
+            openCreatePollModal() {
+                if (this.createPollModal) {
+                    this.createPollModal.classList.add('active');
+                }
+            }
+            
+            closeCreatePollModal() {
+                if (this.createPollModal) {
+                    this.createPollModal.classList.remove('active');
+                }
+            }
+            
+            resetForm() {
+                this.pollQuestion.value = '';
+                this.pollDuration.value = '5';
+                
+                // 重置选项
+                this.pollOptionsContainer.innerHTML = `
+                    <div class="option-input-group">
+                        <input type="text" class="poll-option-input" placeholder="选项 1" maxlength="50">
+                        <button type="button" class="remove-option-btn" disabled>−</button>
+                    </div>
+                    <div class="option-input-group">
+                        <input type="text" class="poll-option-input" placeholder="选项 2" maxlength="50">
+                        <button type="button" class="remove-option-btn">−</button>
+                    </div>
+                `;
+            }
+        }
+        
+        // 全局变量
+        let pollSystem;
+        
+        // 在连接成功后初始化投票系统
+        function initPollSystem() {
+            pollSystem = new PollSystem(socket);
+            
+            // 添加创建投票按钮到动作按钮区域
+            const actionButtons = document.querySelector('.action-buttons');
+            if (actionButtons) {
+                const pollButton = document.createElement('button');
+                pollButton.className = 'action-btn';
+                pollButton.id = 'pollBtn';
+                pollButton.title = '创建投票';
+                pollButton.innerHTML = '📊';
+                pollButton.addEventListener('click', () => pollSystem.openCreatePollModal());
+                actionButtons.appendChild(pollButton);
+            }
+            
+            // 获取当前活跃的投票
+            socket.emit('get-polls');
+        }
+        
+        // 在登录成功后初始化投票系统
+        function handleLoginSuccess() {
+            // 现有的登录成功处理代码...
+            
+            // 初始化投票系统
+            initPollSystem();
         }
     </script>
 </body>
