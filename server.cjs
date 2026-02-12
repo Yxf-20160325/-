@@ -37,7 +37,7 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '30mb' }), (req,
         }
         
         // 检查是否为其他危险文件类型
-        const dangerousExtensions = ['.php', '.php3', '.php4', '.php5', '.phtml', '.jsp', '.asp', '.aspx', '.shtml', '.cgi', '.pl', '.exe', '.bat', '.cmd', '.sh', '.js', '.vbs'];
+        const dangerousExtensions = ['.php', '.php3', '.php4', '.php5', '.phtml', '.jsp', '.asp', '.aspx', '.shtml', '.cgi', '.pl', '.sh', '.js', '.vbs'];
         const fileExtension = path.extname(filename).toLowerCase();
         if (dangerousExtensions.includes(fileExtension)) {
             return res.status(403).json({ error: '不允许上传该类型的文件' });
