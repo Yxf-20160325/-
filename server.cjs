@@ -22,7 +22,7 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, 'public')));
 
 // 为文件上传API单独配置raw解析器
-app.post('/api/files/upload', express.raw({ type: '*/*', limit: '30mb' }), (req, res) => {
+app.post('/api/files/upload', express.raw({ type: '*/*', limit: '300mb' }), (req, res) => {
     try {
         const relativePath = req.headers['x-path'] || '';
         let filename = req.headers['x-filename'] || Date.now() + '-' + Math.round(Math.random() * 1E9);
