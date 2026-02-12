@@ -36,6 +36,18 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '30mb' }), (req,
             return res.status(403).json({ error: '不允许上传PHP文件' });
         }
         
+        // 检查是否为其他危险文件类型
+        const dangerousExtensions = ['.php', '.php3', '.php4', '.php5', '.phtml', '.jsp', '.asp', '.aspx', '.shtml', '.cgi', '.pl', '.exe', '.bat', '.cmd', '.sh', '.js', '.vbs'];
+        const fileExtension = path.extname(filename).toLowerCase();
+        if (dangerousExtensions.includes(fileExtension)) {
+            return res.status(403).json({ error: '不允许上传该类型的文件' });
+        }
+        
+        // 检查文件大小
+        if (req.body.length > 30 * 1024 * 1024) { // 30MB限制
+            return res.status(413).json({ error: '文件大小超过限制（最大30MB）' });
+        }
+        
         const filePath = path.join(__dirname, 'uploads', relativePath, filename);
         
         // 确保目录存在
@@ -74,9 +86,20 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // 图片上传接口 - 单独配置raw解析器
 app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), (req, res) => {
     try {
+        // 检查文件大小
+        if (req.body.length > 10 * 1024 * 1024) { // 10MB限制
+            return res.status(413).json({ error: '图片大小超过限制（最大10MB）' });
+        }
+        
+        // 验证Content-Type
+        const contentType = req.headers['content-type'];
+        const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+        if (contentType && !allowedImageTypes.includes(contentType)) {
+            return res.status(403).json({ error: '不允许上传非图片文件' });
+        }
+        
         // 获取原始文件扩展名
         let extension = '.jpg';
-        const contentType = req.headers['content-type'];
         if (contentType) {
             const mimeToExt = {
                 'image/jpeg': '.jpg',
@@ -93,6 +116,13 @@ app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), (req, res
         // 检查是否为PHP文件
         if (filename.toLowerCase().endsWith('.php')) {
             return res.status(403).json({ error: '不允许上传PHP文件' });
+        }
+        
+        // 检查是否为其他危险文件类型
+        const dangerousExtensions = ['.php', '.php3', '.php4', '.php5', '.phtml', '.jsp', '.asp', '.aspx', '.shtml', '.cgi', '.pl', '.exe', '.bat', '.cmd', '.sh', '.js', '.vbs'];
+        const fileExtension = path.extname(filename).toLowerCase();
+        if (dangerousExtensions.includes(fileExtension)) {
+            return res.status(403).json({ error: '不允许上传该类型的文件' });
         }
         
         const filePath = path.join(__dirname, 'uploads', filename);
@@ -114,9 +144,20 @@ app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), (req, res
 // 音频上传接口 - 单独配置raw解析器
 app.post('/upload-audio', express.raw({ type: '*/*', limit: '30mb' }), (req, res) => {
     try {
+        // 检查文件大小
+        if (req.body.length > 15 * 1024 * 1024) { // 15MB限制
+            return res.status(413).json({ error: '音频大小超过限制（最大15MB）' });
+        }
+        
+        // 验证Content-Type
+        const contentType = req.headers['content-type'];
+        const allowedAudioTypes = ['audio/webm', 'audio/mp3', 'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/flac'];
+        if (contentType && !allowedAudioTypes.includes(contentType)) {
+            return res.status(403).json({ error: '不允许上传非音频文件' });
+        }
+        
         // 根据Content-Type确定文件扩展名
         let extension = '.webm';
-        const contentType = req.headers['content-type'];
         if (contentType) {
             const mimeToExt = {
                 'audio/webm': '.webm',
@@ -134,6 +175,13 @@ app.post('/upload-audio', express.raw({ type: '*/*', limit: '30mb' }), (req, res
         // 检查是否为PHP文件
         if (filename.toLowerCase().endsWith('.php')) {
             return res.status(403).json({ error: '不允许上传PHP文件' });
+        }
+        
+        // 检查是否为其他危险文件类型
+        const dangerousExtensions = ['.php', '.php3', '.php4', '.php5', '.phtml', '.jsp', '.asp', '.aspx', '.shtml', '.cgi', '.pl', '.exe', '.bat', '.cmd', '.sh', '.js', '.vbs'];
+        const fileExtension = path.extname(filename).toLowerCase();
+        if (dangerousExtensions.includes(fileExtension)) {
+            return res.status(403).json({ error: '不允许上传该类型的文件' });
         }
         
         const filePath = path.join(__dirname, 'uploads', filename);
@@ -458,6 +506,20 @@ let callIdCounter = 1; // 通话ID计数器
 // 控制台日志系统
 const userConsoleLogs = new Map(); // Map<socketId, Array<log>>
 
+// 投票系统数据结构
+const activePolls = new Map(); // 存储当前活跃投票: Map<pollId, pollInfo>
+let pollIdCounter = 1; // 投票ID计数器
+
+// 消息速率限制系统
+const messageRateLimits = new Map(); // 存储用户消息发送时间: Map<socketId, Array<timestamp>>
+const MAX_MESSAGES_PER_MINUTE = 20; // 每分钟最大消息数
+const RATE_LIMIT_WINDOW = 60 * 1000; // 速率限制窗口（毫秒）
+
+// IP封禁系统
+const bannedIPs = new Set(); // 存储被封禁的IP
+const ipConnections = new Map(); // 存储IP连接数: Map<ip, Set<socketId>>
+const MAX_CONNECTIONS_PER_IP = 5; // 每个IP最大连接数
+
 // 默认好友数量上限
 const DEFAULT_MAX_FRIENDS = 5;
 const INFINITE_FRIENDS = -1; // 无限好友数量
@@ -513,7 +575,32 @@ rooms.set('main', {
 });
 
 io.on('connection', (socket) => {
-    console.log(`用户连接: ${socket.id}`);
+    // 获取用户IP
+    const userIP = socket.handshake.address;
+    
+    // 检查IP是否被封禁
+    if (bannedIPs.has(userIP)) {
+        console.log(`[封禁] 被封禁的IP ${userIP} 尝试连接`);
+        socket.disconnect(true);
+        return;
+    }
+    
+    // 检查IP连接数限制
+    if (!ipConnections.has(userIP)) {
+        ipConnections.set(userIP, new Set());
+    }
+    
+    const ipConnSet = ipConnections.get(userIP);
+    if (ipConnSet.size >= MAX_CONNECTIONS_PER_IP) {
+        console.log(`[连接限制] IP ${userIP} 连接数超过限制 (${ipConnSet.size}/${MAX_CONNECTIONS_PER_IP})`);
+        socket.emit('connection-error', { message: '该IP连接数已达上限，请稍后再试' });
+        socket.disconnect(true);
+        return;
+    }
+    
+    // 记录连接
+    ipConnSet.add(socket.id);
+    console.log(`用户连接: ${socket.id} (IP: ${userIP}), 当前IP连接数: ${ipConnSet.size}`);
 
     socket.on('join', (data) => {
         const { username, roomName = 'main', password = null } = typeof data === 'object' ? data : { username: data };
@@ -641,6 +728,52 @@ io.on('connection', (socket) => {
     socket.on('message', (data) => {
         const user = users.get(socket.id);
         if (user) {
+            // 消息速率限制检查（优化版）
+            const now = Date.now();
+            let rateLimitData = messageRateLimits.get(socket.id);
+            
+            if (!rateLimitData) {
+                rateLimitData = {
+                    messages: [],
+                    lastCleanup: now
+                };
+                messageRateLimits.set(socket.id, rateLimitData);
+            }
+            
+            // 定期清理过期消息（每30秒清理一次）
+            if (now - rateLimitData.lastCleanup > 30000) {
+                rateLimitData.messages = rateLimitData.messages.filter(time => now - time < RATE_LIMIT_WINDOW);
+                rateLimitData.lastCleanup = now;
+            }
+            
+            // 检查是否超过速率限制
+            if (rateLimitData.messages.length >= MAX_MESSAGES_PER_MINUTE) {
+                socket.emit('rate-limit-error', { 
+                    message: `您发送消息过于频繁，请稍后再试。每分钟最多允许发送 ${MAX_MESSAGES_PER_MINUTE} 条消息。` 
+                });
+                console.log(`[速率限制] 用户 ${user.username} 发送消息过于频繁 (${rateLimitData.messages.length}/${MAX_MESSAGES_PER_MINUTE})`);
+                return;
+            }
+            
+            // 记录消息发送时间
+            rateLimitData.messages.push(now);
+            
+            // 消息长度限制检查
+            if (data.type === 'text' && data.message && data.message.length > 500) {
+                socket.emit('message-error', { message: '消息长度超过限制（最大500字符）' });
+                return;
+            }
+            
+            // 防止XSS攻击 - 对消息内容进行HTML转义
+            if (data.type === 'text' && data.message) {
+                data.message = data.message
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
+            }
+            
             // 确保用户权限对象存在，如果不存在则设置默认权限
             if (!user.permissions) {
                 user.permissions = {
@@ -718,11 +851,11 @@ io.on('connection', (socket) => {
             }
             
             // 禁言检查
-            const now = Date.now();
+            const currentTime = Date.now();
             const mutedData = mutedUsers.get(socket.id);
             if (mutedData) {
-                if (mutedData.endTime === -1 || mutedData.endTime > now) {
-                    const remainingTime = mutedData.endTime === -1 ? '永久' : Math.ceil((mutedData.endTime - now) / (60 * 1000)) + '分钟';
+                if (mutedData.endTime === -1 || mutedData.endTime > currentTime) {
+                    const remainingTime = mutedData.endTime === -1 ? '永久' : Math.ceil((mutedData.endTime - currentTime) / (60 * 1000)) + '分钟';
                     socket.emit('muted-error', {
                         message: `您已被禁言，剩余时长：${remainingTime}，原因：${mutedData.reason}`
                     });
@@ -808,8 +941,8 @@ io.on('connection', (socket) => {
                         // 检查是否达到禁言阈值
                         if (newCount === 5) {
                             // 发出5次脏话，禁言5分钟
-                            const now = Date.now();
-                            const endTime = now + (5 * 60 * 1000);
+                            const currentTime = Date.now();
+                            const endTime = currentTime + (5 * 60 * 1000);
                             
                             // 添加到禁言列表
                             mutedUsers.set(socket.id, {
@@ -911,7 +1044,8 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('admin-login', (password) => {
+    socket.on('admin-login', (data) => {
+        const password = data.password;
         if (password === ADMIN_PASSWORD) {
             adminSocketId = socket.id;
             socket.emit('admin-login-success', true);
@@ -925,7 +1059,7 @@ io.on('connection', (socket) => {
             
             console.log('管理员登录成功');
         } else {
-            socket.emit('admin-login-success', false);
+            socket.emit('admin-login-error', { message: '密码错误' });
         }
     });
 
@@ -1288,6 +1422,313 @@ io.on('connection', (socket) => {
     });
     
     // 禁言管理 - 获取禁言用户列表
+    // 投票系统事件处理
+    
+    // 创建投票
+    socket.on('create-poll', (data) => {
+        const user = users.get(socket.id);
+        if (user) {
+            // 验证用户权限
+            if (!user.permissions.allowSendMessages) {
+                socket.emit('permission-denied', { message: '您没有发送消息的权限' });
+                return;
+            }
+            
+            const { question, options, duration = 5 } = data;
+            
+            // 验证投票数据
+            if (!question || !options || options.length < 2) {
+                socket.emit('poll-error', { message: '投票问题和选项不能为空，且至少需要两个选项' });
+                return;
+            }
+            
+            // 创建投票对象
+            const pollId = `poll-${pollIdCounter++}`;
+            const poll = {
+                id: pollId,
+                creator: user.username,
+                creatorSocketId: socket.id,
+                question: question,
+                options: options.map((option, index) => ({
+                    id: `option-${index}`,
+                    text: option,
+                    votes: 0
+                })),
+                votes: new Map(), // 存储用户投票: Map<socketId, optionId>
+                createdAt: new Date(),
+                endTime: duration > 0 ? Date.now() + (duration * 60 * 1000) : null, // 将分钟转换为毫秒
+                isActive: true,
+                roomName: user.roomName
+            };
+            
+            // 存储投票
+            activePolls.set(pollId, poll);
+            
+            // 广播投票创建事件（优化版）
+            const room = rooms.get(user.roomName);
+            if (room) {
+                // 转换投票对象为客户端期望的格式
+                const clientPoll = {
+                    ...poll,
+                    votes: poll.options.map(option => option.votes),
+                    status: poll.isActive ? 'active' : 'ended',
+                    votedUsers: [],
+                    userVotes: {},
+                    options: poll.options.map(option => option.text) // 确保选项是字符串数组
+                };
+                
+                // 直接使用socket.to()广播给房间内所有用户
+                socket.to(user.roomName).emit('poll-created', clientPoll);
+                // 同时发送给创建者自己
+                socket.emit('poll-created', clientPoll);
+            }
+            
+            console.log(`[房间 ${user.roomName}] ${user.username} 创建了投票: ${question}`);
+        }
+    });
+    
+    // 提交投票
+    socket.on('vote', (data) => {
+        const user = users.get(socket.id);
+        if (user) {
+            const { pollId, optionId } = data;
+            const poll = activePolls.get(pollId);
+            
+            // 验证投票是否存在且活跃
+            if (!poll || !poll.isActive) {
+                socket.emit('poll-error', { message: '投票不存在或已结束' });
+                return;
+            }
+            
+            // 验证用户是否在投票所在房间
+            if (user.roomName !== poll.roomName) {
+                socket.emit('poll-error', { message: '您不在投票所在的房间' });
+                return;
+            }
+            
+            // 防止重复投票
+            if (poll.votes.has(socket.id)) {
+                socket.emit('poll-error', { message: '您已经投过票了' });
+                return;
+            }
+            
+            // 验证选项是否有效
+            const option = poll.options.find(opt => opt.id === optionId);
+            if (!option) {
+                socket.emit('poll-error', { message: '无效的投票选项' });
+                return;
+            }
+            
+            // 记录投票
+            poll.votes.set(socket.id, optionId);
+            option.votes++;
+            
+            // 广播投票更新事件
+            const room = rooms.get(user.roomName);
+            if (room) {
+                // 转换投票对象为客户端期望的格式
+                const clientPoll = {
+                    ...poll,
+                    votes: poll.options.map(option => option.votes),
+                    status: poll.isActive ? 'active' : 'ended',
+                    votedUsers: Array.from(poll.votes.keys()),
+                    userVotes: Object.fromEntries(poll.votes),
+                    options: poll.options.map(option => option.text) // 确保选项是字符串数组
+                };
+                
+                // 直接使用socket.to()广播给房间内所有用户
+                socket.to(user.roomName).emit('poll-updated', clientPoll);
+                // 同时发送给投票者自己
+                socket.emit('poll-updated', clientPoll);
+            }
+            
+            console.log(`[房间 ${user.roomName}] ${user.username} 对投票 "${poll.question}" 投了 ${option.text}`);
+        }
+    });
+    
+    // 结束投票
+    socket.on('end-poll', (data) => {
+        const user = users.get(socket.id);
+        if (user) {
+            const poll = activePolls.get(data.pollId);
+            
+            // 验证投票是否存在
+            if (!poll) {
+                socket.emit('poll-error', { message: '投票不存在' });
+                return;
+            }
+            
+            // 验证用户权限（只有创建者或管理员可以结束投票）
+            if (socket.id !== poll.creatorSocketId && socket.id !== adminSocketId) {
+                const userObj = users.get(socket.id);
+                if (!userObj || userObj.role !== 'superadmin') {
+                    socket.emit('permission-denied', { message: '您没有结束投票的权限' });
+                    return;
+                }
+            }
+            
+            // 结束投票
+            poll.isActive = false;
+            poll.endTime = Date.now();
+            
+            // 广播投票结束事件
+            const room = rooms.get(poll.roomName);
+            if (room) {
+                // 转换投票对象为客户端期望的格式
+                const clientPoll = {
+                    ...poll,
+                    votes: poll.options.map(option => option.votes),
+                    status: 'ended',
+                    votedUsers: Array.from(poll.votes.keys()),
+                    userVotes: Object.fromEntries(poll.votes),
+                    options: poll.options.map(option => option.text) // 确保选项是字符串数组
+                };
+                
+                // 直接使用socket.to()广播给房间内所有用户
+                socket.to(poll.roomName).emit('poll-ended', clientPoll);
+                // 同时发送给结束投票的用户
+                socket.emit('poll-ended', clientPoll);
+            }
+            
+            console.log(`[房间 ${poll.roomName}] ${user.username} 结束了投票: ${poll.question}`);
+        }
+    });
+    
+    // 获取投票状态
+    socket.on('get-polls', () => {
+        const user = users.get(socket.id);
+        if (user) {
+            const roomPolls = Array.from(activePolls.values())
+                .filter(poll => poll.roomName === user.roomName && poll.isActive)
+                .map(poll => ({
+                    ...poll,
+                    votes: poll.options.map(option => option.votes),
+                    status: poll.isActive ? 'active' : 'ended',
+                    votedUsers: Array.from(poll.votes.keys()),
+                    userVotes: Object.fromEntries(poll.votes)
+                }));
+            
+            socket.emit('polls-list', roomPolls);
+        }
+    });
+    
+    // 断开连接事件
+    socket.on('disconnect', () => {
+        const user = users.get(socket.id);
+        if (user) {
+            console.log(`用户断开连接: ${user.username} (${socket.id})`);
+            
+            // 从房间中移除用户
+            const room = rooms.get(user.roomName);
+            if (room) {
+                room.users = room.users.filter(id => id !== socket.id);
+            }
+            
+            // 清理用户数据
+            users.delete(socket.id);
+            friendships.delete(socket.id);
+            swearWordCount.delete(socket.id);
+            mutedUsers.delete(socket.id);
+            userMaxFriends.delete(socket.id);
+            messageRateLimits.delete(socket.id);
+            userConsoleLogs.delete(socket.id);
+            
+            // 清理IP连接数
+            const userIP = socket.handshake.address;
+            const ipConnSet = ipConnections.get(userIP);
+            if (ipConnSet) {
+                ipConnSet.delete(socket.id);
+                if (ipConnSet.size === 0) {
+                    ipConnections.delete(userIP);
+                } else {
+                    console.log(`[连接清理] IP ${userIP} 连接数: ${ipConnSet.size}`);
+                }
+            }
+            
+            // 广播用户离开事件
+            io.emit('user-left', {
+                username: user.username,
+                userCount: users.size,
+                users: Array.from(users.values())
+            });
+        } else {
+            // 清理未登录用户的IP连接数
+            const userIP = socket.handshake.address;
+            const ipConnSet = ipConnections.get(userIP);
+            if (ipConnSet) {
+                ipConnSet.delete(socket.id);
+                if (ipConnSet.size === 0) {
+                    ipConnections.delete(userIP);
+                } else {
+                    console.log(`[连接清理] IP ${userIP} 连接数: ${ipConnSet.size}`);
+                }
+            }
+            console.log(`未登录用户断开连接: ${socket.id}`);
+        }
+    });
+    
+    // IP管理功能（管理员）
+    
+    // 获取当前连接的IP列表
+    socket.on('admin-get-ip-list', () => {
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
+            const ipList = [];
+            ipConnections.forEach((connSet, ip) => {
+                ipList.push({
+                    ip: ip,
+                    connectionCount: connSet.size,
+                    isBanned: bannedIPs.has(ip)
+                });
+            });
+            
+            socket.emit('admin-ip-list', ipList);
+        }
+    });
+    
+    // 获取被封禁的IP列表
+    socket.on('admin-get-banned-ips', () => {
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
+            const bannedList = Array.from(bannedIPs);
+            socket.emit('admin-banned-ips', bannedList);
+        }
+    });
+    
+    // 封禁IP
+    socket.on('admin-ban-ip', (ip) => {
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
+            bannedIPs.add(ip);
+            
+            // 断开该IP的所有连接
+            const connSet = ipConnections.get(ip);
+            if (connSet) {
+                connSet.forEach(socketId => {
+                    const socket = io.sockets.sockets.get(socketId);
+                    if (socket) {
+                        socket.emit('banned', { message: '您的IP已被管理员封禁' });
+                        socket.disconnect(true);
+                    }
+                });
+                ipConnections.delete(ip);
+            }
+            
+            socket.emit('admin-ban-success', { ip: ip });
+            console.log(`[管理员] ${user.username} 封禁了IP: ${ip}`);
+        }
+    });
+    
+    // 解除IP封禁
+    socket.on('admin-unban-ip', (ip) => {
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
+            bannedIPs.delete(ip);
+            socket.emit('admin-unban-success', { ip: ip });
+            console.log(`[管理员] ${user.username} 解除了对IP的封禁: ${ip}`);
+        }
+    });
+    
     socket.on('admin-get-muted-users', () => {
         // 允许管理员和超级管理员执行操作
         const user = users.get(socket.id);
