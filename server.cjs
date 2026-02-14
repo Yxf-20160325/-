@@ -759,8 +759,8 @@ io.on('connection', (socket) => {
             rateLimitData.messages.push(now);
             
             // 消息长度限制检查
-            if (data.type === 'text' && data.message && data.message.length > 500) {
-                socket.emit('message-error', { message: '消息长度超过限制（最大500字符）' });
+            if (data.type === 'text' && data.message && data.message.length > 60) {
+                socket.emit('message-error', { message: '消息长度超过限制（最大60字符）' });
                 return;
             }
             
@@ -993,17 +993,31 @@ io.on('connection', (socket) => {
                 // 包含额外的文件和音频属性
                 fileName: data.fileName,
                 fileSize: data.fileSize,
-                contentType: data.contentType
+                contentType: data.contentType,
+                // 回复功能支持
+                replyTo: data.replyTo,
+                replyToMessage: data.replyToMessage,
+                replyToUsername: data.replyToUsername
             };
             
-            // 检查消息中是否包含@{用户名}
-            const mentions = data.message.match(/@\{([^}]+)\}/g);
+            // 检查消息中是否包含@用户名或@{用户名}格式
+            const mentions = data.message.match(/@(?:\{([^}]+)\}|([a-zA-Z0-9_`]+))/g);
             if (mentions && allowMentions) {
+                console.log(`[调试] 检测到@提及: ${mentions.join(', ')}`);
                 mentions.forEach(mention => {
-                    const mentionedUsername = mention.replace('@{', '').replace('}', '');
+                    let mentionedUsername;
+                    if (mention.startsWith('@{')) {
+                        // 处理@{用户名}格式
+                        mentionedUsername = mention.replace('@{', '').replace('}', '');
+                    } else {
+                        // 处理@用户名格式
+                        mentionedUsername = mention.substring(1);
+                    }
+                    console.log(`[调试] 查找用户: ${mentionedUsername}`);
                     const mentionedUser = Array.from(users.values()).find(u => u.username === mentionedUsername);
                     
                     if (mentionedUser) {
+                        console.log(`[调试] 找到用户: ${mentionedUser.username}, socketId: ${mentionedUser.socketId}`);
                         // 发送@通知给被@的用户
                         io.to(mentionedUser.socketId).emit('mention-notification', {
                             fromUsername: user.username,
@@ -1013,8 +1027,14 @@ io.on('connection', (socket) => {
                         });
                         
                         console.log(`[通知] ${user.username} @了 ${mentionedUser.username}`);
+                    } else {
+                        console.log(`[调试] 未找到用户: ${mentionedUsername}`);
                     }
                 });
+            } else {
+                if (mentions) {
+                    console.log(`[调试] @功能已关闭，提及: ${mentions.join(', ')}`);
+                }
             }
             
             // 获取用户所在的房间
@@ -1845,7 +1865,17 @@ io.on('connection', (socket) => {
                         targetLanguage: 'zh',
                         autoTranslate: false,
                         soundNotification: true,
-                        mentionNotification: true
+                        mentionNotification: true,
+                        developerMode: false,
+                        mirrorVideo: true,
+                        remoteMirrorVideo: false,
+                        autoAdjustVolume: true,
+                        enableSubtitles: false,
+                        speakingThreshold: 40,
+                        volumeReduction: 30,
+                        subtitlesFontSize: 16,
+                        enableAIChat: false,
+                        aiModel: 'glm4'
                     };
                 }
                 
@@ -2068,9 +2098,18 @@ io.on('connection', (socket) => {
         // 允许管理员和超级管理员执行操作
         const user = users.get(socket.id);
         if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
+            // 清空全局消息Map
             messages.clear();
+            
+            // 清空所有房间的消息数组
+            rooms.forEach(room => {
+                room.messages = [];
+            });
+            
+            // 通知所有用户消息已清空
             io.emit('messages-cleared');
-            console.log('管理员清空了所有消息');
+            
+            console.log('管理员清空了所有消息（包括所有房间的消息历史）');
         }
     });
     
@@ -2506,9 +2545,11 @@ io.on('connection', (socket) => {
                 if (messageIndex !== -1) {
                     const message = room.messages[messageIndex];
                     if (message.senderSocketId === socket.id) {
-                        // 标记消息为已撤回
-                        message.recalled = true;
-                        message.recallTime = new Date().toLocaleTimeString();
+                        // 从房间消息数组中完全删除消息
+                        room.messages.splice(messageIndex, 1);
+                        
+                        // 从全局消息Map中删除消息
+                        messages.delete(messageId);
                         
                         // 发送撤回通知给房间内所有用户
                         room.users.forEach(userId => {
@@ -2520,7 +2561,7 @@ io.on('connection', (socket) => {
                             io.to(adminSocketId).emit('message-recalled', messageId);
                         }
                         
-                        console.log(`[房间 ${user.roomName}] ${message.username} 撤回了一条消息`);
+                        console.log(`[房间 ${user.roomName}] ${message.username} 撤回了一条消息（已从历史中删除）`);
                     }
                 }
             }
@@ -3097,6 +3138,12 @@ io.on('connection', (socket) => {
         // 检查私聊权限
         if (!user.permissions.allowPrivateChat) {
             socket.emit('private-message-error', { message: '您没有私聊的权限' });
+            return;
+        }
+        
+        // 消息长度限制检查
+        if (data.type === 'text' && data.message && data.message.length > 60) {
+            socket.emit('private-message-error', { message: '消息长度超过限制（最大60字符）' });
             return;
         }
         
