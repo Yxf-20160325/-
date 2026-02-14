@@ -1252,7 +1252,7 @@
                     <button class="action-btn" id="videoCallBtn" title="视频通话">📹</button>
                     <button class="action-btn" id="audioCallBtn" title="语音通话">📞</button>
                 </div>
-                <input type="text" id="messageInput" placeholder="输入消息..." maxlength="500">
+                <textarea id="messageInput" placeholder="输入消息..." maxlength="60" rows="3" style="resize: none;"></textarea>
                 <button id="sendBtn">发送</button>
                 <!-- 上传进度条 -->
                 <div id="uploadProgress" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); z-index: 9999; justify-content: center; align-items: center;">
@@ -1402,7 +1402,7 @@
                     <button class="action-btn" id="privateChatAudioBtn" title="发送语音">🎤</button>
                 </div>
                 <div style="display: flex; gap: 10px;">
-                    <input type="text" id="privateChatInput" placeholder="输入私聊消息..." maxlength="500" style="flex: 1;">
+                    <textarea id="privateChatInput" placeholder="输入私聊消息..." maxlength="60" rows="3" style="flex: 1; resize: none;"></textarea>
                     <button id="privateChatSendBtn">发送</button>
                 </div>
             </div>
@@ -1744,6 +1744,23 @@
             <div id="callUserList"></div>
             <div class="modal-buttons">
                 <button type="button" class="btn btn-cancel" onclick="closeCallUserModal()">取消</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 媒体预览模态框 -->
+    <div class="modal" id="mediaPreviewModal">
+        <div class="modal-content" style="max-width: 90vw; max-height: 90vh; overflow: auto; background: transparent; box-shadow: none;">
+            <div style="position: relative; display: inline-block;">
+                <button style="position: absolute; top: 10px; right: 10px; background: rgba(0, 0, 0, 0.7); color: white; border: none; border-radius: 50%; width: 40px; height: 40px; cursor: pointer; font-size: 20px; z-index: 1000;">
+                    ×
+                </button>
+                <div id="mediaPreviewContent" style="max-width: 80vw; max-height: 80vh;"></div>
+                <div style="position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px;">
+                    <button class="friend-btn" id="mediaDownloadBtn" style="background: rgba(0, 0, 0, 0.7); color: white; border: none; border-radius: 5px; padding: 8px 16px; cursor: pointer; font-size: 14px;">
+                        下载
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -2191,15 +2208,45 @@
         
         // 更新设置模态框状态
         function updateSettingsModalStatus() {
-            // 获取所有非通话设置相关的表单元素
+            // 获取所有设置相关的表单元素
             const generalFormElements = [
+                // 翻译设置
                 document.getElementById('targetLanguageSelect'),
                 document.getElementById('autoTranslateCheckbox'),
+                
+                // 通知设置
                 document.getElementById('soundNotificationCheckbox'),
                 document.getElementById('mentionNotificationCheckbox'),
                 document.getElementById('developerModeCheckbox'),
-                document.getElementById('mirrorVideoCheckbox')
+                
+                // 视频设置
+                document.getElementById('mirrorVideoCheckbox'),
+                document.getElementById('remoteMirrorVideoCheckbox'),
+                
+                // 通话设置
+                document.getElementById('autoAdjustVolumeCheckbox'),
+                document.getElementById('enableSubtitlesCheckbox'),
+                document.getElementById('speakingThreshold'),
+                document.getElementById('volumeReduction'),
+                document.getElementById('subtitlesFontSize'),
+                
+                // AI聊天设置
+                document.getElementById('enableAIChatCheckbox'),
+                document.getElementById('glm4ApiKey'),
+                document.getElementById('deepseekModelName'),
+                document.getElementById('deepseekApiKey'),
+                document.getElementById('siliconflowModelName'),
+                document.getElementById('siliconflowApiKey'),
+                document.getElementById('siliconflowApiUrl'),
+                document.getElementById('customApiUrl'),
+                document.getElementById('customApiKey'),
+                document.getElementById('customModelName'),
+                document.getElementById('aiPrompt')
             ];
+            
+            // 获取所有AI模型选择单选按钮
+            const aiModelRadios = document.querySelectorAll('input[name="aiModel"]');
+            const aiConsentRadios = document.querySelectorAll('input[name="aiConsent"]');
             
             // 获取视频参数调整相关的表单元素（通话中可调整）
             const videoParamElements = [
@@ -2221,6 +2268,24 @@
                         element.disabled = true;
                         element.style.opacity = '0.5';
                         element.style.cursor = 'not-allowed';
+                    }
+                });
+                
+                // 禁用AI模型选择单选按钮
+                aiModelRadios.forEach(radio => {
+                    if (radio) {
+                        radio.disabled = true;
+                        radio.style.opacity = '0.5';
+                        radio.style.cursor = 'not-allowed';
+                    }
+                });
+                
+                // 禁用AI同意设置单选按钮
+                aiConsentRadios.forEach(radio => {
+                    if (radio) {
+                        radio.disabled = true;
+                        radio.style.opacity = '0.5';
+                        radio.style.cursor = 'not-allowed';
                     }
                 });
                 
@@ -2252,6 +2317,24 @@
                         element.disabled = false;
                         element.style.opacity = '1';
                         element.style.cursor = 'pointer';
+                    }
+                });
+                
+                // 启用AI模型选择单选按钮
+                aiModelRadios.forEach(radio => {
+                    if (radio) {
+                        radio.disabled = false;
+                        radio.style.opacity = '1';
+                        radio.style.cursor = 'pointer';
+                    }
+                });
+                
+                // 启用AI同意设置单选按钮
+                aiConsentRadios.forEach(radio => {
+                    if (radio) {
+                        radio.disabled = false;
+                        radio.style.opacity = '1';
+                        radio.style.cursor = 'pointer';
                     }
                 });
                 
@@ -5489,6 +5572,10 @@
                     alert('您没有发送消息的权限');
                     return;
                 }
+                if (message.length > 60) {
+                    alert('消息长度不能超过60字');
+                    return;
+                }
                 socket.emit('message', { message, type: 'text' });
                 messageInput.value = '';
             }
@@ -6245,7 +6332,8 @@
         }
 
         messageInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
                 sendBtn.click();
             }
         });
@@ -6409,9 +6497,9 @@
                 }
                 
                 // 检查文件大小，限制为30MB
-                const maxFileSize = 300 * 1024 * 1024; // 300MB
+                const maxFileSize = 30 * 1024 * 1024; // 30MB
                 if (file.size > maxFileSize) {
-                    alert('文件大小超过限制，最大支持300MB');
+                    alert('文件大小超过限制，最大支持30MB');
                     imageInput.value = '';
                     return;
                 }
@@ -6595,9 +6683,6 @@
                     loginForm.classList.add('hidden');
                     chatForm.classList.remove('hidden');
                     messageInput.focus();
-                    
-                    // 初始化投票系统
-                    handleLoginSuccess();
                     
                     // 初始化通话系统
                     callSystem = new CallSystem(socket, username);
@@ -7542,6 +7627,10 @@
         privateChatSendBtn.addEventListener('click', () => {
             const message = privateChatInput.value.trim();
             if (message && currentPrivateChatTarget) {
+                if (message.length > 60) {
+                    alert('消息长度不能超过60字');
+                    return;
+                }
                 socket.emit('private-message', {
                     targetSocketId: currentPrivateChatTarget,
                     message: message,
@@ -7552,7 +7641,8 @@
         });
         
         privateChatInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
                 privateChatSendBtn.click();
             }
         });
@@ -7894,17 +7984,28 @@
             
             let contentHtml;
             if (data.type === 'image') {
-                contentHtml = `<img src="${data.message}" alt="图片" style="max-width: 100%; max-height: 200px; border-radius: 5px;">`;
+                contentHtml = `<img src="${data.message}" alt="图片" style="max-width: 100%; max-height: 200px; border-radius: 5px; cursor: pointer; transition: transform 0.2s;" onclick="openMediaPreview('${data.message}', 'image', '${data.fileName || 'image'}')" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">`;
             } else if (data.type === 'audio') {
                 contentHtml = `<audio controls style="width: 100%; border-radius: 5px;"><source src="${data.message}" type="${data.contentType || 'audio/webm'}">您的浏览器不支持音频播放</think_never_used_51bce0c785ca2f68081bfa7d91973934>`;
             } else if (data.type === 'file') {
                 // 处理文件消息，显示下载链接
                 const fileName = data.fileName || '文件null';
                 const fileSize = data.fileSize ? formatFileSize(data.fileSize) : '';
-                contentHtml = `<a href="${data.message}" target="_blank" download="${fileName}" style="color: #667eea; text-decoration: underline; display: inline-block; padding: 10px; background: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6;">📁 ${fileName} ${fileSize}</a>`;
+                
+                // 检查是否为视频文件
+                if (isVideoFile(fileName)) {
+                    // 视频文件直接显示
+                    contentHtml = `<video src="${data.message}" controls style="max-width: 100%; max-height: 300px; border-radius: 5px; cursor: pointer; transition: transform 0.2s;" onclick="openMediaPreview('${data.message}', 'video', '${fileName}')" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">您的浏览器不支持视频播放</video>`;
+                } else {
+                    // 其他文件显示下载链接
+                    contentHtml = `<a href="${data.message}" target="_blank" download="${fileName}" style="color: #667eea; text-decoration: underline; display: inline-block; padding: 10px; background: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6;">📁 ${fileName} ${fileSize}</a>`;
+                }
             } else {
                 // 处理文本消息，识别并转换链接
                 let text = escapeHtml(data.message);
+                
+                // 将换行符转换为HTML换行标签
+                text = text.replace(/\n/g, '<br>');
                 
                 // 链接识别正则表达式
                 const urlRegex = /(https?:\/\/[\w\-_]+(\.[\w\-_]+)+([\w\-\.,@?^=%&:/~\+#;]*[\w\-\@?^=%&/~\+#])?)/g;
@@ -8206,17 +8307,28 @@
             
             let contentHtml;
             if (data.type === 'image') {
-                contentHtml = `<img src="${data.message}" alt="图片" style="max-width: 100%; max-height: 200px; border-radius: 5px;">`;
+                contentHtml = `<img src="${data.message}" alt="图片" style="max-width: 100%; max-height: 200px; border-radius: 5px; cursor: pointer; transition: transform 0.2s;" onclick="openMediaPreview('${data.message}', 'image', '${data.fileName || 'image'}')" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">`;
             } else if (data.type === 'audio') {
                 contentHtml = `<audio controls style="width: 100%; border-radius: 5px;"><source src="${data.message}" type="${data.contentType || 'audio/webm'}">您的浏览器不支持音频播放</think_never_used_51bce0c785ca2f68081bfa7d91973934>`;
             } else if (data.type === 'file') {
                 // 处理文件消息，显示下载链接
                 const fileName = data.fileName || '文件';
                 const fileSize = data.fileSize ? formatFileSize(data.fileSize) : '';
-                contentHtml = `<a href="${data.message}" target="_blank" download="${fileName}" style="color: #667eea; text-decoration: underline; display: inline-block; padding: 10px; background: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6;">📁 ${fileName} ${fileSize}</a>`;
+                
+                // 检查是否为视频文件
+                if (isVideoFile(fileName)) {
+                    // 视频文件直接显示
+                    contentHtml = `<video src="${data.message}" controls style="max-width: 100%; max-height: 300px; border-radius: 5px; cursor: pointer; transition: transform 0.2s;" onclick="openMediaPreview('${data.message}', 'video', '${fileName}')" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">您的浏览器不支持视频播放</video>`;
+                } else {
+                    // 其他文件显示下载链接
+                    contentHtml = `<a href="${data.message}" target="_blank" download="${fileName}" style="color: #667eea; text-decoration: underline; display: inline-block; padding: 10px; background: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6;">📁 ${fileName} ${fileSize}</a>`;
+                }
             } else {
                 // 处理文本消息，识别并转换链接
                 let text = escapeHtml(data.message);
+                
+                // 将换行符转换为HTML换行标签
+                text = text.replace(/\n/g, '<br>');
                 
                 // 链接识别正则表达式
                 const urlRegex = /(https?:\/\/[\w\-_]+(\.[\w\-_]+)+([\w\-\.,@?^=%&:/~\+#;]*[\w\-\@?^=%&/~\+#])?)/g;
@@ -8260,16 +8372,8 @@
                 <div class="message-content">${contentHtml}</div>
                 ${actionsHtml}
             `;
-            
-            // 使用文档片段减少重排
-            const fragment = document.createDocumentFragment();
-            fragment.appendChild(messageDiv);
-            messagesDiv.appendChild(fragment);
-            
-            // 优化滚动，只在消息容器可见时滚动
-            if (messagesDiv.scrollHeight > messagesDiv.clientHeight) {
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            }
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
             
             // 发送已读通知（非自己发送的消息）
             if (data.username !== username && data.id) {
@@ -8288,17 +8392,12 @@
             }
         }
 
-        // 优化系统消息添加，使用文档片段减少DOM操作
         function addSystemMessage(text, isAdmin = false) {
             const messageDiv = document.createElement('div');
             messageDiv.className = 'system-message' + (isAdmin ? ' admin' : '');
             messageDiv.textContent = text;
             messagesDiv.appendChild(messageDiv);
-            
-            // 优化滚动，只在消息容器可见时滚动
-            if (messagesDiv.scrollHeight > messagesDiv.clientHeight) {
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            }
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
 
         function updateUserList(users) {
@@ -8361,6 +8460,85 @@
             const sizes = ['B', 'KB', 'MB', 'GB'];
             const i = Math.floor(Math.log(bytes) / Math.log(k));
             return `(${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]})`;
+        }
+        
+        // 打开媒体预览模态框
+        function openMediaPreview(url, type, fileName) {
+            const modal = document.getElementById('mediaPreviewModal');
+            const content = document.getElementById('mediaPreviewContent');
+            const downloadBtn = document.getElementById('mediaDownloadBtn');
+            
+            // 清空内容
+            content.innerHTML = '';
+            
+            // 根据类型显示不同内容
+            if (type === 'image') {
+                const img = document.createElement('img');
+                img.src = url;
+                img.style.maxWidth = '80vw';
+                img.style.maxHeight = '80vh';
+                img.style.cursor = 'pointer';
+                content.appendChild(img);
+            } else if (type === 'video') {
+                const video = document.createElement('video');
+                video.src = url;
+                video.controls = true;
+                video.style.maxWidth = '80vw';
+                video.style.maxHeight = '80vh';
+                video.style.cursor = 'pointer';
+                content.appendChild(video);
+                
+                // 添加点击全屏功能
+                video.onclick = function(e) {
+                    if (!document.fullscreenElement) {
+                        if (video.requestFullscreen) {
+                            video.requestFullscreen();
+                        } else if (video.webkitRequestFullscreen) {
+                            video.webkitRequestFullscreen();
+                        } else if (video.msRequestFullscreen) {
+                            video.msRequestFullscreen();
+                        }
+                    } else {
+                        if (document.exitFullscreen) {
+                            document.exitFullscreen();
+                        } else if (document.webkitExitFullscreen) {
+                            document.webkitExitFullscreen();
+                        } else if (document.msExitFullscreen) {
+                            document.msExitFullscreen();
+                        }
+                    }
+                };
+            }
+            
+            // 设置下载按钮
+            downloadBtn.onclick = function() {
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName || 'media';
+                a.click();
+            };
+            
+            // 显示模态框
+            modal.classList.add('active');
+            
+            // 添加关闭事件
+            modal.querySelector('button').onclick = function() {
+                modal.classList.remove('active');
+            };
+            
+            // 点击模态框背景关闭
+            modal.onclick = function(e) {
+                if (e.target === modal) {
+                    modal.classList.remove('active');
+                }
+            };
+        }
+        
+        // 检查文件是否为视频文件
+        function isVideoFile(fileName) {
+            const videoExtensions = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.wmv'];
+            const lowerFileName = fileName.toLowerCase();
+            return videoExtensions.some(ext => lowerFileName.endsWith(ext));
         }
         
         // 搜索消息
@@ -9533,564 +9711,6 @@
                 console.error('获取麦克风失败:', error);
                 alert('无法访问麦克风，请检查权限设置');
             }
-        }
-    </script>
-
-    <!-- 投票功能 -->
-    <style>
-        /* 投票模态框样式 */
-        #createPollModal .modal-content {
-            max-width: 600px;
-        }
-        
-        #createPollModal input,
-        #createPollModal select {
-            width: 100%;
-            padding: 10px;
-            margin: 8px 0;
-            border: 2px solid #dee2e6;
-            border-radius: 8px;
-            font-size: 14px;
-        }
-        
-        #createPollModal input:focus,
-        #createPollModal select:focus {
-            border-color: #667eea;
-            outline: none;
-        }
-        
-        .option-input-group {
-            display: flex;
-            gap: 10px;
-            margin: 8px 0;
-        }
-        
-        .option-input-group input {
-            flex: 1;
-        }
-        
-        .add-option-btn,
-        .remove-option-btn {
-            padding: 0 15px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 16px;
-            transition: all 0.2s;
-        }
-        
-        .add-option-btn {
-            background: #28a745;
-            color: white;
-        }
-        
-        .add-option-btn:hover {
-            background: #218838;
-        }
-        
-        .remove-option-btn {
-            background: #dc3545;
-            color: white;
-        }
-        
-        .remove-option-btn:hover {
-            background: #c82333;
-        }
-        
-        /* 投票消息样式 */
-        .poll-message {
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            padding: 15px;
-            border-radius: 12px;
-            margin: 10px 0;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        }
-        
-        .poll-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
-        }
-        
-        .poll-question {
-            font-weight: bold;
-            font-size: 16px;
-            color: #333;
-        }
-        
-        .poll-status {
-            font-size: 12px;
-            padding: 3px 8px;
-            border-radius: 12px;
-            font-weight: bold;
-        }
-        
-        .poll-status.active {
-            background: #28a745;
-            color: white;
-        }
-        
-        .poll-status.ended {
-            background: #6c757d;
-            color: white;
-        }
-        
-        .poll-options {
-            margin-bottom: 12px;
-        }
-        
-        .poll-option {
-            margin: 8px 0;
-            padding: 10px;
-            background: white;
-            border: 2px solid #dee2e6;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .poll-option:hover {
-            border-color: #667eea;
-            box-shadow: 0 2px 5px rgba(102, 126, 234, 0.2);
-        }
-        
-        .poll-option.voted {
-            border-color: #28a745;
-            background: #f8fff8;
-        }
-        
-        .poll-option-text {
-            z-index: 1;
-            position: relative;
-        }
-        
-        .poll-option-bar {
-            position: absolute;
-            top: 0;
-            left: 0;
-            height: 100%;
-            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-            opacity: 0.2;
-            z-index: 0;
-            transition: width 0.5s ease;
-        }
-        
-        .poll-results {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 5px;
-            font-size: 12px;
-            color: #666;
-        }
-        
-        .poll-footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 12px;
-            color: #666;
-        }
-        
-        .poll-actions {
-            display: flex;
-            gap: 10px;
-        }
-        
-        .poll-action-btn {
-            padding: 5px 10px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 12px;
-            transition: all 0.2s;
-        }
-        
-        .poll-action-btn.primary {
-            background: #667eea;
-            color: white;
-        }
-        
-        .poll-action-btn.primary:hover {
-            background: #764ba2;
-        }
-        
-        .poll-action-btn.secondary {
-            background: #6c757d;
-            color: white;
-        }
-        
-        .poll-action-btn.secondary:hover {
-            background: #5a6268;
-        }
-    </style>
-
-    <!-- 投票创建模态框 -->
-    <div class="modal" id="createPollModal">
-        <div class="modal-content">
-            <h3>创建投票</h3>
-            <div>
-                <label for="pollQuestion">投票问题：</label>
-                <input type="text" id="pollQuestion" placeholder="请输入投票问题" maxlength="100">
-                
-                <label>投票选项：</label>
-                <div id="pollOptionsContainer">
-                    <div class="option-input-group">
-                        <input type="text" class="poll-option-input" placeholder="选项 1" maxlength="50">
-                        <button type="button" class="remove-option-btn" disabled>−</button>
-                    </div>
-                    <div class="option-input-group">
-                        <input type="text" class="poll-option-input" placeholder="选项 2" maxlength="50">
-                        <button type="button" class="remove-option-btn">−</button>
-                    </div>
-                </div>
-                <button type="button" class="add-option-btn" id="addOptionBtn">+ 添加选项</button>
-                
-                <label for="pollDuration">投票时长（分钟）：</label>
-                <select id="pollDuration">
-                    <option value="5">5分钟</option>
-                    <option value="15">15分钟</option>
-                    <option value="30">30分钟</option>
-                    <option value="60">1小时</option>
-                    <option value="1440">24小时</option>
-                    <option value="0">无限制</option>
-                </select>
-            </div>
-            <div class="modal-buttons">
-                <button type="button" class="btn btn-cancel" onclick="pollSystem.closeCreatePollModal()">取消</button>
-                <button type="button" class="btn btn-primary" id="createPollBtn">创建投票</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 投票功能脚本 -->
-    <script>
-        // 投票功能
-        class PollSystem {
-            constructor(socket) {
-                this.socket = socket;
-                this.initElements();
-                this.initEventListeners();
-                this.initSocketListeners();
-            }
-            
-            initElements() {
-                this.createPollBtn = document.getElementById('createPollBtn');
-                this.addOptionBtn = document.getElementById('addOptionBtn');
-                this.pollOptionsContainer = document.getElementById('pollOptionsContainer');
-                this.pollQuestion = document.getElementById('pollQuestion');
-                this.pollDuration = document.getElementById('pollDuration');
-                this.createPollModal = document.getElementById('createPollModal');
-            }
-            
-            initEventListeners() {
-                // 添加投票按钮
-                if (this.createPollBtn) {
-                    this.createPollBtn.addEventListener('click', () => this.createPoll());
-                }
-                
-                // 添加选项按钮
-                if (this.addOptionBtn) {
-                    this.addOptionBtn.addEventListener('click', () => this.addOption());
-                }
-                
-                // 动态绑定删除选项按钮事件
-                if (this.pollOptionsContainer) {
-                    this.pollOptionsContainer.addEventListener('click', (e) => {
-                        if (e.target.classList.contains('remove-option-btn')) {
-                            this.removeOption(e.target);
-                        }
-                    });
-                }
-                
-                // 监听消息区域点击事件，处理投票
-                const messages = document.getElementById('messages');
-                if (messages) {
-                    messages.addEventListener('click', (e) => {
-                        if (e.target.closest('.poll-option')) {
-                            const pollId = e.target.closest('.poll-message').dataset.pollId;
-                            const optionIndex = parseInt(e.target.closest('.poll-option').dataset.optionIndex);
-                            this.vote(pollId, optionIndex);
-                        }
-                    });
-                }
-            }
-            
-            initSocketListeners() {
-                // 接收投票创建事件
-                this.socket.on('poll-created', (poll) => {
-                    this.addPollMessage(poll);
-                });
-                
-                // 接收投票更新事件
-                this.socket.on('poll-updated', (poll) => {
-                    this.updatePollMessage(poll);
-                });
-                
-                // 接收投票结束事件
-                this.socket.on('poll-ended', (poll) => {
-                    this.updatePollMessage(poll);
-                });
-                
-                // 接收投票列表事件
-                this.socket.on('polls-list', (polls) => {
-                    polls.forEach(poll => {
-                        this.addPollMessage(poll);
-                    });
-                });
-            }
-            
-            addOption() {
-                const optionGroups = this.pollOptionsContainer.querySelectorAll('.option-input-group');
-                if (optionGroups.length >= 10) {
-                    alert('最多只能添加10个选项');
-                    return;
-                }
-                
-                const newOptionGroup = document.createElement('div');
-                newOptionGroup.className = 'option-input-group';
-                newOptionGroup.innerHTML = `
-                    <input type="text" class="poll-option-input" placeholder="选项 ${optionGroups.length + 1}" maxlength="50">
-                    <button type="button" class="remove-option-btn">−</button>
-                `;
-                this.pollOptionsContainer.appendChild(newOptionGroup);
-                
-                // 更新删除按钮状态
-                this.updateRemoveButtons();
-            }
-            
-            removeOption(button) {
-                const optionGroups = this.pollOptionsContainer.querySelectorAll('.option-input-group');
-                if (optionGroups.length <= 2) {
-                    return;
-                }
-                
-                button.parentElement.remove();
-                
-                // 更新删除按钮状态和选项序号
-                this.updateRemoveButtons();
-                this.updateOptionPlaceholders();
-            }
-            
-            updateRemoveButtons() {
-                const removeButtons = this.pollOptionsContainer.querySelectorAll('.remove-option-btn');
-                removeButtons.forEach((btn, index) => {
-                    btn.disabled = index === 0;
-                });
-            }
-            
-            updateOptionPlaceholders() {
-                const optionInputs = this.pollOptionsContainer.querySelectorAll('.poll-option-input');
-                optionInputs.forEach((input, index) => {
-                    input.placeholder = `选项 ${index + 1}`;
-                });
-            }
-            
-            createPoll() {
-                const question = this.pollQuestion.value.trim();
-                const optionInputs = this.pollOptionsContainer.querySelectorAll('.poll-option-input');
-                const options = Array.from(optionInputs).map(input => input.value.trim()).filter(opt => opt);
-                const duration = parseInt(this.pollDuration.value);
-                
-                if (!question) {
-                    alert('请输入投票问题');
-                    return;
-                }
-                
-                if (options.length < 2) {
-                    alert('至少需要2个有效选项');
-                    return;
-                }
-                
-                if (options.length > 10) {
-                    alert('最多只能有10个选项');
-                    return;
-                }
-                
-                // 检查选项是否重复
-                const uniqueOptions = [...new Set(options)];
-                if (uniqueOptions.length !== options.length) {
-                    alert('选项不能重复');
-                    return;
-                }
-                
-                this.socket.emit('create-poll', {
-                    question,
-                    options,
-                    duration
-                });
-                
-                this.closeCreatePollModal();
-                this.resetForm();
-            }
-            
-            vote(pollId, optionIndex) {
-                this.socket.emit('vote', {
-                    pollId,
-                    optionId: `option-${optionIndex}`
-                });
-            }
-            
-            addPollMessage(poll) {
-                const messages = document.getElementById('messages');
-                if (!messages) return;
-                
-                // 检查是否已存在该投票
-                if (document.querySelector(`.poll-message[data-poll-id="${poll.id}"]`)) {
-                    return;
-                }
-                
-                // 调试：查看收到的投票对象结构
-                console.log('收到投票对象:', poll);
-                console.log('投票选项:', poll.options);
-                console.log('选项类型:', typeof poll.options[0]);
-                
-                // 确保选项是字符串数组
-                if (Array.isArray(poll.options)) {
-                    poll.options = poll.options.map(option => {
-                        if (typeof option === 'object') {
-                            return option.text || JSON.stringify(option);
-                        }
-                        return option;
-                    });
-                }
-                
-                const pollElement = document.createElement('div');
-                pollElement.className = 'message poll-message';
-                pollElement.dataset.pollId = poll.id;
-                pollElement.innerHTML = this.generatePollHTML(poll);
-                
-                messages.appendChild(pollElement);
-                messages.scrollTop = messages.scrollHeight;
-            }
-            
-            updatePollMessage(poll) {
-                const pollElement = document.querySelector(`.poll-message[data-poll-id="${poll.id}"]`);
-                if (pollElement) {
-                    // 确保选项是字符串数组
-                    if (Array.isArray(poll.options)) {
-                        poll.options = poll.options.map(option => {
-                            if (typeof option === 'object') {
-                                return option.text || JSON.stringify(option);
-                            }
-                            return option;
-                        });
-                    }
-                    pollElement.innerHTML = this.generatePollHTML(poll);
-                }
-            }
-            
-            generatePollHTML(poll) {
-                const totalVotes = poll.votes.reduce((sum, vote) => sum + vote, 0);
-                const isActive = poll.status === 'active';
-                const hasVoted = poll.votedUsers.includes(username);
-                
-                let optionsHTML = '';
-                poll.options.forEach((option, index) => {
-                    const voteCount = poll.votes[index];
-                    const percentage = totalVotes > 0 ? Math.round((voteCount / totalVotes) * 100) : 0;
-                    const isVoted = poll.userVotes[socket.id] === index;
-                    
-                    optionsHTML += `
-                        <div class="poll-option ${isVoted ? 'voted' : ''}" data-option-index="${index}" ${!isActive || hasVoted ? 'style="cursor: default;"' : ''}>
-                            <div class="poll-option-bar" style="width: ${percentage}%;"></div>
-                            <div class="poll-option-text">${typeof option === 'object' ? option.text || JSON.stringify(option) : option}</div>
-                            <div class="poll-results">
-                                <span>${voteCount} 票</span>
-                                <span>${percentage}%</span>
-                            </div>
-                        </div>
-                    `;
-                });
-                
-                return `
-                    <div class="message-header">
-                        <span class="username">${poll.creator}</span>
-                        <span class="timestamp">${new Date(poll.createdAt).toLocaleString()}</span>
-                    </div>
-                    <div class="poll-header">
-                        <div class="poll-question">${poll.question}</div>
-                        <div class="poll-status ${isActive ? 'active' : 'ended'}">${isActive ? '进行中' : '已结束'}</div>
-                    </div>
-                    <div class="poll-options">
-                        ${optionsHTML}
-                    </div>
-                    <div class="poll-footer">
-                        <div>总票数: ${totalVotes}</div>
-                        ${isActive && poll.creator === username ? `
-                            <div class="poll-actions">
-                                <button type="button" class="poll-action-btn secondary" onclick="pollSystem.endPoll('${poll.id}')">结束投票</button>
-                            </div>
-                        ` : ''}
-                    </div>
-                `;
-            }
-            
-            endPoll(pollId) {
-                this.socket.emit('end-poll', { pollId });
-            }
-            
-            openCreatePollModal() {
-                if (this.createPollModal) {
-                    this.createPollModal.classList.add('active');
-                }
-            }
-            
-            closeCreatePollModal() {
-                if (this.createPollModal) {
-                    this.createPollModal.classList.remove('active');
-                }
-            }
-            
-            resetForm() {
-                this.pollQuestion.value = '';
-                this.pollDuration.value = '5';
-                
-                // 重置选项
-                this.pollOptionsContainer.innerHTML = `
-                    <div class="option-input-group">
-                        <input type="text" class="poll-option-input" placeholder="选项 1" maxlength="50">
-                        <button type="button" class="remove-option-btn" disabled>−</button>
-                    </div>
-                    <div class="option-input-group">
-                        <input type="text" class="poll-option-input" placeholder="选项 2" maxlength="50">
-                        <button type="button" class="remove-option-btn">−</button>
-                    </div>
-                `;
-            }
-        }
-        
-        // 全局变量
-        let pollSystem;
-        
-        // 在连接成功后初始化投票系统
-        function initPollSystem() {
-            pollSystem = new PollSystem(socket);
-            
-            // 添加创建投票按钮到动作按钮区域
-            const actionButtons = document.querySelector('.action-buttons');
-            if (actionButtons) {
-                const pollButton = document.createElement('button');
-                pollButton.className = 'action-btn';
-                pollButton.id = 'pollBtn';
-                pollButton.title = '创建投票';
-                pollButton.innerHTML = '📊';
-                pollButton.addEventListener('click', () => pollSystem.openCreatePollModal());
-                actionButtons.appendChild(pollButton);
-            }
-            
-            // 获取当前活跃的投票
-            socket.emit('get-polls');
-        }
-        
-        // 在登录成功后初始化投票系统
-        function handleLoginSuccess() {
-            // 现有的登录成功处理代码...
-            
-            // 初始化投票系统
-            initPollSystem();
         }
     </script>
 </body>
