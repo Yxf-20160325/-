@@ -108,6 +108,73 @@
         .message {
             margin-bottom: 15px;
             animation: slideIn 0.3s ease;
+            display: flex;
+            align-items: flex-start;
+            position: relative;
+        }
+
+        .message-checkbox {
+            margin-right: 10px;
+            margin-top: 8px;
+            cursor: pointer;
+        }
+
+        .batch-actions {
+            position: fixed;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            display: none;
+            gap: 10px;
+            z-index: 1000;
+        }
+
+        .batch-actions.active {
+            display: flex;
+        }
+
+        .batch-btn {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .batch-btn.delete {
+            background: #dc3545;
+            color: white;
+        }
+
+        .batch-btn.forward {
+            background: #667eea;
+            color: white;
+        }
+
+        .batch-btn.read {
+            background: #28a745;
+            color: white;
+        }
+
+        .batch-btn.unread {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .batch-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .batch-count {
+            margin-right: 10px;
+            font-weight: bold;
+            color: #666;
         }
 
         @keyframes slideIn {
@@ -125,6 +192,7 @@
             display: flex;
             align-items: center;
             margin-bottom: 5px;
+            flex: 1;
         }
 
         .username {
@@ -144,6 +212,13 @@
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
             word-wrap: break-word;
             color: #333;
+            flex: 1;
+        }
+
+        .message-content-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
         }
 
 
@@ -483,7 +558,8 @@
         }
 
         .user-item {
-            display: block;
+            display: flex;
+            align-items: center;
             width: 100%;
             margin-bottom: 10px;
             padding: 10px 15px;
@@ -527,6 +603,15 @@
             box-shadow: 0 2px 5px rgba(102, 126, 234, 0.2);
         }
 
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            margin-right: 10px;
+            object-fit: cover;
+            border: 2px solid #dee2e6;
+        }
+
         .user-color {
             width: 12px;
             height: 12px;
@@ -545,7 +630,49 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            max-width: calc(100% - 20px);
+            max-width: calc(100% - 60px);
+        }
+
+        /* 头像上传相关样式 */
+        .avatar-upload-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            font-size: 12px;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .user-item:hover .avatar-upload-btn {
+            display: flex;
+        }
+
+        .avatar-upload-btn:hover {
+            background: rgba(0, 0, 0, 0.8);
+        }
+
+        /* 消息中的头像样式 */
+        .message-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            margin-right: 10px;
+            object-fit: cover;
+            border: 2px solid #dee2e6;
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
         }
 
         .user-item .btn-info {
@@ -1186,6 +1313,135 @@
             margin: 0;
         }
         
+        /* 投票消息样式 */
+        .poll-message {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            animation: slideIn 0.3s ease;
+        }
+        
+        .poll-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .poll-question {
+            font-weight: bold;
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+        
+        .poll-status {
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            background: #e9ecef;
+            color: #6c757d;
+        }
+        
+        .poll-status.active {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .poll-status.ended {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .poll-options {
+            margin-bottom: 10px;
+        }
+        
+        .poll-option {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            background: white;
+            border: 1px solid #dee2e6;
+        }
+        
+        .poll-option:hover {
+            background: #e3f2fd;
+        }
+        
+        .poll-option.voted {
+            background: #e8f5e8;
+            border-color: #4caf50;
+        }
+        
+        .poll-option-text {
+            position: relative;
+            z-index: 2;
+        }
+        
+        .poll-option-bar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            background: #4caf50;
+            opacity: 0.3;
+            z-index: 1;
+        }
+        
+        .poll-results {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .poll-footer {
+            font-size: 12px;
+            color: #6c757d;
+            margin-top: 10px;
+        }
+        
+        .poll-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .poll-action-btn {
+            padding: 5px 10px;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            background: white;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        
+        .poll-action-btn.primary {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        
+        .poll-action-btn.primary:hover {
+            background: #5a6fd8;
+        }
+        
+        .poll-action-btn.secondary {
+            background: #6c757d;
+            color: white;
+            border-color: #6c757d;
+        }
+        
+        .poll-action-btn.secondary:hover {
+            background: #5a6268;
+        }
+        
         /* 开发者模式日志样式 */
         .developer-log {
             position: absolute;
@@ -1230,6 +1486,42 @@
         <!-- 消息搜索框 -->
         <div class="search-container" style="padding: 10px; background: white; border-bottom: 1px solid #dee2e6;">
             <input type="text" id="messageSearchInput" placeholder="搜索消息..." style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 20px; font-size: 14px; outline: none;">
+            <div id="searchOptions" style="margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 10px; display: none;">
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 150px;">
+                        <label style="display: block; font-size: 12px; font-weight: bold; margin-bottom: 5px;">发送者</label>
+                        <select id="senderFilter" style="width: 100%; padding: 6px; border: 1px solid #dee2e6; border-radius: 5px; font-size: 12px;">
+                            <option value="">所有发送者</option>
+                        </select>
+                    </div>
+                    <div style="flex: 1; min-width: 150px;">
+                        <label style="display: block; font-size: 12px; font-weight: bold; margin-bottom: 5px;">消息类型</label>
+                        <select id="typeFilter" style="width: 100%; padding: 6px; border: 1px solid #dee2e6; border-radius: 5px; font-size: 12px;">
+                            <option value="">所有类型</option>
+                            <option value="text">文本</option>
+                            <option value="image">图片</option>
+                            <option value="audio">语音</option>
+                            <option value="file">文件</option>
+                            <option value="poll">投票</option>
+                        </select>
+                    </div>
+                    <div style="flex: 1; min-width: 150px;">
+                        <label style="display: block; font-size: 12px; font-weight: bold; margin-bottom: 5px;">时间范围</label>
+                        <select id="timeFilter" style="width: 100%; padding: 6px; border: 1px solid #dee2e6; border-radius: 5px; font-size: 12px;">
+                            <option value="">所有时间</option>
+                            <option value="today">今天</option>
+                            <option value="yesterday">昨天</option>
+                            <option value="week">本周</option>
+                            <option value="month">本月</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; align-items: flex-end;">
+                        <button id="searchBtn" style="padding: 6px 12px; background: #667eea; color: white; border: none; border-radius: 5px; font-size: 12px; cursor: pointer;">搜索</button>
+                        <button id="resetSearchBtn" style="margin-left: 5px; padding: 6px 12px; background: #6c757d; color: white; border: none; border-radius: 5px; font-size: 12px; cursor: pointer;">重置</button>
+                    </div>
+                </div>
+            </div>
+            <button id="toggleSearchOptions" style="margin-top: 5px; padding: 4px 8px; background: #f1f3f5; border: 1px solid #dee2e6; border-radius: 5px; font-size: 12px; cursor: pointer;">高级搜索</button>
         </div>
 
         <div class="chat-container">
@@ -1251,6 +1543,7 @@
                     <button class="action-btn disabled" id="audioBtn" title="发送语音">🎤</button>
                     <button class="action-btn" id="videoCallBtn" title="视频通话">📹</button>
                     <button class="action-btn" id="audioCallBtn" title="语音通话">📞</button>
+                    <button class="action-btn" id="selectAllBtn" title="全选消息">☑️</button>
                 </div>
                 <textarea id="messageInput" placeholder="输入消息..." maxlength="200" rows="3" style="resize: none;"></textarea>
                 <button id="sendBtn">发送</button>
@@ -1268,6 +1561,16 @@
                     </div>
                 </div>
             </div>
+        </div>
+        
+        <!-- 批量操作面板 -->
+        <div class="batch-actions" id="batchActions">
+            <div class="batch-count" id="batchCount">已选择 0 条消息</div>
+            <button class="batch-btn delete" id="batchDeleteBtn" title="批量删除">删除</button>
+            <button class="batch-btn forward" id="batchForwardBtn" title="批量转发">转发</button>
+            <button class="batch-btn read" id="batchReadBtn" title="标记已读">已读</button>
+            <button class="batch-btn unread" id="batchUnreadBtn" title="标记未读">未读</button>
+            <button class="batch-btn" id="batchCancelBtn" title="取消选择">取消</button>
         </div>
         
         <!-- 表情选择面板 -->
@@ -1471,6 +1774,75 @@
                                 <input type="checkbox" id="developerModeCheckbox">
                                 开发者模式（通话时显示控制台日志）
                             </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="admin-tab-content" id="privacyTab">
+                    <div style="margin-bottom: 20px;">
+                        <h4>隐私设置</h4>
+                        <div style="margin-top: 15px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: bold;">谁可以添加我为好友</label>
+                            <select id="friendRequestSetting" style="width: 100%; padding: 8px; border: 1px solid #dee2e6; border-radius: 5px;">
+                                <option value="everyone">所有人</option>
+                                <option value="contacts">通讯录好友</option>
+                                <option value="none">没有人</option>
+                            </select>
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: bold;">谁可以给我发消息</label>
+                            <select id="messageSetting" style="width: 100%; padding: 8px; border: 1px solid #dee2e6; border-radius: 5px;">
+                                <option value="everyone">所有人</option>
+                                <option value="friends">好友</option>
+                                <option value="none">没有人</option>
+                            </select>
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: bold;">谁可以查看我的在线状态</label>
+                            <select id="onlineStatusSetting" style="width: 100%; padding: 8px; border: 1px solid #dee2e6; border-radius: 5px;">
+                                <option value="everyone">所有人</option>
+                                <option value="friends">好友</option>
+                                <option value="none">没有人</option>
+                            </select>
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: bold;">谁可以发起通话</label>
+                            <select id="callSetting" style="width: 100%; padding: 8px; border: 1px solid #dee2e6; border-radius: 5px;">
+                                <option value="everyone">所有人</option>
+                                <option value="friends">好友</option>
+                                <option value="none">没有人</option>
+                            </select>
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <label>
+                                <input type="checkbox" id="readReceiptsCheckbox" checked>
+                                显示已读回执
+                            </label>
+                        </div>
+                        <div style="margin-top: 10px;">
+                            <label>
+                                <input type="checkbox" id="typingIndicatorCheckbox" checked>
+                                显示输入状态
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="admin-tab-content" id="languageTab">
+                    <div style="margin-bottom: 20px;">
+                        <h4>语言设置</h4>
+                        <div style="margin-top: 15px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: bold;">界面语言</label>
+                            <select id="interfaceLanguageSelect" style="width: 100%; padding: 8px; border: 1px solid #dee2e6; border-radius: 5px;">
+                                <option value="zh">中文</option>
+                                <option value="en">English</option>
+                            </select>
+                            <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">选择界面显示语言，更改后需要刷新页面生效。</p>
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <label>
+                                <input type="checkbox" id="autoDetectLanguageCheckbox" checked>
+                                自动检测浏览器语言
+                            </label>
+                            <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">启用后，系统会根据浏览器语言自动设置界面语言。</p>
                         </div>
                     </div>
                 </div>
@@ -1764,6 +2136,44 @@
             </div>
         </div>
     </div>
+    
+    <!-- 投票创建模态框 -->
+    <div class="modal" id="createPollModal">
+        <div class="modal-content" style="max-width: 500px;">
+            <h3>创建投票</h3>
+            <div style="margin-bottom: 20px;">
+                <label for="pollQuestion">投票问题：</label>
+                <input type="text" id="pollQuestion" placeholder="请输入投票问题" maxlength="100" style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 5px; margin-bottom: 15px;">
+                
+                <label>投票选项：</label>
+                <div id="pollOptionsContainer" style="margin-bottom: 15px;">
+                    <div class="option-input-group" style="display: flex; gap: 10px; margin-bottom: 10px;">
+                        <input type="text" class="poll-option-input" placeholder="选项 1" maxlength="50" style="flex: 1; padding: 8px; border: 1px solid #dee2e6; border-radius: 5px;">
+                        <button type="button" class="remove-option-btn" style="padding: 0 10px; border: 1px solid #dc3545; background: #dc3545; color: white; border-radius: 5px; cursor: pointer;">×</button>
+                    </div>
+                    <div class="option-input-group" style="display: flex; gap: 10px; margin-bottom: 10px;">
+                        <input type="text" class="poll-option-input" placeholder="选项 2" maxlength="50" style="flex: 1; padding: 8px; border: 1px solid #dee2e6; border-radius: 5px;">
+                        <button type="button" class="remove-option-btn" style="padding: 0 10px; border: 1px solid #dc3545; background: #dc3545; color: white; border-radius: 5px; cursor: pointer;">×</button>
+                    </div>
+                </div>
+                <button type="button" id="addOptionBtn" style="padding: 8px 16px; border: 1px solid #6c757d; background: #6c757d; color: white; border-radius: 5px; cursor: pointer; margin-bottom: 15px;">添加选项</button>
+                
+                <label for="pollDuration">投票时长（分钟）：</label>
+                <select id="pollDuration" style="width: 100%; padding: 8px; border: 1px solid #dee2e6; border-radius: 5px;">
+                    <option value="5">5分钟</option>
+                    <option value="10">10分钟</option>
+                    <option value="30">30分钟</option>
+                    <option value="60">1小时</option>
+                    <option value="1440">1天</option>
+                    <option value="0">永不过期</option>
+                </select>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="friend-btn" onclick="pollSystem.closeCreatePollModal()">取消</button>
+                <button type="button" class="friend-btn primary" id="createPollBtn">创建投票</button>
+            </div>
+        </div>
+    </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
@@ -1997,6 +2407,16 @@
             autoAdjustVolume: true, // 默认开启共享屏幕时自动调整音量
             speakingThreshold: 40, // 说话检测阈值，默认40
             volumeReduction: 30, // 音量降低比例，默认30%
+            // 隐私设置
+            friendRequestSetting: 'everyone', // 谁可以添加我为好友：everyone, contacts, none
+            messageSetting: 'everyone', // 谁可以给我发消息：everyone, friends, none
+            onlineStatusSetting: 'everyone', // 谁可以查看我的在线状态：everyone, friends, none
+            callSetting: 'everyone', // 谁可以发起通话：everyone, friends, none
+            readReceipts: true, // 是否显示已读回执
+            typingIndicator: true, // 是否显示输入状态
+            // 语言设置
+            interfaceLanguage: 'zh', // 界面语言：zh, en
+            autoDetectLanguage: true, // 是否自动检测浏览器语言
             // AI聊天设置
             enableAIChat: false, // 默认关闭AI聊天功能
             aiModel: 'glm4', // 默认使用GLM-4 Flash免费模型
@@ -2026,6 +2446,42 @@
         // AI聊天历史记录
         let aiChatHistory = [];
         const MAX_HISTORY_MESSAGES = 10;
+        
+        // 根据浏览器语言自动检测界面语言
+        function detectBrowserLanguage() {
+            const browserLang = navigator.language || navigator.userLanguage;
+            const langCode = browserLang.split('-')[0]; // 提取语言代码，如 'zh-CN' -> 'zh'
+            
+            // 支持的语言列表
+            const supportedLanguages = ['zh', 'en', 'ja', 'ko', 'fr', 'de', 'es', 'ru'];
+            
+            if (supportedLanguages.includes(langCode)) {
+                return langCode;
+            }
+            
+            return 'zh'; // 默认中文
+        }
+        
+        // 初始化界面语言
+        function initInterfaceLanguage() {
+            // 从localStorage加载设置
+            const savedSettings = localStorage.getItem('userSettings');
+            let userSettings = window.userSettings;
+            
+            if (savedSettings) {
+                userSettings = { ...userSettings, ...JSON.parse(savedSettings) };
+            }
+            
+            // 检查是否启用自动检测
+            if (userSettings.autoDetectLanguage) {
+                const browserLang = detectBrowserLanguage();
+                userSettings.interfaceLanguage = browserLang;
+            }
+            
+            // 更新localStorage中的设置
+            localStorage.setItem('userSettings', JSON.stringify(userSettings));
+            window.userSettings = userSettings;
+        }
         
         // 初始化设置
         function initSettings() {
@@ -2080,6 +2536,50 @@
             if (volumeReduction && volumeReductionValue) {
                 volumeReduction.value = window.userSettings.volumeReduction;
                 volumeReductionValue.textContent = `${window.userSettings.volumeReduction}%`;
+            }
+            
+            // 初始化隐私设置
+            const friendRequestSetting = document.getElementById('friendRequestSetting');
+            const messageSetting = document.getElementById('messageSetting');
+            const onlineStatusSetting = document.getElementById('onlineStatusSetting');
+            const callSetting = document.getElementById('callSetting');
+            const readReceiptsCheckbox = document.getElementById('readReceiptsCheckbox');
+            const typingIndicatorCheckbox = document.getElementById('typingIndicatorCheckbox');
+            
+            if (friendRequestSetting) {
+                friendRequestSetting.value = window.userSettings.friendRequestSetting;
+            }
+            
+            if (messageSetting) {
+                messageSetting.value = window.userSettings.messageSetting;
+            }
+            
+            if (onlineStatusSetting) {
+                onlineStatusSetting.value = window.userSettings.onlineStatusSetting;
+            }
+            
+            if (callSetting) {
+                callSetting.value = window.userSettings.callSetting;
+            }
+            
+            if (readReceiptsCheckbox) {
+                readReceiptsCheckbox.checked = window.userSettings.readReceipts;
+            }
+            
+            if (typingIndicatorCheckbox) {
+                typingIndicatorCheckbox.checked = window.userSettings.typingIndicator;
+            }
+            
+            // 初始化语言设置
+            const interfaceLanguageSelect = document.getElementById('interfaceLanguageSelect');
+            const autoDetectLanguageCheckbox = document.getElementById('autoDetectLanguageCheckbox');
+            
+            if (interfaceLanguageSelect) {
+                interfaceLanguageSelect.value = window.userSettings.interfaceLanguage;
+            }
+            
+            if (autoDetectLanguageCheckbox) {
+                autoDetectLanguageCheckbox.checked = window.userSettings.autoDetectLanguage;
             }
             
             // 为通话设置滑块添加事件监听器
@@ -2519,6 +3019,28 @@
             if (aiPrompt) {
                 window.userSettings.aiPrompt = aiPrompt.value;
             }
+            
+            // 保存隐私设置
+            const friendRequestSetting = document.getElementById('friendRequestSetting');
+            const messageSetting = document.getElementById('messageSetting');
+            const onlineStatusSetting = document.getElementById('onlineStatusSetting');
+            const callSetting = document.getElementById('callSetting');
+            const readReceiptsCheckbox = document.getElementById('readReceiptsCheckbox');
+            const typingIndicatorCheckbox = document.getElementById('typingIndicatorCheckbox');
+            
+            if (friendRequestSetting) window.userSettings.friendRequestSetting = friendRequestSetting.value;
+            if (messageSetting) window.userSettings.messageSetting = messageSetting.value;
+            if (onlineStatusSetting) window.userSettings.onlineStatusSetting = onlineStatusSetting.value;
+            if (callSetting) window.userSettings.callSetting = callSetting.value;
+            if (readReceiptsCheckbox) window.userSettings.readReceipts = readReceiptsCheckbox.checked;
+            if (typingIndicatorCheckbox) window.userSettings.typingIndicator = typingIndicatorCheckbox.checked;
+            
+            // 保存语言设置
+            const interfaceLanguageSelect = document.getElementById('interfaceLanguageSelect');
+            const autoDetectLanguageCheckbox = document.getElementById('autoDetectLanguageCheckbox');
+            
+            if (interfaceLanguageSelect) window.userSettings.interfaceLanguage = interfaceLanguageSelect.value;
+            if (autoDetectLanguageCheckbox) window.userSettings.autoDetectLanguage = autoDetectLanguageCheckbox.checked;
             
             // 保存到localStorage
             try {
@@ -5412,10 +5934,591 @@
             hideEmojiPanel();
         }
 
+        // 文件预览功能
+        function openMediaPreview(url, type, fileName) {
+            const modal = document.getElementById('mediaPreviewModal');
+            const content = document.getElementById('mediaPreviewContent');
+            const downloadBtn = document.getElementById('mediaDownloadBtn');
+            
+            content.innerHTML = '';
+            
+            if (type.startsWith('image/')) {
+                // 图片预览
+                const img = document.createElement('img');
+                img.src = url;
+                img.style.maxWidth = '100%';
+                img.style.maxHeight = '80vh';
+                img.style.objectFit = 'contain';
+                content.appendChild(img);
+            } else if (type.startsWith('video/')) {
+                // 视频预览
+                const video = document.createElement('video');
+                video.src = url;
+                video.controls = true;
+                video.autoplay = true;
+                video.muted = false;
+                video.style.maxWidth = '100%';
+                video.style.maxHeight = '80vh';
+                content.appendChild(video);
+            } else if (type.startsWith('audio/')) {
+                // 音频预览
+                const audio = document.createElement('audio');
+                audio.src = url;
+                audio.controls = true;
+                audio.style.width = '100%';
+                content.appendChild(audio);
+            } else {
+                // 其他文件类型，显示下载链接
+                const fileInfo = document.createElement('div');
+                fileInfo.style.textAlign = 'center';
+                fileInfo.style.padding = '20px';
+                fileInfo.innerHTML = `
+                    <div style="font-size: 48px; margin-bottom: 20px;">📄</div>
+                    <h4 style="margin-bottom: 10px;">${fileName}</h4>
+                    <p style="color: #666; margin-bottom: 20px;">${type}</p>
+                `;
+                content.appendChild(fileInfo);
+            }
+            
+            // 设置下载按钮
+            downloadBtn.onclick = () => {
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                a.click();
+            };
+            
+            // 打开模态框
+            modal.classList.add('active');
+        }
+        
+        // 关闭媒体预览模态框
+        document.addEventListener('click', (e) => {
+            const modal = document.getElementById('mediaPreviewModal');
+            if (e.target === modal) {
+                modal.classList.remove('active');
+            }
+        });
+        
+        // 投票功能
+        class PollSystem {
+            constructor(socket) {
+                this.socket = socket;
+                this.init();
+            }
+            
+            init() {
+                this.createPollButton();
+                this.bindEvents();
+                this.getPolls();
+            }
+            
+            getPolls() {
+                this.socket.emit('get-polls');
+            }
+            
+            createPollButton() {
+                // 创建投票按钮
+                const pollBtn = document.createElement('button');
+                pollBtn.className = 'action-btn';
+                pollBtn.id = 'pollBtn';
+                pollBtn.title = '创建投票';
+                pollBtn.innerHTML = '📊';
+                
+                // 添加到操作按钮区域
+                const actionButtons = document.querySelector('.action-buttons');
+                if (actionButtons) {
+                    actionButtons.appendChild(pollBtn);
+                }
+            }
+            
+            bindEvents() {
+                // 投票按钮点击事件
+                const pollBtn = document.getElementById('pollBtn');
+                if (pollBtn) {
+                    pollBtn.addEventListener('click', () => {
+                        this.openCreatePollModal();
+                    });
+                }
+                
+                // 添加选项按钮点击事件
+                const addOptionBtn = document.getElementById('addOptionBtn');
+                if (addOptionBtn) {
+                    addOptionBtn.addEventListener('click', () => {
+                        this.addOption();
+                    });
+                }
+                
+                // 创建投票按钮点击事件
+                const createPollBtn = document.getElementById('createPollBtn');
+                if (createPollBtn) {
+                    createPollBtn.addEventListener('click', () => {
+                        this.createPoll();
+                    });
+                }
+                
+                // 选项容器点击事件（处理删除选项）
+                const pollOptionsContainer = document.getElementById('pollOptionsContainer');
+                if (pollOptionsContainer) {
+                    pollOptionsContainer.addEventListener('click', (e) => {
+                        if (e.target.classList.contains('remove-option-btn')) {
+                            this.removeOption(e.target);
+                        }
+                    });
+                }
+                
+                // 消息区域点击事件（处理投票）
+                const messages = document.getElementById('messages');
+                if (messages) {
+                    messages.addEventListener('click', (e) => {
+                        if (e.target.closest('.poll-option')) {
+                            const pollId = e.target.closest('.poll-message').dataset.pollId;
+                            const optionIndex = parseInt(e.target.closest('.poll-option').dataset.optionIndex);
+                            this.vote(pollId, optionIndex);
+                        }
+                    });
+                }
+                
+                // 监听投票创建事件
+                this.socket.on('poll-created', (poll) => {
+                    this.addPollMessage(poll);
+                });
+                
+                // 监听投票更新事件
+                this.socket.on('poll-updated', (poll) => {
+                    this.updatePollMessage(poll);
+                });
+                
+                // 监听投票结束事件
+                this.socket.on('poll-ended', (poll) => {
+                    this.updatePollMessage(poll);
+                });
+                
+                // 监听投票列表事件
+                this.socket.on('polls-list', (polls) => {
+                    polls.forEach(poll => {
+                        this.addPollMessage(poll);
+                    });
+                });
+            }
+            
+            openCreatePollModal() {
+                const modal = document.getElementById('createPollModal');
+                if (modal) {
+                    modal.classList.add('active');
+                }
+            }
+            
+            closeCreatePollModal() {
+                const modal = document.getElementById('createPollModal');
+                if (modal) {
+                    modal.classList.remove('active');
+                }
+                
+                // 重置表单
+                document.getElementById('pollQuestion').value = '';
+                const pollOptionsContainer = document.getElementById('pollOptionsContainer');
+                if (pollOptionsContainer) {
+                    pollOptionsContainer.innerHTML = `
+                        <div class="option-input-group" style="display: flex; gap: 10px; margin-bottom: 10px;">
+                            <input type="text" class="poll-option-input" placeholder="选项 1" maxlength="50" style="flex: 1; padding: 8px; border: 1px solid #dee2e6; border-radius: 5px;">
+                            <button type="button" class="remove-option-btn" style="padding: 0 10px; border: 1px solid #dc3545; background: #dc3545; color: white; border-radius: 5px; cursor: pointer;">×</button>
+                        </div>
+                        <div class="option-input-group" style="display: flex; gap: 10px; margin-bottom: 10px;">
+                            <input type="text" class="poll-option-input" placeholder="选项 2" maxlength="50" style="flex: 1; padding: 8px; border: 1px solid #dee2e6; border-radius: 5px;">
+                            <button type="button" class="remove-option-btn" style="padding: 0 10px; border: 1px solid #dc3545; background: #dc3545; color: white; border-radius: 5px; cursor: pointer;">×</button>
+                        </div>
+                    `;
+                }
+                document.getElementById('pollDuration').value = '5';
+            }
+            
+            addOption() {
+                const pollOptionsContainer = document.getElementById('pollOptionsContainer');
+                if (pollOptionsContainer) {
+                    const optionGroups = pollOptionsContainer.querySelectorAll('.option-input-group');
+                    if (optionGroups.length < 10) { // 限制最大选项数
+                        const newOptionGroup = document.createElement('div');
+                        newOptionGroup.className = 'option-input-group';
+                        newOptionGroup.style.display = 'flex';
+                        newOptionGroup.style.gap = '10px';
+                        newOptionGroup.style.marginBottom = '10px';
+                        newOptionGroup.innerHTML = `
+                            <input type="text" class="poll-option-input" placeholder="选项 ${optionGroups.length + 1}" maxlength="50" style="flex: 1; padding: 8px; border: 1px solid #dee2e6; border-radius: 5px;">
+                            <button type="button" class="remove-option-btn" style="padding: 0 10px; border: 1px solid #dc3545; background: #dc3545; color: white; border-radius: 5px; cursor: pointer;">×</button>
+                        `;
+                        pollOptionsContainer.appendChild(newOptionGroup);
+                    } else {
+                        alert('最多只能添加10个选项');
+                    }
+                }
+            }
+            
+            removeOption(button) {
+                const optionGroups = document.querySelectorAll('.option-input-group');
+                if (optionGroups.length > 2) { // 至少保留2个选项
+                    button.parentElement.remove();
+                    // 重新编号选项
+                    const inputGroups = document.querySelectorAll('.option-input-group');
+                    inputGroups.forEach((group, index) => {
+                        const input = group.querySelector('.poll-option-input');
+                        if (input) {
+                            input.placeholder = `选项 ${index + 1}`;
+                        }
+                    });
+                } else {
+                    alert('至少需要2个选项');
+                }
+            }
+            
+            createPoll() {
+                const pollQuestion = document.getElementById('pollQuestion');
+                const pollOptionsContainer = document.getElementById('pollOptionsContainer');
+                const pollDuration = document.getElementById('pollDuration');
+                
+                const question = pollQuestion.value.trim();
+                const optionInputs = pollOptionsContainer.querySelectorAll('.poll-option-input');
+                const options = Array.from(optionInputs).map(input => input.value.trim()).filter(option => option);
+                const duration = parseInt(pollDuration.value);
+                
+                if (!question) {
+                    alert('请输入投票问题');
+                    return;
+                }
+                
+                if (options.length < 2) {
+                    alert('至少需要2个有效选项');
+                    return;
+                }
+                
+                // 发送创建投票请求
+                this.socket.emit('create-poll', {
+                    question,
+                    options,
+                    duration
+                });
+                
+                // 关闭模态框
+                this.closeCreatePollModal();
+            }
+            
+            vote(pollId, optionIndex) {
+                this.socket.emit('vote', {
+                    pollId,
+                    optionIndex
+                });
+            }
+            
+            addPollMessage(poll) {
+                const messages = document.getElementById('messages');
+                if (messages) {
+                    // 检查是否已存在该投票
+                    if (document.querySelector(`.poll-message[data-poll-id="${poll.id}"]`)) {
+                        return;
+                    }
+                    
+                    const pollElement = document.createElement('div');
+                    pollElement.className = 'message poll-message';
+                    pollElement.dataset.pollId = poll.id;
+                    pollElement.dataset.messageId = poll.id; // 添加message-id属性，以便全选功能能够包含
+                    
+                    // 生成完整的HTML，包含checkbox
+                    const pollHTML = this.generatePollHTML(poll);
+                    pollElement.innerHTML = `
+                        <input type="checkbox" class="message-checkbox" data-message-id="${poll.id}" onclick="toggleMessageSelection('${poll.id}')">
+                        <img src="${getUserAvatar(poll.creator)}" alt="${poll.creator}" class="message-avatar">
+                        <div class="message-content-wrapper">
+                            <div class="message-header">
+                                <span class="username">${poll.creator}</span>
+                                <span class="timestamp">${new Date(poll.createdAt || Date.now()).toLocaleTimeString()}</span>
+                            </div>
+                            <div class="message-content">
+                                ${pollHTML}
+                            </div>
+                        </div>
+                    `;
+                    
+                    messages.appendChild(pollElement);
+                    messages.scrollTop = messages.scrollHeight;
+                }
+            }
+            
+            updatePollMessage(poll) {
+                const pollElement = document.querySelector(`.poll-message[data-poll-id="${poll.id}"]`);
+                if (pollElement) {
+                    // 只更新消息内容部分，保留checkbox和头部信息
+                    const contentWrapper = pollElement.querySelector('.message-content');
+                    if (contentWrapper) {
+                        contentWrapper.innerHTML = this.generatePollHTML(poll);
+                    }
+                }
+            }
+            
+            generatePollHTML(poll) {
+                const totalVotes = poll.votes.reduce((sum, vote) => sum + vote, 0);
+                const isActive = poll.status === 'active';
+                const hasVoted = poll.votedUsers.includes(username);
+                const isCreator = poll.creator === username;
+                
+                let optionsHTML = '';
+                poll.options.forEach((option, index) => {
+                    const voteCount = poll.votes[index];
+                    const percentage = totalVotes > 0 ? Math.round((voteCount / totalVotes) * 100) : 0;
+                    const isVoted = poll.userVotes && poll.userVotes[socket.id] === index;
+                    
+                    optionsHTML += `
+                        <div class="poll-option ${isVoted ? 'voted' : ''}" data-option-index="${index}" ${!isActive || hasVoted ? 'style="cursor: default;"' : ''}>
+                            <div class="poll-option-bar" style="width: ${percentage}%;"></div>
+                            <div class="poll-option-text">${option}</div>
+                            <div class="poll-results">
+                                <span>${voteCount} 票</span>
+                                <span>${percentage}%</span>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                let actionsHTML = '';
+                if (isActive && isCreator) {
+                    actionsHTML = `
+                        <div class="poll-actions">
+                            <button class="poll-action-btn secondary" onclick="pollSystem.endPoll('${poll.id}')">结束投票</button>
+                        </div>
+                    `;
+                }
+                
+                return `
+                    <div class="poll-status ${isActive ? 'active' : 'ended'}">${isActive ? '进行中' : '已结束'}</div>
+                    <div class="poll-question">${poll.question}</div>
+                    <div class="poll-options">
+                        ${optionsHTML}
+                    </div>
+                    <div class="poll-footer">
+                        <div>总投票数: ${totalVotes}</div>
+                        ${poll.endTime ? `<div>结束时间: ${new Date(poll.endTime).toLocaleString()}</div>` : ''}
+                    </div>
+                    ${actionsHTML}
+                `;
+            }
+            
+            endPoll(pollId) {
+                this.socket.emit('end-poll', { pollId });
+            }
+        }
+        
+        // 系统通知功能
+        class NotificationSystem {
+            constructor() {
+                this.notifications = JSON.parse(localStorage.getItem('notifications') || '[]');
+                this.maxNotifications = 50;
+                this.init();
+            }
+            
+            init() {
+                this.createNotificationCenter();
+                this.bindEvents();
+            }
+            
+            createNotificationCenter() {
+                // 创建通知中心按钮
+                const notificationBtn = document.createElement('button');
+                notificationBtn.className = 'header-btn';
+                notificationBtn.id = 'notificationBtn';
+                notificationBtn.title = '通知中心';
+                notificationBtn.innerHTML = '🔔';
+                
+                // 添加到头部
+                const headerActions = document.querySelector('.header-actions');
+                if (headerActions) {
+                    headerActions.appendChild(notificationBtn);
+                }
+                
+                // 创建通知中心模态框
+                const notificationModal = document.createElement('div');
+                notificationModal.className = 'modal';
+                notificationModal.id = 'notificationModal';
+                notificationModal.innerHTML = `
+                    <div class="modal-content" style="max-width: 400px; max-height: 80vh; overflow-y: auto;">
+                        <h3>通知中心</h3>
+                        <div id="notificationList"></div>
+                        <div class="modal-buttons">
+                            <button type="button" class="friend-btn" onclick="notificationSystem.markAllAsRead()">全部标记为已读</button>
+                            <button type="button" class="friend-btn danger" onclick="notificationSystem.clearAllNotifications()">清空通知</button>
+                            <button type="button" class="friend-btn" onclick="closeNotificationModal()">关闭</button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(notificationModal);
+            }
+            
+            bindEvents() {
+                const notificationBtn = document.getElementById('notificationBtn');
+                if (notificationBtn) {
+                    notificationBtn.addEventListener('click', () => {
+                        this.showNotificationCenter();
+                    });
+                }
+            }
+            
+            showNotificationCenter() {
+                const modal = document.getElementById('notificationModal');
+                const notificationList = document.getElementById('notificationList');
+                
+                if (notificationList) {
+                    notificationList.innerHTML = '';
+                    
+                    if (this.notifications.length === 0) {
+                        notificationList.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">暂无通知</p>';
+                    } else {
+                        this.notifications.forEach((notification, index) => {
+                            const notificationItem = document.createElement('div');
+                            notificationItem.className = 'friend-item';
+                            notificationItem.style.opacity = notification.read ? '0.7' : '1';
+                            notificationItem.innerHTML = `
+                                <div style="font-size: 24px; margin-right: 15px;">${notification.icon || '🔔'}</div>
+                                <div style="flex: 1;">
+                                    <div style="font-weight: bold; margin-bottom: 5px;">${notification.title}</div>
+                                    <div style="font-size: 12px; color: #666; margin-bottom: 5px;">${notification.message}</div>
+                                    <div style="font-size: 11px; color: #999;">${new Date(notification.timestamp).toLocaleString()}</div>
+                                </div>
+                                <button class="friend-btn danger" onclick="notificationSystem.deleteNotification(${index})" style="font-size: 12px; padding: 3px 8px;">删除</button>
+                            `;
+                            notificationList.appendChild(notificationItem);
+                        });
+                    }
+                }
+                
+                modal.classList.add('active');
+            }
+            
+            addNotification(title, message, icon = '🔔', type = 'info') {
+                const notification = {
+                    id: Date.now().toString(),
+                    title,
+                    message,
+                    icon,
+                    type,
+                    timestamp: Date.now(),
+                    read: false
+                };
+                
+                this.notifications.unshift(notification);
+                
+                // 限制通知数量
+                if (this.notifications.length > this.maxNotifications) {
+                    this.notifications = this.notifications.slice(0, this.maxNotifications);
+                }
+                
+                this.saveNotifications();
+                this.showNotificationToast(notification);
+            }
+            
+            showNotificationToast(notification) {
+                const toast = document.createElement('div');
+                toast.className = 'notification-toast';
+                toast.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    background: white;
+                    padding: 15px 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+                    z-index: 10000;
+                    display: flex;
+                    align-items: flex-start;
+                    gap: 10px;
+                    max-width: 300px;
+                    animation: slideInRight 0.3s ease;
+                `;
+                
+                toast.innerHTML = `
+                    <div style="font-size: 20px;">${notification.icon}</div>
+                    <div style="flex: 1;">
+                        <h4 style="margin: 0 0 5px 0;">${notification.title}</h4>
+                        <p style="margin: 0; font-size: 14px; color: #666;">${notification.message}</p>
+                    </div>
+                `;
+                
+                document.body.appendChild(toast);
+                
+                // 添加动画样式
+                const style = document.createElement('style');
+                style.textContent = `
+                    @keyframes slideInRight {
+                        from {
+                            transform: translateX(100%);
+                            opacity: 0;
+                        }
+                        to {
+                            transform: translateX(0);
+                            opacity: 1;
+                        }
+                    }
+                `;
+                document.head.appendChild(style);
+                
+                // 3秒后自动移除
+                setTimeout(() => {
+                    toast.style.animation = 'slideInRight 0.3s ease reverse';
+                    setTimeout(() => {
+                        toast.remove();
+                    }, 300);
+                }, 3000);
+            }
+            
+            markAllAsRead() {
+                this.notifications.forEach(notification => {
+                    notification.read = true;
+                });
+                this.saveNotifications();
+                this.showNotificationCenter();
+            }
+            
+            deleteNotification(index) {
+                this.notifications.splice(index, 1);
+                this.saveNotifications();
+                this.showNotificationCenter();
+            }
+            
+            clearAllNotifications() {
+                if (confirm('确定要清空所有通知吗？')) {
+                    this.notifications = [];
+                    this.saveNotifications();
+                    this.showNotificationCenter();
+                }
+            }
+            
+            saveNotifications() {
+                localStorage.setItem('notifications', JSON.stringify(this.notifications));
+            }
+        }
+        
+        // 初始化通知系统
+        let notificationSystem = null;
+        // 初始化投票系统
+        let pollSystem = null;
+        
+        // 关闭通知模态框
+        function closeNotificationModal() {
+            const modal = document.getElementById('notificationModal');
+            modal.classList.remove('active');
+        }
+        
         // 页面加载完成后初始化
         document.addEventListener('DOMContentLoaded', () => {
-            initEmojiSystem();
+            // 首先初始化界面语言
+            initInterfaceLanguage();
+            
+            // 然后初始化其他设置
             initSettings();
+            initEmojiSystem();
+            
+            // 初始化通知系统
+            notificationSystem = new NotificationSystem();
+            
+            // 初始化投票系统
+            pollSystem = new PollSystem(socket);
             
             // 添加通话按钮事件监听
             videoCallBtn.addEventListener('click', () => {
@@ -5435,6 +6538,11 @@
                     }
                 });
             }
+            
+            // 测试通知
+            setTimeout(() => {
+                notificationSystem.addNotification('欢迎', '欢迎使用聊天室，祝您使用愉快！', '🎉');
+            }, 1000);
         });
 
         // 打开选择通话用户模态框
@@ -5565,6 +6673,74 @@
         
         // 页面加载时不需要设置输入框，因为已经删除了房间名输入框
 
+        // 保存草稿
+        function saveDraft() {
+            const message = messageInput.value.trim();
+            if (message) {
+                localStorage.setItem('messageDraft', message);
+                showDraftIndicator(true);
+            } else {
+                localStorage.removeItem('messageDraft');
+                showDraftIndicator(false);
+            }
+        }
+        
+        // 恢复草稿
+        function restoreDraft() {
+            const draft = localStorage.getItem('messageDraft');
+            if (draft) {
+                messageInput.value = draft;
+                showDraftIndicator(true);
+            }
+        }
+        
+        // 清除草稿
+        function clearDraft() {
+            localStorage.removeItem('messageDraft');
+            showDraftIndicator(false);
+        }
+        
+        // 显示草稿指示器
+        function showDraftIndicator(show) {
+            const inputArea = messageInput.parentElement;
+            let indicator = inputArea.querySelector('.draft-indicator');
+            if (show) {
+                if (!indicator) {
+                    indicator = document.createElement('div');
+                    indicator.className = 'draft-indicator';
+                    indicator.style.cssText = `
+                        position: absolute;
+                        top: -20px;
+                        right: 10px;
+                        background: #667eea;
+                        color: white;
+                        padding: 2px 8px;
+                        border-radius: 10px;
+                        font-size: 12px;
+                        font-weight: bold;
+                    `;
+                    indicator.textContent = '草稿已保存';
+                    inputArea.style.position = 'relative';
+                    inputArea.appendChild(indicator);
+                }
+                indicator.style.display = 'block';
+                // 3秒后隐藏指示器
+                setTimeout(() => {
+                    if (indicator) {
+                        indicator.style.display = 'none';
+                    }
+                }, 3000);
+            } else if (indicator) {
+                indicator.style.display = 'none';
+            }
+        }
+        
+        // 监听输入框变化，自动保存草稿
+        messageInput.addEventListener('input', saveDraft);
+        
+        // 页面加载时恢复草稿
+        restoreDraft();
+        
         sendBtn.addEventListener('click', () => {
             const message = messageInput.value.trim();
             if (message) {
@@ -5578,6 +6754,7 @@
                 }
                 socket.emit('message', { message, type: 'text' });
                 messageInput.value = '';
+                clearDraft();
             }
         });
         
@@ -8275,12 +9452,18 @@
         
         // 房间历史消息
         socket.on('room-history', (data) => {
-            // 清空当前消息
-            messagesDiv.innerHTML = '';
+            // 只有在第一批消息或不是分批发送时才清空当前消息
+            if (!data.batch || data.startIndex === 0) {
+                messagesDiv.innerHTML = '';
+            }
             // 添加历史消息
             data.messages.forEach(message => {
                 addMessage(message);
             });
+            // 如果是分批发送且已完成，滚动到底部
+            if (data.batch && data.done) {
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
         });
         
         // 处理管理员发送的弹窗消息
@@ -8363,14 +9546,21 @@
             const isRead = data.readBy && data.readBy.length > 1;
             const readStatusHtml = `<span class="read-status" ${isRead ? 'title="已读"' : 'title="未读"'}>${isRead ? '✓✓' : '✓'}</span>`;
             
+            // 获取用户头像
+            const avatarUrl = data.avatar || getUserAvatar(data.username);
+            
             messageDiv.innerHTML = `
-                <div class="message-header">
-                    <span class="username" style="color: ${data.color}">${data.username}</span>
-                    <span class="timestamp">${data.timestamp}</span>
-                    ${data.username === username ? readStatusHtml : ''}
+                <input type="checkbox" class="message-checkbox" data-message-id="${data.id}" onclick="toggleMessageSelection('${data.id}')">
+                <img src="${avatarUrl}" alt="${data.username}" class="message-avatar">
+                <div class="message-content-wrapper">
+                    <div class="message-header">
+                        <span class="username" style="color: ${data.color}">${data.username}</span>
+                        <span class="timestamp">${data.timestamp}</span>
+                        ${data.username === username ? readStatusHtml : ''}
+                    </div>
+                    <div class="message-content">${contentHtml}</div>
+                    ${actionsHtml}
                 </div>
-                <div class="message-content">${contentHtml}</div>
-                ${actionsHtml}
             `;
             messagesDiv.appendChild(messageDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
@@ -8390,6 +9580,101 @@
                     translateMessage(data.id, currentTargetLanguage);
                 }, 100);
             }
+        }
+        
+        // 获取用户头像
+        function getUserAvatar(username) {
+            // 从localStorage获取用户头像
+            const userAvatars = JSON.parse(localStorage.getItem('userAvatars') || '{}');
+            if (userAvatars[username]) {
+                return userAvatars[username];
+            }
+            // 默认头像：使用用户名首字母生成
+            return generateDefaultAvatar(username);
+        }
+        
+        // 生成默认头像
+        function generateDefaultAvatar(username) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 100;
+            canvas.height = 100;
+            const ctx = canvas.getContext('2d');
+            
+            // 随机背景色
+            const colors = ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#4facfe', '#00f2fe', '#43e97b', '#38f9d7'];
+            const colorIndex = username.charCodeAt(0) % colors.length;
+            ctx.fillStyle = colors[colorIndex];
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制用户名首字母
+            ctx.fillStyle = 'white';
+            ctx.font = '48px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            const initial = username.charAt(0).toUpperCase();
+            ctx.fillText(initial, canvas.width / 2, canvas.height / 2);
+            
+            return canvas.toDataURL('image/png');
+        }
+        
+        // 上传头像
+        function uploadAvatar() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*';
+            input.onchange = function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    // 检查文件大小
+                    if (file.size > 5 * 1024 * 1024) { // 5MB限制
+                        alert('头像大小不能超过5MB');
+                        return;
+                    }
+                    
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const avatarUrl = e.target.result;
+                        // 保存头像到localStorage
+                        saveUserAvatar(username, avatarUrl);
+                        // 更新界面上的头像
+                        updateAvatars();
+                        // 发送头像更新通知
+                        socket.emit('avatar-updated', { avatar: avatarUrl });
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+            input.click();
+        }
+        
+        // 保存用户头像
+        function saveUserAvatar(username, avatarUrl) {
+            const userAvatars = JSON.parse(localStorage.getItem('userAvatars') || '{}');
+            userAvatars[username] = avatarUrl;
+            localStorage.setItem('userAvatars', JSON.stringify(userAvatars));
+        }
+        
+        // 更新界面上的头像
+        function updateAvatars() {
+            // 更新消息中的头像
+            document.querySelectorAll('.message-avatar').forEach(avatar => {
+                const parent = avatar.parentElement;
+                const username = parent.querySelector('.username').textContent;
+                const newAvatarUrl = getUserAvatar(username);
+                if (avatar.src !== newAvatarUrl) {
+                    avatar.src = newAvatarUrl;
+                }
+            });
+            
+            // 更新用户列表中的头像
+            document.querySelectorAll('.user-avatar').forEach(avatar => {
+                const parent = avatar.parentElement;
+                const username = parent.querySelector('.user-name').textContent;
+                const newAvatarUrl = getUserAvatar(username);
+                if (avatar.src !== newAvatarUrl) {
+                    avatar.src = newAvatarUrl;
+                }
+            });
         }
 
         function addSystemMessage(text, isAdmin = false) {
@@ -8419,10 +9704,15 @@
                     showUserDetail(user.socketId, user.username, user.color, JSON.stringify(user.permissions).replace(/"/g, '&quot;'));
                 };
                 
+                // 获取用户头像
+                const avatarUrl = user.avatar || getUserAvatar(user.username);
+                
                 userDiv.innerHTML = `
+                    <img src="${avatarUrl}" alt="${user.username}" class="user-avatar">
                     <div class="status-indicator status-${status}"></div>
                     <div class="user-color" style="background: ${user.color}"></div>
                     <div class="user-name">${escapeHtml(user.username)}</div>
+                    ${user.username === username ? `<button class="avatar-upload-btn" onclick="event.stopPropagation(); uploadAvatar();" title="更换头像">📷</button>` : ''}
                 `;
                 
                 usersListDiv.appendChild(userDiv);
@@ -8439,6 +9729,15 @@
                     updatedUser.status = data.status;
                     updateUserList(allUsers);
                 }
+            }
+        });
+        
+        // 监听头像更新
+        socket.on('avatar-updated', (data) => {
+            // 保存其他用户的头像
+            if (data.username && data.avatar) {
+                saveUserAvatar(data.username, data.avatar);
+                updateAvatars();
             }
         });
 
@@ -8542,9 +9841,9 @@
         }
         
         // 搜索消息
-        function searchMessages(keyword) {
+        function searchMessages(keyword, sender = '', type = '', timeRange = '') {
             searchKeyword = keyword;
-            if (!keyword) {
+            if (!keyword && !sender && !type && !timeRange) {
                 isSearching = false;
                 // 清空搜索状态，重新显示所有消息
                 messagesDiv.innerHTML = '<div class="system-message">欢迎来到聊天室！请输入昵称加入。</div>';
@@ -8557,18 +9856,70 @@
             isSearching = true;
             let searchResults;
             
-            // 当关键词是"audio"时，搜索所有语音消息
-            if (keyword.toLowerCase() === 'audio') {
-                searchResults = allMessages.filter(message => message.type === 'audio');
-            } else {
-                // 否则搜索文本消息
-                searchResults = allMessages.filter(message => {
+            // 过滤消息
+            searchResults = allMessages.filter(message => {
+                // 关键词过滤
+                let matchKeyword = true;
+                if (keyword) {
                     if (message.type === 'text') {
-                        return message.message.toLowerCase().includes(keyword.toLowerCase());
+                        matchKeyword = message.message.toLowerCase().includes(keyword.toLowerCase());
+                    } else {
+                        matchKeyword = false;
                     }
-                    return false;
-                });
-            }
+                }
+                
+                // 发送者过滤
+                let matchSender = true;
+                if (sender) {
+                    matchSender = message.username === sender;
+                }
+                
+                // 消息类型过滤
+                let matchType = true;
+                if (type) {
+                    matchType = message.type === type;
+                }
+                
+                // 时间范围过滤
+                let matchTime = true;
+                if (timeRange) {
+                    const messageTime = new Date();
+                    const [hours, minutes] = message.timestamp.split(':');
+                    messageTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+                    
+                    const now = new Date();
+                    now.setHours(23, 59, 59, 999);
+                    
+                    const today = new Date(now);
+                    today.setHours(0, 0, 0, 0);
+                    
+                    const yesterday = new Date(today);
+                    yesterday.setDate(yesterday.getDate() - 1);
+                    
+                    const weekAgo = new Date(today);
+                    weekAgo.setDate(weekAgo.getDate() - 7);
+                    
+                    const monthAgo = new Date(today);
+                    monthAgo.setMonth(monthAgo.getMonth() - 1);
+                    
+                    switch (timeRange) {
+                        case 'today':
+                            matchTime = messageTime >= today;
+                            break;
+                        case 'yesterday':
+                            matchTime = messageTime >= yesterday && messageTime < today;
+                            break;
+                        case 'week':
+                            matchTime = messageTime >= weekAgo;
+                            break;
+                        case 'month':
+                            matchTime = messageTime >= monthAgo;
+                            break;
+                    }
+                }
+                
+                return matchKeyword && matchSender && matchType && matchTime;
+            });
             
             // 清空消息区域
             messagesDiv.innerHTML = `<div class="system-message">搜索结果: ${searchResults.length} 条</div>`;
@@ -8577,12 +9928,191 @@
             searchResults.forEach(message => {
                 addMessage(message);
             });
+            
+            // 如果是搜索投票类型，获取并显示活跃投票
+            if (type === 'poll') {
+                socket.emit('get-polls');
+            }
         }
+        
+        // 更新发送者列表
+        function updateSenderList() {
+            const senderFilter = document.getElementById('senderFilter');
+            if (senderFilter) {
+                // 清空现有选项
+                senderFilter.innerHTML = '<option value="">所有发送者</option>';
+                
+                // 收集所有唯一的发送者
+                const senders = [...new Set(allMessages.map(message => message.username))];
+                
+                // 添加发送者选项
+                senders.forEach(sender => {
+                    const option = document.createElement('option');
+                    option.value = sender;
+                    option.textContent = sender;
+                    senderFilter.appendChild(option);
+                });
+            }
+        }
+        
+        // 高级搜索按钮点击事件
+        document.getElementById('searchBtn').addEventListener('click', () => {
+            const keyword = document.getElementById('messageSearchInput').value;
+            const sender = document.getElementById('senderFilter').value;
+            const type = document.getElementById('typeFilter').value;
+            const timeRange = document.getElementById('timeFilter').value;
+            searchMessages(keyword, sender, type, timeRange);
+        });
+        
+        // 重置搜索按钮点击事件
+        document.getElementById('resetSearchBtn').addEventListener('click', () => {
+            document.getElementById('messageSearchInput').value = '';
+            document.getElementById('senderFilter').value = '';
+            document.getElementById('typeFilter').value = '';
+            document.getElementById('timeFilter').value = '';
+            searchMessages('', '', '', '');
+        });
+        
+        // 切换搜索选项显示
+        document.getElementById('toggleSearchOptions').addEventListener('click', () => {
+            const searchOptions = document.getElementById('searchOptions');
+            if (searchOptions.style.display === 'none') {
+                searchOptions.style.display = 'block';
+                updateSenderList();
+            } else {
+                searchOptions.style.display = 'none';
+            }
+        });
         
         // 消息搜索输入事件监听
         messageSearchInput.addEventListener('input', (e) => {
             searchMessages(e.target.value);
         });
+        
+        // 批量操作相关
+        let selectedMessages = new Set();
+        
+        // 切换消息选择状态
+        function toggleMessageSelection(messageId) {
+            if (selectedMessages.has(messageId)) {
+                selectedMessages.delete(messageId);
+            } else {
+                selectedMessages.add(messageId);
+            }
+            updateBatchActions();
+        }
+        
+        // 全选消息
+        function selectAllMessages() {
+            const checkboxes = document.querySelectorAll('.message-checkbox');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = true;
+                selectedMessages.add(checkbox.dataset.messageId);
+            });
+            updateBatchActions();
+        }
+        
+        // 取消全选
+        function clearSelection() {
+            selectedMessages.clear();
+            const checkboxes = document.querySelectorAll('.message-checkbox');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = false;
+            });
+            updateBatchActions();
+        }
+        
+        // 更新批量操作面板
+        function updateBatchActions() {
+            const batchActions = document.getElementById('batchActions');
+            const batchCount = document.getElementById('batchCount');
+            
+            if (selectedMessages.size > 0) {
+                batchActions.classList.add('active');
+                batchCount.textContent = `已选择 ${selectedMessages.size} 条消息`;
+            } else {
+                batchActions.classList.remove('active');
+            }
+        }
+        
+        // 批量删除消息
+        function batchDeleteMessages() {
+            if (selectedMessages.size === 0) return;
+            
+            if (confirm(`确定要删除这 ${selectedMessages.size} 条消息吗？`)) {
+                selectedMessages.forEach(messageId => {
+                    // 这里可以添加删除消息的逻辑
+                    const messageDiv = document.querySelector(`[data-message-id="${messageId}"]`);
+                    if (messageDiv) {
+                        messageDiv.style.opacity = '0.5';
+                        setTimeout(() => {
+                            messageDiv.remove();
+                        }, 500);
+                    }
+                });
+                clearSelection();
+            }
+        }
+        
+        // 批量转发消息
+        function batchForwardMessages() {
+            if (selectedMessages.size === 0) return;
+            
+            const recipient = prompt('请输入要转发的用户名:');
+            if (recipient) {
+                // 这里可以添加转发消息的逻辑
+                alert(`已将 ${selectedMessages.size} 条消息转发给 ${recipient}`);
+                clearSelection();
+            }
+        }
+        
+        // 批量标记为已读
+        function batchMarkAsRead() {
+            if (selectedMessages.size === 0) return;
+            
+            selectedMessages.forEach(messageId => {
+                const messageDiv = document.querySelector(`[data-message-id="${messageId}"]`);
+                if (messageDiv) {
+                    // 这里可以添加标记为已读的逻辑
+                    messageDiv.style.opacity = '1';
+                }
+            });
+            alert(`已将 ${selectedMessages.size} 条消息标记为已读`);
+            clearSelection();
+        }
+        
+        // 批量标记为未读
+        function batchMarkAsUnread() {
+            if (selectedMessages.size === 0) return;
+            
+            selectedMessages.forEach(messageId => {
+                const messageDiv = document.querySelector(`[data-message-id="${messageId}"]`);
+                if (messageDiv) {
+                    // 这里可以添加标记为未读的逻辑
+                    messageDiv.style.opacity = '0.7';
+                }
+            });
+            alert(`已将 ${selectedMessages.size} 条消息标记为未读`);
+            clearSelection();
+        }
+        
+        // 全选按钮点击事件
+        document.getElementById('selectAllBtn').addEventListener('click', selectAllMessages);
+        
+        // 批量删除按钮点击事件
+        document.getElementById('batchDeleteBtn').addEventListener('click', batchDeleteMessages);
+        
+        // 批量转发按钮点击事件
+        document.getElementById('batchForwardBtn').addEventListener('click', batchForwardMessages);
+        
+        // 批量标记已读按钮点击事件
+        document.getElementById('batchReadBtn').addEventListener('click', batchMarkAsRead);
+        
+        // 批量标记未读按钮点击事件
+        document.getElementById('batchUnreadBtn').addEventListener('click', batchMarkAsUnread);
+        
+        // 取消选择按钮点击事件
+        document.getElementById('batchCancelBtn').addEventListener('click', clearSelection);
 
         // 媒体录制器
         mediaRecorder = null;
