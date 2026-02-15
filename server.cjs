@@ -717,15 +717,67 @@ io.on('connection', (socket) => {
             roomName: roomName
         });
         
-        // 发送房间历史消息
-        socket.emit('room-history', {
-            messages: roomMessages
-        });
+        // 分批发送房间历史消息（每次5条）
+        const batchSize = 5;
+        const totalMessages = roomMessages.length;
+        
+        function sendBatch(startIndex) {
+            const endIndex = Math.min(startIndex + batchSize, totalMessages);
+            const batchMessages = roomMessages.slice(startIndex, endIndex);
+            
+            socket.emit('room-history', {
+                messages: batchMessages,
+                batch: true,
+                startIndex: startIndex,
+                endIndex: endIndex,
+                total: totalMessages,
+                done: endIndex >= totalMessages
+            });
+            
+            if (endIndex < totalMessages) {
+                // 延迟发送下一批，避免消息堆积
+                setTimeout(() => sendBatch(endIndex), 100);
+            }
+        }
+        
+        // 开始发送第一批消息
+        sendBatch(0);
+        
+        // 发送完历史消息后，发送当前房间的活跃投票
+        setTimeout(() => {
+            const roomPolls = Array.from(activePolls.values())
+                .filter(poll => poll.roomName === roomName && poll.isActive)
+                .map(poll => ({
+                    ...poll,
+                    votes: poll.options.map(option => option.votes),
+                    status: poll.isActive ? 'active' : 'ended',
+                    votedUsers: Array.from(poll.votes.keys()),
+                    userVotes: Object.fromEntries(poll.votes),
+                    options: poll.options.map(option => option.text) // 确保选项是字符串数组
+                }));
+            
+            // 发送投票列表
+            socket.emit('polls-list', roomPolls);
+        }, totalMessages > 0 ? Math.ceil(totalMessages / batchSize) * 100 + 100 : 100);
         
         console.log(`${username} 加入房间 ${roomName}，当前在线: ${roomUsers.length} 人`);
-    });
+        });
 
-    socket.on('message', (data) => {
+        // 处理头像更新
+        socket.on('avatar-updated', (data) => {
+            const user = users.get(socket.id);
+            if (user) {
+                user.avatar = data.avatar;
+                // 通知房间内其他用户头像更新
+                socket.to(user.roomName).emit('avatar-updated', {
+                    username: user.username,
+                    avatar: data.avatar
+                });
+                console.log(`${user.username} 更新了头像`);
+            }
+        });
+
+        socket.on('message', (data) => {
         const user = users.get(socket.id);
         if (user) {
             // 消息速率限制检查（优化版）
@@ -1511,7 +1563,7 @@ io.on('connection', (socket) => {
     socket.on('vote', (data) => {
         const user = users.get(socket.id);
         if (user) {
-            const { pollId, optionId } = data;
+            const { pollId, optionIndex } = data;
             const poll = activePolls.get(pollId);
             
             // 验证投票是否存在且活跃
@@ -1533,14 +1585,14 @@ io.on('connection', (socket) => {
             }
             
             // 验证选项是否有效
-            const option = poll.options.find(opt => opt.id === optionId);
+            const option = poll.options[optionIndex];
             if (!option) {
                 socket.emit('poll-error', { message: '无效的投票选项' });
                 return;
             }
             
             // 记录投票
-            poll.votes.set(socket.id, optionId);
+            poll.votes.set(socket.id, optionIndex);
             option.votes++;
             
             // 广播投票更新事件
@@ -1625,7 +1677,8 @@ io.on('connection', (socket) => {
                     votes: poll.options.map(option => option.votes),
                     status: poll.isActive ? 'active' : 'ended',
                     votedUsers: Array.from(poll.votes.keys()),
-                    userVotes: Object.fromEntries(poll.votes)
+                    userVotes: Object.fromEntries(poll.votes),
+                    options: poll.options.map(option => option.text) // 确保选项是字符串数组
                 }));
             
             socket.emit('polls-list', roomPolls);
