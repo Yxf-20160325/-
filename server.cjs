@@ -537,8 +537,10 @@ const badWords = [
     // 中文脏话
     '傻逼', 'sb', '傻b', '煞笔', '操你妈', '去死', '垃圾', '废物', '脑残', '王八蛋', '滚蛋', '畜生', '贱人', '狗东西', '杂种',
     '草泥马', '妈蛋', '二货', '智障', '白痴', '混蛋', '恶棍', '禽兽', '畜生不如',
-    '操蛋', '操你大爷', '你妈逼', '你妹', '你大爷', '草泥马', '草', '日', '靠', '操'
+    '操蛋', '操你大爷', '你妈逼', '你妹', '你大爷', '草泥马'
 ];
+
+// 注意：移除了单字脏话（如'草'、'日'、'靠'、'操'），因为它们会导致误判，例如"草莓"中的"草"字被错误识别为脏话
 
 // 脏话计数系统
 const swearWordCount = new Map(); // 存储用户脏话计数: Map<socketId, number>
@@ -693,6 +695,10 @@ io.on('connection', (socket) => {
         
         // 发送房间内的用户列表和消息
         let roomUsers = room.users.map(userId => users.get(userId)).filter(user => user);
+        // 确保room.messages存在，如果不存在就初始化它
+        if (!room.messages) {
+            room.messages = [];
+        }
         const roomMessages = room.messages;
         
         // 检查用户是否有查看用户列表的权限
@@ -811,8 +817,8 @@ io.on('connection', (socket) => {
             rateLimitData.messages.push(now);
             
             // 消息长度限制检查
-            if (data.type === 'text' && data.message && data.message.length > 60) {
-                socket.emit('message-error', { message: '消息长度超过限制（最大60字符）' });
+            if (data.type === 'text' && data.message && data.message.length > 500) {
+                socket.emit('message-error', { message: '消息长度超过限制（最大500字符）' });
                 return;
             }
             
@@ -825,6 +831,9 @@ io.on('connection', (socket) => {
                     .replace(/"/g, '&quot;')
                     .replace(/'/g, '&#039;');
             }
+            
+            // 添加确认回调参数，确保客户端能够收到发送结果的反馈
+            const callback = data.callback || function() {};
             
             // 确保用户权限对象存在，如果不存在则设置默认权限
             if (!user.permissions) {
