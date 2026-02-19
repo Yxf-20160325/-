@@ -1,11 +1,11 @@
-    <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
     <meta http-equiv="X-XSS-Protection" content="1; mode=block">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ws: wss: https://libretranslate.de https://api.mymemory.translated.net https://open.bigmodel.cn https://api.deepseek.com https://api.freegpt.one https://api.siliconflow.cn; font-src 'self' data:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://restapi.amap.com; media-src 'self' blob:; connect-src 'self' ws: wss: https://libretranslate.de https://api.mymemory.translated.net https://open.bigmodel.cn https://api.deepseek.com https://api.freegpt.one https://api.siliconflow.cn https://nominatim.openstreetmap.org; font-src 'self' data:;">
     <meta name="referrer" content="strict-origin-when-cross-origin">
     <title>聊天室</title>
     <style>
@@ -8411,11 +8411,21 @@
                 return;
             }
             
+            // 立即停止任何现有的定时器，防止多个定时器同时运行
+            if (realTimeLocationInterval) {
+                clearInterval(realTimeLocationInterval);
+                realTimeLocationInterval = null;
+            }
+            
+            // 立即设置为正在共享，防止重复调用
+            isSharingRealTimeLocation = true;
+            
             // 生成实时位置消息ID
             realTimeLocationMessageId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
             
-            isSharingRealTimeLocation = true;
             alert('开始共享实时位置，每5秒更新一次');
+            
+            console.log('共享实时位置函数被调用，isSharingRealTimeLocation:', isSharingRealTimeLocation);
             
             // 使用高精度定位选项，增加超时时间
             const options = {
@@ -8435,6 +8445,12 @@
                     const latitude = position.coords.latitude;
                     const longitude = position.coords.longitude;
                     handlePositionData(latitude, longitude, true, realTimeLocationMessageId);
+                    
+                    // 再次检查是否已经停止共享，防止在获取位置期间用户点击了停止按钮
+                    if (!isSharingRealTimeLocation) {
+                        console.log('已经停止共享实时位置，取消设置定时器');
+                        return;
+                    }
                     
                     // 设置定时器，每5秒更新一次位置
                     realTimeLocationInterval = setInterval(() => {
@@ -8509,11 +8525,8 @@
                 overflow-y: auto;
             `;
             
-            // 高德地图静态图API - 生成地图预览
-            const staticMapUrl = `https://restapi.amap.com/v3/staticmap?key=493e55601f7b83c2b2f1c017f0d4c7a5&location=${longitude},${latitude}&zoom=18&size=600*400&markers=mid,,A:${longitude},${latitude}`;
-            
-            // 高德地图详细页面
-            const mapUrl = `https://www.amap.com/place/${longitude},${latitude}?name=${encodeURIComponent(locationName)}`;
+            // 高德地图详细页面（使用正确的uri.amap.com/marker格式）
+            const mapUrl = `https://uri.amap.com/marker?position=${longitude},${latitude}&name=${encodeURIComponent(locationName)}&coordinate=gaode`;
             
             modalContent.innerHTML = `
                 <h3 style="margin-top: 0; margin-bottom: 20px;">实时位置</h3>
@@ -8524,10 +8537,6 @@
                     </div>
                     <div style="font-size: 14px; color: #666; margin-bottom: 15px;">
                         纬度: ${latitude}, 经度: ${longitude}
-                    </div>
-                    <!-- 高德地图预览 -->
-                    <div style="margin-bottom: 15px; text-align: center;">
-                        <img src="${staticMapUrl}" alt="高德地图预览" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);">
                     </div>
                     <div style="margin-bottom: 15px; display: flex; gap: 10px;">
                         <a href="${mapUrl}" target="_blank" rel="noopener noreferrer" style="background: #667eea; color: white; border: none; border-radius: 5px; padding: 10px 15px; font-size: 14px; cursor: pointer; text-decoration: none; display: inline-block;">
