@@ -3972,7 +3972,24 @@
                     
                     if (webcastMateDevice) {
                         console.log('找到WebcastMate VirtualCamera设备:', webcastMateDevice.label);
-                        return webcastMateDevice.deviceId;
+                        // 尝试测试WebcastMate设备是否可用
+                        try {
+                            // 创建一个临时的媒体流来测试设备是否可用
+                            const testStream = await navigator.mediaDevices.getUserMedia({
+                                video: {
+                                    deviceId: { exact: webcastMateDevice.deviceId }
+                                
+                                }
+                            });
+                            // 设备可用，停止测试流并返回设备ID
+                            testStream.getTracks().forEach(track => track.stop());
+                            console.log('WebcastMate设备测试通过，可用');
+                            return webcastMateDevice.deviceId;
+                        } catch (testError) {
+                            console.error('WebcastMate设备测试失败，不可用:', testError);
+                            console.log('回退到默认摄像头');
+                            return null;
+                        }
                     } else {
                         console.log('未找到WebcastMate VirtualCamera设备，使用默认摄像头');
                         return null;
