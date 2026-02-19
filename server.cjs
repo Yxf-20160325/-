@@ -1041,7 +1041,16 @@ io.on('connection', (socket) => {
                 }
             }
             
-            const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            // 检查是否是实时位置消息更新
+            let messageId;
+            if (data.type === 'location' && data.isRealTime && data.realTimeMessageId) {
+                // 对于实时位置消息，使用客户端提供的realTimeMessageId
+                messageId = data.realTimeMessageId;
+            } else {
+                // 对于其他消息，生成新的messageId
+                messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            }
+            
             const messageData = {
                 id: messageId,
                 username: user.username,
@@ -1055,6 +1064,12 @@ io.on('connection', (socket) => {
                 fileName: data.fileName,
                 fileSize: data.fileSize,
                 contentType: data.contentType,
+                // 包含位置消息属性
+                latitude: data.latitude,
+                longitude: data.longitude,
+                locationName: data.locationName,
+                isRealTime: data.isRealTime,
+                realTimeTimestamp: data.timestamp,
                 // 回复功能支持
                 replyTo: data.replyTo,
                 replyToMessage: data.replyToMessage,
@@ -1062,7 +1077,7 @@ io.on('connection', (socket) => {
             };
             
             // 检查消息中是否包含@用户名或@{用户名}格式
-            const mentions = data.message.match(/@(?:\{([^}]+)\}|([a-zA-Z0-9_`]+))/g);
+            const mentions = data.message ? data.message.match(/@(?:\{([^}]+)\}|([a-zA-Z0-9_`]+))/g) : null;
             if (mentions && allowMentions) {
                 console.log(`[调试] 检测到@提及: ${mentions.join(', ')}`);
                 mentions.forEach(mention => {
@@ -1101,10 +1116,29 @@ io.on('connection', (socket) => {
             // 获取用户所在的房间
             const room = rooms.get(user.roomName);
             if (room) {
-                // 将消息存储在房间的messages数组中
-                room.messages.push(messageData);
-                if (room.messages.length > 100) {
-                    room.messages.shift();
+                // 检查是否是实时位置消息更新
+                if (data.type === 'location' && data.isRealTime && data.realTimeMessageId) {
+                    // 查找并更新已有的实时位置消息
+                    const existingMessageIndex = room.messages.findIndex(msg => msg.id === messageId);
+                    if (existingMessageIndex !== -1) {
+                        // 更新已有的消息
+                        room.messages[existingMessageIndex] = messageData;
+                        console.log(`[房间 ${user.roomName}] ${user.username}: 实时位置更新`);
+                    } else {
+                        // 如果消息不存在，添加新消息
+                        room.messages.push(messageData);
+                        if (room.messages.length > 100) {
+                            room.messages.shift();
+                        }
+                        console.log(`[房间 ${user.roomName}] ${user.username}: 开始共享实时位置`);
+                    }
+                } else {
+                    // 对于其他消息，添加新消息
+                    room.messages.push(messageData);
+                    if (room.messages.length > 100) {
+                        room.messages.shift();
+                    }
+                    console.log(`[房间 ${user.roomName}] ${user.username}: ${data.type === 'text' ? data.message : data.type}`);
                 }
                 
                 // 只发送给房间内有权限查看消息的用户
@@ -1119,8 +1153,6 @@ io.on('connection', (socket) => {
                 if (adminSocketId) {
                     io.to(adminSocketId).emit('message', messageData);
                 }
-                
-                console.log(`[房间 ${user.roomName}] ${user.username}: ${data.type === 'text' ? data.message : data.type}`);
             }
         }
     });
