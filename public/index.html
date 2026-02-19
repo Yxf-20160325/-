@@ -1897,6 +1897,13 @@
                             </label>
                             <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">启用后，对方视频画面将显示为镜像效果。</p>
                         </div>
+                        <div style="margin-top: 15px;">
+                            <label>
+                                <input type="checkbox" id="enableWebcastMateCheckbox">
+                                启用WebcastMate VirtualCamera
+                            </label>
+                            <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">启用后，系统会优先使用WebcastMate VirtualCamera作为视频源。</p>
+                        </div>
                     </div>
                     
                     <div style="margin-bottom: 20px;">
@@ -2477,6 +2484,7 @@
             myVideoSaturation: 1, // 饱和度，范围0-2，默认1
             myVideoExposure: 1, // 曝光，范围0-2，默认1
             videoBitrate: 2000, // 视频比特率，默认2000 kbps
+            enableWebcastMate: false, // 默认禁用WebcastMate VirtualCamera
             // 通话设置
             autoAdjustVolume: true, // 默认开启共享屏幕时自动调整音量
             speakingThreshold: 40, // 说话检测阈值，默认40
@@ -2591,6 +2599,17 @@
                 remoteMirrorVideoCheckbox.checked = window.userSettings.remoteMirrorVideo;
                 // 立即应用对方视频镜像设置
                 updateRemoteVideoMirrorSetting();
+            }
+            
+            // 初始化WebcastMate VirtualCamera设置
+            const enableWebcastMateCheckbox = document.getElementById('enableWebcastMateCheckbox');
+            if (enableWebcastMateCheckbox) {
+                enableWebcastMateCheckbox.checked = window.userSettings.enableWebcastMate;
+                
+                // 添加事件监听器
+                enableWebcastMateCheckbox.addEventListener('change', (e) => {
+                    window.userSettings.enableWebcastMate = e.target.checked;
+                });
             }
             
             // 初始化通话设置
@@ -3961,6 +3980,12 @@
             
             // 获取WebcastMate VirtualCamera设备ID
             async getWebcastMateDeviceId() {
+                // 检查用户是否启用了WebcastMate
+                if (!window.userSettings || !window.userSettings.enableWebcastMate) {
+                    console.log('用户已禁用WebcastMate VirtualCamera，使用默认摄像头');
+                    return null;
+                }
+                
                 try {
                     const devices = await this.getVideoDevices();
                     // 查找名称包含"WebcastMate"或"VirtualCamera"的设备
