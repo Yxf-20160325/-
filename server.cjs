@@ -2721,6 +2721,16 @@ io.on('connection', (socket) => {
             console.log(`${user.username} 结束了通话`);
         }
     });
+    
+    // 监听通话状态更新事件
+    socket.on('call-status', (data) => {
+        const user = users.get(socket.id);
+        if (user && user.permissions.allowCall) {
+            // 广播通话状态更新给所有用户
+            socket.broadcast.emit('call-status', data);
+            console.log(`${user.username} 更新通话状态: ${data.inCall ? '正在通话' : '空闲'}`);
+        }
+    });
 
     // WebRTC信令转发
     socket.on('webrtc-signal', (data) => {
