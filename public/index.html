@@ -372,6 +372,38 @@
         .video-box:not(.fullscreen) {
             flex: 1;
         }
+        
+        /* 放大按钮样式 */
+        .zoom-btn {
+            position: absolute;
+            bottom: 35px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            border: none;
+            border-radius: 20px;
+            padding: 6px 12px;
+            font-size: 11px;
+            cursor: pointer;
+            z-index: 10;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .zoom-btn:hover {
+            background: rgba(0, 0, 0, 0.9);
+            padding: 8px 14px;
+        }
+        
+        .video-box.fullscreen .zoom-btn {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .video-box.fullscreen .zoom-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
 
         .video-label {
             position: absolute;
@@ -1600,10 +1632,12 @@
             <div class="video-box">
                 <video id="localVideo" autoplay playsinline muted></video>
                 <div class="video-label">我</div>
+                <button class="zoom-btn" onclick="toggleVideoZoom(this.parentElement)">🔍 放大</button>
             </div>
             <div class="video-box">
                 <video id="remoteVideo" autoplay playsinline></video>
                 <div class="video-label">对方</div>
+                <button class="zoom-btn" onclick="toggleVideoZoom(this.parentElement)">🔍 放大</button>
             </div>
         </div>
         
@@ -11376,6 +11410,41 @@
                 handleDoubleClick(box);
                 handleTouchDoubleTap(box);
             });
+        }
+        
+        // 视频放大按钮点击事件处理函数
+        function toggleVideoZoom(videoBox) {
+            // 切换全屏状态
+            videoBox.classList.toggle('fullscreen');
+            
+            // 获取所有视频框
+            const videoBoxes = document.querySelectorAll('.video-box');
+            
+            // 如果当前视频框被放大，将其他视频框隐藏
+            if (videoBox.classList.contains('fullscreen')) {
+                videoBoxes.forEach(otherBox => {
+                    if (otherBox !== videoBox) {
+                        otherBox.style.display = 'none';
+                    }
+                });
+                
+                // 更新按钮文本
+                const zoomBtn = videoBox.querySelector('.zoom-btn');
+                if (zoomBtn) {
+                    zoomBtn.innerHTML = '🔽 缩小';
+                }
+            } else {
+                // 如果当前视频框恢复正常，显示所有视频框
+                videoBoxes.forEach(otherBox => {
+                    otherBox.style.display = 'block';
+                });
+                
+                // 更新按钮文本
+                const zoomBtn = videoBox.querySelector('.zoom-btn');
+                if (zoomBtn) {
+                    zoomBtn.innerHTML = '🔍 放大';
+                }
+            }
         }
         
         // 页面加载完成后初始化双击放大功能
