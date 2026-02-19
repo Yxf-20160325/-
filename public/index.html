@@ -1890,6 +1890,18 @@
                             </div>
                         </div>
                     </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <h4>视频画质设置</h4>
+                        <div style="margin-top: 15px;">
+                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                                <label for="videoBitrate" style="width: 100px; font-size: 14px;">视频比特率:</label>
+                                <input type="range" id="videoBitrate" min="100" max="5000" step="100" value="2000" style="flex: 1; margin: 0 10px;">
+                                <span id="videoBitrateValue" style="width: 60px; text-align: right; font-size: 14px;">2000 kbps</span>
+                            </div>
+                            <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">调整视频比特率以平衡画质和网络带宽使用。更高的比特率提供更好的画质，但需要更多的网络带宽。</p>
+                        </div>
+                    </div>
                 </div>
                 <div class="admin-tab-content" id="callTab">
                     <div style="margin-bottom: 20px;">
@@ -1931,6 +1943,18 @@
                                 <span id="subtitlesFontSizeValue" style="width: 40px; text-align: right; font-size: 14px;">16px</span>
                             </div>
                             <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">调整字幕的字体大小，使字幕更易阅读。</p>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <h4>音乐质量设置</h4>
+                        <div style="margin-top: 15px;">
+                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                                <label for="audioBitrate" style="width: 100px; font-size: 14px;">音频比特率:</label>
+                                <input type="range" id="audioBitrate" min="64" max="320" step="16" value="128" style="flex: 1; margin: 0 10px;">
+                                <span id="audioBitrateValue" style="width: 60px; text-align: right; font-size: 14px;">128 kbps</span>
+                            </div>
+                            <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">调整音频比特率以平衡音质和网络带宽使用。更高的比特率提供更好的音质，但需要更多的网络带宽。</p>
                         </div>
                     </div>
                     
@@ -2418,10 +2442,12 @@
             myVideoContrast: 1, // 对比度，范围0-2.5，默认1
             myVideoSaturation: 1, // 饱和度，范围0-2，默认1
             myVideoExposure: 1, // 曝光，范围0-2，默认1
+            videoBitrate: 2000, // 视频比特率，默认2000 kbps
             // 通话设置
             autoAdjustVolume: true, // 默认开启共享屏幕时自动调整音量
             speakingThreshold: 40, // 说话检测阈值，默认40
             volumeReduction: 30, // 音量降低比例，默认30%
+            audioBitrate: 128, // 音频比特率，默认128 kbps
             // 隐私设置
             friendRequestSetting: 'everyone', // 谁可以添加我为好友：everyone, contacts, none
             messageSetting: 'everyone', // 谁可以给我发消息：everyone, friends, none
@@ -2598,6 +2624,14 @@
                 autoDetectLanguageCheckbox.checked = window.userSettings.autoDetectLanguage;
             }
             
+            // 初始化音频比特率设置
+            const audioBitrate = document.getElementById('audioBitrate');
+            const audioBitrateValue = document.getElementById('audioBitrateValue');
+            if (audioBitrate && audioBitrateValue) {
+                audioBitrate.value = window.userSettings.audioBitrate;
+                audioBitrateValue.textContent = `${window.userSettings.audioBitrate} kbps`;
+            }
+            
             // 为通话设置滑块添加事件监听器
             if (speakingThreshold && speakingThresholdValue) {
                 speakingThreshold.addEventListener('input', (e) => {
@@ -2612,6 +2646,14 @@
                     const value = parseInt(e.target.value);
                     volumeReductionValue.textContent = `${value}%`;
                     window.userSettings.volumeReduction = value;
+                });
+            }
+            
+            if (audioBitrate && audioBitrateValue) {
+                audioBitrate.addEventListener('input', (e) => {
+                    const value = parseInt(e.target.value);
+                    audioBitrateValue.textContent = `${value} kbps`;
+                    window.userSettings.audioBitrate = value;
                 });
             }
             
@@ -2648,6 +2690,21 @@
             if (myVideoExposure) {
                 myVideoExposure.value = window.userSettings.myVideoExposure;
                 document.getElementById('myVideoExposureValue').textContent = window.userSettings.myVideoExposure.toFixed(2);
+            }
+            
+            // 初始化视频比特率滑动条
+            const videoBitrate = document.getElementById('videoBitrate');
+            const videoBitrateValue = document.getElementById('videoBitrateValue');
+            if (videoBitrate && videoBitrateValue) {
+                videoBitrate.value = window.userSettings.videoBitrate;
+                videoBitrateValue.textContent = `${window.userSettings.videoBitrate} kbps`;
+                
+                // 添加事件监听器
+                videoBitrate.addEventListener('input', (e) => {
+                    const value = parseInt(e.target.value);
+                    videoBitrateValue.textContent = `${value} kbps`;
+                    window.userSettings.videoBitrate = value;
+                });
             }
             
             // 为滑动条添加事件监听器
@@ -3808,10 +3865,13 @@
             // 发起通话请求
             startCall(targetSocketId, callType, callMethod) {
                 // 检查对方是否在通话中
-                if (this.userCallStatus[targetSocketId]) {
+                if (this.userCallStatus[targetSocketId] === true) {
+                    console.log('对方正在通话中，无法发起通话:', targetSocketId, this.userCallStatus[targetSocketId]);
                     alert('对方正在通话中，无法发起通话');
                     return;
                 }
+                
+                console.log('发起通话请求:', targetSocketId, callType, callMethod);
                 
                 this.currentCallId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
                 this.currentCallType = callType;
@@ -3822,6 +3882,7 @@
                 
                 // 更新自己的通话状态
                 this.userCallStatus[this.socket.id] = true;
+                console.log('更新自己的通话状态:', this.socket.id, true);
                 
                 // 显示视频容器
                 const videoContainer = document.getElementById('videoContainer');
@@ -3841,6 +3902,7 @@
                 this.initLocalMediaStream();
                 
                 // 发送通话请求
+                console.log('发送通话请求:', targetSocketId, this.currentCallId);
                 this.socket.emit('call-request', {
                     targetSocketId: targetSocketId,
                     callId: this.currentCallId,
@@ -4203,6 +4265,13 @@
                 
                 // 更新自己的通话状态
                 this.userCallStatus[this.socket.id] = false;
+                console.log('更新自己的通话状态:', this.socket.id, false);
+                
+                // 通知其他用户自己的通话状态
+                this.socket.emit('call-status', {
+                    socketId: this.socket.id,
+                    inCall: false
+                });
                 
                 // 停止字幕功能
                 this.stopSubtitles();
