@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+    <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -8162,36 +8162,71 @@
                 return;
             }
             
-            // 使用高精度定位选项
+            // 使用高精度定位选项，增加超时时间
             const options = {
                 enableHighAccuracy: true,
-                timeout: 20000,
-                maximumAge: 0
+                timeout: 30000, // 增加超时时间到30秒
+                maximumAge: 0 // 禁用位置缓存
             };
             
             console.log('用户点击了发送位置按钮，开始获取位置...');
             
-            // 直接在用户手势响应中请求地理位置
+            // 直接在用户手势响应中请求一次高精度位置
             navigator.geolocation.getCurrentPosition(
                 (position) => {
                     console.log('获取位置成功，精度:', position.coords.accuracy, '米');
                     
-                    // 使用单次高精度测量结果
                     const latitude = position.coords.latitude;
                     const longitude = position.coords.longitude;
-                    
-                    // 处理位置数据
                     handlePositionData(latitude, longitude, false);
                 },
                 (error) => {
                     console.error('获取位置失败:', error);
-                    alert('获取位置失败，请检查位置权限设置');
+                    
+                    // 错误处理
+                    let errorMessage = '获取位置失败';
+                    switch (error.code) {
+                        case error.PERMISSION_DENIED:
+                            errorMessage = '您拒绝了位置请求权限';
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            errorMessage = '位置信息不可用';
+                            break;
+                        case error.TIMEOUT:
+                            errorMessage = '获取位置超时';
+                            break;
+                        case error.UNKNOWN_ERROR:
+                            errorMessage = '获取位置时发生未知错误';
+                            break;
+                    }
+                    
+                    alert(errorMessage);
                 },
                 options
             );
         }
         
-        // 处理位置数据
+        // 位置相关变量
+        let lastCachedLocation = null; // 上次缓存的位置
+        let locationNameCache = {}; // 位置名称缓存
+        const CACHE_EXPIRY = 300000; // 缓存过期时间：5分钟
+        
+        // 计算两个经纬度之间的距离（单位：米）
+        function getDistance(lat1, lng1, lat2, lng2) {
+            const R = 6371e3; // 地球半径（米）
+            const φ1 = (lat1 * Math.PI) / 180;
+            const φ2 = (lat2 * Math.PI) / 180;
+            const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+            const Δλ = ((lng2 - lng1) * Math.PI) / 180;
+            
+            const a =
+                Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            
+            return R * c;
+        }
+        
         async function handlePositionData(latitude, longitude, isRealTime = false, realTimeMessageId = null) {
             console.log('开始处理位置数据:', {
                 latitude,
@@ -8217,19 +8252,45 @@
             }
             
             try {
-                // 使用OpenStreetMap的Nominatim API进行反向地理编码
-                console.log('开始获取位置名称...');
-                const response = await fetch(
-                    `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&limit=1&accept-language=zh-CN`
-                );
+                // 生成缓存键（四舍五入到小数点后4位，减少缓存大小）
+                const cacheKey = `${latitude.toFixed(4)},${longitude.toFixed(4)}`;
                 
+                // 检查缓存是否有效
                 let locationName = `纬度: ${latitude.toFixed(6)}, 经度: ${longitude.toFixed(6)}`;
-                if (response.ok) {
-                    const locationData = await response.json();
-                    locationName = locationData.display_name || locationName;
-                    console.log('获取位置名称成功:', locationName);
+                
+                if (locationNameCache[cacheKey] && (Date.now() - locationNameCache[cacheKey].timestamp < CACHE_EXPIRY)) {
+                    // 使用缓存的位置名称
+                    locationName = locationNameCache[cacheKey].name;
+                    console.log('使用缓存的位置名称:', locationName);
                 } else {
-                    console.warn('获取位置名称失败，使用默认格式');
+                    // 仅对于首次位置或位置变化较大时获取位置名称
+                    if (!isRealTime || !lastCachedLocation || getDistance(lastCachedLocation.lat, lastCachedLocation.lng, latitude, longitude) > 100) {
+                        console.log('开始获取位置名称...');
+                        try {
+                            const response = await fetch(
+                                `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&limit=1&accept-language=zh-CN&zoom=15`
+                            );
+                            
+                            if (response.ok) {
+                                const locationData = await response.json();
+                                locationName = locationData.display_name || locationName;
+                                console.log('获取位置名称成功:', locationName);
+                                
+                                // 更新缓存
+                                locationNameCache[cacheKey] = {
+                                    name: locationName,
+                                    timestamp: Date.now()
+                                };
+                                
+                                // 更新上次缓存的位置
+                                lastCachedLocation = { lat: latitude, lng: longitude };
+                            } else {
+                                console.warn('获取位置名称失败，使用默认格式');
+                            }
+                        } catch (error) {
+                            console.error('获取位置名称时发生错误:', error);
+                        }
+                    }
                 }
                 
                 // 发送位置消息
@@ -8356,11 +8417,11 @@
             isSharingRealTimeLocation = true;
             alert('开始共享实时位置，每5秒更新一次');
             
-            // 使用高精度定位选项
+            // 使用高精度定位选项，增加超时时间
             const options = {
                 enableHighAccuracy: true,
-                timeout: 15000,
-                maximumAge: 0
+                timeout: 30000, // 增加超时时间到30秒
+                maximumAge: 0 // 禁用位置缓存
             };
             
             console.log('用户点击了共享实时位置按钮，开始获取位置...');
@@ -8442,12 +8503,16 @@
                 padding: 20px;
                 border-radius: 10px;
                 box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-                max-width: 600px;
+                max-width: 700px;
                 width: 90%;
                 max-height: 80vh;
                 overflow-y: auto;
             `;
             
+            // 高德地图静态图API - 生成地图预览
+            const staticMapUrl = `https://restapi.amap.com/v3/staticmap?key=493e55601f7b83c2b2f1c017f0d4c7a5&location=${longitude},${latitude}&zoom=18&size=600*400&markers=mid,,A:${longitude},${latitude}`;
+            
+            // 高德地图详细页面
             const mapUrl = `https://www.amap.com/place/${longitude},${latitude}?name=${encodeURIComponent(locationName)}`;
             
             modalContent.innerHTML = `
@@ -8460,9 +8525,16 @@
                     <div style="font-size: 14px; color: #666; margin-bottom: 15px;">
                         纬度: ${latitude}, 经度: ${longitude}
                     </div>
-                    <div style="margin-bottom: 15px;">
+                    <!-- 高德地图预览 -->
+                    <div style="margin-bottom: 15px; text-align: center;">
+                        <img src="${staticMapUrl}" alt="高德地图预览" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);">
+                    </div>
+                    <div style="margin-bottom: 15px; display: flex; gap: 10px;">
                         <a href="${mapUrl}" target="_blank" rel="noopener noreferrer" style="background: #667eea; color: white; border: none; border-radius: 5px; padding: 10px 15px; font-size: 14px; cursor: pointer; text-decoration: none; display: inline-block;">
                             在高德地图中查看
+                        </a>
+                        <a href="https://uri.amap.com/marker?position=${longitude},${latitude}&name=${encodeURIComponent(locationName)}" target="_blank" rel="noopener noreferrer" style="background: #28a745; color: white; border: none; border-radius: 5px; padding: 10px 15px; font-size: 14px; cursor: pointer; text-decoration: none; display: inline-block;">
+                            打开高德地图APP
                         </a>
                     </div>
                 </div>
