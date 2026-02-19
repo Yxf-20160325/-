@@ -3245,6 +3245,9 @@
                 this.currentFacingMode = 'user'; // 当前摄像头方向：'user'（前置）或'environment'（后置）
                 this.videoDevices = []; // 存储所有视频设备
                 
+                // 通话状态管理
+                this.userCallStatus = {}; // 存储用户通话状态，key为socketId，value为boolean
+                
                 // Socket.io媒体流相关
                 this.mediaSource = null;
                 this.sourceBuffer = null;
@@ -3790,6 +3793,11 @@
                 this.socket.on('call-media', (data) => {
                     this.handleCallMedia(data);
                 });
+                
+                // 监听用户通话状态更新
+                this.socket.on('call-status', (data) => {
+                    this.handleCallStatus(data);
+                });
             }
             
             // 设置通话方式
@@ -3799,12 +3807,21 @@
             
             // 发起通话请求
             startCall(targetSocketId, callType, callMethod) {
+                // 检查对方是否在通话中
+                if (this.userCallStatus[targetSocketId]) {
+                    alert('对方正在通话中，无法发起通话');
+                    return;
+                }
+                
                 this.currentCallId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
                 this.currentCallType = callType;
                 this.currentCallTargetSocketId = targetSocketId;
                 this.currentCallMethod = callMethod || this.currentCallMethod;
                 this.isInCall = true;
                 this.isCallInitiator = true; // 设置为发起方
+                
+                // 更新自己的通话状态
+                this.userCallStatus[this.socket.id] = true;
                 
                 // 显示视频容器
                 const videoContainer = document.getElementById('videoContainer');
@@ -3846,8 +3863,32 @@
                 }
             }
             
+            // 获取WebcastMate VirtualCamera设备ID
+            async getWebcastMateDeviceId() {
+                try {
+                    const devices = await this.getVideoDevices();
+                    // 查找名称包含"WebcastMate"或"VirtualCamera"的设备
+                    const webcastMateDevice = devices.find(device => 
+                        device.label.includes('WebcastMate') || 
+                        device.label.includes('VirtualCamera') ||
+                        device.label.includes('虚拟摄像头')
+                    );
+                    
+                    if (webcastMateDevice) {
+                        console.log('找到WebcastMate VirtualCamera设备:', webcastMateDevice.label);
+                        return webcastMateDevice.deviceId;
+                    } else {
+                        console.log('未找到WebcastMate VirtualCamera设备，使用默认摄像头');
+                        return null;
+                    }
+                } catch (error) {
+                    console.error('获取WebcastMate设备失败:', error);
+                    return null;
+                }
+            }
+            
             // 初始化本地媒体流（只显示自己的画面，不开始通话）
-            initLocalMediaStream() {
+            async initLocalMediaStream() {
                 console.log('initLocalMediaStream: isInCall=', this.isInCall);
                 
                 // 如果不在通话中，直接返回，避免继续执行
@@ -3857,12 +3898,16 @@
                 }
                 
                 // 先获取视频设备列表
-                this.getVideoDevices();
+                await this.getVideoDevices();
+                
+                // 尝试获取WebcastMate VirtualCamera设备ID
+                const webcastMateDeviceId = await this.getWebcastMateDeviceId();
                 
                 const constraints = {
                     audio: true,
                     video: this.currentCallType === 'video' ? {
-                        facingMode: this.currentFacingMode
+                        facingMode: this.currentFacingMode,
+                        deviceId: webcastMateDeviceId ? { exact: webcastMateDeviceId } : undefined
                     } : false
                 };
                 
@@ -3881,8 +3926,39 @@
                     })
                     .catch(error => {
                         console.error('获取本地媒体流失败:', error);
-                        // 只有在通话中才显示错误和结束通话
-                        if (this.isInCall) {
+                        
+                        // 如果是因为WebcastMate设备失败，尝试使用默认摄像头
+                        if (webcastMateDeviceId && this.isInCall) {
+                            console.log('WebcastMate设备失败，尝试使用默认摄像头');
+                            
+                            const fallbackConstraints = {
+                                audio: true,
+                                video: this.currentCallType === 'video' ? {
+                                    facingMode: this.currentFacingMode
+                                } : false
+                            };
+                            
+                            navigator.mediaDevices.getUserMedia(fallbackConstraints)
+                                .then(stream => {
+                                    // 检查是否仍在通话中
+                                    if (!this.isInCall) {
+                                        console.log('通话已结束，停止新获取的本地媒体流');
+                                        stream.getTracks().forEach(track => track.stop());
+                                        return;
+                                    }
+                                    
+                                    this.localStream = stream;
+                                    this.showLocalStream(stream);
+                                    console.log('已回退到默认摄像头');
+                                })
+                                .catch(fallbackError => {
+                                    console.error('回退到默认摄像头也失败:', fallbackError);
+                                    if (this.isInCall) {
+                                        alert('获取本地媒体流失败: ' + fallbackError.message);
+                                        this.endCall();
+                                    }
+                                });
+                        } else if (this.isInCall) {
                             alert('获取本地媒体流失败: ' + error.message);
                             this.endCall();
                         }
@@ -3947,6 +4023,20 @@
                 // 确保设置为通话中状态
                 this.isInCall = true;
                 
+                // 更新对方的通话状态
+                if (data.fromSocketId) {
+                    this.userCallStatus[data.fromSocketId] = true;
+                }
+                
+                // 更新自己的通话状态
+                this.userCallStatus[this.socket.id] = true;
+                
+                // 通知其他用户自己的通话状态
+                this.socket.emit('call-status', {
+                    socketId: this.socket.id,
+                    inCall: true
+                });
+                
                 // 显示视频容器（如果还没显示）
                 const videoContainer = document.getElementById('videoContainer');
                 if (videoContainer) {
@@ -3995,6 +4085,20 @@
             
             // 处理通话结束
             handleCallEnded(data) {
+                // 更新对方的通话状态
+                if (data.fromSocketId) {
+                    this.userCallStatus[data.fromSocketId] = false;
+                }
+                
+                // 更新自己的通话状态
+                this.userCallStatus[this.socket.id] = false;
+                
+                // 通知其他用户自己的通话状态
+                this.socket.emit('call-status', {
+                    socketId: this.socket.id,
+                    inCall: false
+                });
+                
                 this.cleanupMedia();
                 this.resetCallState();
                 
@@ -4014,6 +4118,14 @@
                 document.dispatchEvent(callEndedEvent);
             }
             
+            // 处理通话状态更新
+            handleCallStatus(data) {
+                if (data.socketId && typeof data.inCall === 'boolean') {
+                    this.userCallStatus[data.socketId] = data.inCall;
+                    console.log('更新用户通话状态:', data.socketId, 'inCall:', data.inCall);
+                }
+            }
+            
             // 接受通话
             acceptCall() {
                 if (!this.currentCallId) return;
@@ -4027,6 +4139,15 @@
                 
                 // 设置为通话中状态
                 this.isInCall = true;
+                
+                // 更新自己的通话状态
+                this.userCallStatus[this.socket.id] = true;
+                
+                // 通知其他用户自己的通话状态
+                this.socket.emit('call-status', {
+                    socketId: this.socket.id,
+                    inCall: true
+                });
                 
                 // 发送通话接受
                 this.socket.emit('call-accept', {
@@ -4069,6 +4190,9 @@
             
             // 结束通话
             endCall() {
+                // 隐藏等待提示
+                this.hideWaitingPrompt();
+                
                 // 只有在有currentCallId时才发送通话结束事件
                 if (this.currentCallId) {
                     this.socket.emit('call-end', {
@@ -4076,6 +4200,9 @@
                         callId: this.currentCallId
                     });
                 }
+                
+                // 更新自己的通话状态
+                this.userCallStatus[this.socket.id] = false;
                 
                 // 停止字幕功能
                 this.stopSubtitles();
@@ -4460,7 +4587,7 @@
             }
             
             // 初始化媒体流
-            initMediaStream() {
+            async initMediaStream() {
                 console.log('initMediaStream: isCallInitiator=', this.isCallInitiator, 'currentCallMethod=', this.currentCallMethod, 'isInCall=', this.isInCall);
                 
                 // 如果不在通话中，直接返回，避免继续执行
@@ -4470,7 +4597,7 @@
                 }
                 
                 // 先获取视频设备列表
-                this.getVideoDevices();
+                await this.getVideoDevices();
                 
                 // 如果是socket.io方式，初始化MediaSource
                 if (this.currentCallMethod === 'socket.io') {
@@ -4512,11 +4639,15 @@
                     return;
                 }
                 
+                // 尝试获取WebcastMate VirtualCamera设备ID
+                const webcastMateDeviceId = await this.getWebcastMateDeviceId();
+                
                 // 没有本地媒体流，获取媒体流
                 const constraints = {
                     audio: true,
                     video: this.currentCallType === 'video' ? {
-                        facingMode: this.currentFacingMode
+                        facingMode: this.currentFacingMode,
+                        deviceId: webcastMateDeviceId ? { exact: webcastMateDeviceId } : undefined
                     } : false
                 };
                 
@@ -4567,9 +4698,72 @@
                     })
                     .catch(error => {
                         console.error('获取媒体流失败:', error);
-                        // 只有在通话中才显示错误和结束通话
-                        if (this.isInCall) {
-                            alert('获取媒体流失败: ' + error.message);
+                        
+                        // 如果是因为WebcastMate设备失败，尝试使用默认摄像头
+                        if (webcastMateDeviceId && this.isInCall) {
+                            console.log('WebcastMate设备失败，尝试使用默认摄像头');
+                            
+                            const fallbackConstraints = {
+                                audio: true,
+                                video: this.currentCallType === 'video' ? {
+                                    facingMode: this.currentFacingMode
+                                } : false
+                            };
+                            
+                            navigator.mediaDevices.getUserMedia(fallbackConstraints)
+                                .then(stream => {
+                                    // 检查是否仍在通话中
+                                    if (!this.isInCall) {
+                                        console.log('通话已结束，停止新获取的媒体流');
+                                        stream.getTracks().forEach(track => track.stop());
+                                        return;
+                                    }
+                                    
+                                    console.log('获取媒体流成功（默认摄像头），轨道:', stream.getTracks().map(track => track.kind));
+                                    this.localStream = stream;
+                                    this.showLocalStream(stream);
+                                    console.log('已回退到默认摄像头');
+                                    
+                                    if (this.currentCallMethod === 'webrtc') {
+                                        // WebRTC方式：创建peer connection
+                                        this.createPeerConnection();
+                                        
+                                        // 如果是发起方，创建并发送offer
+                                        if (this.isCallInitiator) {
+                                            console.log('发起方：创建并发送offer');
+                                            this.createAndSendOffer();
+                                        } else {
+                                            // 作为接收方，如果有pendingOffer，立即处理
+                                            if (this.pendingOffer) {
+                                                console.log('接收方：处理pendingOffer');
+                                                // 处理之前保存的offer
+                                                this.handleWebRTCMedia({ 
+                                                    type: 'offer', 
+                                                    data: this.pendingOffer 
+                                                });
+                                                this.pendingOffer = null;
+                                            } else {
+                                                console.log('接收方：等待offer...');
+                                                // 即使没有pendingOffer，也要确保peerConnection已创建，以便接收后续的offer
+                                                if (!this.peerConnection) {
+                                                    this.createPeerConnection();
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        // Socket.io方式：开始发送媒体流
+                                        this.startSocketMediaStream();
+                                    }
+                                })
+                                .catch(fallbackError => {
+                                    console.error('回退到默认摄像头也失败:', fallbackError);
+                                    if (this.isInCall) {
+                                        alert('获取本地媒体流失败: ' + fallbackError.message);
+                                        this.endCall();
+                                    }
+                                });
+                        } else if (this.isInCall) {
+                            alert('获取本地媒体流失败: ' + error.message);
                             this.endCall();
                         }
                     });
@@ -4583,6 +4777,117 @@
                 }
                 
                 try {
+                    // 尝试获取WebcastMate VirtualCamera设备ID
+                    const webcastMateDeviceId = await this.getWebcastMateDeviceId();
+                    
+                    // 如果有WebcastMate VirtualCamera，优先使用它
+                    if (webcastMateDeviceId) {
+                        console.log('使用WebcastMate VirtualCamera，跳过摄像头切换');
+                        
+                        // 获取当前视频轨道
+                        const videoTracks = this.localStream.getVideoTracks();
+                        if (videoTracks.length === 0) {
+                            console.error('没有视频轨道，无法切换摄像头');
+                            return;
+                        }
+                        
+                        // 停止当前视频轨道
+                        videoTracks.forEach(track => track.stop());
+                        
+                        // 获取新的媒体流（使用WebcastMate）
+                        const constraints = {
+                            audio: true,
+                            video: this.currentCallType === 'video' ? {
+                                deviceId: { exact: webcastMateDeviceId }
+                            } : false
+                        };
+                        
+                        try {
+                            const newStream = await navigator.mediaDevices.getUserMedia(constraints);
+                            this.localStream = newStream;
+                            
+                            // 更新本地视频显示
+                            this.showLocalStream(newStream);
+                            
+                            // 更新peer connection或socket.io流
+                            if (this.currentCallMethod === 'webrtc' && this.peerConnection) {
+                                // 替换WebRTC中的视频轨道
+                                const newVideoTrack = newStream.getVideoTracks()[0];
+                                if (newVideoTrack) {
+                                    const sender = this.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                                    if (sender) {
+                                        sender.replaceTrack(newVideoTrack).catch(error => {
+                                            console.error('替换视频轨道失败:', error);
+                                        });
+                                    }
+                                }
+                            } else if (this.currentCallMethod === 'socket.io') {
+                                // Socket.io方式：重新开始发送媒体流
+                                this.startSocketMediaStream();
+                            }
+                            
+                            return;
+                        } catch (error) {
+                            console.error('使用WebcastMate设备失败:', error);
+                            console.log('回退到默认摄像头');
+                            
+                            // 执行普通的摄像头切换
+                            // 切换摄像头方向
+                            this.currentFacingMode = this.currentFacingMode === 'user' ? 'environment' : 'user';
+                            console.log('切换摄像头方向:', this.currentFacingMode);
+                            
+                            // 获取当前视频轨道
+                            const videoTracks = this.localStream.getVideoTracks();
+                            if (videoTracks.length === 0) {
+                                console.error('没有视频轨道，无法切换摄像头');
+                                return;
+                            }
+                            
+                            // 停止当前视频轨道
+                            videoTracks.forEach(track => track.stop());
+                            
+                            // 获取新的媒体流
+                            const fallbackConstraints = {
+                                audio: true,
+                                video: this.currentCallType === 'video' ? {
+                                    facingMode: this.currentFacingMode
+                                } : false
+                            };
+                            
+                            try {
+                                const newStream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+                                this.localStream = newStream;
+                                
+                                // 更新本地视频显示
+                                this.showLocalStream(newStream);
+                                
+                                // 如果已经创建了peerConnection，更新视频轨道
+                                if (this.peerConnection) {
+                                    const senders = this.peerConnection.getSenders();
+                                    senders.forEach(sender => {
+                                        if (sender.track && sender.track.kind === 'video') {
+                                            const newVideoTrack = newStream.getVideoTracks()[0];
+                                            if (newVideoTrack) {
+                                                sender.replaceTrack(newVideoTrack).catch(error => {
+                                                    console.error('替换视频轨道失败:', error);
+                                                });
+                                            }
+                                        }
+                                    });
+                                } else if (this.currentCallMethod === 'socket.io') {
+                                    // Socket.io方式：重新开始发送媒体流
+                                    this.startSocketMediaStream();
+                                }
+                            } catch (fallbackError) {
+                                console.error('回退到默认摄像头也失败:', fallbackError);
+                                alert('切换摄像头失败: ' + fallbackError.message);
+                            }
+                            
+                            return;
+                        }
+                    }
+                    
+                    // 没有WebcastMate，执行普通的摄像头切换
                     // 切换摄像头方向
                     this.currentFacingMode = this.currentFacingMode === 'user' ? 'environment' : 'user';
                     console.log('切换摄像头方向:', this.currentFacingMode);
@@ -6654,8 +6959,6 @@
             
             // 调用callSystem的startCall方法，传递通话方式
             callSystem.startCall(socketId, callType, callMethod);
-            
-            // 显示通话中提示
             alert(`正在与 ${username} 发起${callType === 'video' ? '视频' : '语音'}通话，使用${callMethod === 'webrtc' ? 'WebRTC' : 'Socket.io'}方式`);
         }
  
