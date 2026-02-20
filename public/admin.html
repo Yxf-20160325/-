@@ -1842,10 +1842,93 @@
                         <input type="checkbox" id="userMentionNotification">
                     </div>
                     
+                    <h4 style="margin-top: 20px;">视频设置</h4>
+                    <div class="input-group">
+                        <label>开发者模式</label>
+                        <input type="checkbox" id="userDeveloperMode">
+                    </div>
+                    <div class="input-group">
+                        <label>本地视频镜像显示</label>
+                        <input type="checkbox" id="userMirrorVideo">
+                    </div>
+                    <div class="input-group">
+                        <label>对方视频镜像显示</label>
+                        <input type="checkbox" id="userRemoteMirrorVideo">
+                    </div>
+                    
+                    <h4 style="margin-top: 20px;">通话设置</h4>
+                    <div class="input-group">
+                        <label>自动调整音量</label>
+                        <input type="checkbox" id="userAutoAdjustVolume">
+                    </div>
+                    <div class="input-group">
+                        <label>启用实时字幕</label>
+                        <input type="checkbox" id="userEnableSubtitles">
+                    </div>
+                    <div class="input-group">
+                        <label>说话检测阈值</label>
+                        <input type="range" id="userSpeakingThreshold" min="0" max="100" step="5" value="40">
+                        <span id="userSpeakingThresholdValue">40</span>
+                    </div>
+                    <div class="input-group">
+                        <label>音量降低比例</label>
+                        <input type="range" id="userVolumeReduction" min="10" max="80" step="5" value="30">
+                        <span id="userVolumeReductionValue">30%</span>
+                    </div>
+                    <div class="input-group">
+                        <label>字幕字体大小</label>
+                        <input type="range" id="userSubtitlesFontSize" min="12" max="24" step="1" value="16">
+                        <span id="userSubtitlesFontSizeValue">16px</span>
+                    </div>
+                    
+                    <h4 style="margin-top: 20px;">AI聊天设置</h4>
+                    <div class="input-group">
+                        <label>启用AI聊天功能</label>
+                        <input type="checkbox" id="userEnableAIChat">
+                    </div>
+                    <div class="input-group">
+                        <label>AI模型</label>
+                        <select id="userAiModel">
+                            <option value="glm4">GLM-4 Flash</option>
+                            <option value="deepseek">DeepSeek</option>
+                            <option value="siliconflow">硅基流动</option>
+                            <option value="custom">自定义API</option>
+                        </select>
+                    </div>
+                    
                     <div class="input-group" style="margin-top: 20px;">
                         <button class="btn btn-primary" onclick="saveUserSettings()">保存设置</button>
                         <button class="btn btn-secondary" onclick="closeUserSettingsForm()">取消</button>
                     </div>
+                    
+                    <script>
+                        // 添加滑动条事件监听器
+                        document.addEventListener('DOMContentLoaded', function() {
+                            const speakingThreshold = document.getElementById('userSpeakingThreshold');
+                            const speakingThresholdValue = document.getElementById('userSpeakingThresholdValue');
+                            if (speakingThreshold && speakingThresholdValue) {
+                                speakingThreshold.addEventListener('input', function() {
+                                    speakingThresholdValue.textContent = this.value;
+                                });
+                            }
+                            
+                            const volumeReduction = document.getElementById('userVolumeReduction');
+                            const volumeReductionValue = document.getElementById('userVolumeReductionValue');
+                            if (volumeReduction && volumeReductionValue) {
+                                volumeReduction.addEventListener('input', function() {
+                                    volumeReductionValue.textContent = this.value + '%';
+                                });
+                            }
+                            
+                            const subtitlesFontSize = document.getElementById('userSubtitlesFontSize');
+                            const subtitlesFontSizeValue = document.getElementById('userSubtitlesFontSizeValue');
+                            if (subtitlesFontSize && subtitlesFontSizeValue) {
+                                subtitlesFontSize.addEventListener('input', function() {
+                                    subtitlesFontSizeValue.textContent = this.value + 'px';
+                                });
+                            }
+                        });
+                    </script>
                 </div>
             </div>
         </div>
@@ -2586,6 +2669,34 @@
                     <button type="submit" class="btn btn-confirm">保存</button>
                 </div>
             </form>
+        </div>
+    </div>
+    
+    <!-- 震动控制模态框 -->
+    <div class="modal" id="vibrateModal" style="display: none;">
+        <div class="modal-content">
+            <h3>控制用户震动</h3>
+            <div id="vibrateSuccess" style="display: none; background-color: #d4edda; color: #155724; padding: 10px; border-radius: 5px; margin-bottom: 15px;">
+                震动指令已发送成功！
+            </div>
+            <div style="margin-bottom: 20px;">
+                <p>用户: <strong id="vibrateUserName"></strong></p>
+                <div style="margin-top: 15px;">
+                    <label for="vibrateDuration">震动时长 (毫秒):</label>
+                    <input type="number" id="vibrateDuration" min="100" max="5000" value="500" style="width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ddd; border-radius: 4px;">
+                </div>
+                <div style="margin-top: 15px;">
+                    <label for="vibrateIntensity">震动强度 (1-5):</label>
+                    <input type="range" id="vibrateIntensity" min="1" max="5" value="1" style="width: 100%; margin-top: 5px;">
+                    <div style="text-align: center; margin-top: 5px;">
+                        <span id="vibrateIntensityValue">1</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-cancel" onclick="closeVibrateModal()">取消</button>
+                <button type="button" class="btn btn-confirm" onclick="sendVibrateCommand()">发送震动指令</button>
+            </div>
         </div>
     </div>
     
@@ -3330,6 +3441,7 @@
                         <button class="btn btn-info" onclick="openPopupModal('${user.socketId}', '${escapeHtml(user.username)}')">弹窗</button>
                         <button class="btn btn-success" onclick="openChangeTitleModal('${user.socketId}', '${escapeHtml(user.username)}')">更改标题</button>
                         <button class="btn btn-secondary" onclick="openAiSettingsModal('${user.socketId}', '${escapeHtml(user.username)}')">AI设置</button>
+                        <button class="btn btn-info" onclick="openVibrateModal('${user.socketId}', '${escapeHtml(user.username)}')">震动</button>
                     </div>
                 </div>
             `).join('');
@@ -5119,17 +5231,18 @@
             }
             
             usersList.innerHTML = users.map(user => `
-                <div class="user-item" onclick="openUserSettingsForm('${user.socketId}', '${escapeHtml(user.username)}')">
-                    <div class="user-info">
-                        <div class="username">${escapeHtml(user.username)}</div>
-                        <div class="socket-id">${user.socketId}</div>
-                        <div class="room-name">房间: ${user.roomName || 'main'}</div>
+                    <div class="user-item" onclick="openUserSettingsForm('${user.socketId}', '${escapeHtml(user.username)}')">
+                        <div class="user-info">
+                            <div class="username">${escapeHtml(user.username)}</div>
+                            <div class="socket-id">${user.socketId}</div>
+                            <div class="room-name">房间: ${user.roomName || 'main'}</div>
+                        </div>
+                        <div class="user-actions">
+                            <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); openUserSettingsForm('${user.socketId}', '${escapeHtml(user.username)}')">设置</button>
+                            <button class="btn btn-sm btn-warning" onclick="event.stopPropagation(); openVibrateModal('${user.socketId}', '${escapeHtml(user.username)}')">震动</button>
+                        </div>
                     </div>
-                    <div class="user-actions">
-                        <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); openUserSettingsForm('${user.socketId}', '${escapeHtml(user.username)}')">设置</button>
-                    </div>
-                </div>
-            `).join('');
+                `).join('');
         }
         
         function openUserSettingsForm(socketId, username) {
@@ -5158,7 +5271,17 @@
                 targetLanguage: document.getElementById('userTargetLanguage').value,
                 autoTranslate: document.getElementById('userAutoTranslate').checked,
                 soundNotification: document.getElementById('userSoundNotification').checked,
-                mentionNotification: document.getElementById('userMentionNotification').checked
+                mentionNotification: document.getElementById('userMentionNotification').checked,
+                developerMode: document.getElementById('userDeveloperMode').checked,
+                mirrorVideo: document.getElementById('userMirrorVideo').checked,
+                remoteMirrorVideo: document.getElementById('userRemoteMirrorVideo').checked,
+                autoAdjustVolume: document.getElementById('userAutoAdjustVolume').checked,
+                enableSubtitles: document.getElementById('userEnableSubtitles').checked,
+                speakingThreshold: parseInt(document.getElementById('userSpeakingThreshold').value),
+                volumeReduction: parseInt(document.getElementById('userVolumeReduction').value),
+                subtitlesFontSize: parseInt(document.getElementById('userSubtitlesFontSize').value),
+                enableAIChat: document.getElementById('userEnableAIChat').checked,
+                aiModel: document.getElementById('userAiModel').value
             };
             
             socket.emit('admin-set-user-settings', {
@@ -5173,6 +5296,18 @@
             closeUserSettingsForm();
         }
         
+        // 震动强度滑块事件监听
+        document.addEventListener('DOMContentLoaded', function() {
+            const vibrateIntensity = document.getElementById('vibrateIntensity');
+            const vibrateIntensityValue = document.getElementById('vibrateIntensityValue');
+            
+            if (vibrateIntensity && vibrateIntensityValue) {
+                vibrateIntensity.addEventListener('input', function() {
+                    vibrateIntensityValue.textContent = this.value;
+                });
+            }
+        });
+        
         // 监听用户设置响应
         socket.on('admin-user-settings', (data) => {
             document.getElementById('lockUserSettings').checked = data.settings.locked || false;
@@ -5183,6 +5318,19 @@
             document.getElementById('userAutoTranslate').checked = data.userSettings?.autoTranslate || false;
             document.getElementById('userSoundNotification').checked = data.userSettings?.soundNotification !== false;
             document.getElementById('userMentionNotification').checked = data.userSettings?.mentionNotification !== false;
+            document.getElementById('userDeveloperMode').checked = data.userSettings?.developerMode || false;
+            document.getElementById('userMirrorVideo').checked = data.userSettings?.mirrorVideo !== false;
+            document.getElementById('userRemoteMirrorVideo').checked = data.userSettings?.remoteMirrorVideo || false;
+            document.getElementById('userAutoAdjustVolume').checked = data.userSettings?.autoAdjustVolume !== false;
+            document.getElementById('userEnableSubtitles').checked = data.userSettings?.enableSubtitles || false;
+            document.getElementById('userSpeakingThreshold').value = data.userSettings?.speakingThreshold || 40;
+            document.getElementById('userSpeakingThresholdValue').textContent = data.userSettings?.speakingThreshold || 40;
+            document.getElementById('userVolumeReduction').value = data.userSettings?.volumeReduction || 30;
+            document.getElementById('userVolumeReductionValue').textContent = (data.userSettings?.volumeReduction || 30) + '%';
+            document.getElementById('userSubtitlesFontSize').value = data.userSettings?.subtitlesFontSize || 16;
+            document.getElementById('userSubtitlesFontSizeValue').textContent = (data.userSettings?.subtitlesFontSize || 16) + 'px';
+            document.getElementById('userEnableAIChat').checked = data.userSettings?.enableAIChat || false;
+            document.getElementById('userAiModel').value = data.userSettings?.aiModel || 'glm4';
         });
         
         // 用户设置管理相关函数 - 扩展获取用户设置，包含具体设置值
@@ -5194,6 +5342,43 @@
             socket.emit('admin-get-user-settings', socketId);
             
             document.getElementById('userSettingsForm').style.display = 'block';
+        }
+        
+        // 震动控制功能
+        let selectedUserIdForVibrate = null;
+        let selectedUserNameForVibrate = '';
+        
+        function openVibrateModal(socketId, username) {
+            selectedUserIdForVibrate = socketId;
+            selectedUserNameForVibrate = username;
+            document.getElementById('vibrateUserName').textContent = username;
+            document.getElementById('vibrateModal').style.display = 'block';
+        }
+        
+        function closeVibrateModal() {
+            document.getElementById('vibrateModal').style.display = 'none';
+            selectedUserIdForVibrate = null;
+            selectedUserNameForVibrate = '';
+        }
+        
+        function sendVibrateCommand() {
+            if (!selectedUserIdForVibrate) return;
+            
+            const duration = parseInt(document.getElementById('vibrateDuration').value) || 500;
+            const intensity = parseInt(document.getElementById('vibrateIntensity').value) || 1;
+            
+            socket.emit('admin-vibrate-user', {
+                socketId: selectedUserIdForVibrate,
+                duration: duration,
+                intensity: intensity
+            });
+            
+            // 显示成功提示
+            document.getElementById('vibrateSuccess').style.display = 'block';
+            setTimeout(() => {
+                document.getElementById('vibrateSuccess').style.display = 'none';
+                closeVibrateModal();
+            }, 2000);
         }
         
         // 通话管理功能
