@@ -2341,14 +2341,98 @@
             }
         }
         
-        // 页面加载时尝试请求震动权限
+        // 全局变量：记录用户交互激活状态
+        let userInteractionActivated = false;
+        
+        // 启用通知按钮
+        function createEnableNotificationsButton() {
+            const existingButton = document.getElementById('enableNotificationsBtn');
+            if (existingButton) return;
+            
+            const button = document.createElement('button');
+            button.id = 'enableNotificationsBtn';
+            button.textContent = '启用通知';
+            button.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 10px 20px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                border: none;
+                border-radius: 25px;
+                font-size: 14px;
+                cursor: pointer;
+                box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+                z-index: 1000;
+                transition: all 0.3s ease;
+            `;
+            button.onclick = function() {
+                // 记录用户交互激活状态
+                userInteractionActivated = true;
+                // 请求震动权限
+                requestVibrationPermission();
+                // 不隐藏按钮，保持显示
+                // 显示成功提示
+                showNotification('通知已启用！现在你将收到消息震动提醒。');
+            };
+            document.body.appendChild(button);
+        }
+        
+        // 显示通知
+        function showNotification(message) {
+            const notification = document.createElement('div');
+            notification.textContent = message;
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: rgba(0, 0, 0, 0.8);
+                color: white;
+                padding: 10px 20px;
+                border-radius: 25px;
+                font-size: 14px;
+                z-index: 1001;
+                animation: slideDown 0.3s ease;
+            `;
+            
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes slideDown {
+                    from {
+                        opacity: 0;
+                        transform: translate(-50%, -20px);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translate(-50%, 0);
+                    }
+                }
+            `;
+            document.head.appendChild(style);
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.animation = 'slideDown 0.3s ease reverse';
+                setTimeout(() => {
+                    notification.remove();
+                    style.remove();
+                }, 300);
+            }, 3000);
+        }
+        
+        // 页面加载时创建启用通知按钮
         window.addEventListener('DOMContentLoaded', function() {
+            createEnableNotificationsButton();
             requestVibrationPermission();
         });
         
-        // 用户交互时再次尝试请求震动权限
+        // 用户交互时记录激活状态并请求震动权限
         document.addEventListener('click', function() {
+            userInteractionActivated = true;
             requestVibrationPermission();
+            // 不隐藏启用通知按钮，保持显示
         }, { once: true });
         
         // 控制台日志收集系统
@@ -9687,18 +9771,30 @@
                     // 如果消息不存在，添加新消息
                     addMessage(data);
                     
-                    // 新消息震动提醒 - 检查用户震动通知设置，管理员不受此设置影响
+                    // 新消息震动提醒 - 检查用户震动通知设置和交互激活状态，管理员不受此设置影响
                     if (data.username !== username && (window.userSettings.vibrateNotification || data.role === 'admin' || data.role === 'superadmin')) {
-                        vibrate();
+                        if (userInteractionActivated) {
+                            vibrate();
+                        } else {
+                            // 如果用户未激活，显示启用通知按钮
+                            createEnableNotificationsButton();
+                            console.log('需要用户交互才能启用震动通知');
+                        }
                     }
                 }
             } else {
                 // 对于其他消息，添加新消息
                 addMessage(data);
                 
-                // 新消息震动提醒 - 检查用户震动通知设置，管理员不受此设置影响
+                // 新消息震动提醒 - 检查用户震动通知设置和交互激活状态，管理员不受此设置影响
                 if (data.username !== username && (window.userSettings.vibrateNotification || data.role === 'admin' || data.role === 'superadmin')) {
-                    vibrate();
+                    if (userInteractionActivated) {
+                        vibrate();
+                    } else {
+                        // 如果用户未激活，显示启用通知按钮
+                        createEnableNotificationsButton();
+                        console.log('需要用户交互才能启用震动通知');
+                    }
                 }
                 
                 // 只有当消息不是来自当前用户时，才生成AI回复建议
