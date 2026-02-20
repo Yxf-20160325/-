@@ -1,152 +1,242 @@
-const NodeClam = require('clamscan');
+const axios = require('axios');
+const FormData = require('form-data');
 const fs = require('fs');
 const path = require('path');
 
-class VirusScanner {
+class VirusTotalScanner {
     constructor() {
-        this.clamscan = null;
-        this.initialized = false;
-        this.initialize();
+        // VirusTotal API密钥
+        this.apiKey = '45b77ae8017a838b254cb2ef8203e4683299dabbc7c028858c42d6c1e1637d8a';
+        this.baseUrl = 'https://www.virustotal.com/api/v3';
+        this.initialized = true;
+        this.requestQueue = [];
+        this.isProcessingQueue = false;
+        
+        console.log('VirusTotal病毒扫描器已初始化');
     }
 
-    // 初始化ClamAV扫描器
-    async initialize() {
-        try {
-            console.log('正在初始化ClamAV病毒扫描器...');
-            
-            this.clamscan = await new NodeClam().init({
-                removeInfected: false, // 发现病毒时不自动删除文件
-                quarantineInfected: false, // 不隔离感染文件
-                scanLog: path.join(__dirname, '../logs/scan.log'), // 扫描日志
-                debugMode: false, // 调试模式
-                fileList: false, // 不生成文件列表
-                scanRecursively: false, // 不递归扫描
-                clamdscan: {
-                    socket: false, // 使用TCP端口而非Unix socket
-                    host: 'localhost',
-                    port: 3310,
-                    timeout: 60000, // 60秒超时
-                    localFallback: true // 如果无法连接到clamd，使用本地命令行
-                },
-                clamdscanbin: this.findClamScanBinary(), // 尝试自动查找可执行文件
-                timeout: 60000 // 全局超时
-            });
-
-            this.initialized = true;
-            console.log('ClamAV病毒扫描器初始化成功');
-        } catch (error) {
-            console.warn('ClamAV初始化失败，病毒扫描功能将不可用:', error.message);
-            console.warn('请确保已安装ClamAV并启动服务，或使用npm run install-clamav命令安装');
-            this.initialized = false;
-        }
-    }
-
-    // 尝试查找ClamScan可执行文件
-    findClamScanBinary() {
-        const possiblePaths = [
-            'C:\\Program Files\\ClamAV\\clamdscan.exe',
-            'C:\\Program Files (x86)\\ClamAV\\clamdscan.exe',
-            '/usr/bin/clamdscan',
-            '/usr/local/bin/clamdscan'
-        ];
-
-        for (const path of possiblePaths) {
-            if (fs.existsSync(path)) {
-                return path;
-            }
-        }
-
-        return 'clamdscan'; // 依赖系统PATH
-    }
-
-    // 扫描文件
+    // 上传文件并扫描
     async scanFile(filePath) {
         try {
-            // 确保扫描器已初始化
-            if (!this.initialized) {
-                await this.initialize();
-                if (!this.initialized) {
-                    // 初始化失败，默认允许文件上传
-                    return {
-                        safe: true,
-                        scanned: false,
-                        message: 'ClamAV未初始化，跳过病毒扫描'
-                    };
-                }
-            }
-
-            // 检查文件是否存在
             if (!fs.existsSync(filePath)) {
                 throw new Error('文件不存在');
             }
-
-            console.log('开始病毒扫描:', path.basename(filePath));
             
-            // 执行扫描
-            const result = await this.clamscan.scanFile(filePath);
-            
-            console.log('扫描结果:', result);
-
-            if (result && result.isInfected) {
-                return {
-                    safe: false,
-                    scanned: true,
-                    viruses: result.viruses,
-                    message: '文件被检测到病毒'
-                };
-            } else {
-                return {
-                    safe: true,
-                    scanned: true,
-                    message: '文件安全'
-                };
-            }
+            console.log('开始VirusTotal扫描:', path.basename(filePath));
+            const scanResult = await this.scanBuffer(fs.readFileSync(filePath), path.basename(filePath));
+            return scanResult;
         } catch (error) {
-            console.error('病毒扫描失败:', error.message);
-            // 扫描失败时，默认允许文件上传（避免ClamAV问题导致正常文件无法上传）
+            console.error('扫描失败:', error.message);
             return {
-                safe: true,
+                safe: false,
                 scanned: false,
                 error: error.message,
-                message: '病毒扫描失败，默认允许上传'
+                message: 'VirusTotal扫描失败，请等待1分钟后重试'
             };
         }
     }
 
-    // 扫描缓冲区数据（直接从内存扫描）
+    // 扫描缓冲区
     async scanBuffer(buffer, filename) {
         try {
+            console.log('开始VirusTotal扫描:', filename);
+            
             // 创建临时文件
             const tempDir = path.join(__dirname, '../temp');
             if (!fs.existsSync(tempDir)) {
                 fs.mkdirSync(tempDir, { recursive: true });
             }
-
+            
             const tempFilePath = path.join(tempDir, filename || `temp-${Date.now()}`);
             fs.writeFileSync(tempFilePath, buffer);
-
-            // 扫描临时文件
-            const result = await this.scanFile(tempFilePath);
-
-            // 清理临时文件
+            
             try {
-                fs.unlinkSync(tempFilePath);
-            } catch (e) {
-                console.warn('清理临时文件失败:', e.message);
+                // 上传文件到VirusTotal
+                const fileId = await this.uploadFile(tempFilePath);
+                
+                // 查询扫描结果
+                const scanResult = await this.getScanResult(fileId);
+                
+                console.log('VirusTotal扫描完成:', filename, '结果:', scanResult.safe ? '安全' : '危险');
+                return scanResult;
+            } finally {
+                // 清理临时文件
+                if (fs.existsSync(tempFilePath)) {
+                    fs.unlinkSync(tempFilePath);
+                }
             }
-
-            return result;
         } catch (error) {
-            console.error('缓冲区扫描失败:', error.message);
+            console.error('VirusTotal扫描失败:', error.message);
             return {
-                safe: true,
+                safe: false,
                 scanned: false,
                 error: error.message,
-                message: '病毒扫描失败，默认允许上传'
+                message: 'VirusTotal扫描失败，请等待1分钟后重试'
             };
         }
     }
+
+    // 上传文件到VirusTotal
+    async uploadFile(filePath) {
+        return new Promise(async (resolve, reject) => {
+            // 添加到请求队列（处理速率限制）
+            this.requestQueue.push({
+                type: 'upload',
+                filePath: filePath,
+                resolve,
+                reject
+            });
+            
+            if (!this.isProcessingQueue) {
+                this.processQueue();
+            }
+        });
+    }
+
+    // 查询扫描结果
+    async getScanResult(fileId) {
+        return new Promise(async (resolve, reject) => {
+            // 添加到请求队列（处理速率限制）
+            this.requestQueue.push({
+                type: 'result',
+                fileId: fileId,
+                resolve,
+                reject
+            });
+            
+            if (!this.isProcessingQueue) {
+                this.processQueue();
+            }
+        });
+    }
+
+    // 处理请求队列
+    async processQueue() {
+        if (this.isProcessingQueue || this.requestQueue.length === 0) {
+            return;
+        }
+        
+        this.isProcessingQueue = true;
+        
+        while (this.requestQueue.length > 0) {
+            const request = this.requestQueue.shift();
+            
+            try {
+                if (request.type === 'upload') {
+                    const fileId = await this.performUpload(request.filePath);
+                    request.resolve(fileId);
+                } else if (request.type === 'result') {
+                    const result = await this.performGetResult(request.fileId);
+                    request.resolve(result);
+                }
+            } catch (error) {
+                request.reject(error);
+            }
+            
+            // 等待15秒，确保不超过速率限制（每分钟4次请求）
+            await new Promise(resolve => setTimeout(resolve, 15000));
+        }
+        
+        this.isProcessingQueue = false;
+    }
+
+    // 执行文件上传
+    async performUpload(filePath) {
+        let retries = 3;
+        let delay = 3000;
+        
+        while (retries > 0) {
+            try {
+                const formData = new FormData();
+                formData.append('file', fs.createReadStream(filePath));
+                
+                const response = await axios.post(`${this.baseUrl}/files`, formData, {
+                    headers: {
+                        ...formData.getHeaders(),
+                        'x-apikey': this.apiKey
+                    },
+                    maxContentLength: Infinity,
+                    timeout: 60000
+                });
+                
+                return response.data.data.id;
+            } catch (error) {
+                if (error.code === 'read ECONNRESET') {
+                    console.warn('网络连接重置，重试上传:', retries - 1, '次');
+                    retries--;
+                    if (retries > 0) {
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        delay += 2000;
+                        continue;
+                    }
+                }
+                
+                if (error.response) {
+                    console.error('VirusTotal上传失败:', error.response.status, error.response.data);
+                    throw new Error(`上传失败: ${error.response.status}`);
+                }
+                throw error;
+            }
+        }
+    }
+
+    // 执行获取扫描结果
+    async performGetResult(fileId) {
+        let retries = 5;
+        let delay = 3000;
+        
+        while (retries > 0) {
+            try {
+                const response = await axios.get(`${this.baseUrl}/analyses/${fileId}`, {
+                    headers: {
+                        'x-apikey': this.apiKey
+                    },
+                    timeout: 30000
+                });
+                
+                const status = response.data.data.attributes.status;
+                
+                if (status === 'completed') {
+                    const stats = response.data.data.attributes.stats;
+                    const malicious = stats.malicious > 0;
+                    
+                    return {
+                        safe: !malicious,
+                        scanned: true,
+                        stats: stats,
+                        message: malicious ? '文件被检测到病毒' : '文件安全',
+                        api: 'VirusTotal'
+                    };
+                } else if (status === 'failed') {
+                    throw new Error('扫描失败');
+                }
+                
+                // 扫描中，等待后重试
+                await new Promise(resolve => setTimeout(resolve, delay));
+                retries--;
+                delay += 2000;
+            } catch (error) {
+                if (error.code === 'ECONNRESET') {
+                    console.warn('网络连接重置，重试获取结果:', retries - 1, '次');
+                    retries--;
+                    if (retries > 0) {
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        delay += 2000;
+                        continue;
+                    }
+                }
+                
+                if (error.response) {
+                    console.error('VirusTotal获取结果失败:', error.response.status, error.response.data);
+                }
+                throw error;
+            }
+        }
+        
+        throw new Error('扫描超时');
+    }
+
+
 }
 
-// 导出单例实例
-module.exports = new VirusScanner();
+module.exports = new VirusTotalScanner();
