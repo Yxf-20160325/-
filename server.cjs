@@ -5,11 +5,14 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 
+// 导入病毒扫描器
+const virusScanner = require('./utils/virus-scanner');
+
 const app = express();
 app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type', 'X-Content-Type-Options'],
+    origin: ['*'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'X-Content-Type-Options', 'X-Requested-With'],
     credentials: true,
     exposedHeaders: ['Content-Type', 'X-Content-Type-Options']
 }));
@@ -22,13 +25,43 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, 'public')));
 
 // 为文件上传API单独配置raw解析器
-app.post('/api/files/upload', express.raw({ type: '*/*', limit: '300mb' }), (req, res) => {
+app.post('/api/files/upload', express.raw({ type: '*/*', limit: '300mb' }), async (req, res) => {
     try {
-        const relativePath = req.headers['x-path'] || '';
+        // 验证请求头
+        if (!req.headers['content-type']) {
+            return res.status(400).json({ error: '缺少Content-Type请求头' });
+        }
+        
+        // 验证相对路径
+        let relativePath = req.headers['x-path'] || '';
+        if (relativePath) {
+            // 解码路径
+            relativePath = decodeURIComponent(relativePath);
+            // 检查路径中是否包含危险字符
+            if (relativePath.includes('..') || relativePath.includes('\\') || relativePath.startsWith('/')) {
+                return res.status(403).json({ error: '不允许使用相对路径或绝对路径' });
+            }
+            // 规范化路径
+            relativePath = path.normalize(relativePath);
+            // 再次检查路径安全性
+            if (relativePath.includes('..')) {
+                return res.status(403).json({ error: '路径包含非法字符' });
+            }
+        }
+        
+        // 验证文件名
         let filename = req.headers['x-filename'] || Date.now() + '-' + Math.round(Math.random() * 1E9);
-        // 解码文件名，处理中文等非ASCII字符
         if (filename) {
+            // 解码文件名，处理中文等非ASCII字符
             filename = decodeURIComponent(filename);
+            // 检查文件名长度
+            if (filename.length > 255) {
+                return res.status(400).json({ error: '文件名过长' });
+            }
+            // 检查文件名中是否包含危险字符
+            if (filename.includes('..') || filename.includes('\\') || filename.includes('/') || filename.includes(':')) {
+                return res.status(403).json({ error: '文件名包含非法字符' });
+            }
         }
         
         // 检查是否为PHP文件
@@ -48,7 +81,16 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '300mb' }), (req
             return res.status(413).json({ error: '文件大小超过限制（最大30MB）' });
         }
         
-        const filePath = path.join(__dirname, 'uploads', relativePath, filename);
+        // 构建文件路径
+        const uploadsDir = path.join(__dirname, 'uploads');
+        const filePath = path.join(uploadsDir, relativePath, filename);
+        
+        // 验证文件路径是否在uploads目录内
+        const normalizedFilePath = path.normalize(filePath);
+        const normalizedUploadsDir = path.normalize(uploadsDir);
+        if (!normalizedFilePath.startsWith(normalizedUploadsDir)) {
+            return res.status(403).json({ error: '无权访问该路径' });
+        }
         
         // 确保目录存在
         const dirPath = path.dirname(filePath);
@@ -56,15 +98,34 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '300mb' }), (req
             fs.mkdirSync(dirPath, { recursive: true });
         }
         
+        // 病毒扫描
+        console.log('开始病毒扫描:', filename);
+        const scanResult = await virusScanner.scanBuffer(req.body, filename);
+        
+        if (!scanResult.safe) {
+            console.log('文件被检测到病毒:', filename);
+            return res.status(403).json({ 
+                error: '文件被检测到病毒，上传被拒绝',
+                viruses: scanResult.viruses
+            });
+        }
+        
+        console.log('病毒扫描完成:', filename, '结果:', scanResult.message);
+        
+        // 写入文件
         fs.writeFileSync(filePath, req.body);
         const stats = fs.statSync(filePath);
+        
+        // 构建响应URL
+        const fileUrl = `/uploads/${relativePath ? relativePath + '/' + filename : filename}`;
         
         res.json({
             name: filename,
             size: stats.size,
             createdAt: stats.birthtime,
             modifiedAt: stats.mtime,
-            url: `/uploads/${relativePath ? relativePath + '/' + filename : filename}`
+            url: fileUrl,
+            scanResult: scanResult // 包含扫描结果
         });
     } catch (error) {
         console.error('上传文件失败:', error);
@@ -75,6 +136,12 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '300mb' }), (req
 // 其他路由使用json解析器
 app.use(express.json({ limit: '30mb' }));
 
+// 应用API速率限制中间件到所有API端点
+app.use('/api/', apiRateLimitMiddleware);
+
+// 应用CSRF保护中间件到所有非GET请求的API端点
+app.use('/api/', csrfProtectionMiddleware);
+
 // 确保 uploads 目录存在
 if (!fs.existsSync(path.join(__dirname, 'uploads'))) {
     fs.mkdirSync(path.join(__dirname, 'uploads'));
@@ -84,8 +151,13 @@ if (!fs.existsSync(path.join(__dirname, 'uploads'))) {
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // 图片上传接口 - 单独配置raw解析器
-app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), (req, res) => {
+app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), async (req, res) => {
     try {
+        // 验证请求头
+        if (!req.headers['content-type']) {
+            return res.status(400).json({ error: '缺少Content-Type请求头' });
+        }
+        
         // 检查文件大小
         if (req.body.length > 10 * 1024 * 1024) { // 10MB限制
             return res.status(413).json({ error: '图片大小超过限制（最大10MB）' });
@@ -111,21 +183,26 @@ app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), (req, res
             extension = mimeToExt[contentType] || extension;
         }
         
+        // 生成安全的文件名
         const filename = Date.now() + '-' + Math.round(Math.random() * 1E9) + extension;
         
-        // 检查是否为PHP文件
-        if (filename.toLowerCase().endsWith('.php')) {
-            return res.status(403).json({ error: '不允许上传PHP文件' });
-        }
-        
-        // 检查是否为其他危险文件类型
-        const dangerousExtensions = ['.php', '.php3', '.php4', '.php5', '.phtml', '.jsp', '.asp', '.aspx', '.shtml', '.cgi', '.pl', '.exe', '.bat', '.cmd', '.sh', '.js', '.vbs'];
+        // 检查是否为危险文件类型
+        const dangerousExtensions = ['.php', '.php3', '.php4', '.php5', '.phtml', '.jsp', '.asp', '.aspx', '.shtml', '.cgi', '.pl', '.sh', '.js', '.vbs'];
         const fileExtension = path.extname(filename).toLowerCase();
         if (dangerousExtensions.includes(fileExtension)) {
             return res.status(403).json({ error: '不允许上传该类型的文件' });
         }
         
-        const filePath = path.join(__dirname, 'uploads', filename);
+        // 构建文件路径
+        const uploadsDir = path.join(__dirname, 'uploads');
+        const filePath = path.join(uploadsDir, filename);
+        
+        // 验证文件路径是否在uploads目录内
+        const normalizedFilePath = path.normalize(filePath);
+        const normalizedUploadsDir = path.normalize(uploadsDir);
+        if (!normalizedFilePath.startsWith(normalizedUploadsDir)) {
+            return res.status(403).json({ error: '无权访问该路径' });
+        }
         
         // 确保目录存在
         const dirPath = path.dirname(filePath);
@@ -133,8 +210,30 @@ app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), (req, res
             fs.mkdirSync(dirPath, { recursive: true });
         }
         
+        // 病毒扫描
+        console.log('开始病毒扫描:', filename);
+        const scanResult = await virusScanner.scanBuffer(req.body, filename);
+        
+        if (!scanResult.safe) {
+            console.log('文件被检测到病毒:', filename);
+            return res.status(403).json({ 
+                error: '文件被检测到病毒，上传被拒绝',
+                viruses: scanResult.viruses
+            });
+        }
+        
+        console.log('病毒扫描完成:', filename, '结果:', scanResult.message);
+        
+        // 写入文件
         fs.writeFileSync(filePath, req.body);
-        res.json({ imageUrl: `/uploads/${filename}` });
+        
+        // 构建响应URL
+        const imageUrl = `/uploads/${filename}`;
+        
+        res.json({ 
+            imageUrl: imageUrl,
+            scanResult: scanResult // 包含扫描结果
+        });
     } catch (error) {
         console.error('上传图片失败:', error);
         res.status(500).json({ error: '上传图片失败' });
@@ -142,8 +241,13 @@ app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), (req, res
 });
 
 // 音频上传接口 - 单独配置raw解析器
-app.post('/upload-audio', express.raw({ type: '*/*', limit: '30mb' }), (req, res) => {
+app.post('/upload-audio', express.raw({ type: '*/*', limit: '30mb' }), async (req, res) => {
     try {
+        // 验证请求头
+        if (!req.headers['content-type']) {
+            return res.status(400).json({ error: '缺少Content-Type请求头' });
+        }
+        
         // 检查文件大小
         if (req.body.length > 15 * 1024 * 1024) { // 15MB限制
             return res.status(413).json({ error: '音频大小超过限制（最大15MB）' });
@@ -170,21 +274,26 @@ app.post('/upload-audio', express.raw({ type: '*/*', limit: '30mb' }), (req, res
             extension = mimeToExt[contentType] || extension;
         }
         
+        // 生成安全的文件名
         const filename = Date.now() + '-' + Math.round(Math.random() * 1E9) + extension;
         
-        // 检查是否为PHP文件
-        if (filename.toLowerCase().endsWith('.php')) {
-            return res.status(403).json({ error: '不允许上传PHP文件' });
-        }
-        
-        // 检查是否为其他危险文件类型
-        const dangerousExtensions = ['.php', '.php3', '.php4', '.php5', '.phtml', '.jsp', '.asp', '.aspx', '.shtml', '.cgi', '.pl', '.exe', '.bat', '.cmd', '.sh', '.js', '.vbs'];
+        // 检查是否为危险文件类型
+        const dangerousExtensions = ['.php', '.php3', '.php4', '.php5', '.phtml', '.jsp', '.asp', '.aspx', '.shtml', '.cgi', '.pl', '.sh', '.js', '.vbs'];
         const fileExtension = path.extname(filename).toLowerCase();
         if (dangerousExtensions.includes(fileExtension)) {
             return res.status(403).json({ error: '不允许上传该类型的文件' });
         }
         
-        const filePath = path.join(__dirname, 'uploads', filename);
+        // 构建文件路径
+        const uploadsDir = path.join(__dirname, 'uploads');
+        const filePath = path.join(uploadsDir, filename);
+        
+        // 验证文件路径是否在uploads目录内
+        const normalizedFilePath = path.normalize(filePath);
+        const normalizedUploadsDir = path.normalize(uploadsDir);
+        if (!normalizedFilePath.startsWith(normalizedUploadsDir)) {
+            return res.status(403).json({ error: '无权访问该路径' });
+        }
         
         // 确保目录存在
         const dirPath = path.dirname(filePath);
@@ -192,10 +301,30 @@ app.post('/upload-audio', express.raw({ type: '*/*', limit: '30mb' }), (req, res
             fs.mkdirSync(dirPath, { recursive: true });
         }
         
+        // 病毒扫描
+        console.log('开始病毒扫描:', filename);
+        const scanResult = await virusScanner.scanBuffer(req.body, filename);
+        
+        if (!scanResult.safe) {
+            console.log('文件被检测到病毒:', filename);
+            return res.status(403).json({ 
+                error: '文件被检测到病毒，上传被拒绝',
+                viruses: scanResult.viruses
+            });
+        }
+        
+        console.log('病毒扫描完成:', filename, '结果:', scanResult.message);
+        
+        // 写入文件
         fs.writeFileSync(filePath, req.body);
+        
+        // 构建响应URL
+        const audioUrl = `/uploads/${filename}`;
+        
         res.json({ 
-            audioUrl: `/uploads/${filename}`,
-            contentType: contentType
+            audioUrl: audioUrl,
+            contentType: contentType,
+            scanResult: scanResult // 包含扫描结果
         });
     } catch (error) {
         console.error('上传音频失败:', error);
@@ -282,15 +411,43 @@ app.get('/api/admin/calls/:callId', (req, res) => {
 // 文件管理API - 获取文件列表（支持目录浏览）
 app.get('/api/files', (req, res) => {
     try {
-        const relativePath = req.query.path || '';
-        const uploadsDir = path.join(__dirname, 'uploads', relativePath);
+        // 验证路径参数
+        let relativePath = req.query.path || '';
+        if (relativePath) {
+            if (typeof relativePath !== 'string') {
+                return res.status(400).json({ error: '路径必须是字符串' });
+            }
+            // 检查路径中是否包含危险字符
+            if (relativePath.includes('..') || relativePath.includes('\\')) {
+                return res.status(403).json({ error: '路径包含非法字符' });
+            }
+            // 规范化路径
+            relativePath = path.normalize(relativePath);
+            // 再次检查路径安全性
+            if (relativePath.includes('..')) {
+                return res.status(403).json({ error: '路径包含非法字符' });
+            }
+        }
         
-        if (!fs.existsSync(uploadsDir)) {
+        // 构建目录路径
+        const baseUploadsDir = path.join(__dirname, 'uploads');
+        const targetDir = path.join(baseUploadsDir, relativePath);
+        
+        // 验证路径是否在uploads目录内
+        const normalizedTargetDir = path.normalize(targetDir);
+        const normalizedBaseDir = path.normalize(baseUploadsDir);
+        if (!normalizedTargetDir.startsWith(normalizedBaseDir)) {
+            return res.status(403).json({ error: '无权访问该路径' });
+        }
+        
+        // 检查目录是否存在
+        if (!fs.existsSync(targetDir)) {
             return res.json({ files: [], currentPath: relativePath });
         }
         
-        const files = fs.readdirSync(uploadsDir).map(filename => {
-            const filePath = path.join(uploadsDir, filename);
+        // 读取目录内容
+        const files = fs.readdirSync(targetDir).map(filename => {
+            const filePath = path.join(targetDir, filename);
             const stats = fs.statSync(filePath);
             const isDirectory = stats.isDirectory();
             return {
@@ -303,6 +460,7 @@ app.get('/api/files', (req, res) => {
             };
         });
         
+        // 排序并返回结果
         res.json({ 
             files: files.sort((a, b) => {
                 if (a.isDirectory && !b.isDirectory) return -1;
@@ -320,17 +478,63 @@ app.get('/api/files', (req, res) => {
 // 文件管理API - 创建目录
 app.post('/api/files/create-directory', express.json(), (req, res) => {
     try {
-        const { dirname, path: relativePath } = req.body;
-        if (!dirname) {
-            return res.status(400).json({ error: '目录名不能为空' });
+        // 验证请求体
+        if (!req.body) {
+            return res.status(400).json({ error: '请求体不能为空' });
         }
         
-        const dirPath = path.join(__dirname, 'uploads', relativePath || '', dirname);
+        const { dirname, path: relativePath } = req.body;
         
+        // 验证目录名
+        if (!dirname || typeof dirname !== 'string') {
+            return res.status(400).json({ error: '目录名不能为空且必须是字符串' });
+        }
+        
+        // 检查目录名长度
+        if (dirname.length > 255) {
+            return res.status(400).json({ error: '目录名过长' });
+        }
+        
+        // 检查目录名中是否包含危险字符
+        if (dirname.includes('..') || dirname.includes('\\') || dirname.includes('/') || dirname.includes(':')) {
+            return res.status(403).json({ error: '目录名包含非法字符' });
+        }
+        
+        // 验证相对路径
+        let safeRelativePath = relativePath || '';
+        if (safeRelativePath) {
+            if (typeof safeRelativePath !== 'string') {
+                return res.status(400).json({ error: '路径必须是字符串' });
+            }
+            // 检查路径中是否包含危险字符
+            if (safeRelativePath.includes('..') || safeRelativePath.includes('\\') || safeRelativePath.startsWith('/')) {
+                return res.status(403).json({ error: '不允许使用相对路径或绝对路径' });
+            }
+            // 规范化路径
+            safeRelativePath = path.normalize(safeRelativePath);
+            // 再次检查路径安全性
+            if (safeRelativePath.includes('..')) {
+                return res.status(403).json({ error: '路径包含非法字符' });
+            }
+        }
+        
+        // 构建目录路径
+        const uploadsDir = path.join(__dirname, 'uploads');
+        const dirPath = path.join(uploadsDir, safeRelativePath, dirname);
+        
+        // 验证目录路径是否在uploads目录内
+        const normalizedDirPath = path.normalize(dirPath);
+        const normalizedUploadsDir = path.normalize(uploadsDir);
+        if (!normalizedDirPath.startsWith(normalizedUploadsDir)) {
+            return res.status(403).json({ error: '无权访问该路径' });
+        }
+        
+        // 检查目录是否已存在
         if (fs.existsSync(dirPath)) {
             return res.status(400).json({ error: '目录已存在' });
         }
         
+        // 创建目录
         fs.mkdirSync(dirPath, { recursive: true });
         res.json({ success: true });
     } catch (error) {
@@ -344,13 +548,41 @@ app.post('/api/files/create-directory', express.json(), (req, res) => {
 // 文件管理API - 删除文件或目录
 app.delete('/api/files/*', (req, res) => {
     try {
+        // 验证路径参数
         const itemPath = req.params[0];
-        const fullPath = path.join(__dirname, 'uploads', itemPath);
+        if (!itemPath) {
+            return res.status(400).json({ error: '路径不能为空' });
+        }
         
+        // 检查路径中是否包含危险字符
+        if (itemPath.includes('..') || itemPath.includes('\\')) {
+            return res.status(403).json({ error: '路径包含非法字符' });
+        }
+        
+        // 规范化路径
+        const normalizedItemPath = path.normalize(itemPath);
+        // 再次检查路径安全性
+        if (normalizedItemPath.includes('..')) {
+            return res.status(403).json({ error: '路径包含非法字符' });
+        }
+        
+        // 构建完整路径
+        const uploadsDir = path.join(__dirname, 'uploads');
+        const fullPath = path.join(uploadsDir, normalizedItemPath);
+        
+        // 验证路径是否在uploads目录内
+        const normalizedFullPath = path.normalize(fullPath);
+        const normalizedUploadsDir = path.normalize(uploadsDir);
+        if (!normalizedFullPath.startsWith(normalizedUploadsDir)) {
+            return res.status(403).json({ error: '无权访问该路径' });
+        }
+        
+        // 检查文件或目录是否存在
         if (!fs.existsSync(fullPath)) {
             return res.status(404).json({ error: '文件或目录不存在' });
         }
         
+        // 删除文件或目录
         const stats = fs.statSync(fullPath);
         if (stats.isDirectory()) {
             fs.rmSync(fullPath, { recursive: true, force: true });
@@ -368,21 +600,82 @@ app.delete('/api/files/*', (req, res) => {
 // 文件管理API - 创建文本文件
 app.post('/api/files/create', express.json(), (req, res) => {
     try {
-        const { filename, content, path: relativePath } = req.body;
-        if (!filename) {
-            return res.status(400).json({ error: '文件名不能为空' });
+        // 验证请求体
+        if (!req.body) {
+            return res.status(400).json({ error: '请求体不能为空' });
         }
         
-        const filePath = path.join(__dirname, 'uploads', relativePath || '', filename);
-        fs.writeFileSync(filePath, content || '');
+        const { filename, content, path: relativePath } = req.body;
+        
+        // 验证文件名
+        if (!filename || typeof filename !== 'string') {
+            return res.status(400).json({ error: '文件名不能为空且必须是字符串' });
+        }
+        
+        // 检查文件名长度
+        if (filename.length > 255) {
+            return res.status(400).json({ error: '文件名过长' });
+        }
+        
+        // 检查文件名中是否包含危险字符
+        if (filename.includes('..') || filename.includes('\\') || filename.includes('/') || filename.includes(':')) {
+            return res.status(403).json({ error: '文件名包含非法字符' });
+        }
+        
+        // 验证相对路径
+        let safeRelativePath = relativePath || '';
+        if (safeRelativePath) {
+            if (typeof safeRelativePath !== 'string') {
+                return res.status(400).json({ error: '路径必须是字符串' });
+            }
+            // 检查路径中是否包含危险字符
+            if (safeRelativePath.includes('..') || safeRelativePath.includes('\\')) {
+                return res.status(403).json({ error: '路径包含非法字符' });
+            }
+            // 规范化路径
+            safeRelativePath = path.normalize(safeRelativePath);
+            // 再次检查路径安全性
+            if (safeRelativePath.includes('..')) {
+                return res.status(403).json({ error: '路径包含非法字符' });
+            }
+        }
+        
+        // 验证内容
+        const fileContent = content || '';
+        if (typeof fileContent !== 'string') {
+            return res.status(400).json({ error: '文件内容必须是字符串' });
+        }
+        
+        // 构建文件路径
+        const uploadsDir = path.join(__dirname, 'uploads');
+        const filePath = path.join(uploadsDir, safeRelativePath, filename);
+        
+        // 验证文件路径是否在uploads目录内
+        const normalizedFilePath = path.normalize(filePath);
+        const normalizedUploadsDir = path.normalize(uploadsDir);
+        if (!normalizedFilePath.startsWith(normalizedUploadsDir)) {
+            return res.status(403).json({ error: '无权访问该路径' });
+        }
+        
+        // 确保目录存在
+        const dirPath = path.dirname(filePath);
+        if (!fs.existsSync(dirPath)) {
+            fs.mkdirSync(dirPath, { recursive: true });
+        }
+        
+        // 写入文件
+        fs.writeFileSync(filePath, fileContent);
         const stats = fs.statSync(filePath);
+        
+        // 构建响应URL
+        const fileUrl = `/uploads/${safeRelativePath ? safeRelativePath + '/' + filename : filename}`;
         
         res.json({
             name: filename,
             size: stats.size,
             createdAt: stats.birthtime,
             modifiedAt: stats.mtime,
-            url: `/uploads/${relativePath ? relativePath + '/' + filename : filename}`
+            url: fileUrl
         });
     } catch (error) {
         console.error('创建文件失败:', error);
@@ -393,31 +686,72 @@ app.post('/api/files/create', express.json(), (req, res) => {
 // 文件管理API - 编辑文件内容
 app.put('/api/files/*', express.json(), (req, res) => {
     try {
+        // 验证路径参数
         const itemPath = req.params[0];
-        const { content } = req.body;
-        const filePath = path.join(__dirname, 'uploads', itemPath);
+        if (!itemPath) {
+            return res.status(400).json({ error: '路径不能为空' });
+        }
         
+        // 检查路径中是否包含危险字符
+        if (itemPath.includes('..') || itemPath.includes('\\')) {
+            return res.status(403).json({ error: '路径包含非法字符' });
+        }
+        
+        // 规范化路径
+        const normalizedItemPath = path.normalize(itemPath);
+        // 再次检查路径安全性
+        if (normalizedItemPath.includes('..')) {
+            return res.status(403).json({ error: '路径包含非法字符' });
+        }
+        
+        // 验证请求体
+        if (!req.body) {
+            return res.status(400).json({ error: '请求体不能为空' });
+        }
+        
+        // 验证内容
+        const { content } = req.body;
+        const fileContent = content || '';
+        if (typeof fileContent !== 'string') {
+            return res.status(400).json({ error: '文件内容必须是字符串' });
+        }
+        
+        // 构建文件路径
+        const uploadsDir = path.join(__dirname, 'uploads');
+        const filePath = path.join(uploadsDir, normalizedItemPath);
+        
+        // 验证文件路径是否在uploads目录内
+        const normalizedFilePath = path.normalize(filePath);
+        const normalizedUploadsDir = path.normalize(uploadsDir);
+        if (!normalizedFilePath.startsWith(normalizedUploadsDir)) {
+            return res.status(403).json({ error: '无权访问该路径' });
+        }
+        
+        // 检查文件是否存在
         if (!fs.existsSync(filePath)) {
             return res.status(404).json({ error: '文件不存在' });
         }
         
+        // 检查是否为目录
         const stats = fs.statSync(filePath);
         if (stats.isDirectory()) {
             return res.status(400).json({ error: '不能编辑目录' });
         }
         
-        fs.writeFileSync(filePath, content || '');
+        // 写入文件
+        fs.writeFileSync(filePath, fileContent);
         const newStats = fs.statSync(filePath);
         
-        const filename = path.basename(itemPath);
-        const relativePath = path.dirname(itemPath);
+        // 构建响应数据
+        const filename = path.basename(normalizedItemPath);
+        const relativePath = path.dirname(normalizedItemPath);
         
         res.json({
             name: filename,
             size: newStats.size,
             createdAt: newStats.birthtime,
             modifiedAt: newStats.mtime,
-            url: `/uploads/${itemPath}`
+            url: `/uploads/${normalizedItemPath}`
         });
     } catch (error) {
         console.error('编辑文件失败:', error);
@@ -428,18 +762,47 @@ app.put('/api/files/*', express.json(), (req, res) => {
 // 文件管理API - 获取文件内容
 app.get('/api/files/*/content', (req, res) => {
     try {
+        // 验证路径参数
         const itemPath = req.params[0];
-        const filePath = path.join(__dirname, 'uploads', itemPath);
+        if (!itemPath) {
+            return res.status(400).json({ error: '路径不能为空' });
+        }
         
+        // 检查路径中是否包含危险字符
+        if (itemPath.includes('..') || itemPath.includes('\\')) {
+            return res.status(403).json({ error: '路径包含非法字符' });
+        }
+        
+        // 规范化路径
+        const normalizedItemPath = path.normalize(itemPath);
+        // 再次检查路径安全性
+        if (normalizedItemPath.includes('..')) {
+            return res.status(403).json({ error: '路径包含非法字符' });
+        }
+        
+        // 构建文件路径
+        const uploadsDir = path.join(__dirname, 'uploads');
+        const filePath = path.join(uploadsDir, normalizedItemPath);
+        
+        // 验证文件路径是否在uploads目录内
+        const normalizedFilePath = path.normalize(filePath);
+        const normalizedUploadsDir = path.normalize(uploadsDir);
+        if (!normalizedFilePath.startsWith(normalizedUploadsDir)) {
+            return res.status(403).json({ error: '无权访问该路径' });
+        }
+        
+        // 检查文件是否存在
         if (!fs.existsSync(filePath)) {
             return res.status(404).json({ error: '文件不存在' });
         }
         
+        // 检查是否为目录
         const stats = fs.statSync(filePath);
         if (stats.isDirectory()) {
             return res.status(400).json({ error: '不能读取目录内容' });
         }
         
+        // 读取文件内容
         const content = fs.readFileSync(filePath, 'utf8');
         res.json({ content });
     } catch (error) {
@@ -473,7 +836,7 @@ let adminSocketId = null;
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: "*",
+        origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost', 'http://127.0.0.1'],
         methods: ["GET", "POST"],
         credentials: true
     },
@@ -514,6 +877,224 @@ let pollIdCounter = 1; // 投票ID计数器
 const messageRateLimits = new Map(); // 存储用户消息发送时间: Map<socketId, Array<timestamp>>
 const MAX_MESSAGES_PER_MINUTE = 20; // 每分钟最大消息数
 const RATE_LIMIT_WINDOW = 60 * 1000; // 速率限制窗口（毫秒）
+
+// API请求速率限制系统
+const apiRateLimits = new Map(); // 存储IP的API请求时间: Map<ip, Array<timestamp>>
+const MAX_API_REQUESTS_PER_MINUTE = 100; // 每分钟最大API请求数
+const MAX_SENSITIVE_REQUESTS_PER_MINUTE = 20; // 每分钟最大敏感操作请求数
+
+// CSRF保护系统
+const csrfTokens = new Map(); // 存储用户会话的CSRF令牌: Map<ip, { token: string, expires: number }>
+const CSRF_TOKEN_EXPIRY = 24 * 60 * 60 * 1000; // 令牌过期时间（24小时）
+
+// 生成CSRF令牌
+function generateCsrfToken() {
+    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+}
+
+// CSRF令牌验证中间件
+function csrfProtectionMiddleware(req, res, next) {
+    // GET请求不需要CSRF令牌
+    if (req.method === 'GET') {
+        return next();
+    }
+    
+    // 获取用户IP
+    const userIP = req.ip || req.connection.remoteAddress;
+    if (!userIP) {
+        return res.status(403).json({ error: '无法验证请求来源' });
+    }
+    
+    // 获取CSRF令牌
+    const csrfToken = req.headers['x-csrf-token'] || req.body.csrfToken;
+    if (!csrfToken) {
+        return res.status(403).json({ error: '缺少CSRF令牌' });
+    }
+    
+    // 验证令牌
+    const tokenData = csrfTokens.get(userIP);
+    if (!tokenData || tokenData.token !== csrfToken) {
+        return res.status(403).json({ error: '无效的CSRF令牌' });
+    }
+    
+    // 检查令牌是否过期
+    if (Date.now() > tokenData.expires) {
+        csrfTokens.delete(userIP);
+        return res.status(403).json({ error: 'CSRF令牌已过期' });
+    }
+    
+    next();
+}
+
+// 获取CSRF令牌的API
+app.get('/api/csrf-token', (req, res) => {
+    const userIP = req.ip || req.connection.remoteAddress;
+    if (!userIP) {
+        return res.status(400).json({ error: '无法生成CSRF令牌' });
+    }
+    
+    // 生成新令牌
+    const token = generateCsrfToken();
+    const expires = Date.now() + CSRF_TOKEN_EXPIRY;
+    
+    // 存储令牌
+    csrfTokens.set(userIP, { token, expires });
+    
+    res.json({ csrfToken: token, expires });
+});
+
+// 定期清理过期的CSRF令牌
+setInterval(() => {
+    const now = Date.now();
+    csrfTokens.forEach((tokenData, ip) => {
+        if (now > tokenData.expires) {
+            csrfTokens.delete(ip);
+        }
+    });
+}, 60 * 60 * 1000); // 每小时清理一次
+
+// 统一错误处理中间件
+function errorHandlerMiddleware(err, req, res, next) {
+    // 记录错误详情（包含请求信息）
+    console.error('API错误:', {
+        error: err.message,
+        stack: err.stack,
+        path: req.path,
+        method: req.method,
+        ip: req.ip,
+        query: req.query,
+        body: req.body
+    });
+    
+    // 确定错误状态码
+    const statusCode = err.statusCode || 500;
+    
+    // 构建用户友好的错误消息
+    let errorMessage = '服务器内部错误';
+    switch (statusCode) {
+        case 400:
+            errorMessage = err.message || '请求参数错误';
+            break;
+        case 401:
+            errorMessage = err.message || '未授权访问';
+            break;
+        case 403:
+            errorMessage = err.message || '禁止访问';
+            break;
+        case 404:
+            errorMessage = err.message || '资源不存在';
+            break;
+        case 429:
+            errorMessage = err.message || '请求过于频繁，请稍后再试';
+            break;
+        default:
+            // 对于500错误，不暴露详细信息
+            errorMessage = '服务器内部错误';
+    }
+    
+    // 返回错误响应
+    res.status(statusCode).json({
+        error: errorMessage,
+        // 仅在开发环境返回详细错误信息
+        ...(process.env.NODE_ENV === 'development' && { detail: err.message })
+    });
+}
+
+// 404错误处理
+app.use((req, res, next) => {
+    const error = new Error('请求的资源不存在');
+    error.statusCode = 404;
+    next(error);
+});
+
+// 应用统一错误处理中间件
+app.use(errorHandlerMiddleware);
+
+// API速率限制中间件
+function apiRateLimitMiddleware(req, res, next) {
+    // 获取用户IP
+    const userIP = req.ip || req.connection.remoteAddress;
+    if (!userIP) {
+        return next();
+    }
+    
+    // 获取当前时间
+    const now = Date.now();
+    
+    // 获取该IP的请求记录
+    let requestTimes = apiRateLimits.get(userIP) || [];
+    
+    // 清理过期的请求记录
+    requestTimes = requestTimes.filter(timestamp => now - timestamp < RATE_LIMIT_WINDOW);
+    
+    // 检查是否超过速率限制
+    if (requestTimes.length >= MAX_API_REQUESTS_PER_MINUTE) {
+        return res.status(429).json({ error: '请求过于频繁，请稍后再试' });
+    }
+    
+    // 检查是否为敏感操作
+    const sensitivePaths = ['/api/admin/', '/api/files/create', '/api/files/delete', '/api/files/upload'];
+    const isSensitive = sensitivePaths.some(path => req.path.includes(path));
+    
+    if (isSensitive) {
+        // 对敏感操作进行更严格的限制
+        const sensitiveRequests = requestTimes.filter(timestamp => {
+            const requestTime = timestamp;
+            // 这里简化处理，实际应该存储请求类型
+            return true;
+        });
+        
+        if (sensitiveRequests.length >= MAX_SENSITIVE_REQUESTS_PER_MINUTE) {
+            return res.status(429).json({ error: '敏感操作请求过于频繁，请稍后再试' });
+        }
+    }
+    
+    // 记录本次请求
+    requestTimes.push(now);
+    apiRateLimits.set(userIP, requestTimes);
+    
+    next();
+}
+
+// 定期清理过期的速率限制记录
+setInterval(() => {
+    const now = Date.now();
+    
+    // 清理消息速率限制
+    messageRateLimits.forEach((rateLimitData, socketId) => {
+        // 确保rateLimitData是正确的对象结构
+        if (rateLimitData && typeof rateLimitData === 'object' && Array.isArray(rateLimitData.messages)) {
+            // 清理过期的消息记录
+            const filteredMessages = rateLimitData.messages.filter(timestamp => now - timestamp < RATE_LIMIT_WINDOW);
+            if (filteredMessages.length === 0) {
+                messageRateLimits.delete(socketId);
+            } else {
+                rateLimitData.messages = filteredMessages;
+                rateLimitData.lastCleanup = now;
+                messageRateLimits.set(socketId, rateLimitData);
+            }
+        } else {
+            // 如果数据结构不正确，删除该记录
+            messageRateLimits.delete(socketId);
+        }
+    });
+    
+    // 清理API速率限制
+    apiRateLimits.forEach((times, ip) => {
+        // 确保times是数组
+        if (Array.isArray(times)) {
+            const filteredTimes = times.filter(timestamp => now - timestamp < RATE_LIMIT_WINDOW);
+            if (filteredTimes.length === 0) {
+                apiRateLimits.delete(ip);
+            } else {
+                apiRateLimits.set(ip, filteredTimes);
+            }
+        } else {
+            // 如果数据结构不正确，删除该记录
+            apiRateLimits.delete(ip);
+        }
+    });
+}, 30000); // 每30秒清理一次
 
 // IP封禁系统
 const bannedIPs = new Set(); // 存储被封禁的IP
@@ -1158,7 +1739,18 @@ io.on('connection', (socket) => {
     });
 
     socket.on('admin-login', (data) => {
+        // 验证输入参数
+        if (!data || typeof data !== 'object') {
+            socket.emit('admin-login-error', { message: '无效的登录数据' });
+            return;
+        }
+        
         const password = data.password;
+        if (!password || typeof password !== 'string') {
+            socket.emit('admin-login-error', { message: '密码不能为空' });
+            return;
+        }
+        
         if (password === ADMIN_PASSWORD) {
             adminSocketId = socket.id;
             socket.emit('admin-login-success', true);
@@ -1177,111 +1769,173 @@ io.on('connection', (socket) => {
     });
 
     socket.on('admin-kick-user', (socketId) => {
+        // 验证输入参数
+        if (!socketId || typeof socketId !== 'string') {
+            return;
+        }
+        
         // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const user = users.get(socketId);
-            if (user) {
+        const currentUser = users.get(socket.id);
+        if (socket.id === adminSocketId || (currentUser && currentUser.role === 'superadmin')) {
+            const targetUser = users.get(socketId);
+            if (targetUser) {
                 io.to(socketId).emit('kicked', '你已被管理员踢出聊天室');
                 io.sockets.sockets.get(socketId)?.disconnect();
                 users.delete(socketId);
                 io.emit('user-left', {
-                    username: user.username,
+                    username: targetUser.username,
                     userCount: users.size,
                     users: Array.from(users.values())
                 });
-                console.log(`管理员踢出用户: ${user.username}`);
+                console.log(`管理员踢出用户: ${targetUser.username}`);
             }
         }
     });
 
     socket.on('admin-rename-user', (data) => {
+        // 验证输入参数
+        if (!data || typeof data !== 'object') {
+            return;
+        }
+        
+        const { socketId, newName } = data;
+        if (!socketId || typeof socketId !== 'string' || !newName || typeof newName !== 'string') {
+            return;
+        }
+        
+        // 检查新用户名长度
+        if (newName.length > 50) {
+            return;
+        }
+        
         // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const user = users.get(data.socketId);
-            if (user) {
-                const oldName = user.username;
-                user.username = data.newName;
+        const currentUser = users.get(socket.id);
+        if (socket.id === adminSocketId || (currentUser && currentUser.role === 'superadmin')) {
+            const targetUser = users.get(socketId);
+            if (targetUser) {
+                const oldName = targetUser.username;
+                targetUser.username = newName;
                 io.emit('user-renamed', {
                     oldName: oldName,
-                    newName: data.newName,
+                    newName: newName,
                     users: Array.from(users.values())
                 });
-                console.log(`管理员将 ${oldName} 重命名为 ${data.newName}`);
+                console.log(`管理员将 ${oldName} 重命名为 ${newName}`);
             }
         }
     });
 
     socket.on('admin-set-permissions', (data) => {
+        // 验证输入参数
+        if (!data || typeof data !== 'object') {
+            return;
+        }
+        
+        const { socketId, permissions } = data;
+        if (!socketId || typeof socketId !== 'string' || !permissions || typeof permissions !== 'object') {
+            return;
+        }
+        
         // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const user = users.get(data.socketId);
-            if (user) {
-                user.permissions = {
-                    allowAudio: data.permissions.allowAudio,
-                    allowImage: data.permissions.allowImage,
-                    allowFile: data.permissions.allowFile,
-                    allowSendMessages: data.permissions.allowSendMessages,
-                    allowViewMessages: data.permissions.allowViewMessages,
-                    allowCall: data.permissions.allowCall,
-                    allowAddFriends: data.permissions.allowAddFriends,
-                    allowViewUsers: data.permissions.allowViewUsers,
-                    allowPrivateChat: data.permissions.allowPrivateChat,
-                    allowOpenFriendsPage: data.permissions.allowOpenFriendsPage,
-                    allowRecallMessage: data.permissions.allowRecallMessage,
-                    allowAIChat: data.permissions.allowAIChat // 添加AI聊天权限
+        const currentUser = users.get(socket.id);
+        if (socket.id === adminSocketId || (currentUser && currentUser.role === 'superadmin')) {
+            const targetUser = users.get(socketId);
+            if (targetUser) {
+                // 确保权限对象的完整性
+                targetUser.permissions = {
+                    allowAudio: typeof permissions.allowAudio === 'boolean' ? permissions.allowAudio : targetUser.permissions.allowAudio,
+                    allowImage: typeof permissions.allowImage === 'boolean' ? permissions.allowImage : targetUser.permissions.allowImage,
+                    allowFile: typeof permissions.allowFile === 'boolean' ? permissions.allowFile : targetUser.permissions.allowFile,
+                    allowSendMessages: typeof permissions.allowSendMessages === 'boolean' ? permissions.allowSendMessages : targetUser.permissions.allowSendMessages,
+                    allowViewMessages: typeof permissions.allowViewMessages === 'boolean' ? permissions.allowViewMessages : targetUser.permissions.allowViewMessages,
+                    allowCall: typeof permissions.allowCall === 'boolean' ? permissions.allowCall : targetUser.permissions.allowCall,
+                    allowAddFriends: typeof permissions.allowAddFriends === 'boolean' ? permissions.allowAddFriends : targetUser.permissions.allowAddFriends,
+                    allowViewUsers: typeof permissions.allowViewUsers === 'boolean' ? permissions.allowViewUsers : targetUser.permissions.allowViewUsers,
+                    allowPrivateChat: typeof permissions.allowPrivateChat === 'boolean' ? permissions.allowPrivateChat : targetUser.permissions.allowPrivateChat,
+                    allowOpenFriendsPage: typeof permissions.allowOpenFriendsPage === 'boolean' ? permissions.allowOpenFriendsPage : targetUser.permissions.allowOpenFriendsPage,
+                    allowRecallMessage: typeof permissions.allowRecallMessage === 'boolean' ? permissions.allowRecallMessage : targetUser.permissions.allowRecallMessage,
+                    allowAIChat: typeof permissions.allowAIChat === 'boolean' ? permissions.allowAIChat : targetUser.permissions.allowAIChat
                 };
                 io.emit('user-permissions-changed', {
-                    socketId: data.socketId,
-                    permissions: user.permissions,
+                    socketId: socketId,
+                    permissions: targetUser.permissions,
                     users: Array.from(users.values())
                 });
-                console.log(`管理员更新了用户 ${user.username} 的权限: ${JSON.stringify(user.permissions)}`);
+                console.log(`管理员更新了用户 ${targetUser.username} 的权限: ${JSON.stringify(targetUser.permissions)}`);
             }
         }
     });
     
     // 设置用户角色
     socket.on('admin-set-role', (data) => {
+        // 验证输入参数
+        if (!data || typeof data !== 'object') {
+            return;
+        }
+        
+        const { socketId, role } = data;
+        if (!socketId || typeof socketId !== 'string' || !role || typeof role !== 'string') {
+            return;
+        }
+        
         // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const user = users.get(data.socketId);
-            if (user) {
-                const oldRole = user.role;
-                user.role = data.role;
+        const currentUser = users.get(socket.id);
+        if (socket.id === adminSocketId || (currentUser && currentUser.role === 'superadmin')) {
+            const targetUser = users.get(socketId);
+            if (targetUser) {
+                // 验证角色值
+                const validRoles = ['user', 'admin', 'superadmin'];
+                if (!validRoles.includes(role)) {
+                    return;
+                }
+                
+                // 防止权限提升攻击：普通管理员不能设置超级管理员角色
+                if (socket.id === adminSocketId && role === 'superadmin') {
+                    return;
+                }
+                
+                const oldRole = targetUser.role;
+                targetUser.role = role;
                 
                 // 发送角色更新通知
                 io.emit('user-role-changed', {
-                    socketId: data.socketId,
-                    username: user.username,
+                    socketId: socketId,
+                    username: targetUser.username,
                     oldRole: oldRole,
-                    newRole: data.role,
+                    newRole: role,
                     users: Array.from(users.values())
                 });
                 
-                console.log(`管理员将用户 ${user.username} 的角色从 ${oldRole} 更改为 ${data.role}`);
+                console.log(`管理员将用户 ${targetUser.username} 的角色从 ${oldRole} 更改为 ${role}`);
             }
         }
     });
     
     // 管理员控制用户震动
     socket.on('admin-vibrate-user', (data) => {
+        // 验证输入参数
+        if (!data || typeof data !== 'object') {
+            return;
+        }
+        
+        const { socketId, duration, intensity } = data;
+        if (!socketId || typeof socketId !== 'string') {
+            return;
+        }
+        
         // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const targetUser = users.get(data.socketId);
+        const currentUser = users.get(socket.id);
+        if (socket.id === adminSocketId || (currentUser && currentUser.role === 'superadmin')) {
+            const targetUser = users.get(socketId);
             if (targetUser) {
                 // 发送震动指令给目标用户
-                io.to(data.socketId).emit('vibrate', {
-                    duration: data.duration || 500,
-                    intensity: data.intensity || 1,
+                io.to(socketId).emit('vibrate', {
+                    duration: typeof duration === 'number' ? duration : 500,
+                    intensity: typeof intensity === 'number' ? intensity : 1,
                     from: 'admin'
                 });
                 
-                console.log(`管理员控制用户 ${targetUser.username} 震动，时长: ${data.duration || 500}ms, 强度: ${data.intensity || 1}`);
+                console.log(`管理员控制用户 ${targetUser.username} 震动，时长: ${typeof duration === 'number' ? duration : 500}ms, 强度: ${typeof intensity === 'number' ? intensity : 1}`);
             }
         }
     });
