@@ -6,7 +6,7 @@ const path = require('path');
 const fs = require('fs');
 
 // 导入病毒扫描器
-const virusScanner = require('./utils/virus-scanner');
+const virusScanner = require('./utils/virus-scanner.js');
 
 const app = express();
 app.use(cors({
@@ -70,7 +70,7 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '300mb' }), asyn
         }
         
         // 检查是否为其他危险文件类型
-        const dangerousExtensions = ['.php', '.php3', '.php4', '.php5', '.phtml', '.jsp', '.asp', '.aspx', '.shtml', '.cgi', '.pl', '.sh', '.js', '.vbs'];
+        const dangerousExtensions = ['.php', '.php3', '.php4', '.php5', '.phtml', '.jsp', '.asp', '.aspx', '.shtml', '.cgi', '.pl', '.sh', '.vbs'];
         const fileExtension = path.extname(filename).toLowerCase();
         if (dangerousExtensions.includes(fileExtension)) {
             return res.status(403).json({ error: '不允许上传该类型的文件' });
@@ -99,18 +99,42 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '300mb' }), asyn
         }
         
         // 病毒扫描
-        console.log('开始病毒扫描:', filename);
-        const scanResult = await virusScanner.scanBuffer(req.body, filename);
+        let scanResult = { safe: true, scanned: false, message: '病毒检测已禁用' };
         
-        if (!scanResult.safe) {
-            console.log('文件被检测到病毒:', filename);
-            return res.status(403).json({ 
-                error: '文件被检测到病毒，上传被拒绝',
-                viruses: scanResult.viruses
-            });
+        if (virusScanEnabled) {
+            console.log('开始病毒扫描:', filename);
+            scanResult = await virusScanner.scanBuffer(req.body, filename);
+            
+            if (!scanResult.safe) {
+                console.log('文件被检测到病毒:', filename);
+                
+                // 将病毒文件保存到隔离区
+                const virusPath = path.join(virusesDir, filename);
+                fs.writeFileSync(virusPath, req.body);
+                
+                // 记录病毒文件信息
+                const virusFile = {
+                    id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                    filename: filename,
+                    size: req.body.length,
+                    uploaderIp: req.ip,
+                    uploadTime: new Date().toISOString(),
+                    scanResult: scanResult
+                };
+                
+                virusFiles.push(virusFile);
+                
+                return res.status(403).json({ 
+                    error: '不允许上传病毒',
+                    viruses: scanResult.viruses,
+                    virusId: virusFile.id
+                });
+            }
+            
+            console.log('病毒扫描完成:', filename, '结果:', scanResult.message);
+        } else {
+            console.log('病毒检测已禁用，跳过扫描:', filename);
         }
-        
-        console.log('病毒扫描完成:', filename, '结果:', scanResult.message);
         
         // 写入文件
         fs.writeFileSync(filePath, req.body);
@@ -146,6 +170,122 @@ app.use('/api/', csrfProtectionMiddleware);
 if (!fs.existsSync(path.join(__dirname, 'uploads'))) {
     fs.mkdirSync(path.join(__dirname, 'uploads'));
 }
+
+// 确保 viruses 目录存在（用于隔离病毒文件）
+const virusesDir = path.join(__dirname, 'viruses');
+if (!fs.existsSync(virusesDir)) {
+    fs.mkdirSync(virusesDir, { recursive: true });
+}
+
+// 病毒文件记录
+let virusFiles = [];
+
+// 病毒检测配置
+let virusScanEnabled = true;
+
+// 获取病毒文件列表
+app.get('/api/viruses', (req, res) => {
+    res.json(virusFiles);
+});
+
+// 允许病毒文件
+app.post('/api/viruses/allow/:id', (req, res) => {
+    const { id } = req.params;
+    const virusFile = virusFiles.find(v => v.id === id);
+    
+    if (virusFile) {
+        // 将文件从隔离区移回上传目录
+        const originalPath = path.join(__dirname, 'uploads', virusFile.filename);
+        const virusPath = path.join(virusesDir, virusFile.filename);
+        
+        if (fs.existsSync(virusPath)) {
+            fs.copyFileSync(virusPath, originalPath);
+            fs.unlinkSync(virusPath);
+        }
+        
+        // 从病毒列表中移除
+        virusFiles = virusFiles.filter(v => v.id !== id);
+        
+        res.json({ success: true, message: '文件已允许并移回上传目录' });
+    } else {
+        res.status(404).json({ error: '病毒文件不存在' });
+    }
+});
+
+// 隔离病毒文件
+app.post('/api/viruses/quarantine/:id', (req, res) => {
+    const { id } = req.params;
+    const virusFile = virusFiles.find(v => v.id === id);
+    
+    if (virusFile) {
+        // 确保文件在隔离区
+        const virusPath = path.join(virusesDir, virusFile.filename);
+        if (!fs.existsSync(virusPath) && fs.existsSync(path.join(__dirname, 'uploads', virusFile.filename))) {
+            fs.copyFileSync(path.join(__dirname, 'uploads', virusFile.filename), virusPath);
+            fs.unlinkSync(path.join(__dirname, 'uploads', virusFile.filename));
+        }
+        
+        res.json({ success: true, message: '文件已隔离' });
+    } else {
+        res.status(404).json({ error: '病毒文件不存在' });
+    }
+});
+
+// 删除病毒文件
+app.delete('/api/viruses/:id', (req, res) => {
+    const { id } = req.params;
+    const virusFile = virusFiles.find(v => v.id === id);
+    
+    if (virusFile) {
+        // 删除隔离区中的文件
+        const virusPath = path.join(virusesDir, virusFile.filename);
+        if (fs.existsSync(virusPath)) {
+            fs.unlinkSync(virusPath);
+        }
+        
+        // 删除上传目录中的文件（如果存在）
+        const originalPath = path.join(__dirname, 'uploads', virusFile.filename);
+        if (fs.existsSync(originalPath)) {
+            fs.unlinkSync(originalPath);
+        }
+        
+        // 从病毒列表中移除
+        virusFiles = virusFiles.filter(v => v.id !== id);
+        
+        res.json({ success: true, message: '病毒文件已删除' });
+    } else {
+        res.status(404).json({ error: '病毒文件不存在' });
+    }
+});
+
+// 一键封禁用户（IP封禁）
+app.post('/api/viruses/ban/:id', (req, res) => {
+    const { id } = req.params;
+    const virusFile = virusFiles.find(v => v.id === id);
+    
+    if (virusFile && virusFile.uploaderIp) {
+        // 添加IP到封禁列表
+        if (!bannedIps.includes(virusFile.uploaderIp)) {
+            bannedIps.push(virusFile.uploaderIp);
+        }
+        
+        res.json({ success: true, message: `用户IP ${virusFile.uploaderIp} 已封禁` });
+    } else {
+        res.status(404).json({ error: '病毒文件不存在或无上传者IP信息' });
+    }
+});
+
+// 获取病毒检测状态
+app.get('/api/viruses/status', (req, res) => {
+    res.json({ enabled: virusScanEnabled });
+});
+
+// 设置病毒检测状态
+app.post('/api/viruses/status', (req, res) => {
+    const { enabled } = req.body;
+    virusScanEnabled = Boolean(enabled);
+    res.json({ success: true, enabled: virusScanEnabled, message: virusScanEnabled ? '病毒检测已启用' : '病毒检测已禁用' });
+});
 
 // 静态文件服务 - 提供上传的文件
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -211,18 +351,42 @@ app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), async (re
         }
         
         // 病毒扫描
-        console.log('开始病毒扫描:', filename);
-        const scanResult = await virusScanner.scanBuffer(req.body, filename);
+        let scanResult = { safe: true, scanned: false, message: '病毒检测已禁用' };
         
-        if (!scanResult.safe) {
-            console.log('文件被检测到病毒:', filename);
-            return res.status(403).json({ 
-                error: '文件被检测到病毒，上传被拒绝',
-                viruses: scanResult.viruses
-            });
+        if (virusScanEnabled) {
+            console.log('开始病毒扫描:', filename);
+            scanResult = await virusScanner.scanBuffer(req.body, filename);
+            
+            if (!scanResult.safe) {
+                console.log('文件被检测到病毒:', filename);
+                
+                // 将病毒文件保存到隔离区
+                const virusPath = path.join(virusesDir, filename);
+                fs.writeFileSync(virusPath, req.body);
+                
+                // 记录病毒文件信息
+                const virusFile = {
+                    id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                    filename: filename,
+                    size: req.body.length,
+                    uploaderIp: req.ip,
+                    uploadTime: new Date().toISOString(),
+                    scanResult: scanResult
+                };
+                
+                virusFiles.push(virusFile);
+                
+                return res.status(403).json({ 
+                    error: '不允许上传病毒',
+                    viruses: scanResult.viruses,
+                    virusId: virusFile.id
+                });
+            }
+            
+            console.log('病毒扫描完成:', filename, '结果:', scanResult.message);
+        } else {
+            console.log('病毒检测已禁用，跳过扫描:', filename);
         }
-        
-        console.log('病毒扫描完成:', filename, '结果:', scanResult.message);
         
         // 写入文件
         fs.writeFileSync(filePath, req.body);
@@ -301,19 +465,8 @@ app.post('/upload-audio', express.raw({ type: '*/*', limit: '30mb' }), async (re
             fs.mkdirSync(dirPath, { recursive: true });
         }
         
-        // 病毒扫描
-        console.log('开始病毒扫描:', filename);
-        const scanResult = await virusScanner.scanBuffer(req.body, filename);
-        
-        if (!scanResult.safe) {
-            console.log('文件被检测到病毒:', filename);
-            return res.status(403).json({ 
-                error: '文件被检测到病毒，上传被拒绝',
-                viruses: scanResult.viruses
-            });
-        }
-        
-        console.log('病毒扫描完成:', filename, '结果:', scanResult.message);
+        // 语音文件跳过病毒扫描
+        console.log('语音文件跳过病毒扫描:', filename);
         
         // 写入文件
         fs.writeFileSync(filePath, req.body);
@@ -323,8 +476,7 @@ app.post('/upload-audio', express.raw({ type: '*/*', limit: '30mb' }), async (re
         
         res.json({ 
             audioUrl: audioUrl,
-            contentType: contentType,
-            scanResult: scanResult // 包含扫描结果
+            contentType: contentType
         });
     } catch (error) {
         console.error('上传音频失败:', error);
