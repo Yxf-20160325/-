@@ -1,3544 +1,6578 @@
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const cors = require('cors');
-const path = require('path');
-const fs = require('fs');
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="X-XSS-Protection" content="1; mode=block">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ws: wss:; font-src 'self' data:;">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    <title>聊天室管理后台</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-const app = express();
-app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type', 'X-Content-Type-Options'],
-    credentials: true,
-    exposedHeaders: ['Content-Type', 'X-Content-Type-Options']
-}));
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+            overflow-y: auto;
+        }
 
-// 添加x-content-type-options头部
-app.use((req, res, next) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    next();
-});
-app.use(express.static(path.join(__dirname, 'public')));
+        .container {
+            width: 100%;
+            max-width: 1400px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+        }
 
-// 为文件上传API单独配置raw解析器
-app.post('/api/files/upload', express.raw({ type: '*/*', limit: '300mb' }), (req, res) => {
-    try {
-        const relativePath = req.headers['x-path'] || '';
-        let filename = req.headers['x-filename'] || Date.now() + '-' + Math.round(Math.random() * 1E9);
-        // 解码文件名，处理中文等非ASCII字符
-        if (filename) {
-            filename = decodeURIComponent(filename);
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .header .subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .login-container {
+            padding: 40px;
+            text-align: center;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .login-form {
+            max-width: 400px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .login-form input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #dee2e6;
+            border-radius: 10px;
+            font-size: 16px;
+            margin-bottom: 20px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .login-form input:focus {
+            border-color: #667eea;
+        }
+
+        .login-form button {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .login-form button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .admin-panel {
+            display: none;
+            padding: 20px;
+            flex: 1;
+            flex-direction: column;
         }
         
-        // 检查是否为PHP文件
-        if (filename.toLowerCase().endsWith('.php')) {
-            return res.status(403).json({ error: '不允许上传PHP文件' });
+        .admin-panel.active {
+            display: flex;
         }
-        
-        // 检查是否为其他危险文件类型
-        const dangerousExtensions = ['.php', '.php3', '.php4', '.php5', '.phtml', '.jsp', '.asp', '.aspx', '.shtml', '.cgi', '.pl', '.sh', '.js', '.vbs'];
-        const fileExtension = path.extname(filename).toLowerCase();
-        if (dangerousExtensions.includes(fileExtension)) {
-            return res.status(403).json({ error: '不允许上传该类型的文件' });
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
         }
-        
-        // 检查文件大小
-        if (req.body.length > 30 * 1024 * 1024) { // 30MB限制
-            return res.status(413).json({ error: '文件大小超过限制（最大30MB）' });
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
         }
-        
-        const filePath = path.join(__dirname, 'uploads', relativePath, filename);
-        
-        // 确保目录存在
-        const dirPath = path.dirname(filePath);
-        if (!fs.existsSync(dirPath)) {
-            fs.mkdirSync(dirPath, { recursive: true });
+
+        .stat-card h3 {
+            font-size: 14px;
+            margin-bottom: 10px;
+            opacity: 0.9;
         }
-        
-        fs.writeFileSync(filePath, req.body);
-        const stats = fs.statSync(filePath);
-        
-        res.json({
-            name: filename,
-            size: stats.size,
-            createdAt: stats.birthtime,
-            modifiedAt: stats.mtime,
-            url: `/uploads/${relativePath ? relativePath + '/' + filename : filename}`
-        });
-    } catch (error) {
-        console.error('上传文件失败:', error);
-        res.status(500).json({ error: '上传文件失败' });
-    }
-});
 
-// 其他路由使用json解析器
-app.use(express.json({ limit: '30mb' }));
-
-// 确保 uploads 目录存在
-if (!fs.existsSync(path.join(__dirname, 'uploads'))) {
-    fs.mkdirSync(path.join(__dirname, 'uploads'));
-}
-
-// 静态文件服务 - 提供上传的文件
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// 图片上传接口 - 单独配置raw解析器
-app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), (req, res) => {
-    try {
-        // 检查文件大小
-        if (req.body.length > 10 * 1024 * 1024) { // 10MB限制
-            return res.status(413).json({ error: '图片大小超过限制（最大10MB）' });
+        .stat-card .value {
+            font-size: 32px;
+            font-weight: bold;
         }
-        
-        // 验证Content-Type
-        const contentType = req.headers['content-type'];
-        const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
-        if (contentType && !allowedImageTypes.includes(contentType)) {
-            return res.status(403).json({ error: '不允许上传非图片文件' });
+
+        .section {
+            margin-bottom: 30px;
         }
-        
-        // 获取原始文件扩展名
-        let extension = '.jpg';
-        if (contentType) {
-            const mimeToExt = {
-                'image/jpeg': '.jpg',
-                'image/png': '.png',
-                'image/gif': '.gif',
-                'image/webp': '.webp',
-                'image/svg+xml': '.svg'
-            };
-            extension = mimeToExt[contentType] || extension;
+
+        .section h2 {
+            font-size: 20px;
+            margin-bottom: 15px;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
-        
-        const filename = Date.now() + '-' + Math.round(Math.random() * 1E9) + extension;
-        
-        // 检查是否为PHP文件
-        if (filename.toLowerCase().endsWith('.php')) {
-            return res.status(403).json({ error: '不允许上传PHP文件' });
+
+        .user-list {
+            background: #f8f9fa;
+            border-radius: 10px;
+            overflow: hidden;
         }
-        
-        // 检查是否为其他危险文件类型
-        const dangerousExtensions = ['.php', '.php3', '.php4', '.php5', '.phtml', '.jsp', '.asp', '.aspx', '.shtml', '.cgi', '.pl', '.exe', '.bat', '.cmd', '.sh', '.js', '.vbs'];
-        const fileExtension = path.extname(filename).toLowerCase();
-        if (dangerousExtensions.includes(fileExtension)) {
-            return res.status(403).json({ error: '不允许上传该类型的文件' });
+
+        .user-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            border-bottom: 1px solid #dee2e6;
+            background: white;
         }
-        
-        const filePath = path.join(__dirname, 'uploads', filename);
-        
-        // 确保目录存在
-        const dirPath = path.dirname(filePath);
-        if (!fs.existsSync(dirPath)) {
-            fs.mkdirSync(dirPath, { recursive: true });
+
+        .user-item:last-child {
+            border-bottom: none;
         }
-        
-        fs.writeFileSync(filePath, req.body);
-        res.json({ imageUrl: `/uploads/${filename}` });
-    } catch (error) {
-        console.error('上传图片失败:', error);
-        res.status(500).json({ error: '上传图片失败' });
-    }
-});
 
-// 音频上传接口 - 单独配置raw解析器
-app.post('/upload-audio', express.raw({ type: '*/*', limit: '30mb' }), (req, res) => {
-    try {
-        // 检查文件大小
-        if (req.body.length > 15 * 1024 * 1024) { // 15MB限制
-            return res.status(413).json({ error: '音频大小超过限制（最大15MB）' });
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
-        
-        // 验证Content-Type
-        const contentType = req.headers['content-type'];
-        const allowedAudioTypes = ['audio/webm', 'audio/mp3', 'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/flac'];
-        if (contentType && !allowedAudioTypes.includes(contentType)) {
-            return res.status(403).json({ error: '不允许上传非音频文件' });
+
+        .user-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
         }
-        
-        // 根据Content-Type确定文件扩展名
-        let extension = '.webm';
-        if (contentType) {
-            const mimeToExt = {
-                'audio/webm': '.webm',
-                'audio/mp3': '.mp3',
-                'audio/mpeg': '.mp3',
-                'audio/ogg': '.ogg',
-                'audio/wav': '.wav',
-                'audio/flac': '.flac'
-            };
-            extension = mimeToExt[contentType] || extension;
+
+        .user-name {
+            font-weight: 500;
         }
-        
-        const filename = Date.now() + '-' + Math.round(Math.random() * 1E9) + extension;
-        
-        // 检查是否为PHP文件
-        if (filename.toLowerCase().endsWith('.php')) {
-            return res.status(403).json({ error: '不允许上传PHP文件' });
+
+        .user-actions {
+            display: flex;
+            gap: 10px;
         }
-        
-        // 检查是否为其他危险文件类型
-        const dangerousExtensions = ['.php', '.php3', '.php4', '.php5', '.phtml', '.jsp', '.asp', '.aspx', '.shtml', '.cgi', '.pl', '.exe', '.bat', '.cmd', '.sh', '.js', '.vbs'];
-        const fileExtension = path.extname(filename).toLowerCase();
-        if (dangerousExtensions.includes(fileExtension)) {
-            return res.status(403).json({ error: '不允许上传该类型的文件' });
+
+        .btn {
+            padding: 8px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
         }
-        
-        const filePath = path.join(__dirname, 'uploads', filename);
-        
-        // 确保目录存在
-        const dirPath = path.dirname(filePath);
-        if (!fs.existsSync(dirPath)) {
-            fs.mkdirSync(dirPath, { recursive: true });
+
+        .btn-kick {
+            background: #dc3545;
+            color: white;
         }
-        
-        fs.writeFileSync(filePath, req.body);
-        res.json({ 
-            audioUrl: `/uploads/${filename}`,
-            contentType: contentType
-        });
-    } catch (error) {
-        console.error('上传音频失败:', error);
-        res.status(500).json({ error: '上传音频失败' });
-    }
-});
 
-// 管理员获取通话列表API
-app.get('/api/admin/calls', (req, res) => {
-    try {
-        const calls = Array.from(ongoingCalls.values());
-        res.json({ calls });
-    } catch (error) {
-        console.error('获取通话列表失败:', error);
-        res.status(500).json({ error: '获取通话列表失败' });
-    }
-});
-
-// 管理员结束通话API
-app.post('/api/admin/calls/:callId/end', (req, res) => {
-    try {
-        const { callId } = req.params;
-        const call = ongoingCalls.get(callId);
-        if (call) {
-            // 通知通话双方结束通话
-            io.to(call.initiator).emit('call-ended', { from: 'admin', callId });
-            io.to(call.recipient).emit('call-ended', { from: 'admin', callId });
-            
-            // 从通话列表中移除
-            ongoingCalls.delete(callId);
-            
-            res.json({ success: true, message: '通话已结束' });
-        } else {
-            res.status(404).json({ error: '通话不存在' });
+        .btn-permissions {
+            background: #28a745;
+            color: white;
         }
-    } catch (error) {
-        console.error('结束通话失败:', error);
-        res.status(500).json({ error: '结束通话失败' });
-    }
-});
 
-// 管理员控制通话API
-app.post('/api/admin/calls/:callId/control', (req, res) => {
-    try {
-        const { callId } = req.params;
-        const { type, enabled } = req.body;
-        const call = ongoingCalls.get(callId);
-        
-        if (call) {
-            // 更新通话控制状态
-            call.controls[type] = enabled;
-            ongoingCalls.set(callId, call);
-            
-            // 通知通话双方控制状态变化
-            io.to(call.initiator).emit('call-control-updated', { callId, type, enabled });
-            io.to(call.recipient).emit('call-control-updated', { callId, type, enabled });
-            
-            res.json({ success: true, message: `通话${type}控制已更新`, call });
-        } else {
-            res.status(404).json({ error: '通话不存在' });
+        .btn-kick:hover {
+            background: #c82333;
         }
-    } catch (error) {
-        console.error('控制通话失败:', error);
-        res.status(500).json({ error: '控制通话失败' });
-    }
-});
 
-// 管理员查看通话详情API
-app.get('/api/admin/calls/:callId', (req, res) => {
-    try {
-        const { callId } = req.params;
-        const call = ongoingCalls.get(callId);
-        if (call) {
-            res.json({ call });
-        } else {
-            res.status(404).json({ error: '通话不存在' });
+        .btn-rename {
+            background: #ffc107;
+            color: #333;
         }
-    } catch (error) {
-        console.error('获取通话详情失败:', error);
-        res.status(500).json({ error: '获取通话详情失败' });
-    }
-});
 
-// 文件管理API - 获取文件列表（支持目录浏览）
-app.get('/api/files', (req, res) => {
-    try {
-        const relativePath = req.query.path || '';
-        const uploadsDir = path.join(__dirname, 'uploads', relativePath);
-        
-        if (!fs.existsSync(uploadsDir)) {
-            return res.json({ files: [], currentPath: relativePath });
+        .btn-rename:hover {
+            background: #e0a800;
         }
-        
-        const files = fs.readdirSync(uploadsDir).map(filename => {
-            const filePath = path.join(uploadsDir, filename);
-            const stats = fs.statSync(filePath);
-            const isDirectory = stats.isDirectory();
-            return {
-                name: filename,
-                size: isDirectory ? 0 : stats.size,
-                createdAt: stats.birthtime,
-                modifiedAt: stats.mtime,
-                isDirectory: isDirectory,
-                url: isDirectory ? null : `/uploads/${relativePath ? relativePath + '/' + filename : filename}`
-            };
-        });
-        
-        res.json({ 
-            files: files.sort((a, b) => {
-                if (a.isDirectory && !b.isDirectory) return -1;
-                if (!a.isDirectory && b.isDirectory) return 1;
-                return b.createdAt - a.createdAt;
-            }),
-            currentPath: relativePath
-        });
-    } catch (error) {
-        console.error('获取文件列表失败:', error);
-        res.status(500).json({ error: '获取文件列表失败' });
-    }
-});
 
-// 文件管理API - 创建目录
-app.post('/api/files/create-directory', express.json(), (req, res) => {
-    try {
-        const { dirname, path: relativePath } = req.body;
-        if (!dirname) {
-            return res.status(400).json({ error: '目录名不能为空' });
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
         }
-        
-        const dirPath = path.join(__dirname, 'uploads', relativePath || '', dirname);
-        
-        if (fs.existsSync(dirPath)) {
-            return res.status(400).json({ error: '目录已存在' });
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
         }
-        
-        fs.mkdirSync(dirPath, { recursive: true });
-        res.json({ success: true });
-    } catch (error) {
-        console.error('创建目录失败:', error);
-        res.status(500).json({ error: '创建目录失败' });
-    }
-});
 
-
-
-// 文件管理API - 删除文件或目录
-app.delete('/api/files/*', (req, res) => {
-    try {
-        const itemPath = req.params[0];
-        const fullPath = path.join(__dirname, 'uploads', itemPath);
-        
-        if (!fs.existsSync(fullPath)) {
-            return res.status(404).json({ error: '文件或目录不存在' });
+        .btn-danger {
+            background: #dc3545;
+            color: white;
         }
-        
-        const stats = fs.statSync(fullPath);
-        if (stats.isDirectory()) {
-            fs.rmSync(fullPath, { recursive: true, force: true });
-        } else {
-            fs.unlinkSync(fullPath);
+
+        .btn-danger:hover {
+            background: #c82333;
         }
-        
-        res.json({ success: true });
-    } catch (error) {
-        console.error('删除失败:', error);
-        res.status(500).json({ error: '删除失败' });
-    }
-});
 
-// 文件管理API - 创建文本文件
-app.post('/api/files/create', express.json(), (req, res) => {
-    try {
-        const { filename, content, path: relativePath } = req.body;
-        if (!filename) {
-            return res.status(400).json({ error: '文件名不能为空' });
+        .btn-success {
+            background: #28a745;
+            color: white;
         }
-        
-        const filePath = path.join(__dirname, 'uploads', relativePath || '', filename);
-        fs.writeFileSync(filePath, content || '');
-        const stats = fs.statSync(filePath);
-        
-        res.json({
-            name: filename,
-            size: stats.size,
-            createdAt: stats.birthtime,
-            modifiedAt: stats.mtime,
-            url: `/uploads/${relativePath ? relativePath + '/' + filename : filename}`
-        });
-    } catch (error) {
-        console.error('创建文件失败:', error);
-        res.status(500).json({ error: '创建文件失败' });
-    }
-});
 
-// 文件管理API - 编辑文件内容
-app.put('/api/files/*', express.json(), (req, res) => {
-    try {
-        const itemPath = req.params[0];
-        const { content } = req.body;
-        const filePath = path.join(__dirname, 'uploads', itemPath);
-        
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).json({ error: '文件不存在' });
+        .btn-success:hover {
+            background: #218838;
         }
-        
-        const stats = fs.statSync(filePath);
-        if (stats.isDirectory()) {
-            return res.status(400).json({ error: '不能编辑目录' });
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
         }
-        
-        fs.writeFileSync(filePath, content || '');
-        const newStats = fs.statSync(filePath);
-        
-        const filename = path.basename(itemPath);
-        const relativePath = path.dirname(itemPath);
-        
-        res.json({
-            name: filename,
-            size: newStats.size,
-            createdAt: newStats.birthtime,
-            modifiedAt: newStats.mtime,
-            url: `/uploads/${itemPath}`
-        });
-    } catch (error) {
-        console.error('编辑文件失败:', error);
-        res.status(500).json({ error: '编辑文件失败' });
-    }
-});
 
-// 文件管理API - 获取文件内容
-app.get('/api/files/*/content', (req, res) => {
-    try {
-        const itemPath = req.params[0];
-        const filePath = path.join(__dirname, 'uploads', itemPath);
-        
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).json({ error: '文件不存在' });
+        .btn-secondary:hover {
+            background: #5a6268;
         }
-        
-        const stats = fs.statSync(filePath);
-        if (stats.isDirectory()) {
-            return res.status(400).json({ error: '不能读取目录内容' });
+
+        .btn-info {
+            background: #17a2b8;
+            color: white;
         }
-        
-        const content = fs.readFileSync(filePath, 'utf8');
-        res.json({ content });
-    } catch (error) {
-        console.error('获取文件内容失败:', error);
-        res.status(500).json({ error: '获取文件内容失败' });
-    }
-});
 
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
-app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
-
-// 房间访问路由
-app.get('/:roomName', (req, res) => {
-    const roomName = req.params.roomName;
-    // 检查房间是否存在
-    if (rooms.has(roomName) || roomName === 'admin') {
-        if (roomName === 'admin') {
-            res.sendFile(path.join(__dirname, 'public', 'admin.html'));
-        } else {
-            res.sendFile(path.join(__dirname, 'public', 'index.html'));
+        .btn-info:hover {
+            background: #138496;
         }
-    } else {
-        // 如果房间不存在，重定向到首页
-        res.redirect('/');
-    }
-});
 
-let ADMIN_PASSWORD = 'admin123';
-let adminSocketId = null;
-
-const server = http.createServer(app);
-const io = new Server(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"],
-        credentials: true
-    },
-    maxHttpBufferSize: 1e8,
-    pingTimeout: 60000,
-    pingInterval: 25000,
-    transports: ['websocket', 'polling']
-});
-
-const users = new Map();
-const messages = new Map();
-const deletedMessages = new Map();
-
-// 房间系统数据结构
-const rooms = new Map();
-
-// 好友系统数据结构
-const friendships = new Map(); // 存储好友关系: Map<socketId, Set<friendSocketId>>
-const privateMessages = new Map(); // 存储私聊消息: Map<chatId, Array<message>>
-
-// 好友数量限制系统
-const userMaxFriends = new Map(); // 存储用户的好友数量上限: Map<socketId, number>
-const friendLimitRequests = new Map(); // 存储好友扩容申请: Map<requestId, request>
-let requestIdCounter = 1; // 申请ID计数器
-
-// 通话管理系统
-const ongoingCalls = new Map(); // 存储正在进行的通话: Map<callId, callInfo>
-let callIdCounter = 1; // 通话ID计数器
-
-// 控制台日志系统
-const userConsoleLogs = new Map(); // Map<socketId, Array<log>>
-
-// 投票系统数据结构
-const activePolls = new Map(); // 存储当前活跃投票: Map<pollId, pollInfo>
-let pollIdCounter = 1; // 投票ID计数器
-
-// 消息速率限制系统
-const messageRateLimits = new Map(); // 存储用户消息发送时间: Map<socketId, Array<timestamp>>
-const MAX_MESSAGES_PER_MINUTE = 20; // 每分钟最大消息数
-const RATE_LIMIT_WINDOW = 60 * 1000; // 速率限制窗口（毫秒）
-
-// IP封禁系统
-const bannedIPs = new Set(); // 存储被封禁的IP
-const ipConnections = new Map(); // 存储IP连接数: Map<ip, Set<socketId>>
-const MAX_CONNECTIONS_PER_IP = 5; // 每个IP最大连接数
-
-// 默认好友数量上限
-const DEFAULT_MAX_FRIENDS = 5;
-const INFINITE_FRIENDS = -1; // 无限好友数量
-
-// @功能开关
-let allowMentions = true; // 默认开启@功能
-
-// 禁言系统数据结构
-const mutedUsers = new Map(); // 存储被禁言用户: Map<socketId, { username, endTime, reason }>
-
-// 脏话过滤系统
-const badWords = [
-    // 英文脏话
-    'fuck', 'shit', 'asshole', 'bitch', 'dick', 'pussy', 'cunt', 'nigger', 'faggot', 'damn',
-    // 中文脏话
-    '傻逼', 'sb', '傻b', '煞笔', '操你妈', '去死', '垃圾', '废物', '脑残', '王八蛋', '滚蛋', '畜生', '贱人', '狗东西', '杂种',
-    '草泥马', '妈蛋', '二货', '智障', '白痴', '混蛋', '恶棍', '禽兽', '畜生不如',
-    '操蛋', '操你大爷', '你妈逼', '你妹', '你大爷', '草泥马'
-];
-
-// 注意：移除了单字脏话（如'草'、'日'、'靠'、'操'），因为它们会导致误判，例如"草莓"中的"草"字被错误识别为脏话
-
-// 脏话计数系统
-const swearWordCount = new Map(); // 存储用户脏话计数: Map<socketId, number>
-
-// 默认权限
-let defaultPermissions = {
-    allowAudio: true,
-    allowImage: true,
-    allowFile: true,
-    allowSendMessages: true,
-    allowViewMessages: true,
-    allowCall: false, // 默认启用通话功能
-    allowAddFriends: true,
-    allowViewUsers: true,
-    allowPrivateChat: true,
-    allowOpenFriendsPage: true,
-    allowRecallMessage: true,
-    allowAIChat: false // 默认禁用AI聊天功能，需要管理员同意
-};
-
-// 默认房间
-rooms.set('main', {
-    roomName: 'main',
-    password: null,
-    creator: 'system',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    users: [],
-    messages: [],
-    settings: {
-        maxUsers: 100,
-        allowPublicAccess: true
-    }
-});
-
-io.on('connection', (socket) => {
-    // 获取用户IP
-    const userIP = socket.handshake.address;
-    
-    // 检查IP是否被封禁
-    if (bannedIPs.has(userIP)) {
-        console.log(`[封禁] 被封禁的IP ${userIP} 尝试连接`);
-        socket.disconnect(true);
-        return;
-    }
-    
-    // 检查IP连接数限制
-    if (!ipConnections.has(userIP)) {
-        ipConnections.set(userIP, new Set());
-    }
-    
-    const ipConnSet = ipConnections.get(userIP);
-    if (ipConnSet.size >= MAX_CONNECTIONS_PER_IP) {
-        console.log(`[连接限制] IP ${userIP} 连接数超过限制 (${ipConnSet.size}/${MAX_CONNECTIONS_PER_IP})`);
-        socket.emit('connection-error', { message: '该IP连接数已达上限，请稍后再试' });
-        socket.disconnect(true);
-        return;
-    }
-    
-    // 记录连接
-    ipConnSet.add(socket.id);
-    console.log(`用户连接: ${socket.id} (IP: ${userIP}), 当前IP连接数: ${ipConnSet.size}`);
-
-    socket.on('join', (data) => {
-        const { username, roomName = 'main', password = null } = typeof data === 'object' ? data : { username: data };
-        
-        // 检查房间是否存在
-        let room = rooms.get(roomName);
-        if (!room) {
-            // 房间不存在
-            socket.emit('join-error', { message: '没有这个房间' });
-            return;
+        .btn-sm {
+            padding: 5px 10px;
+            font-size: 12px;
         }
-        
-        // 检查密码是否正确
-        if (room.password && room.password !== password) {
-            socket.emit('join-error', { message: '密码错误' });
-            return;
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
         }
-        
-        // 检查房间是否已满
-        if (room.users.length >= room.settings.maxUsers) {
-            socket.emit('join-error', { message: '房间已满' });
-            return;
+
+        .input-group input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
         }
-        
-        // 检查是否允许创建新房间（至少有一个房间存在）
-        const allRooms = Array.from(rooms.values());
-        if (allRooms.length === 0) {
-            socket.emit('join-error', { message: '至少需要有一个房间才能加入' });
-            return;
+
+        .input-group input:focus {
+            border-color: #667eea;
         }
-        
-        // 检查用户名是否已存在
-        const existingUser = Array.from(users.values()).find(user => user.username === username);
-        if (existingUser) {
-            socket.emit('join-error', { message: '用户名已存在，请选择其他用户名' });
-            return;
+
+        .input-group button {
+            padding: 12px 25px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
         }
-        
-        // 设置用户信息
-            const user = {
-                username: username,
-                color: getRandomColor(),
-                socketId: socket.id,
-                roomName: roomName,
-                role: 'user', // 默认角色为user
-                permissions: { ...defaultPermissions },
-                status: 'online', // 添加在线状态
-                settings: { locked: false, lockMessage: '设置已被管理员锁定' },
-                userSettings: { // 用户具体设置
-                    targetLanguage: 'zh',
-                    autoTranslate: false,
-                    soundNotification: true,
-                    mentionNotification: true
-                },
-                aiSettings: { // AI设置
-                    enable: false,
-                    model: 'glm4',
-                    glm4: {
-                        apiKey: ''
-                    },
-                    deepseek: {
-                        modelName: '',
-                        apiKey: ''
-                    },
-                    siliconflow: {
-                        modelName: '',
-                        apiKey: ''
-                    },
-                    custom: {
-                        apiUrl: '',
-                        apiKey: '',
-                        modelName: ''
-                    }
-                }
-            };
-        
-        // 为新用户分配25%概率的通话权限
-        if (Math.random() < 0.25) {
-            user.permissions.allowCall = true;
+
+        .hidden {
+            display: none !important;
         }
-        
-        // 保存用户对象
-        users.set(socket.id, user);
-        
-        // 将用户添加到房间
-        room.users.push(socket.id);
-        
-        // 让socket加入房间频道
-        socket.join(roomName);
-        
-        // 发送房间内的用户列表和消息
-        let roomUsers = room.users.map(userId => users.get(userId)).filter(user => user);
-        // 确保room.messages存在，如果不存在就初始化它
-        if (!room.messages) {
-            room.messages = [];
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
         }
-        const roomMessages = room.messages;
-        
-        // 检查用户是否有查看用户列表的权限
-        if (!user.permissions.allowViewUsers) {
-            roomUsers = [];
+
+        .modal.active {
+            display: flex;
         }
-        
-        // 发送给当前用户
-        socket.emit('user-joined', {
-            username: username,
-            userCount: room.users.length,
-            users: roomUsers,
-            roomName: roomName
-        });
-        
-        // 发送给房间内其他用户（只发送有权限的用户）
-        const otherUsers = roomUsers.filter(u => u.permissions.allowViewUsers);
-        socket.to(roomName).emit('user-joined', {
-            username: username,
-            userCount: room.users.length,
-            users: otherUsers,
-            roomName: roomName
-        });
-        
-        // 分批发送房间历史消息（每次5条）
-        const batchSize = 5;
-        const totalMessages = roomMessages.length;
-        
-        function sendBatch(startIndex) {
-            const endIndex = Math.min(startIndex + batchSize, totalMessages);
-            const batchMessages = roomMessages.slice(startIndex, endIndex);
-            
-            socket.emit('room-history', {
-                messages: batchMessages,
-                batch: true,
-                startIndex: startIndex,
-                endIndex: endIndex,
-                total: totalMessages,
-                done: endIndex >= totalMessages
-            });
-            
-            if (endIndex < totalMessages) {
-                // 延迟发送下一批，避免消息堆积
-                setTimeout(() => sendBatch(endIndex), 100);
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 400px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-content h3 {
+            margin-bottom: 20px;
+            color: #333;
+            flex-shrink: 0;
+        }
+
+        #permissionsForm {
+            flex: 1;
+            overflow-y: auto;
+            padding-right: 10px;
+            margin-bottom: 20px;
+        }
+
+        #permissionsForm::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #permissionsForm::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        #permissionsForm::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        #permissionsForm::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            flex-shrink: 0;
+            margin-top: auto;
+        }
+
+        .modal-content input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 20px;
+            outline: none;
+        }
+
+        .modal-content input:focus {
+            border-color: #667eea;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .modal-buttons button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .btn-cancel {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-confirm {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .permission-item {
+            margin-bottom: 15px;
+            padding: 10px;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            background: #f8f9fa;
+        }
+
+        .permission-item > label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            font-weight: normal;
+            width: 100%;
+        }
+
+        .permission-item input[type="checkbox"] {
+            display: none;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #667eea;
+        }
+
+        input:focus + .slider {
+            box-shadow: 0 0 1px #667eea;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .input-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 20px;
+            outline: none;
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        .input-group textarea:focus {
+            border-color: #667eea;
+        }
+
+        .input-group input[type="color"] {
+            width: 100%;
+            height: 40px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+
+        .file-list {
+            background: #f8f9fa;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .file-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            border-bottom: 1px solid #dee2e6;
+            background: white;
+        }
+
+        .file-item:last-child {
+            border-bottom: none;
+        }
+
+        .file-info {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .file-icon {
+            font-size: 24px;
+        }
+
+        .file-details {
+            flex: 1;
+        }
+
+        .file-name {
+            font-weight: 500;
+            margin-bottom: 5px;
+            word-break: break-all;
+        }
+
+        .file-meta {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .file-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .upload-area {
+            border: 2px dashed #dee2e6;
+            border-radius: 10px;
+            padding: 30px;
+            text-align: center;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .upload-area:hover {
+            border-color: #667eea;
+            background: #f8f9fa;
+        }
+
+        .upload-area.dragover {
+            border-color: #667eea;
+            background: #e9ecef;
+        }
+
+        .files-container {
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 10px;
+            background: white;
+        }
+
+        .files-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .files-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        .files-container::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        .files-container::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        .requests-container {
+            max-height: 500px;
+            overflow-y: auto;
+            border: 1px solid #dee2e6;
+            border-radius: 10px;
+            background: white;
+            margin-top: 15px;
+        }
+
+        .requests-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .requests-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+
+        .requests-container::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        .requests-container::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        .request-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 15px;
+            border-bottom: 1px solid #dee2e6;
+            background: white;
+        }
+
+        .request-item:last-child {
+            border-bottom: none;
+        }
+
+        .request-info {
+            flex: 1;
+        }
+
+        .request-info h4 {
+            margin: 0 0 8px 0;
+            color: #333;
+        }
+
+        .request-reason {
+            margin: 0 0 10px 0;
+            color: #666;
+        }
+
+        .request-meta {
+            display: flex;
+            gap: 15px;
+            font-size: 12px;
+            color: #999;
+        }
+
+        .request-actions {
+            display: flex;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
+        .status-pending {
+            color: #ffc107;
+            font-weight: bold;
+        }
+
+        .status-approved {
+            color: #28a745;
+            font-weight: bold;
+        }
+
+        .status-rejected {
+            color: #dc3545;
+            font-weight: bold;
+        }
+
+        .path-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+
+        .current-path {
+            flex: 1;
+            font-family: 'Courier New', monospace;
+            color: #666;
+            font-size: 14px;
+            word-break: break-all;
+        }
+
+        .upload-area input {
+            display: none;
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        .upload-text {
+            color: #666;
+        }
+
+        .messages-container {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .message-item {
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            border-left: 4px solid #667eea;
+        }
+
+        .message-item.deleted {
+            border-left-color: #dc3545;
+            opacity: 0.7;
+        }
+
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .message-sender {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .message-time {
+            font-size: 12px;
+            color: #999;
+        }
+
+        .message-content {
+            color: #666;
+            word-break: break-word;
+        }
+
+        .message-content img {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+
+        .message-content audio {
+            width: 100%;
+            max-width: 300px;
+            margin-top: 10px;
+        }
+
+        .message-status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+
+        .message-status.active {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .message-status.deleted {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-shrink: 0;
+        }
+
+        .tab {
+            padding: 10px 20px;
+            background: #f8f9fa;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+            flex-shrink: 0;
+            white-space: nowrap;
+        }
+
+        .tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+
+        .empty-state-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                border-radius: 0;
+                max-height: 100vh;
+            }
+
+            .file-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            .file-actions {
+                width: 100%;
+                justify-content: flex-end;
             }
         }
         
-        // 开始发送第一批消息
-        sendBatch(0);
+        /* 深色模式样式 */
+        body.dark-mode {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        }
         
-        // 发送完历史消息后，发送当前房间的活跃投票
-        setTimeout(() => {
-            const roomPolls = Array.from(activePolls.values())
-                .filter(poll => poll.roomName === roomName && poll.isActive)
-                .map(poll => ({
-                    ...poll,
-                    votes: poll.options.map(option => option.votes),
-                    status: poll.isActive ? 'active' : 'ended',
-                    votedUsers: Array.from(poll.votes.keys()),
-                    userVotes: Object.fromEntries(poll.votes),
-                    options: poll.options.map(option => option.text) // 确保选项是字符串数组
-                }));
-            
-            // 发送投票列表
-            socket.emit('polls-list', roomPolls);
-        }, totalMessages > 0 ? Math.ceil(totalMessages / batchSize) * 100 + 100 : 100);
+        body.dark-mode .container {
+            background: #1a1a2e;
+            color: #e0e0e0;
+        }
         
-        console.log(`${username} 加入房间 ${roomName}，当前在线: ${roomUsers.length} 人`);
-        });
+        body.dark-mode .header {
+            background: linear-gradient(135deg, #16213e 0%, #0f3460 100%);
+        }
+        
+        body.dark-mode .login-form input {
+            background: #16213e;
+            border-color: #0f3460;
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .login-form input:focus {
+            border-color: #667eea;
+        }
+        
+        body.dark-mode .stat-card {
+            background: linear-gradient(135deg, #16213e 0%, #0f3460 100%);
+        }
+        
+        body.dark-mode .user-list {
+            background: #16213e;
+        }
+        
+        body.dark-mode .user-item {
+            background: #1a1a2e;
+            border-bottom-color: #0f3460;
+        }
+        
+        body.dark-mode .section h2 {
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .message-item {
+            background: #16213e;
+            border-left-color: #667eea;
+        }
+        
+        body.dark-mode .message-item.deleted {
+            border-left-color: #dc3545;
+        }
+        
+        body.dark-mode .message-sender {
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .message-content {
+            color: #b0b0b0;
+        }
+        
+        body.dark-mode .empty-state {
+            color: #b0b0b0;
+        }
+        
+        body.dark-mode .modal-content {
+            background: #1a1a2e;
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .modal-content h3 {
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode #permissionsForm {
+            background: #16213e;
+        }
+        
+        body.dark-mode .permission-item {
+            background: #1a1a2e;
+            border-color: #0f3460;
+        }
+        
+        body.dark-mode .input-group label {
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .input-group input {
+            background: #16213e;
+            border-color: #0f3460;
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .input-group input:focus {
+            border-color: #667eea;
+        }
+        
+        body.dark-mode .input-group textarea {
+            background: #16213e;
+            border-color: #0f3460;
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .input-group textarea:focus {
+            border-color: #667eea;
+        }
+        
+        body.dark-mode .files-container {
+            background: #1a1a2e;
+            border-color: #0f3460;
+        }
+        
+        body.dark-mode .file-item {
+            background: #16213e;
+            border-bottom-color: #0f3460;
+        }
+        
+        body.dark-mode .file-details {
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .file-meta {
+            color: #b0b0b0;
+        }
+        
+        body.dark-mode .upload-area {
+            border-color: #0f3460;
+            background: #16213e;
+        }
+        
+        body.dark-mode .upload-area:hover {
+            border-color: #667eea;
+            background: #1a1a2e;
+        }
+        
+        body.dark-mode .requests-container {
+            background: #1a1a2e;
+            border-color: #0f3460;
+        }
+        
+        body.dark-mode .request-item {
+            background: #16213e;
+            border-bottom-color: #0f3460;
+        }
+        
+        body.dark-mode .request-info h4 {
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode .request-reason {
+            color: #b0b0b0;
+        }
+        
+        body.dark-mode .request-meta {
+            color: #909090;
+        }
+        
+        body.dark-mode .path-bar {
+            background: #16213e;
+            border-color: #0f3460;
+        }
+        
+        body.dark-mode .current-path {
+            color: #b0b0b0;
+        }
+        
+        body.dark-mode .messages-container {
+            background: #16213e;
+        }
+        
+        body.dark-mode .tab {
+            background: #16213e;
+            color: #b0b0b0;
+        }
+        
+        body.dark-mode .tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        body.dark-mode .tab-content {
+            background: #1a1a2e;
+        }
+        
+        body.dark-mode .call-method-info {
+            background: #16213e;
+            border-left-color: #0f3460;
+        }
+        
+        body.dark-mode .call-method-info h3 {
+            color: #667eea;
+        }
+        
+        body.dark-mode #serverInfo {
+            background: #16213e;
+            color: #e0e0e0;
+        }
+        
+        body.dark-mode #commandOutput {
+            background: #121212;
+            color: #00ff00;
+        }
+        
+        body.dark-mode .reply-info {
+            background: #16213e;
+            color: #b0b0b0;
+        }
+        
+        /* 深色模式切换按钮 */
+        .dark-mode-toggle {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+        }
+        
+        .dark-mode-toggle:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>聊天室管理后台</h1>
+            <div class="subtitle">管理员控制面板</div>
+        </div>
 
-        // 处理头像更新
-        socket.on('avatar-updated', (data) => {
-            const user = users.get(socket.id);
-            if (user) {
-                user.avatar = data.avatar;
-                // 通知房间内其他用户头像更新
-                socket.to(user.roomName).emit('avatar-updated', {
-                    username: user.username,
-                    avatar: data.avatar
-                });
-                console.log(`${user.username} 更新了头像`);
-            }
-        });
+        <div class="login-container" id="loginContainer">
+            <div class="login-form">
+                <form id="loginForm">
+                    <input type="password" id="adminPassword" placeholder="请输入管理员密码">
+                    <button type="submit">登录</button>
+                </form>
+            </div>
+        </div>
 
-        socket.on('message', (data) => {
-        const user = users.get(socket.id);
-        if (user) {
-            // 消息速率限制检查（优化版）
-            const now = Date.now();
-            let rateLimitData = messageRateLimits.get(socket.id);
+        <div class="admin-panel" id="adminPanel">
+            <div class="stats">
+                <div class="stat-card">
+                    <h3>在线用户</h3>
+                    <div class="value" id="userCount">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>消息总数</h3>
+                    <div class="value" id="messageCount">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>已撤回消息</h3>
+                    <div class="value" id="deletedMessageCount">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3>上传文件</h3>
+                    <div class="value" id="fileCount">0</div>
+                </div>
+            </div>
+
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('users')">用户管理</button>
+                <button class="tab" onclick="switchTab('files')">文件管理</button>
+                <button class="tab" onclick="switchTab('messages')">消息管理</button>
+                <button class="tab" onclick="switchTab('rooms')">房间管理</button>
+                <button class="tab" onclick="switchTab('roomDetails')">房间详细</button>
+                <button class="tab" onclick="switchTab('friends')">好友管理</button>
+                <button class="tab" onclick="switchTab('requests')">申请管理</button>
+                <button class="tab" onclick="switchTab('mutedUsers')">禁言管理</button>
+                <button class="tab" onclick="switchTab('polls')">投票管理</button>
+                <button class="tab" onclick="switchTab('calls')">通话管理</button>
+                <button class="tab" onclick="switchTab('settingsManagement')">用户设置管理</button>
+                <button class="tab" onclick="switchTab('analytics')">行为分析</button>
+                <button class="tab" onclick="switchTab('logs')">系统日志</button>
+                <button class="tab" onclick="switchTab('monitoring')">系统监控</button>
+                <button class="tab" onclick="switchTab('updates')">发布更新</button>
+                <button class="tab" onclick="switchTab('chatroomNotifications')">聊天室提示</button>
+                <button class="tab" onclick="switchTab('systemManagement')">系统管理</button>
+                <button class="tab" onclick="switchTab('globalSettings')">全体设置</button>
+                <button class="tab" onclick="switchTab('console')">JavaScript控制台</button>
+            </div>
+
+            <div class="tab-content active" id="usersTab">
+                <div class="section">
+                    <h2>在线用户管理</h2>
+                    <div class="input-group">
+                        <button class="btn btn-primary" onclick="openUsersModal()">打开用户列表</button>
+                        <button class="btn btn-danger" onclick="batchKickUsers()">批量踢出</button>
+                        <button class="btn btn-warning" onclick="batchMuteUsers()">批量禁言</button>
+                        <button class="btn btn-info" onclick="batchSetPermissions()">批量设置权限</button>
+                        <button class="btn btn-secondary" onclick="selectAllUsers()">全选</button>
+                        <button class="btn btn-secondary" onclick="deselectAllUsers()">取消全选</button>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>系统消息</h2>
+                    <div class="input-group">
+                        <form onsubmit="event.preventDefault(); sendSystemMessage();">
+                            <input type="text" id="systemMessage" placeholder="输入系统消息内容">
+                            <button type="submit" class="btn btn-primary">发送</button>
+                        </form>
+                    </div>
+                </div>
+                <div class="section">
+                    <h2>修改管理员密码</h2>
+                    <form onsubmit="event.preventDefault(); changeAdminPassword();">
+                        <div class="input-group">
+                            <input type="password" id="oldPassword" placeholder="旧密码" required>
+                        </div>
+                        <div class="input-group">
+                            <input type="password" id="newPassword" placeholder="新密码" required>
+                        </div>
+                        <div class="input-group">
+                            <button type="submit" class="btn btn-primary">修改密码</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="tab-content" id="filesTab">
+                <div class="section">
+                    <h2>文件管理</h2>
+                    <div class="path-bar">
+                        <button class="btn btn-secondary" onclick="goBack()" id="backButton" disabled>← 返回上一级</button>
+                        <span class="current-path" id="currentPath">/</span>
+                    </div>
+                    <div class="input-group">
+                        <button class="btn btn-primary" onclick="loadFiles()">刷新文件列表</button>
+                        <button class="btn btn-success" onclick="openUploadModal()">上传文件</button>
+                        <button class="btn btn-primary" onclick="openCreateFileModal()">创建文件</button>
+                        <button class="btn btn-primary" onclick="openCreateDirectoryModal()">创建目录</button>
+                    </div>
+                    <div class="files-container" id="filesContainer">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📁</div>
+                            <div>暂无文件</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="messagesTab">
+                <div class="section">
+                    <h2>消息管理</h2>
+                    <button class="btn btn-danger" onclick="clearMessages()">清空所有消息</button>
+                </div>
+
+                <div class="section">
+                    <h2>伪装发送消息</h2>
+                    <button class="btn btn-primary" onclick="openAdminMessageModal()">伪装发送消息</button>
+                </div>
+
+                <div class="section">
+                    <h2>所有消息</h2>
+                    <div class="input-group">
+                        <button class="btn btn-primary" onclick="loadMessages()">刷新消息</button>
+                        <select id="roomSelect" class="btn btn-primary" style="margin-left: 10px;">
+                            <option value="">选择房间</option>
+                        </select>
+                    </div>
+                    <div class="messages-container" id="messagesContainer">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">💬</div>
+                            <div>暂无消息</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             
-            if (!rateLimitData) {
-                rateLimitData = {
-                    messages: [],
-                    lastCleanup: now
-                };
-                messageRateLimits.set(socket.id, rateLimitData);
-            }
-            
-            // 定期清理过期消息（每30秒清理一次）
-            if (now - rateLimitData.lastCleanup > 30000) {
-                rateLimitData.messages = rateLimitData.messages.filter(time => now - time < RATE_LIMIT_WINDOW);
-                rateLimitData.lastCleanup = now;
-            }
-            
-            // 检查是否超过速率限制
-            if (rateLimitData.messages.length >= MAX_MESSAGES_PER_MINUTE) {
-                socket.emit('rate-limit-error', { 
-                    message: `您发送消息过于频繁，请稍后再试。每分钟最多允许发送 ${MAX_MESSAGES_PER_MINUTE} 条消息。` 
-                });
-                console.log(`[速率限制] 用户 ${user.username} 发送消息过于频繁 (${rateLimitData.messages.length}/${MAX_MESSAGES_PER_MINUTE})`);
-                return;
-            }
-            
-            // 记录消息发送时间
-            rateLimitData.messages.push(now);
-            
-            // 消息长度限制检查
-            if (data.type === 'text' && data.message && data.message.length > 500) {
-                socket.emit('message-error', { message: '消息长度超过限制（最大500字符）' });
-                return;
-            }
-            
-            // 防止XSS攻击 - 对消息内容进行HTML转义
-            if (data.type === 'text' && data.message) {
-                data.message = data.message
-                    .replace(/&/g, '&amp;')
-                    .replace(/</g, '&lt;')
-                    .replace(/>/g, '&gt;')
-                    .replace(/"/g, '&quot;')
-                    .replace(/'/g, '&#039;');
-            }
-            
-            // 添加确认回调参数，确保客户端能够收到发送结果的反馈
-            const callback = data.callback || function() {};
-            
-            // 确保用户权限对象存在，如果不存在则设置默认权限
-            if (!user.permissions) {
-                user.permissions = {
-                    allowAudio: true,
-                    allowImage: true,
-                    allowFile: true,
-                    allowSendMessages: true,
-                    allowViewMessages: true,
-                    allowCall: true,
-                    allowAddFriends: true,
-                    allowViewUsers: true,
-                    allowPrivateChat: true,
-                    allowOpenFriendsPage: true,
-                    allowRecallMessage: true,
-                    allowAIChat: defaultPermissions.allowAIChat // 使用全局默认值
-                };
-            } else {
-                // 确保所有权限字段都存在，如果不存在则设置默认值
-                const defaultPermissions = {
-                    allowAudio: true,
-                    allowImage: true,
-                    allowFile: true,
-                    allowSendMessages: true,
-                    allowViewMessages: true,
-                    allowCall: true,
-                    allowAddFriends: true,
-                    allowViewUsers: true,
-                    allowPrivateChat: true,
-                    allowOpenFriendsPage: true,
-                    allowRecallMessage: true,
-                    allowAIChat: false // 默认禁用AI聊天功能
-                };
+            <div class="tab-content" id="roomsTab">
+                <div class="section">
+                    <h2>创建新房间</h2>
+                    <form onsubmit="event.preventDefault(); createRoom();">
+                        <div class="input-group">
+                            <input type="text" id="roomName" placeholder="房间名" required>
+                            <input type="password" id="roomPassword" placeholder="房间密码（可选）">
+                        </div>
+                        <div class="input-group">
+                            <label>最大用户数：</label>
+                            <input type="number" id="roomMaxUsers" placeholder="默认100" min="1" max="1000" value="100">
+                        </div>
+                        <div class="input-group">
+                            <button type="submit" class="btn btn-primary">创建房间</button>
+                        </div>
+                    </form>
+                </div>
                 
-                user.permissions = {
-                    ...defaultPermissions,
-                    ...user.permissions
-                };
-            }
+                <div class="section">
+                    <h2>房间列表</h2>
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <input type="text" id="roomSearch" placeholder="搜索房间名" oninput="filterRooms()">
+                    </div>
+                    <div class="user-list" id="roomList">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🏠</div>
+                            <div>暂无房间</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tab-content" id="roomDetailsTab">
+                <div class="section">
+                    <h2 id="roomDetailsTitle">房间详细信息</h2>
+                    <div id="roomDetailsInfo" style="margin-bottom: 20px;">
+                        <p>点击房间列表中的"查看用户"按钮查看房间详情</p>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>房间用户管理</h2>
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <input type="text" id="roomUserSearch" placeholder="搜索房间内的用户名" oninput="filterRoomUsers()">
+                    </div>
+                    <div class="user-list" id="roomUserList">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">👥</div>
+                            <div>该房间暂无用户</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>房间消息管理</h2>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <h3>发送系统消息</h3>
+                        <div class="input-group">
+                            <form onsubmit="event.preventDefault(); sendRoomSystemMessage();">
+                                <input type="text" id="roomSystemMessage" placeholder="输入房间系统消息内容">
+                                <button type="submit" class="btn btn-primary">发送</button>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h3>伪装发送消息</h3>
+                        <button class="btn btn-primary" onclick="openRoomAdminMessageModal()">伪装发送消息</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tab-content" id="friendsTab">
+                <div class="section">
+                    <h2>好友管理</h2>
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <input type="text" id="friendSearch" placeholder="搜索用户名..." oninput="filterFriends()">
+                        <button class="btn btn-primary" onclick="openAddFriendModal()">添加好友</button>
+                    </div>
+                    <div class="user-list" id="friendsTabList">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">👥</div>
+                            <div>暂无用户</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="tab-content" id="requestsTab">
+                <div class="section">
+                    <h2>好友扩容申请</h2>
+                    <button class="btn btn-primary" onclick="loadFriendLimitRequests()">刷新申请列表</button>
+                    <div class="requests-container" id="friendLimitRequestsContainer">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📋</div>
+                            <div>暂无好友扩容申请</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tab-content" id="globalSettingsTab">
+                <div class="section">
+                    <h2>全体权限设置</h2>
+                    <p style="margin-bottom: 15px; color: #666;">设置所有用户的默认权限，新用户将使用这些权限</p>
+                    <div id="globalPermissionsForm">
+                        <div class="permission-item">
+                            <label>
+                                <span>允许发送语音</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowAudio" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item">
+                            <label>
+                                <span>允许发送图片</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowImage" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item">
+                            <label>
+                                <span>允许发送文件</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowFile" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item">
+                            <label>
+                                <span>允许发送消息</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowSendMessages" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item">
+                            <label>
+                                <span>允许查看消息</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowViewMessages" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item">
+                            <label>
+                                <span>允许通话</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowCall" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item">
+                            <label>
+                                <span>允许添加好友</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowAddFriends" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item">
+                            <label>
+                                <span>允许查看用户列表</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowViewUsers" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item">
+                            <label>
+                                <span>允许私聊</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowPrivateChat" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item">
+                            <label>
+                                <span>允许打开好友页面</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowOpenFriendsPage" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item">
+                            <label>
+                                <span>允许撤回消息</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowRecallMessage" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                    </div>
+            
+            <div style="margin-top: 20px;">
+                <button class="btn btn-primary" onclick="applyGlobalPermissions()">应用到所有用户</button>
+                <button class="btn btn-info" onclick="applyToNewUsers()">仅应用到新用户</button>
+            </div>
+        </div>
+    </div>
+        <div class="tab-content" id="analyticsTab">
+            <div class="section">
+                <h2>用户行为分析</h2>
+                <div class="input-group">
+                    <button class="btn btn-primary" onclick="loadUserAnalytics()">加载分析数据</button>
+                    <button class="btn btn-primary" onclick="exportAnalyticsData()">导出分析数据</button>
+                    <button class="btn btn-primary" onclick="refreshAnalytics()">刷新数据</button>
+                    <select id="analyticsTimeRange" class="btn btn-primary" style="margin-left: 10px;">
+                        <option value="today">今日</option>
+                        <option value="week">本周</option>
+                        <option value="month">本月</option>
+                        <option value="all">全部</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>用户活跃度分析</h2>
+                <div style="background: white; border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+                    <div id="userActivityChart" style="height: 300px;"></div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>消息类型分布</h2>
+                <div style="background: white; border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+                    <div id="messageTypeChart" style="height: 300px;"></div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>用户留存率分析</h2>
+                <div style="background: white; border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+                    <div id="userRetentionChart" style="height: 300px;"></div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>消息热度分析</h2>
+                <div style="background: white; border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+                    <div id="messageHeatChart" style="height: 300px;"></div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>用户活跃时段分析</h2>
+                <div style="background: white; border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+                    <div id="userActiveHourChart" style="height: 300px;"></div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>用户行为统计</h2>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                    <div class="stat-card">
+                        <h3>活跃用户数</h3>
+                        <div class="value" id="activeUserCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>消息总数</h3>
+                        <div class="value" id="totalMessageCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>平均消息长度</h3>
+                        <div class="value" id="avgMessageLength">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>高峰时段</h3>
+                        <div class="value" id="peakHour">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>留存率</h3>
+                        <div class="value" id="retentionRate">0%</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>平均在线时长</h3>
+                        <div class="value" id="avgOnlineTime">0分钟</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>消息响应率</h3>
+                        <div class="value" id="responseRate">0%</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>用户增长率</h3>
+                        <div class="value" id="userGrowthRate">0%</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>用户行为详情</h2>
+                <div class="user-list" id="userBehaviorList">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📊</div>
+                        <div>暂无行为数据</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="tab-content" id="pollsTab">
+            <div class="section">
+                <h2>投票管理</h2>
+                <div class="input-group">
+                    <button class="btn btn-primary" onclick="loadPolls()">刷新投票列表</button>
+                    <button class="btn btn-success" onclick="openCreatePollModal()">创建新投票</button>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>活跃投票</h2>
+                <div class="user-list" id="pollsList">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📊</div>
+                        <div>暂无活跃投票</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="tab-content" id="logsTab">
+            <div class="section">
+                <h2>系统日志管理</h2>
+                <div class="input-group">
+                    <button class="btn btn-primary" onclick="loadSystemLogs()">加载系统日志</button>
+                    <button class="btn btn-primary" onclick="exportSystemLogs()">导出系统日志</button>
+                    <button class="btn btn-primary" onclick="exportUserData()">导出用户数据</button>
+                    <button class="btn btn-danger" onclick="clearSystemLogs()">清空系统日志</button>
+                    <select id="logTypeFilter" class="btn btn-primary" style="margin-left: 10px;">
+                        <option value="all">所有类型</option>
+                        <option value="error">错误</option>
+                        <option value="warn">警告</option>
+                        <option value="info">信息</option>
+                        <option value="debug">调试</option>
+                    </select>
+                    <input type="text" id="logSearch" placeholder="搜索日志内容" style="flex: 1; padding: 10px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 14px; margin-left: 10px;">
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>系统日志</h2>
+                <div style="background: #f8f9fa; border-radius: 10px; padding: 20px; max-height: 600px; overflow-y: auto;">
+                    <div id="systemLogsContainer" style="font-family: 'Courier New', monospace; font-size: 14px; line-height: 1.5;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📋</div>
+                            <div>暂无系统日志</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>系统事件统计</h2>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
+                    <div class="stat-card">
+                        <h3>用户登录</h3>
+                        <div class="value" id="loginCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>用户退出</h3>
+                        <div class="value" id="logoutCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>消息发送</h3>
+                        <div class="value" id="messageSentCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>文件上传</h3>
+                        <div class="value" id="fileUploadCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>错误事件</h3>
+                        <div class="value" id="errorCount">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>警告事件</h3>
+                        <div class="value" id="warnCount">0</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="tab-content" id="monitoringTab">
+            <div class="section">
+                <h2>系统监控</h2>
+                <div class="input-group">
+                    <button class="btn btn-primary" onclick="startSystemMonitoring()">开始监控</button>
+                    <button class="btn btn-danger" onclick="stopSystemMonitoring()">停止监控</button>
+                    <button class="btn btn-primary" onclick="refreshSystemStatus()">刷新状态</button>
+                    <select id="monitoringInterval" class="btn btn-primary" style="margin-left: 10px;">
+                        <option value="1000">1秒</option>
+                        <option value="2000">2秒</option>
+                        <option value="5000" selected>5秒</option>
+                        <option value="10000">10秒</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>系统状态</h2>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                    <div class="stat-card">
+                        <h3>CPU使用率</h3>
+                        <div class="value" id="cpuUsage">0%</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>内存使用率</h3>
+                        <div class="value" id="memoryUsage">0%</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>磁盘使用率</h3>
+                        <div class="value" id="diskUsage">0%</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>网络流量</h3>
+                        <div class="value" id="networkTraffic">0 KB/s</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>在线用户</h3>
+                        <div class="value" id="onlineUsers">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>WebSocket连接</h3>
+                        <div class="value" id="websocketConnections">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>系统性能监控</h2>
+                <div style="background: white; border-radius: 10px; padding: 20px; margin-bottom: 20px;">
+                    <div id="performanceChart" style="height: 300px;"></div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>系统事件</h2>
+                <div style="background: #f8f9fa; border-radius: 10px; padding: 20px; max-height: 300px; overflow-y: auto;">
+                    <div id="systemEventsContainer" style="font-family: 'Courier New', monospace; font-size: 14px; line-height: 1.5;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">⚡</div>
+                            <div>暂无系统事件</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="tab-content" id="mutedUsersTab">
+            <div class="section">
+                <h2>禁言用户管理</h2>
+                <button class="btn btn-primary" onclick="loadMutedUsers()">刷新禁言列表</button>
+                <button class="btn btn-primary" onclick="openMuteUserModal()">禁言用户</button>
+            </div>
+            
+            <div class="section">
+                <h2>已禁言用户</h2>
+                <div class="user-list" id="mutedUsersList">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔇</div>
+                        <div>暂无被禁言用户</div>
+                    </div>
+                </div>
+            </div>
+        </div>
         
-        // 确保用户设置对象存在，如果不存在则设置默认设置
-        if (!user.settings) {
-            user.settings = {
-                locked: false,
-                lockMessage: '设置已被管理员锁定'
-            };
-        } else {
-            // 确保所有设置字段都存在，如果不存在则设置默认值
-            const defaultSettings = {
-                locked: false,
-                lockMessage: '设置已被管理员锁定'
-            };
+        <div class="tab-content" id="callsTab">
+            <div class="section">
+                <h2>通话管理</h2>
+                <div class="call-method-info" style="background: #f0f8ff; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #007bff;">
+                    <h3 style="margin-top: 0; color: #007bff;">通话方式说明</h3>
+                    <ul style="margin: 10px 0 0 20px; padding: 0;">
+                        <li><strong>WebRTC</strong>：点对点直接通信，延迟低，质量高，但只能在局域网内使用</li>
+                        <li><strong>Socket.io</strong>：使用服务器转发数据，支持跨网段通话</li>
+                    </ul>
+                </div>
+                <button class="btn btn-primary" onclick="loadOngoingCalls()">刷新通话列表</button>
+            </div>
             
-            user.settings = {
-                ...defaultSettings,
-                ...user.settings
-            };
-        }
+            <div class="section">
+                <h2>正在进行的通话</h2>
+                <div class="user-list" id="ongoingCallsList">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📞</div>
+                        <div>暂无正在进行的通话</div>
+                    </div>
+                </div>
+            </div>
             
-            // 权限检查
-            if (!user.permissions.allowSendMessages) {
-                socket.emit('permission-denied', { message: '您没有发送消息的权限' });
-                return;
-            }
-            if (data.type === 'audio' && !user.permissions.allowAudio) {
-                socket.emit('permission-denied', { message: '您没有发送语音的权限' });
-                return;
-            }
-            if (data.type === 'image' && !user.permissions.allowImage) {
-                socket.emit('permission-denied', { message: '您没有发送图片的权限' });
-                return;
-            }
-            if (data.type === 'file' && !user.permissions.allowFile) {
-                socket.emit('permission-denied', { message: '您没有发送文件的权限' });
-                return;
-            }
-            
-            // 禁言检查
-            const currentTime = Date.now();
-            const mutedData = mutedUsers.get(socket.id);
-            if (mutedData) {
-                if (mutedData.endTime === -1 || mutedData.endTime > currentTime) {
-                    const remainingTime = mutedData.endTime === -1 ? '永久' : Math.ceil((mutedData.endTime - currentTime) / (60 * 1000)) + '分钟';
-                    socket.emit('muted-error', {
-                        message: `您已被禁言，剩余时长：${remainingTime}，原因：${mutedData.reason}`
-                    });
-                    return;
-                } else {
-                    // 禁言已过期，自动移除
-                    mutedUsers.delete(socket.id);
-                }
-            }
-            
-            // 脏话过滤和计数功能
-            let processedMessage = data.message;
-            let containsSwearWord = false;
-            
-            if (data.type === 'text' && processedMessage) {
-                // 检查是否是请求通话权限的消息
-                const callPermissionRegex = /^通话权限\s+(.+)$/;
-                const match = processedMessage.match(callPermissionRegex);
-                
-                if (match) {
-                    // 提取密码
-                    const password = match[1].trim();
+            <!-- 通话详情模态框 -->
+            <div class="modal" id="callDetailsModal">
+                <div class="modal-content" style="max-width: 1200px; max-height: 90vh; overflow-y: auto; overflow-x: hidden;">
+                    <h3>通话详情</h3>
+                    <div id="callDetailsInfo">
+                        <!-- 通话详情将通过JavaScript动态加载 -->
+                    </div>
                     
-                    // 验证密码
-                    if (password === ADMIN_PASSWORD) {
-                        // 密码正确，授予通话权限
-                    user.permissions.allowCall = true;
+                    <!-- 通话双方画面 -->
+                    <div style="margin-top: 20px;">
+                        <h3>通话画面监控 <span id="callMethodDisplay" style="font-size: 14px; font-weight: normal; color: #666;"></span></h3>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 15px;">
+                            <div style="background: #000; border-radius: 10px; overflow: hidden; position: relative; min-height: 300px;">
+                                <h4 style="position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 5px; margin: 0; z-index: 1;">发起方画面</h4>
+                                <div id="initiatorVideoContainer" style="width: 100%; height: 300px; display: flex; align-items: center; justify-content: center; color: #666;">
+                                    <div style="text-align: center;">
+                                        <div style="font-size: 40px; margin-bottom: 10px;">📹</div>
+                                        <div id="initiatorVideoStatus">等待通话数据...</div>
+                                    </div>
+                                </div>
+                                <video id="initiatorVideo" autoplay playsinline style="display: none; width: 100%; height: 300px; object-fit: contain; background: #000;"></video>
+                            </div>
+                            <div style="background: #000; border-radius: 10px; overflow: hidden; position: relative; min-height: 300px;">
+                                <h4 style="position: absolute; top: 10px; left: 10px; color: white; background: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 5px; margin: 0; z-index: 1;">接收方画面</h4>
+                                <div id="recipientVideoContainer" style="width: 100%; height: 300px; display: flex; align-items: center; justify-content: center; color: #666;">
+                                    <div style="text-align: center;">
+                                        <div style="font-size: 40px; margin-bottom: 10px;">📹</div>
+                                        <div id="recipientVideoStatus">等待通话数据...</div>
+                                    </div>
+                                </div>
+                                <video id="recipientVideo" autoplay playsinline style="display: none; width: 100%; height: 300px; object-fit: contain; background: #000;"></video>
+                            </div>
+                        </div>
+                        <div style="margin-top: 10px; font-size: 14px; color: #666;">
+                            <strong>说明：</strong> 
+                            <span id="videoModeNote">WebRTC为点对点通话，管理员无法查看画面。请使用Socket.io模式进行可监控的通话。</span>
+                        </div>
+                    </div>
                     
-                    // 发送成功通知给用户
-                    socket.emit('system-message', {
-                        message: '✅ 通话权限申请成功！您现在可以发起和接受通话了。',
-                        timestamp: new Date().toLocaleTimeString()
-                    });
-                    
-                    // 发送权限更新事件，通知客户端更新用户权限
-                    io.emit('user-permissions-changed', {
-                        socketId: socket.id,
-                        permissions: user.permissions,
-                        users: Array.from(users.values())
-                    });
-                    
-                    console.log(`[权限] 用户 ${user.username} 成功获取通话权限`);
-                    } else {
-                        // 密码错误，发送失败通知给用户
-                        socket.emit('system-message', {
-                            message: '❌ 通话权限申请失败！密码错误，请重新输入。',
-                            timestamp: new Date().toLocaleTimeString()
-                        });
-                        
-                        console.log(`[权限] 用户 ${user.username} 申请通话权限失败，密码错误`);
-                    }
-                    
-                    // 将消息替换为星号，对所有人隐藏实际内容
-                    processedMessage = '***********';
-                } else {
-                    // 检测并替换脏话
-                    badWords.forEach(badWord => {
-                        // 使用单词边界确保只匹配完整的单词
-                        // 对于单字或非单词字符，不使用单词边界
-                        let regex;
-                        if (badWord.length === 1 || !/^\w+$/.test(badWord)) {
-                            // 单字或非单词字符，直接匹配
-                            regex = new RegExp(badWord, 'gi');
-                        } else {
-                            // 多字单词，使用单词边界
-                            regex = new RegExp('\\b' + badWord + '\\b', 'gi');
-                        }
-                        if (regex.test(processedMessage)) {
-                            containsSwearWord = true;
-                        }
-                        processedMessage = processedMessage.replace(regex, '***');
-                    });
-                    
-                    // 如果包含脏话，更新计数
-                    if (containsSwearWord) {
-                        // 获取当前用户的脏话计数，默认0
-                        const currentCount = swearWordCount.get(socket.id) || 0;
-                        const newCount = currentCount + 1;
-                        
-                        // 更新计数
-                        swearWordCount.set(socket.id, newCount);
-                        
-                        // 检查是否达到禁言阈值
-                        if (newCount === 5) {
-                            // 发出5次脏话，禁言5分钟
-                            const currentTime = Date.now();
-                            const endTime = currentTime + (5 * 60 * 1000);
-                            
-                            // 添加到禁言列表
-                            mutedUsers.set(socket.id, {
-                                username: user.username,
-                                endTime: endTime,
-                                reason: '累计发送5次脏话'
-                            });
-                            
-                            // 发送禁言通知给用户
-                            io.to(socket.id).emit('muted', {
-                                duration: 5,
-                                reason: '累计发送5次脏话',
-                                endTime: endTime
-                            });
-                            
-                            console.log(`[自动禁言] 用户 ${user.username} 累计发送5次脏话，禁言5分钟`);
-                        } else if (newCount === 20) {
-                            // 发出20次脏话，永久禁言
-                            mutedUsers.set(socket.id, {
-                                username: user.username,
-                                endTime: -1,
-                                reason: '累计发送20次脏话，永久禁言'
-                            });
-                            
-                            // 发送禁言通知给用户
-                            io.to(socket.id).emit('muted', {
-                                duration: -1,
-                                reason: '累计发送20次脏话，永久禁言',
-                                endTime: -1
-                            });
-                            
-                            console.log(`[自动禁言] 用户 ${user.username} 累计发送20次脏话，永久禁言`);
-                        }
-                    }
-                }
-            }
-            
-            // 检查是否是实时位置消息更新
-            let messageId;
-            if (data.type === 'location' && data.isRealTime && data.realTimeMessageId) {
-                // 对于实时位置消息，使用客户端提供的realTimeMessageId
-                messageId = data.realTimeMessageId;
-            } else {
-                // 对于其他消息，生成新的messageId
-                messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-            }
-            
-            const messageData = {
-                id: messageId,
-                username: user.username,
-                color: user.color,
-                message: processedMessage,
-                type: data.type || 'text',
-                timestamp: new Date().toLocaleTimeString(),
-                senderSocketId: socket.id,
-                readBy: [socket.id], // 初始时只有发送者已读
-                // 包含额外的文件和音频属性
-                fileName: data.fileName,
-                fileSize: data.fileSize,
-                contentType: data.contentType,
-                // 包含位置消息属性
-                latitude: data.latitude,
-                longitude: data.longitude,
-                locationName: data.locationName,
-                isRealTime: data.isRealTime,
-                realTimeTimestamp: data.timestamp,
-                // 回复功能支持
-                replyTo: data.replyTo,
-                replyToMessage: data.replyToMessage,
-                replyToUsername: data.replyToUsername
-            };
-            
-            // 检查消息中是否包含@用户名或@{用户名}格式
-            const mentions = data.message ? data.message.match(/@(?:\{([^}]+)\}|([a-zA-Z0-9_`]+))/g) : null;
-            if (mentions && allowMentions) {
-                console.log(`[调试] 检测到@提及: ${mentions.join(', ')}`);
-                mentions.forEach(mention => {
-                    let mentionedUsername;
-                    if (mention.startsWith('@{')) {
-                        // 处理@{用户名}格式
-                        mentionedUsername = mention.replace('@{', '').replace('}', '');
-                    } else {
-                        // 处理@用户名格式
-                        mentionedUsername = mention.substring(1);
-                    }
-                    console.log(`[调试] 查找用户: ${mentionedUsername}`);
-                    const mentionedUser = Array.from(users.values()).find(u => u.username === mentionedUsername);
-                    
-                    if (mentionedUser) {
-                        console.log(`[调试] 找到用户: ${mentionedUser.username}, socketId: ${mentionedUser.socketId}`);
-                        // 发送@通知给被@的用户
-                        io.to(mentionedUser.socketId).emit('mention-notification', {
-                            fromUsername: user.username,
-                            fromColor: user.color,
-                            message: data.message,
-                            timestamp: new Date().toLocaleTimeString()
-                        });
-                        
-                        console.log(`[通知] ${user.username} @了 ${mentionedUser.username}`);
-                    } else {
-                        console.log(`[调试] 未找到用户: ${mentionedUsername}`);
-                    }
-                });
-            } else {
-                if (mentions) {
-                    console.log(`[调试] @功能已关闭，提及: ${mentions.join(', ')}`);
-                }
-            }
-            
-            // 获取用户所在的房间
-            const room = rooms.get(user.roomName);
-            if (room) {
-                // 检查是否是实时位置消息更新
-                if (data.type === 'location' && data.isRealTime && data.realTimeMessageId) {
-                    // 查找并更新已有的实时位置消息
-                    const existingMessageIndex = room.messages.findIndex(msg => msg.id === messageId);
-                    if (existingMessageIndex !== -1) {
-                        // 更新已有的消息
-                        room.messages[existingMessageIndex] = messageData;
-                        console.log(`[房间 ${user.roomName}] ${user.username}: 实时位置更新`);
-                    } else {
-                        // 如果消息不存在，添加新消息
-                        room.messages.push(messageData);
-                        if (room.messages.length > 100) {
-                            room.messages.shift();
-                        }
-                        console.log(`[房间 ${user.roomName}] ${user.username}: 开始共享实时位置`);
-                    }
-                } else {
-                    // 对于其他消息，添加新消息
-                    room.messages.push(messageData);
-                    if (room.messages.length > 100) {
-                        room.messages.shift();
-                    }
-                    console.log(`[房间 ${user.roomName}] ${user.username}: ${data.type === 'text' ? data.message : data.type}`);
-                }
-                
-                // 只发送给房间内有权限查看消息的用户
-                room.users.forEach(userId => {
-                    const roomUser = users.get(userId);
-                    if (roomUser && roomUser.permissions.allowViewMessages) {
-                        io.to(userId).emit('message', messageData);
-                    }
-                });
-                
-                // 发送给管理员
-                if (adminSocketId) {
-                    io.to(adminSocketId).emit('message', messageData);
-                }
-            }
-        }
-    });
-
-    socket.on('admin-login', (data) => {
-        const password = data.password;
-        if (password === ADMIN_PASSWORD) {
-            adminSocketId = socket.id;
-            socket.emit('admin-login-success', true);
-            
-            // 发送完整的用户列表给管理员
-            socket.emit('user-joined', {
-                username: '管理员',
-                userCount: users.size,
-                users: Array.from(users.values())
-            });
-            
-            console.log('管理员登录成功');
-        } else {
-            socket.emit('admin-login-error', { message: '密码错误' });
-        }
-    });
-
-    socket.on('admin-kick-user', (socketId) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const user = users.get(socketId);
-            if (user) {
-                io.to(socketId).emit('kicked', '你已被管理员踢出聊天室');
-                io.sockets.sockets.get(socketId)?.disconnect();
-                users.delete(socketId);
-                io.emit('user-left', {
-                    username: user.username,
-                    userCount: users.size,
-                    users: Array.from(users.values())
-                });
-                console.log(`管理员踢出用户: ${user.username}`);
-            }
-        }
-    });
-
-    socket.on('admin-rename-user', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const user = users.get(data.socketId);
-            if (user) {
-                const oldName = user.username;
-                user.username = data.newName;
-                io.emit('user-renamed', {
-                    oldName: oldName,
-                    newName: data.newName,
-                    users: Array.from(users.values())
-                });
-                console.log(`管理员将 ${oldName} 重命名为 ${data.newName}`);
-            }
-        }
-    });
-
-    socket.on('admin-set-permissions', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const user = users.get(data.socketId);
-            if (user) {
-                user.permissions = {
-                    allowAudio: data.permissions.allowAudio,
-                    allowImage: data.permissions.allowImage,
-                    allowFile: data.permissions.allowFile,
-                    allowSendMessages: data.permissions.allowSendMessages,
-                    allowViewMessages: data.permissions.allowViewMessages,
-                    allowCall: data.permissions.allowCall,
-                    allowAddFriends: data.permissions.allowAddFriends,
-                    allowViewUsers: data.permissions.allowViewUsers,
-                    allowPrivateChat: data.permissions.allowPrivateChat,
-                    allowOpenFriendsPage: data.permissions.allowOpenFriendsPage,
-                    allowRecallMessage: data.permissions.allowRecallMessage,
-                    allowAIChat: data.permissions.allowAIChat // 添加AI聊天权限
-                };
-                io.emit('user-permissions-changed', {
-                    socketId: data.socketId,
-                    permissions: user.permissions,
-                    users: Array.from(users.values())
-                });
-                console.log(`管理员更新了用户 ${user.username} 的权限: ${JSON.stringify(user.permissions)}`);
-            }
-        }
-    });
-    
-    // 设置用户角色
-    socket.on('admin-set-role', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const user = users.get(data.socketId);
-            if (user) {
-                const oldRole = user.role;
-                user.role = data.role;
-                
-                // 发送角色更新通知
-                io.emit('user-role-changed', {
-                    socketId: data.socketId,
-                    username: user.username,
-                    oldRole: oldRole,
-                    newRole: data.role,
-                    users: Array.from(users.values())
-                });
-                
-                console.log(`管理员将用户 ${user.username} 的角色从 ${oldRole} 更改为 ${data.role}`);
-            }
-        }
-    });
-    
-    // 设置@功能开关
-    socket.on('admin-set-mentions', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            allowMentions = data.allow;
-            console.log(`管理员将@功能设置为 ${allowMentions ? '开启' : '关闭'}`);
-        }
-    });
-
-    // 设置全体权限（应用到所有用户）
-    socket.on('admin-set-global-permissions', (permissions) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            users.forEach((user, socketId) => {
-                user.permissions = {
-                    ...user.permissions,
-                    ...permissions
-                };
-            });
-            
-            // 通知所有用户权限已更新
-            io.emit('user-permissions-changed', {
-                socketId: null,
-                permissions: permissions,
-                users: Array.from(users.values())
-            });
-            
-            console.log('管理员设置了全体权限:', JSON.stringify(permissions));
-        }
-    });
-
-    // 设置默认权限（仅应用到新用户）
-    socket.on('admin-set-default-permissions', (permissions) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            defaultPermissions = permissions;
-            console.log('管理员设置了默认权限:', JSON.stringify(permissions));
-        }
-    });
-
-    socket.on('admin-system-message', (message) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-                const systemMessageData = {
-                    message: message,
-                    timestamp: new Date().toLocaleTimeString()
-                };
-                
-                // 只发送给有权限查看消息的用户
-                users.forEach((user, socketId) => {
-                    if (user.permissions.allowViewMessages) {
-                        io.to(socketId).emit('system-message', systemMessageData);
-                    }
-                });
-                
-                console.log(`管理员发送系统消息: ${message}`);
-            }
-        });
+                    <div style="margin-top: 20px; display: flex; gap: 10px;">
+                        <button class="btn btn-danger" onclick="endCall()">结束通话</button>
+                        <button class="btn btn-primary" onclick="toggleCallControl('video')">切换视频控制</button>
+                        <button class="btn btn-primary" onclick="toggleCallControl('audio')">切换音频控制</button>
+                        <button class="btn btn-cancel" onclick="closeCallDetailsModal()">关闭</button>
+                    </div>
+                </div>
+            </div>
+        </div>
         
-        // 管理员发送系统消息到指定房间
-        socket.on('admin-room-system-message', (data) => {
-            // 允许管理员和超级管理员执行操作
-            const user = users.get(socket.id);
-            if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-                const { roomName, message } = data;
-                const room = rooms.get(roomName);
-                if (room) {
-                    const systemMessageData = {
-                        message: message,
-                        timestamp: new Date().toLocaleTimeString()
-                    };
+        <div class="tab-content" id="settingsManagementTab">
+            <h2>用户设置管理</h2>
+            <div class="section">
+                <h3>用户列表</h3>
+                <button class="btn btn-primary" onclick="loadUsersForSettings()">刷新用户列表</button>
+                <div class="user-list" id="settingsUsersList">
+                    <div class="empty-state">
+                        <div>暂无用户数据</div>
+                    </div>
+                </div>
+            </div>
+            <div class="section">
+                <h3>用户设置控制</h3>
+                <div id="userSettingsForm" style="display: none;">
+                    <h4>编辑用户设置 - <span id="selectedUsername"></span></h4>
+                    <div class="input-group">
+                        <label>锁定用户设置</label>
+                        <input type="checkbox" id="lockUserSettings">
+                        <span class="help-text">锁定后用户将无法修改自己的设置</span>
+                    </div>
+                    <div class="input-group">
+                        <label>自定义锁定提示</label>
+                        <input type="text" id="customLockMessage" placeholder="设置已被管理员锁定">
+                    </div>
                     
-                    // 只发送给房间内有权限查看消息的用户
-                    room.users.forEach(userId => {
-                        const user = users.get(userId);
-                        if (user && user.permissions.allowViewMessages) {
-                            io.to(userId).emit('system-message', systemMessageData);
-                        }
-                    });
+                    <h4 style="margin-top: 20px;">直接修改用户设置</h4>
+                    <div class="input-group">
+                        <label>翻译目标语言</label>
+                        <select id="userTargetLanguage">
+                            <option value="zh">中文</option>
+                            <option value="en">English</option>
+                            <option value="ja">日本語</option>
+                            <option value="ko">한국어</option>
+                            <option value="fr">Français</option>
+                            <option value="de">Deutsch</option>
+                            <option value="es">Español</option>
+                            <option value="ru">Русский</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label>自动翻译所有消息</label>
+                        <input type="checkbox" id="userAutoTranslate">
+                    </div>
+                    <div class="input-group">
+                        <label>声音通知</label>
+                        <input type="checkbox" id="userSoundNotification">
+                    </div>
+                    <div class="input-group">
+                        <label>@提及通知</label>
+                        <input type="checkbox" id="userMentionNotification">
+                    </div>
                     
-                    console.log(`[房间 ${roomName}] 管理员发送系统消息: ${message}`);
-                }
-            }
-        });
-        
-        // 管理员在指定房间伪装发送消息
-        socket.on('admin-room-send-message', (data) => {
-            // 允许管理员和超级管理员执行操作
-            const user = users.get(socket.id);
-            if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-                const { roomName, username, message, color, type } = data;
-                const room = rooms.get(roomName);
-                if (room) {
-                    const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-                    const messageData = {
-                        id: messageId,
-                        username: username,
-                        color: color || getRandomColor(),
-                        message: message,
-                        type: type || 'text',
-                        timestamp: new Date().toLocaleTimeString(),
-                        senderSocketId: socket.id
-                    };
+                    <h4 style="margin-top: 20px;">视频设置</h4>
+                    <div class="input-group">
+                        <label>开发者模式</label>
+                        <input type="checkbox" id="userDeveloperMode">
+                    </div>
+                    <div class="input-group">
+                        <label>本地视频镜像显示</label>
+                        <input type="checkbox" id="userMirrorVideo">
+                    </div>
+                    <div class="input-group">
+                        <label>对方视频镜像显示</label>
+                        <input type="checkbox" id="userRemoteMirrorVideo">
+                    </div>
                     
-                    // 将消息存储在房间的messages数组中
-                    room.messages.push(messageData);
-                    if (room.messages.length > 100) {
-                        room.messages.shift();
-                    }
+                    <h4 style="margin-top: 20px;">通话设置</h4>
+                    <div class="input-group">
+                        <label>自动调整音量</label>
+                        <input type="checkbox" id="userAutoAdjustVolume">
+                    </div>
+                    <div class="input-group">
+                        <label>启用实时字幕</label>
+                        <input type="checkbox" id="userEnableSubtitles">
+                    </div>
+                    <div class="input-group">
+                        <label>说话检测阈值</label>
+                        <input type="range" id="userSpeakingThreshold" min="0" max="100" step="5" value="40">
+                        <span id="userSpeakingThresholdValue">40</span>
+                    </div>
+                    <div class="input-group">
+                        <label>音量降低比例</label>
+                        <input type="range" id="userVolumeReduction" min="10" max="80" step="5" value="30">
+                        <span id="userVolumeReductionValue">30%</span>
+                    </div>
+                    <div class="input-group">
+                        <label>字幕字体大小</label>
+                        <input type="range" id="userSubtitlesFontSize" min="12" max="24" step="1" value="16">
+                        <span id="userSubtitlesFontSizeValue">16px</span>
+                    </div>
                     
-                    // 只发送给房间内有权限查看消息的用户
-                    room.users.forEach(userId => {
-                        const user = users.get(userId);
-                        if (user && user.permissions.allowViewMessages) {
-                            if (type === 'system') {
-                                // 发送系统消息格式，但包含用户名和颜色信息
-                                io.to(userId).emit('message', {
-                                    id: messageId,
-                                    username: username,
-                                    color: color || getRandomColor(),
-                                    message: message,
-                                    type: 'system',
-                                    timestamp: new Date().toLocaleTimeString(),
-                                    senderSocketId: socket.id
+                    <h4 style="margin-top: 20px;">AI聊天设置</h4>
+                    <div class="input-group">
+                        <label>启用AI聊天功能</label>
+                        <input type="checkbox" id="userEnableAIChat">
+                    </div>
+                    <div class="input-group">
+                        <label>AI模型</label>
+                        <select id="userAiModel">
+                            <option value="glm4">GLM-4 Flash</option>
+                            <option value="deepseek">DeepSeek</option>
+                            <option value="siliconflow">硅基流动</option>
+                            <option value="custom">自定义API</option>
+                        </select>
+                    </div>
+                    
+                    <div class="input-group" style="margin-top: 20px;">
+                        <button class="btn btn-primary" onclick="saveUserSettings()">保存设置</button>
+                        <button class="btn btn-secondary" onclick="closeUserSettingsForm()">取消</button>
+                    </div>
+                    
+                    <script>
+                        // 添加滑动条事件监听器
+                        document.addEventListener('DOMContentLoaded', function() {
+                            const speakingThreshold = document.getElementById('userSpeakingThreshold');
+                            const speakingThresholdValue = document.getElementById('userSpeakingThresholdValue');
+                            if (speakingThreshold && speakingThresholdValue) {
+                                speakingThreshold.addEventListener('input', function() {
+                                    speakingThresholdValue.textContent = this.value;
                                 });
-                            } else {
-                                io.to(userId).emit('message', messageData);
                             }
-                        }
-                    });
+                            
+                            const volumeReduction = document.getElementById('userVolumeReduction');
+                            const volumeReductionValue = document.getElementById('userVolumeReductionValue');
+                            if (volumeReduction && volumeReductionValue) {
+                                volumeReduction.addEventListener('input', function() {
+                                    volumeReductionValue.textContent = this.value + '%';
+                                });
+                            }
+                            
+                            const subtitlesFontSize = document.getElementById('userSubtitlesFontSize');
+                            const subtitlesFontSizeValue = document.getElementById('userSubtitlesFontSizeValue');
+                            if (subtitlesFontSize && subtitlesFontSizeValue) {
+                                subtitlesFontSize.addEventListener('input', function() {
+                                    subtitlesFontSizeValue.textContent = this.value + 'px';
+                                });
+                            }
+                        });
+                    </script>
+                </div>
+            </div>
+        </div>
+        
+        <div class="tab-content" id="updatesTab">
+            <div class="section">
+                <h2>发布更新</h2>
+                <div class="input-group">
+                    <button class="btn btn-primary" onclick="openUpdateModal()">发布新版本</button>
+                </div>
+                
+                <div class="section" style="margin-top: 20px;">
+                    <h3>更新历史</h3>
+                    <div id="updateHistory" style="background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                        <p>暂无更新历史</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="tab-content" id="chatroomNotificationsTab">
+            <div class="section">
+                <h2>发送聊天室提示</h2>
+                <p style="margin-bottom: 15px; color: #666;">向指定用户发送聊天室提示，支持自定义样式和按钮</p>
+                <div class="input-group">
+                    <button class="btn btn-primary" onclick="openChatroomNotificationModal()">发送提示</button>
+                    <button class="btn btn-info" onclick="refreshActiveNotifications()">刷新活跃提示</button>
+                </div>
+            </div>
+            
+            <div class="section" style="margin-top: 20px;">
+                <h2>活跃提示管理</h2>
+                <p style="margin-bottom: 15px; color: #666;">管理当前活跃的聊天室提示，支持编辑、删除和样式修改</p>
+                <div id="activeNotificationsList" style="background: #f8f9fa; padding: 15px; border-radius: 10px; max-height: 500px; overflow-y: auto;">
+                    <div class="empty-state">
+                        <p>暂无活跃提示</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="tab-content" id="consoleTab">
+            <div class="section">
+                <h2>JavaScript控制台</h2>
+                <p style="margin-bottom: 15px; color: #666;">查看用户JavaScript控制台，执行JavaScript代码，查看所有级别的日志</p>
+                
+                <div class="input-group" style="margin-bottom: 20px;">
+                    <select id="consoleUserSelect" style="flex: 1; padding: 10px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 14px;">
+                        <option value="">选择用户</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="loadUserConsole()">加载控制台</button>
+                </div>
+                
+                <div class="section">
+                    <h3>执行JavaScript代码</h3>
+                    <div class="input-group">
+                        <textarea id="consoleCode" placeholder="输入JavaScript代码，按执行按钮运行" rows="10" style="flex: 1; padding: 12px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 14px; font-family: 'Courier New', monospace;"></textarea>
+                    </div>
+                    <div class="input-group" style="margin-top: 10px;">
+                        <button class="btn btn-primary" onclick="executeConsoleCode()">执行代码</button>
+                        <button class="btn btn-secondary" onclick="clearConsoleCode()">清空代码</button>
+                        <button class="btn btn-info" onclick="loadSampleCode()">加载示例代码</button>
+                    </div>
+                </div>
+                
+                <div class="section" style="margin-top: 20px;">
+                    <h3>控制台日志</h3>
+                    <div class="input-group" style="margin-bottom: 10px;">
+                        <select id="logLevelFilter" style="padding: 8px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 14px;">
+                            <option value="all">所有级别</option>
+                            <option value="error">错误</option>
+                            <option value="warn">警告</option>
+                            <option value="info">信息</option>
+                            <option value="log">日志</option>
+                            <option value="debug">调试</option>
+                        </select>
+                        <button class="btn btn-primary" onclick="clearConsoleLogs()">清空日志</button>
+                        <button class="btn btn-info" onclick="exportConsoleLogs()">导出日志</button>
+                    </div>
+                    <div id="consoleLogs" style="background: #f8f9fa; border-radius: 10px; padding: 15px; max-height: 500px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 14px;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">💻</div>
+                            <div>请选择用户并加载控制台</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 更新通知模态框 -->
+        <div class="modal" id="updateModal">
+            <div class="modal-content">
+                <h3>发布新版本</h3>
+                <form onsubmit="event.preventDefault(); publishUpdate();">
+                    <div class="input-group">
+                        <label>版本号</label>
+                        <input type="text" id="updateVersion" placeholder="输入版本号，例如：v1.0.1" required>
+                    </div>
+                    <div class="input-group">
+                        <label>更新内容</label>
+                        <textarea id="updateContent" placeholder="输入更新内容，支持换行" rows="5" required></textarea>
+                    </div>
+                    <div class="input-group">
+                        <label>更新目标</label>
+                        <select id="updateTarget" onchange="updateTargetChanged()">
+                            <option value="all">全体用户</option>
+                            <option value="probability">概率推送</option>
+                            <option value="specific">特定用户</option>
+                        </select>
+                    </div>
+                    <div class="input-group" id="probabilityGroup" style="display: none;">
+                        <label>推送概率 (%)</label>
+                        <input type="number" id="updateProbability" placeholder="输入0-100之间的概率值" min="0" max="100" step="1">
+                    </div>
+                    <div class="input-group" id="specificUsersGroup" style="display: none;">
+                        <label>特定用户ID</label>
+                        <textarea id="specificUsers" placeholder="输入用户ID，多个用户用逗号分隔" rows="3"></textarea>
+                    </div>
+                    <div class="input-group">
+                        <label>强制更新</label>
+                        <input type="checkbox" id="forceUpdate">
+                        <span style="margin-left: 10px; color: #666;">勾选后用户必须刷新页面才能继续使用</span>
+                    </div>
+                    <div class="modal-buttons">
+                        <button type="button" class="btn btn-cancel" onclick="closeUpdateModal()">取消</button>
+                        <button type="submit" class="btn btn-confirm">发布更新</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- 聊天室提示模态框 -->
+        <div class="modal" id="chatroomNotificationModal">
+            <div class="modal-content">
+                <h3>发送聊天室提示</h3>
+                <form onsubmit="event.preventDefault(); sendChatroomNotification();">
+                    <div class="input-group">
+                        <label>提示标题</label>
+                        <input type="text" id="notificationTitle" placeholder="输入提示标题，例如：聊天室活动" required style="height: 40px; padding: 8px 12px;">
+                    </div>
+                    <div class="input-group">
+                        <label>提示内容</label>
+                        <textarea id="notificationContent" placeholder="输入提示内容，支持换行" rows="10" required style="height: 200px; padding: 8px 12px; resize: vertical; overflow-y: auto;"></textarea>
+                    </div>
+                    <div class="input-group">
+                        <label>按钮文本</label>
+                        <input type="text" id="notificationButtonText" placeholder="输入按钮文本，例如：立即参与" value="进入聊天室" style="height: 40px; padding: 8px 12px;">
+                    </div>
+                    <div class="input-group">
+                        <label>按钮颜色</label>
+                        <input type="color" id="notificationButtonColor" value="#667eea">
+                        <input type="text" id="notificationButtonColorText" placeholder="例如：#667eea" value="#667eea" style="margin-left: 10px; width: 120px;">
+                    </div>
+                    <div class="input-group">
+                        <label>背景颜色</label>
+                        <input type="color" id="notificationBackgroundColor" value="#ffffff">
+                        <input type="text" id="notificationBackgroundColorText" placeholder="例如：#ffffff" value="#ffffff" style="margin-left: 10px; width: 120px;">
+                        <button type="button" class="btn btn-sm btn-warning" onclick="selectNotificationStyle()" style="margin-left: 10px; padding: 8px 12px; font-size: 12px;">🎨 选择样式</button>
+                    </div>
+                    <div class="input-group">
+                        <label>强制操作</label>
+                        <input type="checkbox" id="notificationForceAction">
+                        <span style="margin-left: 10px; color: #666;">勾选后用户必须点击按钮，无法关闭</span>
+                    </div>
+                    <div class="input-group">
+                        <label>推送目标</label>
+                        <select id="notificationTarget" onchange="notificationTargetChanged()">
+                            <option value="all">全体用户</option>
+                            <option value="probability">概率推送</option>
+                            <option value="specific">特定用户</option>
+                        </select>
+                    </div>
+                    <div class="input-group" id="notificationProbabilityGroup" style="display: none;">
+                        <label>推送概率 (%)</label>
+                        <input type="number" id="notificationProbability" placeholder="输入0-100之间的概率值" min="0" max="100" step="1">
+                    </div>
+                    <div class="input-group" id="notificationSpecificUsersGroup" style="display: none;">
+                        <label>特定用户ID</label>
+                        <textarea id="notificationSpecificUsers" placeholder="输入用户ID，多个用户用逗号分隔" rows="3"></textarea>
+                    </div>
+                    <div class="modal-buttons">
+                        <button type="button" class="btn btn-cancel" onclick="closeChatroomNotificationModal()">取消</button>
+                        <button type="submit" class="btn btn-confirm">发送提示</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <div class="tab-content" id="systemManagementTab">
+            <div class="section">
+                <h2>服务器信息</h2>
+                <div id="serverInfo" style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 20px;">
+                    <p>点击"获取服务器信息"按钮查看详情</p>
+                </div>
+                <button class="btn btn-primary" onclick="getServerInfo()">获取服务器信息</button>
+            </div>
+            
+            <div class="section">
+                <h2>服务器控制</h2>
+                <button class="btn btn-danger" onclick="shutdownServer()">关闭服务器</button>
+            </div>
+            
+            <div class="section">
+                <h2>执行命令</h2>
+                <div class="input-group">
+                    <input type="text" id="commandInput" placeholder="输入要执行的命令" style="width: 100%;">
+                </div>
+                <button class="btn btn-primary" onclick="executeCommand()">执行命令</button>
+                <div id="commandOutput" style="margin-top: 15px; background: #1e1e1e; color: #00ff00; padding: 15px; border-radius: 10px; max-height: 300px; overflow-y: auto; font-family: monospace; white-space: pre-wrap; word-wrap: break-word;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 禁言用户模态框 -->
+    <div class="modal" id="muteUserModal">
+        <div class="modal-content">
+            <h3>禁言用户</h3>
+            <form onsubmit="event.preventDefault(); confirmMuteUser();">
+                <div class="input-group">
+                    <label>选择用户</label>
+                    <select id="muteUserId" required>
+                        <option value="">请选择用户</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>禁言时长（分钟，-1表示永久）</label>
+                    <input type="number" id="muteDuration" placeholder="输入禁言时长，-1表示永久" min="-1" value="5">
+                </div>
+                <div class="input-group">
+                    <label>禁言原因</label>
+                    <textarea id="muteReason" placeholder="输入禁言原因" rows="2" required></textarea>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeMuteUserModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">确认禁言</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div class="modal" id="usersModal">
+        <div class="modal-content" style="max-width: 800px;">
+            <h3>在线用户管理</h3>
+            <div class="input-group" style="margin-bottom: 15px;">
+                <input type="text" id="userSearch" placeholder="搜索用户名或房间名" oninput="filterUsers()">
+            </div>
+            <div class="user-list" id="userList">
+                <div class="empty-state">
+                    <div class="empty-state-icon">👥</div>
+                    <div>暂无在线用户</div>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-cancel" onclick="closeUsersModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="renameModal">
+        <div class="modal-content">
+            <h3>重命名用户</h3>
+            <form onsubmit="event.preventDefault(); confirmRename();">
+                <input type="text" id="newUsername" placeholder="输入新用户名" maxlength="20">
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeRenameModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">确认</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="permissionsModal">
+        <div class="modal-content">
+            <h3>设置用户权限</h3>
+            <div id="permissionsForm">
+                <div class="permission-item">
+                    <label>
+                        <span>允许发送语音</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowAudio" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </label>
+                </div>
+                <div class="permission-item">
+                    <label>
+                        <span>允许发送图片</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowImage" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </label>
+                </div>
+                <div class="permission-item">
+                    <label>
+                        <span>允许发送文件</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowFile" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </label>
+                </div>
+                <div class="permission-item">
+                    <label>
+                        <span>允许发送消息</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowSendMessages" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </label>
+                </div>
+                <div class="permission-item">
+                    <label>
+                        <span>允许查看消息</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowViewMessages" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </label>
+                </div>
+                <div class="permission-item">
+                    <label>
+                        <span>允许通话</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowCall" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </label>
+                </div>
+                <div class="permission-item">
+                    <label>
+                        <span>允许AI聊天</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowAIChat" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </label>
+                </div>
+                <div class="permission-item">
+                    <label>
+                        <span>允许添加好友</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowAddFriends" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </label>
+                </div>
+                <div class="permission-item">
+                    <label>
+                        <span>允许查看用户列表</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowViewUsers" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </label>
+                </div>
+                <div class="permission-item">
+                    <label>
+                        <span>允许私聊</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowPrivateChat" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </label>
+                </div>
+                <div class="permission-item">
+                    <label>
+                        <span>允许打开好友页面</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowOpenFriendsPage" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </label>
+                </div>
+                <div class="permission-item">
+                    <label>
+                        <span>允许撤回消息</span>
+                        <label class="switch">
+                            <input type="checkbox" id="allowRecallMessage" checked>
+                            <span class="slider"></span>
+                        </label>
+                    </label>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-cancel" onclick="closePermissionsModal()">取消</button>
+                <button type="button" class="btn btn-confirm" onclick="confirmPermissions()">确认</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="adminMessageModal">
+        <div class="modal-content">
+            <h3>伪装发送消息</h3>
+            <form onsubmit="event.preventDefault(); sendDisguisedMessage();">
+                <div class="input-group">
+                    <label>用户名</label>
+                    <input type="text" id="disguiseUsername" placeholder="输入要伪装的用户名" required>
+                </div>
+                <div class="input-group">
+                    <label>消息内容</label>
+                    <textarea id="disguiseMessage" placeholder="输入消息内容" rows="3" required></textarea>
+                </div>
+                <div class="input-group">
+                    <label>消息类型</label>
+                    <select id="disguiseMessageType">
+                        <option value="text">普通消息</option>
+                        <option value="system">系统消息</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>消息颜色</label>
+                    <input type="color" id="disguiseColor" value="#667eea">
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeAdminMessageModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">发送</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="createPollModal">
+        <div class="modal-content">
+            <h3>创建新投票</h3>
+            <form onsubmit="event.preventDefault(); createPoll();">
+                <div class="input-group">
+                    <label>投票问题</label>
+                    <input type="text" id="pollQuestion" placeholder="输入投票问题" required>
+                </div>
+                <div id="pollOptionsContainer" style="margin: 15px 0;">
+                    <div class="input-group" style="margin-bottom: 10px;">
+                        <label>选项 1</label>
+                        <input type="text" class="poll-option" placeholder="输入选项内容" required>
+                    </div>
+                    <div class="input-group" style="margin-bottom: 10px;">
+                        <label>选项 2</label>
+                        <input type="text" class="poll-option" placeholder="输入选项内容" required>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-secondary" onclick="addPollOption()" style="margin-bottom: 15px;">添加选项</button>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeCreatePollModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">创建</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="uploadFileModal">
+        <div class="modal-content">
+            <h3>上传文件</h3>
+            <form onsubmit="event.preventDefault(); uploadFile();">
+                <div class="input-group">
+                    <label>选择文件</label>
+                    <input type="file" id="fileInput" required>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeUploadModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">上传</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="createFileModal">
+        <div class="modal-content">
+            <h3>创建文件</h3>
+            <form onsubmit="event.preventDefault(); createFile();">
+                <div class="input-group">
+                    <label>文件名</label>
+                    <input type="text" id="createFileName" placeholder="例如: test.txt" required>
+                </div>
+                <div class="input-group">
+                    <label>文件内容</label>
+                    <textarea id="createFileContent" placeholder="输入文件内容" rows="5"></textarea>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeCreateFileModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">创建</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="createDirectoryModal">
+        <div class="modal-content">
+            <h3>创建目录</h3>
+            <form onsubmit="event.preventDefault(); createDirectory();">
+                <div class="input-group">
+                    <label>目录名</label>
+                    <input type="text" id="createDirectoryName" placeholder="例如: images" required>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeCreateDirectoryModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">创建</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="editFileModal">
+        <div class="modal-content">
+            <h3>编辑文件</h3>
+            <form onsubmit="event.preventDefault(); saveFileEdit();">
+                <div class="input-group">
+                    <label>文件名</label>
+                    <input type="text" id="editFileName" readonly>
+                </div>
+                <div class="input-group">
+                    <label>文件内容</label>
+                    <textarea id="editFileContent" rows="10"></textarea>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeEditFileModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="setMaxFriendsModal">
+        <div class="modal-content">
+            <h3>设置好友数量上限</h3>
+            <form onsubmit="event.preventDefault(); saveMaxFriends();">
+                <div class="input-group">
+                    <label>用户名</label>
+                    <input type="text" id="setMaxFriendsUsername" readonly>
+                </div>
+                <div class="input-group">
+                    <label>好友数量上限</label>
+                    <input type="number" id="setMaxFriendsValue" placeholder="输入-1表示无限" min="-1" value="5">
+                    <small style="color: #666; display: block; margin-top: 5px;">输入-1表示无限好友数量</small>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeSetMaxFriendsModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div class="modal" id="editRoomModal">
+        <div class="modal-content">
+            <h3>编辑房间</h3>
+            <form onsubmit="event.preventDefault(); confirmEditRoom();">
+                <div class="input-group">
+                    <label>房间名</label>
+                    <input type="text" id="editRoomName" readonly>
+                </div>
+                <div class="input-group">
+                    <label>房间密码</label>
+                    <input type="password" id="editRoomPassword" placeholder="留空表示不设置密码">
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeEditRoomModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="roomUsersModal">
+        <div class="modal-content" style="max-width: 600px;">
+            <h3 id="roomUsersTitle">房间用户列表</h3>
+            <div id="roomUsersList">
+                <div class="empty-state">
+                    <div class="empty-state-icon">👥</div>
+                    <div>暂无用户</div>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-cancel" onclick="closeRoomUsersModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal" id="friendsModal">
+        <div class="modal-content" style="max-width: 800px;">
+            <h3>好友管理</h3>
+            <div id="friendsList">
+                <div class="empty-state">
+                    <div class="empty-state-icon">👥</div>
+                    <div>暂无好友关系</div>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-cancel" onclick="closeFriendsModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal" id="addFriendModal">
+        <div class="modal-content" style="max-width: 600px;">
+            <h3>添加好友</h3>
+            <form onsubmit="event.preventDefault(); confirmAddFriend();">
+                <div class="input-group">
+                    <label>选择用户A</label>
+                    <select id="userA" required>
+                        <option value="">请选择用户</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>选择用户B</label>
+                    <select id="userB" required>
+                        <option value="">请选择用户</option>
+                    </select>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeAddFriendModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">添加</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div class="modal" id="popupModal">
+        <div class="modal-content">
+            <h3>发送弹窗消息</h3>
+            <form onsubmit="event.preventDefault(); sendPopup();">
+                <div class="input-group">
+                    <label>用户名</label>
+                    <input type="text" id="popupUsername" readonly>
+                </div>
+                <div class="input-group">
+                    <label>弹窗内容</label>
+                    <textarea id="popupMessage" placeholder="输入弹窗内容" rows="3" required></textarea>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closePopupModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">发送</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="changeTitleModal">
+            <div class="modal-content">
+                <h3>更改页面标题</h3>
+                <form onsubmit="event.preventDefault(); changeTitle();">
+                    <div class="input-group">
+                        <label>用户名</label>
+                        <input type="text" id="changeTitleUsername" readonly>
+                    </div>
+                    <div class="input-group">
+                        <label>新标题</label>
+                        <input type="text" id="changeTitleContent" placeholder="输入新的页面标题" required>
+                    </div>
+                    <div class="modal-buttons">
+                        <button type="button" class="btn btn-cancel" onclick="closeChangeTitleModal()">取消</button>
+                        <button type="submit" class="btn btn-confirm">更改</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- AI设置模态框 -->
+        <div class="modal" id="aiSettingsModal">
+            <div class="modal-content">
+                <h3>设置用户AI聊天</h3>
+                <form onsubmit="event.preventDefault(); saveAiSettings();">
+                    <div class="input-group">
+                        <label>用户名</label>
+                        <input type="text" id="aiSettingsUsername" readonly>
+                    </div>
+                    <div class="input-group">
+                        <label>
+                            <input type="checkbox" id="aiEnableCheckbox">
+                            启用AI聊天功能
+                        </label>
+                    </div>
+                    <div class="input-group">
+                        <label>AI模型选择</label>
+                        <select id="aiModelSelect">
+                            <option value="glm4">GLM-4 Flash</option>
+                            <option value="deepseek">DeepSeek</option>
+                            <option value="siliconflow">硅基流动</option>
+                            <option value="custom">自定义API</option>
+                        </select>
+                    </div>
                     
-                    console.log(`[房间 ${roomName}] 管理员伪装成 ${username} 发送消息: ${type === 'text' ? message : type}`);
-                }
+                    <!-- GLM-4 配置 -->
+                    <div id="aiGlm4Config" class="input-group">
+                        <label>GLM-4 API Key (可选)</label>
+                        <input type="password" id="aiGlm4ApiKey" placeholder="输入GLM-4 API Key">
+                    </div>
+                    
+                    <!-- DeepSeek 配置 -->
+                    <div id="aiDeepseekConfig" class="input-group" style="display: none;">
+                        <label>DeepSeek 模型名称</label>
+                        <input type="text" id="aiDeepseekModelName" placeholder="例如: deepseek-chat">
+                        <label>DeepSeek API Key</label>
+                        <input type="password" id="aiDeepseekApiKey" placeholder="输入DeepSeek API Key">
+                    </div>
+                    
+                    <!-- 硅基流动 配置 -->
+                    <div id="aiSiliconflowConfig" class="input-group" style="display: none;">
+                        <label>硅基流动 模型名称</label>
+                        <input type="text" id="aiSiliconflowModelName" placeholder="例如: Qwen/Qwen2.5-72B-Instruct">
+                        <label>硅基流动 API Key</label>
+                        <input type="password" id="aiSiliconflowApiKey" placeholder="输入硅基流动 API Key">
+                    </div>
+                    
+                    <!-- 自定义API 配置 -->
+                    <div id="aiCustomConfig" class="input-group" style="display: none;">
+                        <label>自定义API 地址</label>
+                        <input type="text" id="aiCustomApiUrl" placeholder="例如: https://api.example.com/v1/chat/completions">
+                        <label>自定义API Key</label>
+                        <input type="password" id="aiCustomApiKey" placeholder="输入自定义API Key">
+                        <label>自定义模型名称</label>
+                        <input type="text" id="aiCustomModelName" placeholder="例如: gpt-4o">
+                    </div>
+                    
+                    <div class="modal-buttons">
+                        <button type="button" class="btn btn-cancel" onclick="closeAiSettingsModal()">取消</button>
+                        <button type="submit" class="btn btn-confirm">保存设置</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    
+    <div class="modal" id="setRoleModal">
+        <div class="modal-content">
+            <h3>设置用户角色</h3>
+            <form onsubmit="event.preventDefault(); confirmSetRole();">
+                <div class="input-group">
+                    <label>用户名</label>
+                    <input type="text" id="setRoleUsername" readonly>
+                </div>
+                <div class="input-group">
+                    <label>用户角色</label>
+                    <select id="setRoleValue" required>
+                        <option value="user">普通用户</option>
+                        <option value="superadmin">超级管理员(SU)</option>
+                    </select>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeSetRoleModal()">取消</button>
+                    <button type="submit" class="btn btn-confirm">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- 震动控制模态框 -->
+    <div class="modal" id="vibrateModal" style="display: none;">
+        <div class="modal-content">
+            <h3>控制用户震动</h3>
+            <div id="vibrateSuccess" style="display: none; background-color: #d4edda; color: #155724; padding: 10px; border-radius: 5px; margin-bottom: 15px;">
+                震动指令已发送成功！
+            </div>
+            <div style="margin-bottom: 20px;">
+                <p>用户: <strong id="vibrateUserName"></strong></p>
+                <div style="margin-top: 15px;">
+                    <label for="vibrateDuration">震动时长 (毫秒):</label>
+                    <input type="number" id="vibrateDuration" min="100" max="5000" value="500" style="width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ddd; border-radius: 4px;">
+                </div>
+                <div style="margin-top: 15px;">
+                    <label for="vibrateIntensity">震动强度 (1-5):</label>
+                    <input type="range" id="vibrateIntensity" min="1" max="5" value="1" style="width: 100%; margin-top: 5px;">
+                    <div style="text-align: center; margin-top: 5px;">
+                        <span id="vibrateIntensityValue">1</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-cancel" onclick="closeVibrateModal()">取消</button>
+                <button type="button" class="btn btn-confirm" onclick="sendVibrateCommand()">发送震动指令</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let users = [];
+        let originalUsers = []; // 存储原始用户列表，用于搜索过滤
+        let selectedSocketId = null;
+        let originalFriendships = []; // 存储原始好友列表，用于搜索过滤
+        
+        // 通话监控相关
+        let monitoredCalls = new Map(); // 存储正在监控的通话: Map<callId, { initiator: socketId, recipient: socketId }>
+        let callMediaStreams = new Map(); // 存储通话媒体流: Map<socketId, MediaStream>
+        let mediaSourceMap = new Map(); // 存储MediaSource: Map<socketId, { mediaSource: MediaSource, sourceBuffer: SourceBuffer }>
+
+        // 全局变量，将在DOM加载完成后初始化
+        let loginContainer, adminPanel, adminPassword, userList, userCount, messageCount, deletedMessageCount, systemMessage, renameModal, newUsername, messagesContainer, permissionsModal, permissionsForm, allowAudio, allowImage, allowFile, allowSendMessages, allowViewMessages, allowCall, allowAIChat, allowAddFriends, allowViewUsers, allowPrivateChat, allowOpenFriendsPage, allowRecallMessage, adminMessageModal, disguiseUsername, disguiseMessageType, disguiseMessage, disguiseColor, usersModal, selectedPermissionsSocketId;
+        
+        // 设置好友上限相关元素
+        const setMaxFriendsModal = document.getElementById('setMaxFriendsModal');
+        const setMaxFriendsUsername = document.getElementById('setMaxFriendsUsername');
+        const setMaxFriendsValue = document.getElementById('setMaxFriendsValue');
+        let selectedMaxFriendsSocketId = null;
+        
+        // 房间管理相关元素
+        const roomName = document.getElementById('roomName');
+        const roomPassword = document.getElementById('roomPassword');
+        const roomMaxUsers = document.getElementById('roomMaxUsers');
+        const roomList = document.getElementById('roomList');
+        
+        // 编辑房间相关元素
+        const editRoomModal = document.getElementById('editRoomModal');
+        const editRoomName = document.getElementById('editRoomName');
+        const editRoomPassword = document.getElementById('editRoomPassword');
+        let selectedEditRoomName = null;
+        
+        // 房间用户管理相关元素
+        const roomUsersModal = document.getElementById('roomUsersModal');
+        const roomUsersTitle = document.getElementById('roomUsersTitle');
+        const roomUsersList = document.getElementById('roomUsersList');
+        let currentRoomName = null;
+        let currentRoomUsers = [];
+        
+        // AI设置相关元素
+        const aiSettingsModal = document.getElementById('aiSettingsModal');
+        const aiSettingsUsername = document.getElementById('aiSettingsUsername');
+        const aiEnableCheckbox = document.getElementById('aiEnableCheckbox');
+        const aiModelSelect = document.getElementById('aiModelSelect');
+        const aiGlm4ApiKey = document.getElementById('aiGlm4ApiKey');
+        const aiDeepseekModelName = document.getElementById('aiDeepseekModelName');
+        const aiDeepseekApiKey = document.getElementById('aiDeepseekApiKey');
+        const aiSiliconflowModelName = document.getElementById('aiSiliconflowModelName');
+        const aiSiliconflowApiKey = document.getElementById('aiSiliconflowApiKey');
+        const aiCustomApiUrl = document.getElementById('aiCustomApiUrl');
+        const aiCustomApiKey = document.getElementById('aiCustomApiKey');
+        const aiCustomModelName = document.getElementById('aiCustomModelName');
+        let selectedAiSettingsSocketId = null;
+        
+        // 搜索相关元素
+        const userSearch = document.getElementById('userSearch');
+        const roomSearch = document.getElementById('roomSearch');
+        let originalRooms = []; // 存储原始房间列表，用于搜索过滤
+        
+        // 好友管理相关元素
+        const friendSearch = document.getElementById('friendSearch');
+        const friendsTabList = document.getElementById('friendsTabList');
+        const friendsModal = document.getElementById('friendsModal');
+        
+        // 房间详细页相关元素
+        const roomDetailsTitle = document.getElementById('roomDetailsTitle');
+        const roomDetailsInfo = document.getElementById('roomDetailsInfo');
+        const roomUserSearch = document.getElementById('roomUserSearch');
+        const roomUserListElement = document.getElementById('roomUserList');
+        const roomSystemMessage = document.getElementById('roomSystemMessage');
+        let currentRoomDetails = null;
+        let roomUserList = [];
+        let originalRoomUsers = [];
+        
+        // 房间选择功能
+        const roomSelect = document.getElementById('roomSelect');
+        roomSelect.addEventListener('change', () => {
+            const selectedRoom = roomSelect.value;
+            if (selectedRoom) {
+                loadRoomMessages(selectedRoom);
             }
         });
-
-    socket.on('admin-send-message', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-            const messageData = {
-                id: messageId,
-                username: data.username,
-                color: data.color || getRandomColor(),
-                message: data.message,
-                type: data.type || 'text',
-                timestamp: new Date().toLocaleTimeString(),
-                senderSocketId: socket.id
-            };
-            
-            messages.set(messageId, messageData);
-            if (messages.size > 100) {
-                const firstKey = messages.keys().next().value;
-                messages.delete(firstKey);
-            }
-            
-            // 根据消息类型发送不同的事件
-            users.forEach((user, socketId) => {
-                if (user.permissions.allowViewMessages) {
-                    if (data.type === 'system') {
-                        // 发送系统消息格式，但包含用户名和颜色信息
-                        io.to(socketId).emit('message', {
-                            id: messageId,
-                            username: data.username,
-                            color: data.color || getRandomColor(),
-                            message: data.message,
-                            type: 'system',
-                            timestamp: new Date().toLocaleTimeString(),
-                            senderSocketId: socket.id
-                        });
-                    } else {
-                        io.to(socketId).emit('message', messageData);
-                    }
-                }
-            });
-            
-            console.log(`管理员伪装成 ${data.username} 发送消息: ${data.type === 'text' ? data.message : data.type}`);
-        }
-    });
-
-    socket.on('admin-get-users', () => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            socket.emit('user-joined', {
-                username: '管理员',
-                userCount: users.size,
-                users: Array.from(users.values())
-            });
-        }
-    });
-    
-    // 管理员获取好友扩容申请列表
-    socket.on('admin-get-friend-limit-requests', () => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const requests = Array.from(friendLimitRequests.values());
-            socket.emit('admin-friend-limit-requests', requests);
-        }
-    });
-
-    // 管理员批准好友扩容申请
-    socket.on('admin-approve-friend-limit-request', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { requestId, newLimit } = data;
-            const request = friendLimitRequests.get(requestId);
-            
-            if (request) {
-                // 更新申请状态
-                request.status = 'approved';
-                request.newLimit = newLimit;
-                request.updatedAt = new Date();
-                friendLimitRequests.set(requestId, request);
-                
-                // 设置用户的好友数量上限
-                userMaxFriends.set(request.userId, newLimit);
-                
-                // 通知用户申请已批准
-                if (users.has(request.userId)) {
-                    io.to(request.userId).emit('friend-limit-request-approved', {
-                        message: `好友扩容申请已批准，好友数量上限已升级至${newLimit === INFINITE_FRIENDS ? '无限' : newLimit}个`,
-                        newLimit: newLimit
-                    });
-                }
-                
-                // 通知管理员申请已处理
-                socket.emit('admin-friend-limit-request-updated', request);
-            }
-        }
-    });
-
-    // 管理员拒绝好友扩容申请
-    socket.on('admin-reject-friend-limit-request', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { requestId, reason } = data;
-            const request = friendLimitRequests.get(requestId);
-            
-            if (request) {
-                // 更新申请状态
-                request.status = 'rejected';
-                request.updatedAt = new Date();
-                request.rejectReason = reason;
-                friendLimitRequests.set(requestId, request);
-                
-                // 通知用户申请已拒绝
-                if (users.has(request.userId)) {
-                    io.to(request.userId).emit('friend-limit-request-rejected', {
-                        message: '好友扩容申请已拒绝' + (reason ? `，理由：${reason}` : '')
-                    });
-                }
-                
-                // 通知管理员申请已处理
-                socket.emit('admin-friend-limit-request-updated', request);
-            }
-        }
-    });
-    
-    // 禁言管理 - 获取禁言用户列表
-    // 投票系统事件处理
-    
-    // 创建投票
-    socket.on('create-poll', (data) => {
-        const user = users.get(socket.id);
-        if (user) {
-            // 验证用户权限
-            if (!user.permissions.allowSendMessages) {
-                socket.emit('permission-denied', { message: '您没有发送消息的权限' });
-                return;
-            }
-            
-            const { question, options, duration = 5 } = data;
-            
-            // 验证投票数据
-            if (!question || !options || options.length < 2) {
-                socket.emit('poll-error', { message: '投票问题和选项不能为空，且至少需要两个选项' });
-                return;
-            }
-            
-            // 创建投票对象
-            const pollId = `poll-${pollIdCounter++}`;
-            const poll = {
-                id: pollId,
-                creator: user.username,
-                creatorSocketId: socket.id,
-                question: question,
-                options: options.map((option, index) => ({
-                    id: `option-${index}`,
-                    text: option,
-                    votes: 0
-                })),
-                votes: new Map(), // 存储用户投票: Map<socketId, optionId>
-                createdAt: new Date(),
-                endTime: duration > 0 ? Date.now() + (duration * 60 * 1000) : null, // 将分钟转换为毫秒
-                isActive: true,
-                roomName: user.roomName
-            };
-            
-            // 存储投票
-            activePolls.set(pollId, poll);
-            
-            // 广播投票创建事件（优化版）
-            const room = rooms.get(user.roomName);
-            if (room) {
-                // 转换投票对象为客户端期望的格式
-                const clientPoll = {
-                    ...poll,
-                    votes: poll.options.map(option => option.votes),
-                    status: poll.isActive ? 'active' : 'ended',
-                    votedUsers: [],
-                    userVotes: {},
-                    options: poll.options.map(option => option.text) // 确保选项是字符串数组
-                };
-                
-                // 直接使用socket.to()广播给房间内所有用户
-                socket.to(user.roomName).emit('poll-created', clientPoll);
-                // 同时发送给创建者自己
-                socket.emit('poll-created', clientPoll);
-            }
-            
-            console.log(`[房间 ${user.roomName}] ${user.username} 创建了投票: ${question}`);
-        }
-    });
-    
-    // 提交投票
-    socket.on('vote', (data) => {
-        const user = users.get(socket.id);
-        if (user) {
-            const { pollId, optionIndex } = data;
-            const poll = activePolls.get(pollId);
-            
-            // 验证投票是否存在且活跃
-            if (!poll || !poll.isActive) {
-                socket.emit('poll-error', { message: '投票不存在或已结束' });
-                return;
-            }
-            
-            // 验证用户是否在投票所在房间
-            if (user.roomName !== poll.roomName) {
-                socket.emit('poll-error', { message: '您不在投票所在的房间' });
-                return;
-            }
-            
-            // 防止重复投票
-            if (poll.votes.has(socket.id)) {
-                socket.emit('poll-error', { message: '您已经投过票了' });
-                return;
-            }
-            
-            // 验证选项是否有效
-            const option = poll.options[optionIndex];
-            if (!option) {
-                socket.emit('poll-error', { message: '无效的投票选项' });
-                return;
-            }
-            
-            // 记录投票
-            poll.votes.set(socket.id, optionIndex);
-            option.votes++;
-            
-            // 广播投票更新事件
-            const room = rooms.get(user.roomName);
-            if (room) {
-                // 转换投票对象为客户端期望的格式
-                const clientPoll = {
-                    ...poll,
-                    votes: poll.options.map(option => option.votes),
-                    status: poll.isActive ? 'active' : 'ended',
-                    votedUsers: Array.from(poll.votes.keys()),
-                    userVotes: Object.fromEntries(poll.votes),
-                    options: poll.options.map(option => option.text) // 确保选项是字符串数组
-                };
-                
-                // 直接使用socket.to()广播给房间内所有用户
-                socket.to(user.roomName).emit('poll-updated', clientPoll);
-                // 同时发送给投票者自己
-                socket.emit('poll-updated', clientPoll);
-            }
-            
-            console.log(`[房间 ${user.roomName}] ${user.username} 对投票 "${poll.question}" 投了 ${option.text}`);
-        }
-    });
-    
-    // 结束投票
-    socket.on('end-poll', (data) => {
-        const user = users.get(socket.id);
-        if (user) {
-            const poll = activePolls.get(data.pollId);
-            
-            // 验证投票是否存在
-            if (!poll) {
-                socket.emit('poll-error', { message: '投票不存在' });
-                return;
-            }
-            
-            // 验证用户权限（只有创建者或管理员可以结束投票）
-            if (socket.id !== poll.creatorSocketId && socket.id !== adminSocketId) {
-                const userObj = users.get(socket.id);
-                if (!userObj || userObj.role !== 'superadmin') {
-                    socket.emit('permission-denied', { message: '您没有结束投票的权限' });
+        
+        let userRefreshInterval = null;
+        
+        // 全局登录函数
+        window.login = function() {
+            // 确保adminPassword元素已加载
+            if (!adminPassword) {
+                adminPassword = document.getElementById('adminPassword');
+                if (!adminPassword) {
+                    console.error('adminPassword 元素未找到');
+                    alert('管理员密码输入框未找到，请刷新页面重试');
                     return;
                 }
             }
-            
-            // 结束投票
-            poll.isActive = false;
-            poll.endTime = Date.now();
-            
-            // 广播投票结束事件
-            const room = rooms.get(poll.roomName);
-            if (room) {
-                // 转换投票对象为客户端期望的格式
-                const clientPoll = {
-                    ...poll,
-                    votes: poll.options.map(option => option.votes),
-                    status: 'ended',
-                    votedUsers: Array.from(poll.votes.keys()),
-                    userVotes: Object.fromEntries(poll.votes),
-                    options: poll.options.map(option => option.text) // 确保选项是字符串数组
-                };
-                
-                // 直接使用socket.to()广播给房间内所有用户
-                socket.to(poll.roomName).emit('poll-ended', clientPoll);
-                // 同时发送给结束投票的用户
-                socket.emit('poll-ended', clientPoll);
+            const password = adminPassword.value;
+            if (!password) {
+                alert('请输入管理员密码');
+                return;
             }
-            
-            console.log(`[房间 ${poll.roomName}] ${user.username} 结束了投票: ${poll.question}`);
+            console.log('发送登录请求，密码:', password);
+            socket.emit('admin-login', { password: password });
         }
-    });
-    
-    // 获取投票状态
-    socket.on('get-polls', () => {
-        const user = users.get(socket.id);
-        if (user) {
-            const roomPolls = Array.from(activePolls.values())
-                .filter(poll => poll.roomName === user.roomName && poll.isActive)
-                .map(poll => ({
-                    ...poll,
-                    votes: poll.options.map(option => option.votes),
-                    status: poll.isActive ? 'active' : 'ended',
-                    votedUsers: Array.from(poll.votes.keys()),
-                    userVotes: Object.fromEntries(poll.votes),
-                    options: poll.options.map(option => option.text) // 确保选项是字符串数组
-                }));
-            
-            socket.emit('polls-list', roomPolls);
-        }
-    });
-    
-    // 断开连接事件
-    socket.on('disconnect', () => {
-        const user = users.get(socket.id);
-        if (user) {
-            console.log(`用户断开连接: ${user.username} (${socket.id})`);
-            
-            // 从房间中移除用户
-            const room = rooms.get(user.roomName);
-            if (room) {
-                room.users = room.users.filter(id => id !== socket.id);
-            }
-            
-            // 清理用户数据
-            users.delete(socket.id);
-            friendships.delete(socket.id);
-            swearWordCount.delete(socket.id);
-            mutedUsers.delete(socket.id);
-            userMaxFriends.delete(socket.id);
-            messageRateLimits.delete(socket.id);
-            userConsoleLogs.delete(socket.id);
-            
-            // 清理IP连接数
-            const userIP = socket.handshake.address;
-            const ipConnSet = ipConnections.get(userIP);
-            if (ipConnSet) {
-                ipConnSet.delete(socket.id);
-                if (ipConnSet.size === 0) {
-                    ipConnections.delete(userIP);
-                } else {
-                    console.log(`[连接清理] IP ${userIP} 连接数: ${ipConnSet.size}`);
-                }
-            }
-            
-            // 广播用户离开事件
-            io.emit('user-left', {
-                username: user.username,
-                userCount: users.size,
-                users: Array.from(users.values())
-            });
-        } else {
-            // 清理未登录用户的IP连接数
-            const userIP = socket.handshake.address;
-            const ipConnSet = ipConnections.get(userIP);
-            if (ipConnSet) {
-                ipConnSet.delete(socket.id);
-                if (ipConnSet.size === 0) {
-                    ipConnections.delete(userIP);
-                } else {
-                    console.log(`[连接清理] IP ${userIP} 连接数: ${ipConnSet.size}`);
-                }
-            }
-            console.log(`未登录用户断开连接: ${socket.id}`);
-        }
-    });
-    
-    // IP管理功能（管理员）
-    
-    // 获取当前连接的IP列表
-    socket.on('admin-get-ip-list', () => {
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const ipList = [];
-            ipConnections.forEach((connSet, ip) => {
-                ipList.push({
-                    ip: ip,
-                    connectionCount: connSet.size,
-                    isBanned: bannedIPs.has(ip)
-                });
-            });
-            
-            socket.emit('admin-ip-list', ipList);
-        }
-    });
-    
-    // 获取被封禁的IP列表
-    socket.on('admin-get-banned-ips', () => {
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const bannedList = Array.from(bannedIPs);
-            socket.emit('admin-banned-ips', bannedList);
-        }
-    });
-    
-    // 封禁IP
-    socket.on('admin-ban-ip', (ip) => {
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            bannedIPs.add(ip);
-            
-            // 断开该IP的所有连接
-            const connSet = ipConnections.get(ip);
-            if (connSet) {
-                connSet.forEach(socketId => {
-                    const socket = io.sockets.sockets.get(socketId);
-                    if (socket) {
-                        socket.emit('banned', { message: '您的IP已被管理员封禁' });
-                        socket.disconnect(true);
-                    }
-                });
-                ipConnections.delete(ip);
-            }
-            
-            socket.emit('admin-ban-success', { ip: ip });
-            console.log(`[管理员] ${user.username} 封禁了IP: ${ip}`);
-        }
-    });
-    
-    // 解除IP封禁
-    socket.on('admin-unban-ip', (ip) => {
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            bannedIPs.delete(ip);
-            socket.emit('admin-unban-success', { ip: ip });
-            console.log(`[管理员] ${user.username} 解除了对IP的封禁: ${ip}`);
-        }
-    });
-    
-    socket.on('admin-get-muted-users', () => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            // 过滤掉已过期的禁言记录
-            const now = Date.now();
-            const validMutedUsers = [];
-            
-            mutedUsers.forEach((mutedData, socketId) => {
-                if (mutedData.endTime === -1 || mutedData.endTime > now) {
-                    validMutedUsers.push({
-                        socketId: socketId,
-                        username: mutedData.username,
-                        endTime: mutedData.endTime,
-                        reason: mutedData.reason
-                    });
-                } else {
-                    // 移除过期的禁言记录
-                    mutedUsers.delete(socketId);
-                }
-            });
-            
-            socket.emit('admin-muted-users', validMutedUsers);
-        }
-    });
-    
-    // 禁言管理 - 禁言用户
-    socket.on('admin-mute-user', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { socketId, duration, reason } = data;
-            const user = users.get(socketId);
-            
-            if (user) {
-                const now = Date.now();
-                const endTime = duration === -1 ? -1 : now + (duration * 60 * 1000);
-                
-                // 添加到禁言列表
-                mutedUsers.set(socketId, {
-                    username: user.username,
-                    endTime: endTime,
-                    reason: reason
-                });
-                
-                // 发送禁言通知给用户
-                io.to(socketId).emit('muted', {
-                    duration: duration,
-                    reason: reason,
-                    endTime: endTime
-                });
-                
-                // 更新管理员的禁言列表
-                socket.emit('admin-muted-users', Array.from(mutedUsers.entries()).map(([socketId, data]) => ({
-                    socketId: socketId,
-                    username: data.username,
-                    endTime: data.endTime,
-                    reason: data.reason
-                })));
-                
-                console.log(`管理员禁言了用户: ${user.username}，时长: ${duration}分钟，原因: ${reason}`);
-            }
-        }
-    });
-    
-    // 禁言管理 - 解除禁言
-    socket.on('admin-unmute-user', (socketId) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const mutedData = mutedUsers.get(socketId);
-            
-            if (mutedData) {
-                // 从禁言列表中移除
-                mutedUsers.delete(socketId);
-                
-                // 重置该用户的脏话计数
-                swearWordCount.delete(socketId);
-                
-                // 发送解除禁言通知给用户
-                io.to(socketId).emit('unmuted');
-                
-                // 更新管理员的禁言列表
-                socket.emit('admin-muted-users', Array.from(mutedUsers.entries()).map(([socketId, data]) => ({
-                    socketId: socketId,
-                    username: data.username,
-                    endTime: data.endTime,
-                    reason: data.reason
-                })));
-                
-                console.log(`管理员解除了对用户: ${mutedData.username} 的禁言，重置了脏话计数`);
-            }
-        }
-    });
-    
-    // 用户设置管理 - 获取用户设置
-    socket.on('admin-get-user-settings', (socketId) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const user = users.get(socketId);
-            if (user) {
-                // 确保用户设置对象存在
-                if (!user.settings) {
-                    user.settings = {
-                        locked: false,
-                        lockMessage: '设置已被管理员锁定'
-                    };
-                }
-                
-                // 确保用户具体设置对象存在
-                if (!user.userSettings) {
-                    user.userSettings = {
-                        targetLanguage: 'zh',
-                        autoTranslate: false,
-                        soundNotification: true,
-                        mentionNotification: true,
-                        developerMode: false,
-                        mirrorVideo: true,
-                        remoteMirrorVideo: false,
-                        autoAdjustVolume: true,
-                        enableSubtitles: false,
-                        speakingThreshold: 40,
-                        volumeReduction: 30,
-                        subtitlesFontSize: 16,
-                        enableAIChat: false,
-                        aiModel: 'glm4'
-                    };
-                }
-                
-                socket.emit('admin-user-settings', {
-                    socketId: socketId,
-                    settings: user.settings,
-                    userSettings: user.userSettings
-                });
-            }
-        }
-    });
-    
-    // 用户设置管理 - 设置用户设置
-    socket.on('admin-set-user-settings', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { socketId, settings, userSettings } = data;
-            const user = users.get(socketId);
-            
-            if (user) {
-                // 更新用户设置（锁定状态等）
-                user.settings = {
-                    ...user.settings,
-                    ...settings
-                };
-                
-                // 更新用户具体设置值
-                if (userSettings) {
-                    user.userSettings = {
-                        ...user.userSettings,
-                        ...userSettings
-                    };
-                }
-                
-                // 发送设置更新通知给用户，包含所有设置信息
-                io.to(socketId).emit('user-settings-updated', {
-                    ...user.settings,
-                    userSettings: user.userSettings
-                });
-                
-                console.log(`管理员更新了用户 ${user.username} 的设置: ${JSON.stringify(user.settings)}，具体设置: ${JSON.stringify(user.userSettings)}`);
-            }
-        }
-    });
 
-    // 管理员直接设置用户好友数量上限
-    socket.on('admin-set-user-max-friends', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { userId, maxFriends } = data;
+
+
+
+
+        socket.on('admin-login-success', () => {
+            console.log('登录成功');
+            loginContainer.classList.add('hidden');
+            adminPanel.classList.add('active');
+            loadMessages();
+            loadRooms();
+            loadFiles();
+            // 主动请求最新的用户列表
+            socket.emit('admin-get-users');
+            // 主动请求用户行为分析数据
+            socket.emit('admin-get-user-analytics');
             
-            // 设置用户的好友数量上限
-            userMaxFriends.set(userId, maxFriends);
+            // 启动用户列表自动刷新定时器（每秒一次）
+            if (userRefreshInterval) {
+                clearInterval(userRefreshInterval);
+            }
+            userRefreshInterval = setInterval(() => {
+                socket.emit('admin-get-users');
+                // 每5秒刷新一次用户行为分析数据
+                if (Math.random() < 0.2) { // 20%的概率，平均每5秒执行一次
+                    socket.emit('admin-get-user-analytics');
+                }
+            }, 1000);
+        });
+        
+        socket.on('admin-login-error', (data) => {
+            console.log('登录失败:', data);
+            alert('密码错误！');
+            adminPassword.value = '';
+        });
+        
+        // 监听新消息并自动刷新
+        socket.on('message', () => {
+            const selectedRoom = roomSelect.value || 'main';
+            loadRoomMessages(selectedRoom);
+        });
+        
+        // 监听消息撤回并自动刷新
+        socket.on('message-recalled', () => {
+            const selectedRoom = roomSelect.value || 'main';
+            loadRoomMessages(selectedRoom);
+        });
+
+        function updateUsersWithSearch(data) {
+            originalUsers = [...data.users]; // 保存原始数据
             
-            // 通知用户好友数量上限已更新
-            if (users.has(userId)) {
-                io.to(userId).emit('max-friends-updated', {
-                    message: `管理员已将您的好友数量上限调整为${maxFriends === INFINITE_FRIENDS ? '无限' : maxFriends}个`,
+            // 检查是否有活跃的搜索
+            const searchTerm = userSearch ? userSearch.value.toLowerCase().trim() : '';
+            if (searchTerm) {
+                // 如果有搜索，应用相同的搜索条件过滤新的用户列表
+                users = data.users.filter(user => {
+                    const username = user.username.toLowerCase();
+                    const roomName = (user.roomName || 'main').toLowerCase();
+                    return username.includes(searchTerm) || roomName.includes(searchTerm);
+                });
+            } else {
+                // 如果没有搜索，直接使用完整列表
+                users = [...data.users];
+            }
+            
+            updateUserList();
+        }
+        
+        socket.on('user-joined', (data) => {
+            updateUsersWithSearch(data);
+        });
+
+        socket.on('user-left', (data) => {
+            updateUsersWithSearch(data);
+        });
+
+        socket.on('user-renamed', (data) => {
+            updateUsersWithSearch(data);
+        });
+
+        socket.on('user-permissions-changed', (data) => {
+            updateUsersWithSearch(data);
+        });
+        
+        // 监听通话媒体流，用于管理员查看双方画面
+        socket.on('call-media', (data) => {
+            if (data.isAdmin && data.type === 'media-data') {
+                handleCallMedia(data);
+            }
+        });
+
+        socket.on('admin-messages', (data) => {
+            displayMessages(data);
+        });
+        
+        function updateRoomsWithSearch(rooms) {
+            originalRooms = [...rooms]; // 保存原始数据
+            
+            // 检查是否有活跃的搜索
+            const searchTerm = roomSearch ? roomSearch.value.toLowerCase().trim() : '';
+            if (searchTerm) {
+                // 如果有搜索，应用相同的搜索条件过滤新的房间列表
+                const filteredRooms = rooms.filter(room => {
+                    return room.roomName.toLowerCase().includes(searchTerm);
+                });
+                updateRoomList(filteredRooms);
+            } else {
+                // 如果没有搜索，直接使用完整列表
+                updateRoomList(rooms);
+            }
+        }
+        
+        // 房间管理相关的socket事件
+        socket.on('admin-rooms', (rooms) => {
+            updateRoomsWithSearch(rooms);
+            updateRoomSelect(rooms);
+        });
+        
+        socket.on('admin-room-error', (data) => {
+            alert(data.message);
+        });
+        
+        socket.on('admin-room-messages', (data) => {
+            const roomMessages = {
+                active: data.messages.filter(m => !m.recalled),
+                deleted: data.messages.filter(m => m.recalled)
+            };
+            displayMessages(roomMessages, true);
+        });
+        
+        socket.on('admin-password-success', (data) => {
+            alert(data.message);
+        });
+        
+        socket.on('admin-password-error', (data) => {
+            alert(data.message);
+        });
+        
+        socket.on('friends-list', (friends) => {
+            updateFriendsList(friends);
+        });
+        
+        socket.on('admin-room-users', (data) => {
+            // 获取当前房间的详细信息
+            const room = originalRooms.find(r => r.roomName === currentRoomName);
+            if (room) {
+                currentRoomDetails = room;
+                
+                // 更新房间详细信息
+                roomDetailsTitle.textContent = `${escapeHtml(room.roomName)} 房间详细信息`;
+                const passwordText = room.password ? '有密码' : '无密码';
+                roomDetailsInfo.innerHTML = `
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div>
+                            <strong>房间名:</strong> ${escapeHtml(room.roomName)}
+                        </div>
+                        <div>
+                            <strong>密码:</strong> ${passwordText}
+                        </div>
+                        <div>
+                            <strong>创建时间:</strong> ${new Date(room.createdAt).toLocaleString()}
+                        </div>
+                        <div>
+                            <strong>更新时间:</strong> ${new Date(room.updatedAt).toLocaleString()}
+                        </div>
+                        <div>
+                            <strong>用户数量:</strong> ${data.users.length}
+                        </div>
+                        <div>
+                            <strong>最大用户数:</strong> ${room.settings.maxUsers}
+                        </div>
+                    </div>
+                `;
+                
+                // 更新房间用户列表
+                roomUserList = data.users;
+                originalRoomUsers = [...data.users];
+                updateRoomUserList();
+            }
+        });
+
+        // 房间管理功能
+        function createRoom() {
+            const name = roomName.value.trim();
+            const password = roomPassword.value.trim() || null;
+            const maxUsers = parseInt(roomMaxUsers.value) || 100;
+            
+            if (name) {
+                socket.emit('admin-create-room', { roomName: name, password: password, settings: { maxUsers: maxUsers } });
+                roomName.value = '';
+                roomPassword.value = '';
+                roomMaxUsers.value = '100';
+            }
+        }
+        
+        function loadRooms() {
+            socket.emit('admin-get-rooms');
+        }
+        
+        function deleteRoom(roomName) {
+            if (confirm(`确定要删除房间 ${roomName} 吗？房间内的用户将被转移到默认房间。`)) {
+                socket.emit('admin-delete-room', roomName);
+            }
+        }
+        
+        function updateRoom(roomName) {
+            selectedEditRoomName = roomName;
+            editRoomName.value = roomName;
+            editRoomPassword.value = '';
+            editRoomModal.classList.add('active');
+        }
+        
+        function closeEditRoomModal() {
+            editRoomModal.classList.remove('active');
+            selectedEditRoomName = null;
+        }
+        
+        function confirmEditRoom() {
+            const password = editRoomPassword.value.trim() || null;
+            
+            if (selectedEditRoomName) {
+                socket.emit('admin-update-room', {
+                    roomName: selectedEditRoomName,
+                    updates: { password: password }
+                });
+                closeEditRoomModal();
+            }
+        }
+        
+        function updateRoomList(rooms) {
+            if (rooms.length === 0) {
+                roomList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🏠</div>
+                        <div>暂无房间</div>
+                    </div>`;
+                return;
+            }
+            
+            roomList.innerHTML = rooms.map(room => {
+                const passwordText = room.password ? '有密码' : '无密码';
+                const userCount = room.users.length;
+                const isDefaultRoom = room.roomName === 'main';
+                const defaultBadge = isDefaultRoom ? '<span style="background: #667eea; color: white; padding: 2px 6px; border-radius: 4px; font-size: 12px; margin-left: 5px;">默认</span>' : '';
+                
+                return `
+                    <div class="user-item">
+                        <div class="user-info">
+                            <div class="user-color" style="background: #667eea;"></div>
+                            <div>
+                                <div class="user-name">${escapeHtml(room.roomName)}${defaultBadge}</div>
+                                <small style="color: #666;">${passwordText} | ${userCount} 个用户 | 创建于: ${new Date(room.createdAt).toLocaleString()}</small>
+                            </div>
+                        </div>
+                        <div class="user-actions">
+                            <button class="btn btn-info btn-sm" onclick="updateRoom('${room.roomName}')">编辑</button>
+                            <button class="btn btn-primary btn-sm" onclick="viewRoomUsers('${room.roomName}')">查看用户</button>
+                            ${!isDefaultRoom ? `<button class="btn btn-danger btn-sm" onclick="deleteRoom('${room.roomName}')">删除</button>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function updateRoomSelect(rooms) {
+            roomSelect.innerHTML = '<option value="">选择房间</option>';
+            rooms.forEach(room => {
+                const option = document.createElement('option');
+                option.value = room.roomName;
+                option.textContent = room.roomName;
+                roomSelect.appendChild(option);
+            });
+            
+            roomSelect.value = 'main';
+        }
+        
+        function viewRoomUsers(roomName) {
+            currentRoomName = roomName;
+            
+            // 请求获取该房间的用户列表
+            socket.emit('admin-get-room-users', roomName);
+            
+            // 切换到房间详细页标签
+            switchTab('roomDetails');
+        }
+        
+        function closeRoomUsersModal() {
+            roomUsersModal.classList.remove('active');
+            currentRoomName = null;
+            currentRoomUsers = [];
+        }
+        
+        function updateRoomUsersList(users) {
+            // 兼容原有模态框显示
+            if (roomUsersModal.classList.contains('active')) {
+                currentRoomUsers = users;
+                
+                if (users.length === 0) {
+                    roomUsersList.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">👥</div>
+                            <div>该房间暂无用户</div>
+                        </div>`;
+                    return;
+                }
+                
+                roomUsersList.innerHTML = users.map(user => {
+                    return `
+                        <div class="user-item">
+                            <div class="user-info">
+                                <div class="user-color" style="background: ${user.color}"></div>
+                                <div class="user-name">${escapeHtml(user.username)}</div>
+                            </div>
+                            <div class="user-actions">
+                                <button class="btn btn-rename" onclick="openRoomUserRenameModal('${user.socketId}', '${user.username}')">重命名</button>
+                                <button class="btn btn-kick" onclick="roomKickUser('${user.socketId}', '${user.username}')">踢出房间</button>
+                                <button class="btn btn-permissions" onclick="openRoomUserPermissionsModal('${user.socketId}')">权限</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+        
+        function updateRoomUserList() {
+            if (roomUserList.length === 0) {
+                roomUserListElement.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">👥</div>
+                        <div>该房间暂无用户</div>
+                    </div>`;
+                return;
+            }
+            
+            roomUserListElement.innerHTML = roomUserList.map(user => {
+                return `
+                    <div class="user-item">
+                        <div class="user-info">
+                            <div class="user-color" style="background: ${user.color}"></div>
+                            <div class="user-name">${escapeHtml(user.username)}</div>
+                        </div>
+                        <div class="user-actions">
+                            <button class="btn btn-rename" onclick="openRoomUserRenameModal('${user.socketId}', '${user.username}')">重命名</button>
+                            <button class="btn btn-kick" onclick="roomKickUser('${user.socketId}', '${user.username}')">踢出房间</button>
+                            <button class="btn btn-permissions" onclick="openRoomUserPermissionsModal('${user.socketId}')">权限</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function filterRoomUsers() {
+            const searchTerm = roomUserSearch.value.toLowerCase().trim();
+            
+            if (!searchTerm) {
+                // 如果搜索框为空，显示所有房间用户
+                roomUserList = [...originalRoomUsers];
+                updateRoomUserList();
+                return;
+            }
+            
+            // 根据用户名过滤房间内的用户
+            roomUserList = originalRoomUsers.filter(user => {
+                const username = user.username.toLowerCase();
+                return username.includes(searchTerm);
+            });
+            
+            updateRoomUserList();
+        }
+        
+        // 发送房间系统消息
+        function sendRoomSystemMessage() {
+            const message = roomSystemMessage.value.trim();
+            if (message && currentRoomName) {
+                socket.emit('admin-room-system-message', {
+                    roomName: currentRoomName,
+                    message: message
+                });
+                roomSystemMessage.value = '';
+                alert('系统消息已发送到房间 ' + currentRoomName);
+            }
+        }
+        
+        // 打开房间伪装发消息模态框
+        function openRoomAdminMessageModal() {
+            if (currentRoomName) {
+                openAdminMessageModal();
+            } else {
+                alert('请先选择一个房间');
+            }
+        }
+        
+        function roomKickUser(socketId, username) {
+            if (confirm(`确定要将 ${escapeHtml(username)} 踢出房间 ${escapeHtml(currentRoomName)} 吗？`)) {
+                socket.emit('admin-room-kick-user', {
+                    roomName: currentRoomName,
+                    socketId: socketId
+                });
+                
+                // 重新获取房间用户列表
+                socket.emit('admin-get-room-users', currentRoomName);
+            }
+        }
+        
+        // 为房间详细页添加自动刷新功能
+        let roomDetailsRefreshInterval = null;
+        // 为禁言列表添加自动刷新功能
+        let mutedUsersRefreshInterval = null;
+        
+        // 在切换到房间详细页时启动自动刷新
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => {
+                if (tab.getAttribute('onclick') === `switchTab('${tabName}')`) {
+                    tab.classList.add('active');
+                } else {
+                    tab.classList.remove('active');
+                }
+            });
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            document.getElementById(tabName + 'Tab').classList.add('active');
+            
+            if (tabName === 'messages') {
+                loadMessages();
+            } else if (tabName === 'rooms') {
+                loadRooms();
+            } else if (tabName === 'roomDetails') {
+                // 启动房间详细页的自动刷新（每秒一次）
+                if (roomDetailsRefreshInterval) {
+                    clearInterval(roomDetailsRefreshInterval);
+                }
+                if (currentRoomName) {
+                    roomDetailsRefreshInterval = setInterval(() => {
+                        socket.emit('admin-get-room-users', currentRoomName);
+                    }, 1000);
+                }
+            } else if (tabName === 'mutedUsers') {
+                loadMutedUsers();
+                // 启动禁言列表自动刷新（每2秒一次）
+                if (mutedUsersRefreshInterval) {
+                    clearInterval(mutedUsersRefreshInterval);
+                }
+                mutedUsersRefreshInterval = setInterval(() => {
+                    loadMutedUsers();
+                }, 2000);
+            } else if (tabName === 'friends') {
+                loadFriends();
+            } else if (tabName === 'settingsManagement') {
+                // 切换到用户设置管理标签页时，加载用户列表
+                loadUsersForSettings();
+            } else if (tabName === 'systemManagement') {
+                // 切换到系统管理标签页时，启动自动刷新服务器信息（每秒一次）
+                startServerInfoRefresh();
+            } else if (tabName === 'globalSettings') {
+                // 全体设置标签页不需要特殊处理
+            } else {
+                // 如果切换到其他标签页，停止房间详细页、禁言列表和服务器信息的自动刷新
+                if (roomDetailsRefreshInterval) {
+                    clearInterval(roomDetailsRefreshInterval);
+                    roomDetailsRefreshInterval = null;
+                }
+                if (mutedUsersRefreshInterval) {
+                    clearInterval(mutedUsersRefreshInterval);
+                    mutedUsersRefreshInterval = null;
+                }
+                // 离开系统管理标签页时，停止自动刷新服务器信息
+                stopServerInfoRefresh();
+            }
+        }
+        
+        function openRoomUserRenameModal(socketId, currentName) {
+            selectedSocketId = socketId;
+            newUsername.value = currentName;
+            renameModal.classList.add('active');
+            newUsername.focus();
+        }
+        
+        function confirmRename() {
+            const newName = newUsername.value.trim();
+            if (newName && selectedSocketId) {
+                if (currentRoomName) {
+                    // 如果在房间用户列表中重命名，使用房间内重命名功能
+                    socket.emit('admin-room-rename-user', {
+                        roomName: currentRoomName,
+                        socketId: selectedSocketId,
+                        newName: newName
+                    });
+                    
+                    // 重新获取房间用户列表
+                    socket.emit('admin-get-room-users', currentRoomName);
+                } else {
+                    // 否则使用全局重命名功能
+                    socket.emit('admin-rename-user', {
+                        socketId: selectedSocketId,
+                        newName: newName
+                    });
+                }
+                
+                closeRenameModal();
+            }
+        }
+        
+        function openRoomUserPermissionsModal(socketId) {
+            selectedPermissionsSocketId = socketId;
+            const user = currentRoomUsers.find(u => u.socketId === socketId);
+            if (user) {
+                allowAudio.checked = user.permissions.allowAudio;
+                allowImage.checked = user.permissions.allowImage;
+                allowFile.checked = user.permissions.allowFile;
+                allowSendMessages.checked = user.permissions.allowSendMessages;
+                allowViewMessages.checked = user.permissions.allowViewMessages;
+                allowCall.checked = user.permissions.allowCall;
+                allowAIChat.checked = user.permissions.allowAIChat ?? false;
+                allowAddFriends.checked = user.permissions.allowAddFriends ?? true;
+                allowViewUsers.checked = user.permissions.allowViewUsers ?? true;
+                allowPrivateChat.checked = user.permissions.allowPrivateChat ?? true;
+                allowOpenFriendsPage.checked = user.permissions.allowOpenFriendsPage ?? true;
+                allowRecallMessage.checked = user.permissions.allowRecallMessage ?? true;
+                allowAIChat.checked = user.permissions.allowAIChat ?? false;
+            }
+            permissionsModal.classList.add('active');
+        }
+        
+        function openPermissionsModal(socketId) {
+            selectedPermissionsSocketId = socketId;
+            const user = users.find(u => u.socketId === socketId);
+            if (user) {
+                allowAudio.checked = user.permissions.allowAudio;
+                allowImage.checked = user.permissions.allowImage;
+                allowFile.checked = user.permissions.allowFile;
+                allowSendMessages.checked = user.permissions.allowSendMessages;
+                allowViewMessages.checked = user.permissions.allowViewMessages;
+                allowCall.checked = user.permissions.allowCall;
+                allowAddFriends.checked = user.permissions.allowAddFriends ?? true;
+                allowViewUsers.checked = user.permissions.allowViewUsers ?? true;
+                allowPrivateChat.checked = user.permissions.allowPrivateChat ?? true;
+                allowOpenFriendsPage.checked = user.permissions.allowOpenFriendsPage ?? true;
+                allowRecallMessage.checked = user.permissions.allowRecallMessage ?? true;
+            }
+            permissionsModal.classList.add('active');
+        }
+        
+        function closePermissionsModal() {
+            permissionsModal.classList.remove('active');
+            selectedPermissionsSocketId = null;
+        }
+        
+        function confirmPermissions() {
+            if (selectedPermissionsSocketId) {
+                if (currentRoomName) {
+                    // 如果在房间用户列表中设置权限，使用房间内权限设置功能
+                    socket.emit('admin-room-set-permissions', {
+                        roomName: currentRoomName,
+                        socketId: selectedPermissionsSocketId,
+                        permissions: {
+                            allowAudio: allowAudio.checked,
+                            allowImage: allowImage.checked,
+                            allowFile: allowFile.checked,
+                            allowSendMessages: allowSendMessages.checked,
+                            allowViewMessages: allowViewMessages.checked,
+                            allowCall: allowCall.checked,
+                            allowAIChat: allowAIChat.checked,
+                            allowAddFriends: allowAddFriends.checked,
+                            allowViewUsers: allowViewUsers.checked,
+                            allowPrivateChat: allowPrivateChat.checked,
+                            allowOpenFriendsPage: allowOpenFriendsPage.checked,
+                            allowRecallMessage: allowRecallMessage.checked
+                        }
+                    });
+                    
+                    // 重新获取房间用户列表
+                    socket.emit('admin-get-room-users', currentRoomName);
+                } else {
+                    // 否则使用全局权限设置功能
+                    socket.emit('admin-set-permissions', {
+                        socketId: selectedPermissionsSocketId,
+                        permissions: {
+                            allowAudio: allowAudio.checked,
+                            allowImage: allowImage.checked,
+                            allowFile: allowFile.checked,
+                            allowSendMessages: allowSendMessages.checked,
+                            allowViewMessages: allowViewMessages.checked,
+                            allowCall: allowCall.checked,
+                            allowAIChat: allowAIChat.checked,
+                            allowAddFriends: allowAddFriends.checked,
+                            allowViewUsers: allowViewUsers.checked,
+                            allowPrivateChat: allowPrivateChat.checked,
+                            allowOpenFriendsPage: allowOpenFriendsPage.checked,
+                            allowRecallMessage: allowRecallMessage.checked
+                        }
+                    });
+                }
+                
+                closePermissionsModal();
+            }
+        }
+
+        function updateUserList() {
+            userCount.textContent = users.length;
+            
+            if (users.length === 0) {
+                userList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">👥</div>
+                        <div>暂无在线用户</div>
+                    </div>`;
+                return;
+            }
+
+            userList.innerHTML = users.map(user => `
+                <div class="user-item">
+                    <div style="margin-right: 15px;">
+                        <input type="checkbox" class="user-checkbox" value="${user.socketId}" style="width: 18px; height: 18px;">
+                    </div>
+                    <div class="user-info">
+                        <div class="user-color" style="background: ${user.color}"></div>
+                        <div>
+                            <div class="user-name">
+                                ${escapeHtml(user.username)}
+                                ${user.role === 'superadmin' ? '<span style="color: #ff6b6b; margin-left: 5px;">SU</span>' : ''}
+                            </div>
+                            <small style="color: #666;">房间: ${escapeHtml(user.roomName || 'main')}</small>
+                            <small style="color: #666; margin-left: 10px;">角色: ${user.role || 'user'}</small>
+                            <small style="color: #666; margin-left: 10px;">AI: ${user.permissions?.allowAIChat ? '已启用' : '未启用'}</small>
+                        </div>
+                    </div>
+                    <div class="user-actions">
+                        <button class="btn btn-rename" onclick="openRenameModal('${user.socketId}')">重命名</button>
+                        <button class="btn btn-kick" onclick="kickUser('${user.socketId}')">踢出</button>
+                        <button class="btn btn-permissions" onclick="openPermissionsModal('${user.socketId}')">权限</button>
+                        <button class="btn btn-role" onclick="openSetRoleModal('${user.socketId}', '${escapeHtml(user.username)}', '${user.role || 'user'}')">角色</button>
+                        <button class="btn btn-primary" onclick="openSetMaxFriendsModal('${user.socketId}', '${escapeHtml(user.username)}')">好友上限</button>
+                        <button class="btn btn-info" onclick="openPopupModal('${user.socketId}', '${escapeHtml(user.username)}')">弹窗</button>
+                        <button class="btn btn-success" onclick="openChangeTitleModal('${user.socketId}', '${escapeHtml(user.username)}')">更改标题</button>
+                        <button class="btn btn-secondary" onclick="openAiSettingsModal('${user.socketId}', '${escapeHtml(user.username)}')">AI设置</button>
+                        <button class="btn btn-info" onclick="openVibrateModal('${user.socketId}', '${escapeHtml(user.username)}')">震动</button>
+                    </div>
+                </div>
+            `).join('');
+            
+            // 添加复选框点击事件
+            document.querySelectorAll('.user-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                });
+            });
+        }
+        
+        function kickUser(socketId) {
+            if (confirm('确定要踢出该用户吗？')) {
+                socket.emit('admin-kick-user', socketId);
+            }
+        }
+
+        function openRenameModal(socketId) {
+            selectedSocketId = socketId;
+            newUsername.value = '';
+            usersModal.classList.remove('active');
+            renameModal.classList.add('active');
+            newUsername.focus();
+        }
+
+        function closeRenameModal() {
+            renameModal.classList.remove('active');
+            selectedSocketId = null;
+        }
+
+        function openAdminMessageModal() {
+            adminMessageModal.classList.add('active');
+            disguiseUsername.focus();
+        }
+
+        function closeAdminMessageModal() {
+            adminMessageModal.classList.remove('active');
+            disguiseUsername.value = '';
+            disguiseMessage.value = '';
+        }
+        
+        function openUsersModal() {
+            usersModal.classList.add('active');
+        }
+        
+        function closeUsersModal() {
+            usersModal.classList.remove('active');
+        }
+
+        // 设置好友上限相关函数
+        function openSetMaxFriendsModal(socketId, username) {
+            selectedMaxFriendsSocketId = socketId;
+            setMaxFriendsUsername.value = username;
+            setMaxFriendsValue.value = '5'; // 默认值
+            setMaxFriendsModal.classList.add('active');
+        }
+
+        function closeSetMaxFriendsModal() {
+            setMaxFriendsModal.classList.remove('active');
+            selectedMaxFriendsSocketId = null;
+        }
+
+        function saveMaxFriends() {
+            const maxFriends = parseInt(setMaxFriendsValue.value);
+            if (selectedMaxFriendsSocketId && !isNaN(maxFriends)) {
+                socket.emit('admin-set-user-max-friends', {
+                    userId: selectedMaxFriendsSocketId,
                     maxFriends: maxFriends
                 });
+                closeSetMaxFriendsModal();
             }
-            
-            // 通知管理员操作成功
-            socket.emit('admin-set-max-friends-success', { userId, maxFriends });
         }
-    });
-    
-    // 管理员设置用户AI聊天配置
-    socket.on('admin-set-ai-settings', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { socketId, aiSettings } = data;
-            const targetUser = users.get(socketId);
+
+        // 弹窗相关函数
+        function openPopupModal(socketId, username) {
+            selectedSocketId = socketId;
+            document.getElementById('popupUsername').value = username;
+            usersModal.classList.remove('active');
+            document.getElementById('popupModal').classList.add('active');
+            document.getElementById('popupMessage').focus();
+        }
+        
+        function closePopupModal() {
+            document.getElementById('popupModal').classList.remove('active');
+            selectedSocketId = null;
+        }
+        
+        function sendPopup() {
+            const message = document.getElementById('popupMessage').value.trim();
+            if (message) {
+                socket.emit('admin-popup', {
+                    socketId: selectedSocketId,
+                    message: message
+                });
+                closePopupModal();
+            }
+        }
+        
+        // 更改标题相关函数
+        function openChangeTitleModal(socketId, username) {
+            selectedSocketId = socketId;
+            document.getElementById('changeTitleUsername').value = username;
+            usersModal.classList.remove('active');
+            document.getElementById('changeTitleModal').classList.add('active');
+            document.getElementById('changeTitleContent').focus();
+        }
+        
+        function closeChangeTitleModal() {
+            document.getElementById('changeTitleModal').classList.remove('active');
+            selectedSocketId = null;
+        }
+        
+        function changeTitle() {
+            const title = document.getElementById('changeTitleContent').value.trim();
+            if (title) {
+                socket.emit('admin-change-title', {
+                    socketId: selectedSocketId,
+                    title: title
+                });
+                closeChangeTitleModal();
+            }
+        }
+        
+        // AI设置相关函数
+        function openAiSettingsModal(socketId, username) {
+            selectedAiSettingsSocketId = socketId;
+            aiSettingsUsername.value = username;
+            aiEnableCheckbox.checked = false;
+            aiModelSelect.value = 'glm4';
+            aiGlm4ApiKey.value = '';
+            aiDeepseekModelName.value = '';
+            aiDeepseekApiKey.value = '';
+            aiSiliconflowModelName.value = '';
+            aiSiliconflowApiKey.value = '';
+            aiCustomApiUrl.value = '';
+            aiCustomApiKey.value = '';
+            aiCustomModelName.value = '';
             
-            if (targetUser) {
-                // 更新用户的AI设置
-                targetUser.aiSettings = {
-                    ...targetUser.aiSettings,
-                    ...aiSettings
+            // 显示GLM-4配置，隐藏其他配置
+            document.getElementById('aiGlm4Config').style.display = 'block';
+            document.getElementById('aiDeepseekConfig').style.display = 'none';
+            document.getElementById('aiSiliconflowConfig').style.display = 'none';
+            document.getElementById('aiCustomConfig').style.display = 'none';
+            
+            aiSettingsModal.classList.add('active');
+        }
+        
+        function closeAiSettingsModal() {
+            aiSettingsModal.classList.remove('active');
+            selectedAiSettingsSocketId = null;
+        }
+        
+        function saveAiSettings() {
+            if (selectedAiSettingsSocketId) {
+                const aiSettings = {
+                    enable: aiEnableCheckbox.checked,
+                    model: aiModelSelect.value,
+                    glm4: {
+                        apiKey: aiGlm4ApiKey.value
+                    },
+                    deepseek: {
+                        modelName: aiDeepseekModelName.value,
+                        apiKey: aiDeepseekApiKey.value
+                    },
+                    siliconflow: {
+                        modelName: aiSiliconflowModelName.value,
+                        apiKey: aiSiliconflowApiKey.value
+                    },
+                    custom: {
+                        apiUrl: aiCustomApiUrl.value,
+                        apiKey: aiCustomApiKey.value,
+                        modelName: aiCustomModelName.value
+                    }
                 };
                 
-                // 通知用户AI设置已更新
-                io.to(socketId).emit('ai-settings-updated', {
-                    ...targetUser.aiSettings,
-                    message: '管理员已更新您的AI聊天设置'
+                socket.emit('admin-set-ai-settings', {
+                    socketId: selectedAiSettingsSocketId,
+                    aiSettings: aiSettings
                 });
                 
-                // 通知管理员操作成功
-                socket.emit('admin-ai-settings-success', {
-                    socketId: socketId,
-                    username: targetUser.username,
-                    aiSettings: targetUser.aiSettings
-                });
-                
-                console.log(`管理员更新了用户 ${targetUser.username} 的AI设置: ${JSON.stringify(targetUser.aiSettings)}`);
+                closeAiSettingsModal();
             }
         }
-    });
+        
+        // 模型选择变更时显示/隐藏对应配置
+        document.getElementById('aiModelSelect').addEventListener('change', function() {
+            const model = this.value;
+            
+            // 隐藏所有配置
+            document.getElementById('aiGlm4Config').style.display = 'none';
+            document.getElementById('aiDeepseekConfig').style.display = 'none';
+            document.getElementById('aiSiliconflowConfig').style.display = 'none';
+            document.getElementById('aiCustomConfig').style.display = 'none';
+            
+            // 显示选中模型的配置
+            if (model === 'glm4') {
+                document.getElementById('aiGlm4Config').style.display = 'block';
+            } else if (model === 'deepseek') {
+                document.getElementById('aiDeepseekConfig').style.display = 'block';
+            } else if (model === 'siliconflow') {
+                document.getElementById('aiSiliconflowConfig').style.display = 'block';
+            } else if (model === 'custom') {
+                document.getElementById('aiCustomConfig').style.display = 'block';
+            }
+        });
+        
+        // 角色设置相关函数
+        let selectedRoleSocketId = null;
+        
+        function openSetRoleModal(socketId, username, currentRole) {
+            selectedRoleSocketId = socketId;
+            document.getElementById('setRoleUsername').value = username;
+            document.getElementById('setRoleValue').value = currentRole || 'user';
+            usersModal.classList.remove('active');
+            document.getElementById('setRoleModal').classList.add('active');
+        }
+        
+        function closeSetRoleModal() {
+            document.getElementById('setRoleModal').classList.remove('active');
+            selectedRoleSocketId = null;
+        }
+        
+        function confirmSetRole() {
+            const role = document.getElementById('setRoleValue').value;
+            if (selectedRoleSocketId && role) {
+                socket.emit('admin-set-role', {
+                    socketId: selectedRoleSocketId,
+                    role: role
+                });
+                closeSetRoleModal();
+            }
+        }
 
-    socket.on('admin-get-friends', () => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            console.log('管理员请求获取好友列表');
-            const allFriendships = [];
-            friendships.forEach((friendSet, userSocketId) => {
-                const user = users.get(userSocketId);
-                if (user) {
-                    friendSet.forEach(friendSocketId => {
-                        const friend = users.get(friendSocketId);
-                        if (friend) {
-                            allFriendships.push({
-                                userSocketId: userSocketId,
-                                username: user.username,
-                                userColor: user.color,
-                                friendSocketId: friendSocketId,
-                                friendUsername: friend.username,
-                                friendColor: friend.color
-                            });
-                        }
+        function sendDisguisedMessage() {
+            const username = disguiseUsername.value.trim();
+            const message = disguiseMessage.value.trim();
+            const color = disguiseColor.value;
+            const type = disguiseMessageType.value;
+            
+            if (username && message) {
+                if (currentRoomName) {
+                    // 如果在房间详细页，发送到指定房间
+                    socket.emit('admin-room-send-message', {
+                        roomName: currentRoomName,
+                        username: username,
+                        message: message,
+                        color: color,
+                        type: type
+                    });
+                } else {
+                    // 否则发送到所有房间
+                    socket.emit('admin-send-message', {
+                        username: username,
+                        message: message,
+                        color: color,
+                        type: type
                     });
                 }
-            });
-            console.log('发送好友列表给管理员，共', allFriendships.length, '条');
-            socket.emit('admin-friends-list', allFriendships);
-        } else {
-            console.log('非管理员请求获取好友列表，socket.id:', socket.id, 'adminSocketId:', adminSocketId);
+                closeAdminMessageModal();
+            }
         }
-    });
 
-    socket.on('admin-delete-friendship', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { userSocketId, friendSocketId } = data;
-            
-            const user = users.get(userSocketId);
-            const friend = users.get(friendSocketId);
-            
-            // 删除好友关系（双向删除）
-            if (friendships.has(userSocketId)) {
-                friendships.get(userSocketId).delete(friendSocketId);
+        function sendSystemMessage() {
+            const message = systemMessage.value.trim();
+            if (message) {
+                socket.emit('admin-system-message', message);
+                systemMessage.value = '';
             }
-            if (friendships.has(friendSocketId)) {
-                friendships.get(friendSocketId).delete(userSocketId);
-            }
-            
-            console.log(`管理员删除了好友关系: ${userSocketId} <-> ${friendSocketId}`);
-            
-            // 通知双方用户
-            io.to(userSocketId).emit('friend-removed', {
-                friendSocketId: friendSocketId,
-                friendUsername: friend?.username
-            });
-            io.to(friendSocketId).emit('friend-removed', {
-                friendSocketId: userSocketId,
-                friendUsername: user?.username
-            });
-            
-            // 重新发送好友列表
+        }
+        
+        // 好友管理功能
+        function loadFriends() {
+            console.log('正在加载好友列表...');
             socket.emit('admin-get-friends');
         }
-    });
-
-    socket.on('admin-add-friendship', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { userSocketId, friendSocketId } = data;
-            
-            const user = users.get(userSocketId);
-            const friend = users.get(friendSocketId);
-            
-            if (!user || !friend) {
-                socket.emit('friend-error', { message: '用户不存在' });
+        
+        socket.on('admin-friends-list', (friendships) => {
+            console.log('收到好友列表:', friendships);
+            updateFriendsList(friendships);
+        });
+        
+        function filterFriends() {
+            const searchTerm = friendSearch.value.trim().toLowerCase();
+            if (!searchTerm) {
+                updateFriendsList(originalFriendships);
                 return;
             }
             
-            // 初始化好友集合
-            if (!friendships.has(userSocketId)) {
-                friendships.set(userSocketId, new Set());
-            }
-            if (!friendships.has(friendSocketId)) {
-                friendships.set(friendSocketId, new Set());
-            }
-            
-            // 检查是否已经是好友
-            if (friendships.get(userSocketId).has(friendSocketId)) {
-                socket.emit('friend-error', { message: '已经是好友了' });
-                return;
-            }
-            
-            // 双向添加好友关系
-            friendships.get(userSocketId).add(friendSocketId);
-            friendships.get(friendSocketId).add(userSocketId);
-            
-            console.log(`管理员添加了好友关系: ${user.username} <-> ${friend.username}`);
-            
-            // 通知双方用户
-            io.to(userSocketId).emit('friend-added', {
-                friendSocketId: friendSocketId,
-                friendUsername: friend.username,
-                friendColor: friend.color
-            });
-            io.to(friendSocketId).emit('friend-added', {
-                friendSocketId: userSocketId,
-                friendUsername: user.username,
-                friendColor: user.color
-            });
-            
-            // 重新发送好友列表
-            socket.emit('admin-get-friends');
+            const filteredFriendships = originalFriendships.filter(friendship => 
+                friendship.username.toLowerCase().includes(searchTerm) || 
+                friendship.friendUsername.toLowerCase().includes(searchTerm)
+            );
+            updateFriendsList(filteredFriendships);
         }
-    });
-
-    socket.on('admin-clear-messages', () => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            // 清空全局消息Map
-            messages.clear();
+        
+        function updateFriendsList(friendships) {
+            originalFriendships = friendships;
             
-            // 清空所有房间的消息数组
-            rooms.forEach(room => {
-                room.messages = [];
+            if (friendships.length === 0) {
+                friendsTabList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">👥</div>
+                        <div>暂无好友关系</div>
+                    </div>`;
+                return;
+            }
+            
+            friendsTabList.innerHTML = friendships.map(friendship => `
+                <div class="user-item">
+                    <div class="user-info">
+                        <div class="user-color" style="background: ${friendship.userColor}"></div>
+                        <div>
+                            <div class="user-name">${escapeHtml(friendship.username)}</div>
+                            <small style="color: #666;">好友: ${escapeHtml(friendship.friendUsername)}</small>
+                        </div>
+                    </div>
+                    <div class="user-actions">
+                        <button class="btn btn-primary btn-sm" onclick="adminPrivateChat('${friendship.userSocketId}', '${friendship.username}')">私聊</button>
+                        <button class="btn btn-info btn-sm" onclick="viewPrivateChat('${friendship.userSocketId}', '${friendship.username}')">查看私聊</button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteFriendship('${friendship.userSocketId}', '${friendship.friendSocketId}')">删除好友关系</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function adminPrivateChat(socketId, username) {
+            const message = prompt(`发送私聊消息给 ${username}：`);
+            if (message) {
+                socket.emit('admin-private-message', {
+                    targetSocketId: socketId,
+                    message: message,
+                    type: 'text'
+                });
+            }
+        }
+        
+        function viewPrivateChat(socketId, username) {
+            const chatId = [socket.id, socketId].sort().join('-');
+            socket.emit('admin-get-private-messages', {
+                targetSocketId: socketId
             });
             
-            // 通知所有用户消息已清空
-            io.emit('messages-cleared');
+            // 显示私聊历史
+            const modalDiv = document.createElement('div');
+            modalDiv.className = 'modal active';
+            modalDiv.innerHTML = `
+                <div class="modal-content" style="max-width: 800px; max-height: 80vh; overflow-y: auto;">
+                    <h3>与 ${username} 的私聊历史</h3>
+                    <div id="privateChatHistory" style="max-height: 500px; overflow-y: auto; background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 20px;"></div>
+                    <div class="modal-buttons">
+                        <button type="button" class="btn btn-cancel" onclick="this.parentElement.parentElement.parentElement.remove();">关闭</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modalDiv);
             
-            console.log('管理员清空了所有消息（包括所有房间的消息历史）');
-        }
-    });
-    
-    // 管理员创建房间
-    socket.on('admin-create-room', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { roomName, password, settings } = data;
-            
-            // 检查房间名是否已存在
-            if (rooms.has(roomName)) {
-                socket.emit('admin-room-error', { message: '房间名已存在' });
-                return;
-            }
-            
-            // 验证maxUsers参数是否为有效数字
-            if (settings?.maxUsers && (typeof settings.maxUsers !== 'number' || settings.maxUsers <= 0)) {
-                socket.emit('admin-room-error', { message: 'maxUsers必须是一个大于0的数字' });
-                return;
-            }
-            
-            // 创建新房间
-            const newRoom = {
-                roomName: roomName,
-                password: password,
-                creator: socket.id,
-                createdAt: new Date(),
-                updatedAt: new Date(),
-                users: [],
-                messages: [],
-                settings: {
-                    maxUsers: settings?.maxUsers || 100,
-                    allowPublicAccess: true,
-                    ...settings
+            // 监听私聊历史消息
+            socket.on('admin-private-messages-history', (data) => {
+                const historyDiv = document.getElementById('privateChatHistory');
+                if (historyDiv) {
+                    historyDiv.innerHTML = data.messages.map(msg => `
+                        <div class="message-item">
+                            <div class="message-header">
+                                <span class="message-sender">${msg.fromUsername}</span>
+                                <span class="message-time">${msg.timestamp}</span>
+                            </div>
+                            <div class="message-content">${escapeHtml(msg.message)}</div>
+                        </div>
+                    `).join('');
                 }
+            });
+        }
+        
+        function closeFriendsModal() {
+            friendsModal.classList.remove('active');
+        }
+        
+        function openAddFriendModal() {
+            const userASelect = document.getElementById('userA');
+            const userBSelect = document.getElementById('userB');
+            
+            // 清空选项
+            userASelect.innerHTML = '<option value="">请选择用户</option>';
+            userBSelect.innerHTML = '<option value="">请选择用户</option>';
+            
+            // 添加用户选项
+            users.forEach(user => {
+                userASelect.innerHTML += `<option value="${user.socketId}">${escapeHtml(user.username)}</option>`;
+                userBSelect.innerHTML += `<option value="${user.socketId}">${escapeHtml(user.username)}</option>`;
+            });
+            
+            document.getElementById('addFriendModal').classList.add('active');
+        }
+        
+        function closeAddFriendModal() {
+            document.getElementById('addFriendModal').classList.remove('active');
+        }
+        
+        function confirmAddFriend() {
+            const userA = document.getElementById('userA').value;
+            const userB = document.getElementById('userB').value;
+            
+            if (!userA || !userB) {
+                alert('请选择两个用户');
+                return;
+            }
+            
+            if (userA === userB) {
+                alert('不能添加自己为好友');
+                return;
+            }
+            
+            const userAName = users.find(u => u.socketId === userA)?.username;
+            const userBName = users.find(u => u.socketId === userB)?.username;
+            
+            if (confirm(`确定要让 ${userAName} 和 ${userBName} 成为好友吗？`)) {
+                socket.emit('admin-add-friendship', {
+                    userSocketId: userA,
+                    friendSocketId: userB
+                });
+                closeAddFriendModal();
+            }
+        }
+        
+        function applyGlobalPermissions() {
+            if (confirm('确定要将这些权限应用到所有用户吗？此操作将覆盖所有用户的现有权限！')) {
+                const permissions = {
+                    allowAudio: document.getElementById('globalAllowAudio').checked,
+                    allowImage: document.getElementById('globalAllowImage').checked,
+                    allowFile: document.getElementById('globalAllowFile').checked,
+                    allowSendMessages: document.getElementById('globalAllowSendMessages').checked,
+                    allowViewMessages: document.getElementById('globalAllowViewMessages').checked,
+                    allowCall: document.getElementById('globalAllowCall').checked,
+                    allowAddFriends: document.getElementById('globalAllowAddFriends').checked,
+                    allowViewUsers: document.getElementById('globalAllowViewUsers').checked,
+                    allowPrivateChat: document.getElementById('globalAllowPrivateChat').checked,
+                    allowOpenFriendsPage: document.getElementById('globalAllowOpenFriendsPage').checked,
+                    allowRecallMessage: document.getElementById('globalAllowRecallMessage').checked
+                };
+                
+                socket.emit('admin-set-global-permissions', permissions);
+            }
+        }
+        
+        function applyToNewUsers() {
+            const permissions = {
+                allowAudio: document.getElementById('globalAllowAudio').checked,
+                allowImage: document.getElementById('globalAllowImage').checked,
+                allowFile: document.getElementById('globalAllowFile').checked,
+                allowSendMessages: document.getElementById('globalAllowSendMessages').checked,
+                allowViewMessages: document.getElementById('globalAllowViewMessages').checked,
+                allowCall: document.getElementById('globalAllowCall').checked,
+                allowAddFriends: document.getElementById('globalAllowAddFriends').checked,
+                allowViewUsers: document.getElementById('globalAllowViewUsers').checked,
+                allowPrivateChat: document.getElementById('globalAllowPrivateChat').checked,
+                allowOpenFriendsPage: document.getElementById('globalAllowOpenFriendsPage').checked,
+                allowRecallMessage: document.getElementById('globalAllowRecallMessage').checked
             };
             
-            rooms.set(roomName, newRoom);
-            
-            // 发送房间列表给管理员
-            socket.emit('admin-rooms', Array.from(rooms.values()));
-            console.log(`管理员创建了新房间: ${roomName}`);
+            socket.emit('admin-set-default-permissions', permissions);
+            alert('默认权限已设置，新用户将使用这些权限');
         }
-    });
-    
-    // 管理员删除房间
-    socket.on('admin-delete-room', (roomName) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            // 不允许删除默认房间
-            if (roomName === 'main') {
-                socket.emit('admin-room-error', { message: '不能删除默认房间' });
-                return;
-            }
-            
-            // 检查是否至少有一个房间存在
-            const allRooms = Array.from(rooms.values());
-            if (allRooms.length <= 1) {
-                socket.emit('admin-room-error', { message: '至少需要有一个房间，不能删除最后一个房间' });
-                return;
-            }
-            
-            const room = rooms.get(roomName);
-            if (room) {
-                // 将房间内的用户移动到默认房间
-                room.users.forEach(userId => {
-                    const user = users.get(userId);
-                    if (user) {
-                        // 从当前房间移除
-                        user.roomName = 'main';
-                        const mainRoom = rooms.get('main');
-                        mainRoom.users.push(userId);
-                        
-                        // 发送房间变更通知
-                        io.to(userId).emit('room-changed', {
-                            roomName: 'main',
-                            message: '您所在的房间已被管理员删除，已自动转移到默认房间'
-                        });
-                    }
+        
+        function deleteFriendship(userSocketId, friendSocketId) {
+            const usernames = originalFriendships.find(f => 
+                f.userSocketId === userSocketId && f.friendSocketId === friendSocketId
+            );
+            if (usernames && confirm(`确定要删除 ${usernames.username} 和 ${usernames.friendUsername} 的好友关系吗？`)) {
+                socket.emit('admin-delete-friendship', {
+                    userSocketId: userSocketId,
+                    friendSocketId: friendSocketId
                 });
-                
-                // 删除房间
-                rooms.delete(roomName);
-                
-                // 发送房间列表给管理员
-                socket.emit('admin-rooms', Array.from(rooms.values()));
-                console.log(`管理员删除了房间: ${roomName}`);
             }
         }
-    });
-    
-    // 管理员修改房间设置
-    socket.on('admin-update-room', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { roomName, updates } = data;
-            
-            const room = rooms.get(roomName);
-            if (room) {
-                // 更新房间信息
-                room.updatedAt = new Date();
-                if (updates.password !== undefined) {
-                    room.password = updates.password;
-                }
-                if (updates.settings) {
-                    room.settings = { ...room.settings, ...updates.settings };
-                }
-                
-                // 发送房间列表给管理员
-                socket.emit('admin-rooms', Array.from(rooms.values()));
-                console.log(`管理员更新了房间 ${roomName} 的设置`);
-            }
-        }
-    });
 
-    // 管理员修改管理员密码
-    socket.on('admin-change-password', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-                const { oldPassword, newPassword } = data;
+        // 禁言管理相关函数
+        function loadMutedUsers() {
+            console.log('loadMutedUsers called');
+            socket.emit('admin-get-muted-users');
+        }
+
+        function openMuteUserModal() {
+            // 加载所有在线用户到下拉列表
+            const muteUserId = document.getElementById('muteUserId');
+            muteUserId.innerHTML = '<option value="">请选择用户</option>';
+            users.forEach(user => {
+                muteUserId.innerHTML += `<option value="${user.socketId}">${escapeHtml(user.username)}</option>`;
+            });
+            document.getElementById('muteUserModal').classList.add('active');
+        }
+
+        function closeMuteUserModal() {
+            document.getElementById('muteUserModal').classList.remove('active');
+        }
+
+        function confirmMuteUser() {
+            const socketId = document.getElementById('muteUserId').value;
+            const duration = parseInt(document.getElementById('muteDuration').value);
+            const reason = document.getElementById('muteReason').value.trim();
+            
+            if (socketId && reason) {
+                socket.emit('admin-mute-user', {
+                    socketId: socketId,
+                    duration: duration,
+                    reason: reason
+                });
+                closeMuteUserModal();
+                alert('用户已被禁言');
+                loadMutedUsers();
+            }
+        }
+
+        function unmuteUser(socketId, username) {
+            if (confirm(`确定要解除对 ${escapeHtml(username)} 的禁言吗？`)) {
+                socket.emit('admin-unmute-user', socketId);
+                loadMutedUsers();
+            }
+        }
+
+        function updateMutedUsersList(mutedUsers) {
+            const mutedUsersList = document.getElementById('mutedUsersList');
+            
+            if (mutedUsers.length === 0) {
+                mutedUsersList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔇</div>
+                        <div>暂无被禁言用户</div>
+                    </div>`;
+                return;
+            }
+            
+            mutedUsersList.innerHTML = mutedUsers.map(user => {
+                const endTimeText = user.endTime === -1 ? '永久' : new Date(user.endTime).toLocaleString();
+                return `
+                    <div class="user-item">
+                        <div class="user-info">
+                            <div class="user-color" style="background: ${user.color}"></div>
+                            <div>
+                                <div class="user-name">${escapeHtml(user.username)}</div>
+                                <small style="color: #666;">禁言截止: ${endTimeText} | 原因: ${escapeHtml(user.reason)}</small>
+                            </div>
+                        </div>
+                        <div class="user-actions">
+                            <button class="btn btn-success btn-sm" onclick="unmuteUser('${user.socketId}', '${escapeHtml(user.username)}')">解除禁言</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 监听禁言用户列表
+        socket.on('admin-muted-users', (mutedUsers) => {
+            console.log('Received admin-muted-users event:', mutedUsers);
+            updateMutedUsersList(mutedUsers);
+        });
+
+        // 好友扩容申请相关函数
+        function loadFriendLimitRequests() {
+            socket.emit('admin-get-friend-limit-requests');
+        }
+
+        function displayFriendLimitRequests(requests) {
+            const container = document.getElementById('friendLimitRequestsContainer');
+            
+            if (requests.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📋</div>
+                        <div>暂无好友扩容申请</div>
+                    </div>`;
+                return;
+            }
+
+            container.innerHTML = requests.map(request => `
+                <div class="request-item">
+                    <div class="request-info">
+                        <h4>${request.username}</h4>
+                        <p class="request-reason">${request.reason}</p>
+                        <div class="request-meta">
+                            <span>申请时间: ${new Date(request.createdAt).toLocaleString()}</span>
+                            <span>状态: <span class="status-${request.status}">${request.status === 'pending' ? '待处理' : request.status === 'approved' ? '已批准' : '已拒绝'}</span></span>
+                        </div>
+                    </div>
+                    ${request.status === 'pending' ? `
+                        <div class="request-actions">
+                            <button class="btn btn-success" onclick="approveFriendLimitRequest(${request.id})">批准</button>
+                            <button class="btn btn-danger" onclick="rejectFriendLimitRequest(${request.id})">拒绝</button>
+                        </div>` : ''}
+                </div>
+            `).join('');
+        }
+
+        function approveFriendLimitRequest(requestId) {
+            const newLimit = prompt('请输入新的好友数量上限（输入-1表示无限）:', '10');
+            const limit = parseInt(newLimit);
+            if (newLimit !== null && !isNaN(limit)) {
+                socket.emit('admin-approve-friend-limit-request', {
+                    requestId: requestId,
+                    newLimit: limit
+                });
+            }
+        }
+
+        function rejectFriendLimitRequest(requestId) {
+            const reason = prompt('请输入拒绝理由（可选）:');
+            socket.emit('admin-reject-friend-limit-request', {
+                requestId: requestId,
+                reason: reason
+            });
+        }
+
+        // 监听新的好友扩容申请
+        socket.on('new-friend-limit-request', (request) => {
+            loadFriendLimitRequests();
+        });
+
+        // 监听好友扩容申请列表
+        socket.on('admin-friend-limit-requests', (requests) => {
+            displayFriendLimitRequests(requests);
+        });
+
+        // 监听好友扩容申请状态更新
+        socket.on('admin-friend-limit-request-updated', (request) => {
+            loadFriendLimitRequests();
+        });
+
+        function clearMessages() {
+            if (confirm('确定要清空所有消息吗？此操作不可恢复！')) {
+                socket.emit('admin-clear-messages');
+            }
+        }
+
+        function loadMessages() {
+            const selectedRoom = roomSelect.value || 'main';
+            loadRoomMessages(selectedRoom);
+        }
+
+        let currentPath = '';
+
+        function loadFiles() {
+            const url = currentPath ? `/api/files?path=${encodeURIComponent(currentPath)}` : '/api/files';
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    displayFiles(data.files);
+                    updatePathBar(data.currentPath);
+                })
+                .catch(error => {
+                    console.error('加载文件列表失败:', error);
+                    alert('加载文件列表失败');
+                });
+        }
+
+        function updatePathBar(path) {
+            currentPath = path;
+            document.getElementById('currentPath').textContent = '/' + (path || '');
+            document.getElementById('backButton').disabled = !path;
+        }
+
+        function goBack() {
+            if (!currentPath) return;
+            const pathParts = currentPath.split('/').filter(p => p);
+            pathParts.pop();
+            currentPath = pathParts.join('/');
+            loadFiles();
+        }
+
+        function enterDirectory(dirname) {
+            currentPath = currentPath ? `${currentPath}/${dirname}` : dirname;
+            loadFiles();
+        }
+
+        function displayFiles(files) {
+            const filesContainer = document.getElementById('filesContainer');
+            
+            if (files.length === 0) {
+                filesContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📁</div>
+                        <div>暂无文件</div>
+                    </div>`;
+                return;
+            }
+
+            filesContainer.innerHTML = files.map(file => `
+                <div class="file-item">
+                    <div class="file-info" onclick="${file.isDirectory ? `enterDirectory('${file.name}')` : `viewFile('${file.name}')`}" style="cursor: ${file.isDirectory ? 'pointer' : 'default'}">
+                        <div class="file-icon">${file.isDirectory ? '📁' : '📄'}</div>
+                        <div class="file-details">
+                            <div class="file-name">${file.name}</div>
+                            <div class="file-meta">
+                                <span>${file.isDirectory ? '目录' : formatFileSize(file.size)}</span>
+                                <span>${formatDate(file.createdAt)}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="file-actions">
+                        ${file.isDirectory ? 
+                            `<button class="btn btn-danger" onclick="deleteFile('${file.name}')">删除</button>` :
+                            `<button class="btn btn-primary" onclick="viewFile('${file.name}')">查看</button>
+                             <button class="btn btn-primary" onclick="editFile('${file.name}')">编辑</button>
+                             <button class="btn btn-danger" onclick="deleteFile('${file.name}')">删除</button>`
+                        }
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        function formatDate(date) {
+            const d = new Date(date);
+            return d.toLocaleString('zh-CN');
+        }
+
+        function openUploadModal() {
+            document.getElementById('uploadFileModal').classList.add('active');
+        }
+
+        function closeUploadModal() {
+            document.getElementById('uploadFileModal').classList.remove('active');
+            document.getElementById('fileInput').value = '';
+        }
+
+        function uploadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('请选择文件');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            fetch('/api/files/upload', {
+                method: 'POST',
+                headers: {
+                    'X-Filename': file.name,
+                    'X-Path': currentPath
+                },
+                body: file
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert('文件上传成功');
+                closeUploadModal();
+                loadFiles();
+            })
+            .catch(error => {
+                console.error('上传文件失败:', error);
+                alert('上传文件失败');
+            });
+        }
+
+        function openCreateFileModal() {
+            document.getElementById('createFileModal').classList.add('active');
+        }
+
+        function closeCreateFileModal() {
+            document.getElementById('createFileModal').classList.remove('active');
+            document.getElementById('createFileName').value = '';
+            document.getElementById('createFileContent').value = '';
+        }
+
+        function createFile() {
+            const filename = document.getElementById('createFileName').value;
+            const content = document.getElementById('createFileContent').value;
+
+            if (!filename) {
+                alert('请输入文件名');
+                return;
+            }
+
+            fetch('/api/files/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ filename, content, path: currentPath })
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert('文件创建成功');
+                closeCreateFileModal();
+                loadFiles();
+            })
+            .catch(error => {
+                console.error('创建文件失败:', error);
+                alert('创建文件失败');
+            });
+        }
+
+        function openCreateDirectoryModal() {
+            document.getElementById('createDirectoryModal').classList.add('active');
+        }
+
+        function closeCreateDirectoryModal() {
+            document.getElementById('createDirectoryModal').classList.remove('active');
+            document.getElementById('createDirectoryName').value = '';
+        }
+
+        function createDirectory() {
+            const dirname = document.getElementById('createDirectoryName').value;
+
+            if (!dirname) {
+                alert('请输入目录名');
+                return;
+            }
+
+            fetch('/api/files/create-directory', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ dirname, path: currentPath })
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert('目录创建成功');
+                closeCreateDirectoryModal();
+                loadFiles();
+            })
+            .catch(error => {
+                console.error('创建目录失败:', error);
+                alert('创建目录失败');
+            });
+        }
+
+        function editFile(filename) {
+            const fullPath = currentPath ? `${currentPath}/${filename}` : filename;
+            fetch(`/api/files/${encodeURIComponent(fullPath)}/content`)
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('editFileName').value = filename;
+                    document.getElementById('editFileContent').value = data.content;
+                    document.getElementById('editFileModal').classList.add('active');
+                })
+                .catch(error => {
+                    console.error('获取文件内容失败:', error);
+                    alert('获取文件内容失败');
+                });
+        }
+
+        function closeEditFileModal() {
+            document.getElementById('editFileModal').classList.remove('active');
+            document.getElementById('editFileName').value = '';
+            document.getElementById('editFileContent').value = '';
+        }
+
+        function saveFileEdit() {
+            const filename = document.getElementById('editFileName').value;
+            const content = document.getElementById('editFileContent').value;
+            const fullPath = currentPath ? `${currentPath}/${filename}` : filename;
+
+            fetch(`/api/files/${encodeURIComponent(fullPath)}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ content })
+            })
+            .then(response => response.json())
+            .then(data => {
+                alert('文件保存成功');
+                closeEditFileModal();
+                loadFiles();
+            })
+            .catch(error => {
+                console.error('保存文件失败:', error);
+                alert('保存文件失败');
+            });
+        }
+
+        function viewFile(filename) {
+            const fullPath = currentPath ? `${currentPath}/${filename}` : filename;
+            window.open(`/uploads/${fullPath}`, '_blank');
+        }
+
+        function deleteFile(filename) {
+            if (confirm(`确定要删除 "${filename}" 吗？此操作不可恢复！`)) {
+                const fullPath = currentPath ? `${currentPath}/${filename}` : filename;
+                fetch(`/api/files/${encodeURIComponent(fullPath)}`, {
+                    method: 'DELETE'
+                })
+                .then(response => response.json())
+                .then(data => {
+                    alert('文件删除成功');
+                    loadFiles();
+                })
+                .catch(error => {
+                    console.error('删除文件失败:', error);
+                    alert('删除文件失败');
+                });
+            }
+        }
+        
+        function loadRoomMessages(roomName) {
+            socket.emit('admin-get-room-messages', roomName);
+        }
+        
+        function changeAdminPassword() {
+            const oldPassword = document.getElementById('oldPassword').value;
+            const newPassword = document.getElementById('newPassword').value;
+            
+            if (!oldPassword || !newPassword) {
+                alert('请输入旧密码和新密码');
+                return;
+            }
+            
+            if (oldPassword === newPassword) {
+                alert('新密码不能与旧密码相同');
+                return;
+            }
+            
+            socket.emit('admin-change-password', {
+                oldPassword: oldPassword,
+                newPassword: newPassword
+            });
+        }
+        
+        // 系统管理函数
+        function getServerInfo() {
+            socket.emit('admin-get-server-info');
+        }
+        
+        // 添加每秒自动刷新服务器信息的定时器
+        let serverInfoInterval;
+        
+        // 当切换到系统管理标签页时，启动自动刷新
+        function startServerInfoRefresh() {
+            if (!serverInfoInterval) {
+                serverInfoInterval = setInterval(getServerInfo, 1000);
+                console.log('开始每秒自动刷新服务器信息');
+            }
+        }
+        
+        // 当离开系统管理标签页时，停止自动刷新
+        function stopServerInfoRefresh() {
+            if (serverInfoInterval) {
+                clearInterval(serverInfoInterval);
+                serverInfoInterval = null;
+                console.log('停止自动刷新服务器信息');
+            }
+        }
+        
+        function shutdownServer() {
+            if (confirm('确定要关闭服务器吗？此操作将断开所有用户的连接！')) {
+                socket.emit('admin-shutdown-server');
+                alert('服务器正在关闭...');
+            }
+        }
+        
+        function executeCommand() {
+            const command = document.getElementById('commandInput').value.trim();
+            if (!command) {
+                alert('请输入要执行的命令');
+                return;
+            }
+            
+            const outputDiv = document.getElementById('commandOutput');
+            outputDiv.textContent = '正在执行命令...\n';
+            
+            socket.emit('admin-exec-command', { command: command });
+        }
+        
+        // 处理服务器信息响应
+        socket.on('admin-server-info', (data) => {
+            const infoDiv = document.getElementById('serverInfo');
+            const uptime = Math.floor(data.uptime);
+            const hours = Math.floor(uptime / 3600);
+            const minutes = Math.floor((uptime % 3600) / 60);
+            const seconds = uptime % 60;
+            const memoryMB = (data.memoryUsage.heapUsed / 1024 / 1024).toFixed(2);
+            const memoryTotalMB = (data.memoryUsage.heapTotal / 1024 / 1024).toFixed(2);
+            
+            infoDiv.innerHTML = `
+                <p><strong>Node.js版本:</strong> ${data.nodeVersion}</p>
+                <p><strong>操作系统:</strong> ${data.platform} (${data.arch})</p>
+                <p><strong>进程ID:</strong> ${data.pid}</p>
+                <p><strong>运行时间:</strong> ${hours}小时${minutes}分${seconds}秒</p>
+                <p><strong>内存使用:</strong> ${memoryMB} MB / ${memoryTotalMB} MB</p>
+                <p><strong>工作目录:</strong> ${data.cwd}</p>
+                <p><strong>服务器状态:</strong> ${data.isRunning ? '<span style="color: green;">运行中</span>' : '<span style="color: red;">已停止</span>'}</p>
+            `;
+        });
+        
+        // 处理命令执行结果
+        socket.on('admin-command-result', (data) => {
+            const outputDiv = document.getElementById('commandOutput');
+            if (data.success) {
+                outputDiv.textContent = data.output || '命令执行成功（无输出）';
+            } else {
+                outputDiv.textContent = '错误: ' + data.error;
+            }
+        });
+        
+        // 处理服务器关闭通知
+        socket.on('server-shutting-down', (data) => {
+            alert(data.message);
+        });
+        
+        function displayMessages(data, isRoomMessages = false) {
+            messageCount.textContent = data.active.length;
+            deletedMessageCount.textContent = data.deleted.length;
+            
+            const allMessages = [...data.active.map(m => ({ ...m, status: 'active' })), ...data.deleted.map(m => ({ ...m, status: 'deleted' }))];
+            
+            if (allMessages.length === 0) {
+                messagesContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">💬</div>
+                        <div>${isRoomMessages ? '该房间暂无消息' : '暂无消息'}</div>
+                    </div>`;
+                return;
+            }
+
+            messagesContainer.innerHTML = allMessages.map(msg => {
+                let contentHtml = '';
+                if (msg.type === 'image') {
+                    contentHtml = `<img src="${msg.message}" alt="图片">`;
+                } else if (msg.type === 'audio') {
+                    contentHtml = `<audio controls><source src="${msg.message}" type="audio/webm">您的浏览器不支持音频播放</audio>`;
+                } else if (msg.type === 'video') {
+                    contentHtml = `<video controls width="100%" max-height="300px"><source src="${msg.message}" type="video/webm">您的浏览器不支持视频播放</video>`;
+                } else {
+                    contentHtml = escapeHtml(msg.message);
+                }
+
+                const statusText = msg.status === 'active' ? '正常' : '已撤回';
+                const statusClass = msg.status === 'active' ? 'active' : 'deleted';
+                const recallTime = msg.recallTime ? `<br><small>撤回时间: ${msg.recallTime}</small>` : '';
+
+                return `
+                    <div class="message-item ${msg.status}">
+                        <div class="message-header">
+                            <div>
+                                <span class="message-sender" style="color: ${msg.color}">${escapeHtml(msg.username)}</span>
+                                <span class="message-status ${statusClass}">${statusText}</span>
+                            </div>
+                            <span class="message-time">${msg.timestamp}${recallTime}</span>
+                        </div>
+                        <div class="message-content">${contentHtml}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function formatDate(date) {
+            const d = new Date(date);
+            return d.toLocaleString('zh-CN');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // 过滤用户列表
+        function filterUsers() {
+            const searchTerm = userSearch.value.toLowerCase().trim();
+            
+            if (!searchTerm) {
+                // 如果搜索框为空，显示所有用户
+                users = [...originalUsers];
+                updateUserList();
+                return;
+            }
+            
+            // 根据用户名或房间名过滤用户
+            users = originalUsers.filter(user => {
+                const username = user.username.toLowerCase();
+                const roomName = (user.roomName || 'main').toLowerCase();
                 
-                // 验证旧密码
-                if (oldPassword !== ADMIN_PASSWORD) {
-                    socket.emit('admin-password-error', { message: '旧密码错误' });
+                return username.includes(searchTerm) || roomName.includes(searchTerm);
+            });
+            
+            updateUserList();
+        }
+        
+        // 切换用户列表显示/隐藏
+        function toggleUserList() {
+            const userListElement = document.getElementById('userList');
+            if (userListElement.style.display === 'none') {
+                userListElement.style.display = 'block';
+            } else {
+                userListElement.style.display = 'none';
+            }
+        }
+        
+        // 过滤房间列表
+        function filterRooms() {
+            const searchTerm = roomSearch.value.toLowerCase().trim();
+            
+            if (!searchTerm) {
+                // 如果搜索框为空，显示所有房间
+                updateRoomList(originalRooms);
+                return;
+            }
+            
+            // 根据房间名过滤房间
+            const filteredRooms = originalRooms.filter(room => {
+                return room.roomName.toLowerCase().includes(searchTerm);
+            });
+            
+            updateRoomList(filteredRooms);
+        }
+        
+        // 用户行为分析相关函数
+        function loadUserAnalytics() {
+            const timeRange = document.getElementById('analyticsTimeRange').value;
+            socket.emit('admin-get-user-analytics', { timeRange: timeRange });
+        }
+        
+        function refreshAnalytics() {
+            loadUserAnalytics();
+        }
+        
+        function exportAnalyticsData() {
+            const timeRange = document.getElementById('analyticsTimeRange').value;
+            socket.emit('admin-export-analytics-data', { timeRange: timeRange });
+        }
+        
+        // 监听用户行为分析数据
+        socket.on('admin-user-analytics', (data) => {
+            // 更新统计数据
+            document.getElementById('activeUserCount').textContent = data.stats.activeUsers;
+            document.getElementById('totalMessageCount').textContent = data.stats.totalMessages;
+            document.getElementById('avgMessageLength').textContent = data.stats.avgMessageLength.toFixed(2);
+            document.getElementById('peakHour').textContent = data.stats.peakHour + ':00';
+            document.getElementById('retentionRate').textContent = (data.stats.retentionRate * 100).toFixed(2) + '%';
+            document.getElementById('avgOnlineTime').textContent = data.stats.avgOnlineTime + '分钟';
+            document.getElementById('responseRate').textContent = (data.stats.responseRate * 100).toFixed(2) + '%';
+            document.getElementById('userGrowthRate').textContent = (data.stats.userGrowthRate * 100).toFixed(2) + '%';
+            
+            // 更新用户行为详情
+            updateUserBehaviorList(data.behaviorDetails);
+            
+            // 这里可以添加图表渲染代码，使用Chart.js或其他图表库
+        });
+        
+        function updateUserBehaviorList(behaviorDetails) {
+            const behaviorList = document.getElementById('userBehaviorList');
+            
+            if (behaviorDetails.length === 0) {
+                behaviorList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📊</div>
+                        <div>暂无行为数据</div>
+                    </div>`;
+                return;
+            }
+            
+            behaviorList.innerHTML = behaviorDetails.map(user => `
+                <div class="user-item">
+                    <div class="user-info">
+                        <div class="user-color" style="background: ${user.color}"></div>
+                        <div>
+                            <div class="user-name">${escapeHtml(user.username)}</div>
+                            <small style="color: #666;">活跃度: ${user.activityScore} | 消息数: ${user.messageCount} | 在线时长: ${user.onlineTime}分钟</small>
+                        </div>
+                    </div>
+                    <div class="user-actions">
+                        <button class="btn btn-sm btn-primary" onclick="viewUserDetailedAnalytics('${user.socketId}')">详细分析</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function viewUserDetailedAnalytics(socketId) {
+            socket.emit('admin-get-user-detailed-analytics', { socketId: socketId });
+        }
+        
+        // 监听用户详细分析数据
+        socket.on('admin-user-detailed-analytics', (data) => {
+            // 这里可以添加详细分析数据的显示代码
+            alert(`用户 ${data.username} 的详细分析数据已加载`);
+        });
+        
+        // 系统日志和数据导出相关函数
+        function loadSystemLogs() {
+            const logType = document.getElementById('logTypeFilter').value;
+            const searchTerm = document.getElementById('logSearch').value;
+            
+            socket.emit('admin-get-system-logs', {
+                type: logType,
+                search: searchTerm
+            });
+        }
+        
+        function exportSystemLogs() {
+            socket.emit('admin-export-data', {
+                dataType: 'logs'
+            });
+        }
+        
+        function exportUserData() {
+            socket.emit('admin-export-data', {
+                dataType: 'users'
+            });
+        }
+        
+        function exportMessageData() {
+            socket.emit('admin-export-data', {
+                dataType: 'messages'
+            });
+        }
+        
+        function clearSystemLogs() {
+            if (confirm('确定要清空所有系统日志吗？此操作不可恢复！')) {
+                socket.emit('admin-clear-system-logs');
+            }
+        }
+        
+        // 监听系统日志数据
+        socket.on('admin-system-logs', (data) => {
+            const logsContainer = document.getElementById('systemLogsContainer');
+            
+            if (data.logs.length === 0) {
+                logsContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📋</div>
+                        <div>暂无系统日志</div>
+                    </div>`;
+                return;
+            }
+            
+            logsContainer.innerHTML = data.logs.map(log => {
+                let levelClass = '';
+                switch (log.level) {
+                    case 'error':
+                        levelClass = 'color: #dc3545; font-weight: bold;';
+                        break;
+                    case 'warn':
+                        levelClass = 'color: #ffc107; font-weight: bold;';
+                        break;
+                    case 'info':
+                        levelClass = 'color: #17a2b8;';
+                        break;
+                    case 'debug':
+                        levelClass = 'color: #6c757d;';
+                        break;
+                }
+                
+                return `
+                    <div style="margin-bottom: 10px; padding: 5px; border-left: 4px solid ${log.level === 'error' ? '#dc3545' : log.level === 'warn' ? '#ffc107' : log.level === 'info' ? '#17a2b8' : '#6c757d'};">
+                        <div style="font-size: 12px; color: #666;">${log.timestamp}</div>
+                        <div style="${levelClass}">[${log.level.toUpperCase()}] ${log.message}</div>
+                        ${log.details ? `<div style="font-size: 12px; color: #666; margin-top: 5px;">${escapeHtml(JSON.stringify(log.details))}</div>` : ''}
+                    </div>
+                `;
+            }).join('');
+            
+            // 更新事件统计
+            document.getElementById('loginCount').textContent = data.stats.loginCount || 0;
+            document.getElementById('logoutCount').textContent = data.stats.logoutCount || 0;
+            document.getElementById('messageSentCount').textContent = data.stats.messageSentCount || 0;
+            document.getElementById('fileUploadCount').textContent = data.stats.fileUploadCount || 0;
+            document.getElementById('errorCount').textContent = data.stats.errorCount || 0;
+            document.getElementById('warnCount').textContent = data.stats.warnCount || 0;
+        });
+        
+        // 监听数据导出完成
+        socket.on('admin-export-complete', (data) => {
+            alert(`数据导出成功，文件已生成: ${data.filename}`);
+        });
+        
+        // 系统监控相关函数
+        let monitoringInterval = null;
+        
+        function startSystemMonitoring() {
+            const interval = parseInt(document.getElementById('monitoringInterval').value) || 5000;
+            
+            if (monitoringInterval) {
+                clearInterval(monitoringInterval);
+            }
+            
+            monitoringInterval = setInterval(() => {
+                socket.emit('admin-get-system-monitoring');
+            }, interval);
+            
+            // 立即获取一次数据
+            socket.emit('admin-get-system-monitoring');
+            
+            alert('系统监控已启动');
+        }
+        
+        function stopSystemMonitoring() {
+            if (monitoringInterval) {
+                clearInterval(monitoringInterval);
+                monitoringInterval = null;
+                alert('系统监控已停止');
+            }
+        }
+        
+        function refreshSystemStatus() {
+            socket.emit('admin-get-system-monitoring');
+        }
+        
+        // 监听系统监控数据
+        socket.on('admin-system-monitoring', (data) => {
+            // 更新系统状态
+            document.getElementById('cpuUsage').textContent = data.cpuUsage + '%';
+            document.getElementById('memoryUsage').textContent = data.memoryUsage + '%';
+            document.getElementById('diskUsage').textContent = data.diskUsage + '%';
+            document.getElementById('networkTraffic').textContent = data.networkTraffic;
+            document.getElementById('onlineUsers').textContent = data.onlineUsers;
+            document.getElementById('websocketConnections').textContent = data.websocketConnections;
+            
+            // 更新系统事件
+            const eventsContainer = document.getElementById('systemEventsContainer');
+            if (data.events.length === 0) {
+                eventsContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">⚡</div>
+                        <div>暂无系统事件</div>
+                    </div>`;
+                return;
+            }
+            
+            eventsContainer.innerHTML = data.events.map(event => `
+                <div style="margin-bottom: 10px; padding: 5px; border-left: 4px solid ${event.type === 'error' ? '#dc3545' : event.type === 'warn' ? '#ffc107' : event.type === 'info' ? '#17a2b8' : '#6c757d'};">
+                    <div style="font-size: 12px; color: #666;">${event.timestamp}</div>
+                    <div style="${event.type === 'error' ? 'color: #dc3545; font-weight: bold;' : event.type === 'warn' ? 'color: #ffc107; font-weight: bold;' : event.type === 'info' ? 'color: #17a2b8;' : 'color: #6c757d;'};">${event.message}</div>
+                    ${event.details ? `<div style="font-size: 12px; color: #666; margin-top: 5px;">${escapeHtml(JSON.stringify(event.details))}</div>` : ''}
+                </div>
+            `).join('');
+        });
+        
+        // 虚拟列表优化DOM操作
+        class VirtualList {
+            constructor(container, options) {
+                this.container = container;
+                this.options = {
+                    itemHeight: 80, // 默认项高度
+                    buffer: 5, // 缓冲区大小
+                    ...options
+                };
+                
+                this.items = [];
+                this.startIndex = 0;
+                this.endIndex = 0;
+                this.scrollTop = 0;
+                
+                this.container.style.position = 'relative';
+                this.container.style.overflow = 'auto';
+                
+                // 创建滚动容器
+                this.scrollContainer = document.createElement('div');
+                this.scrollContainer.style.position = 'absolute';
+                this.scrollContainer.style.top = '0';
+                this.scrollContainer.style.left = '0';
+                this.scrollContainer.style.right = '0';
+                this.scrollContainer.style.overflow = 'hidden';
+                
+                // 创建内容容器
+                this.contentContainer = document.createElement('div');
+                this.contentContainer.style.position = 'absolute';
+                this.contentContainer.style.top = '0';
+                this.contentContainer.style.left = '0';
+                this.contentContainer.style.right = '0';
+                
+                this.container.appendChild(this.scrollContainer);
+                this.scrollContainer.appendChild(this.contentContainer);
+                
+                // 绑定滚动事件
+                this.container.addEventListener('scroll', this.handleScroll.bind(this));
+            }
+            
+            setItems(items) {
+                this.items = items;
+                this.update();
+            }
+            
+            update() {
+                const containerHeight = this.container.clientHeight;
+                const itemHeight = this.options.itemHeight;
+                
+                // 计算可见项数量
+                const visibleCount = Math.ceil(containerHeight / itemHeight) + this.options.buffer * 2;
+                
+                // 计算滚动位置对应的起始索引
+                this.startIndex = Math.max(0, Math.floor(this.container.scrollTop / itemHeight) - this.options.buffer);
+                this.endIndex = Math.min(this.items.length, this.startIndex + visibleCount);
+                
+                // 计算总高度
+                const totalHeight = this.items.length * itemHeight;
+                this.scrollContainer.style.height = `${totalHeight}px`;
+                
+                // 计算内容容器偏移
+                this.contentContainer.style.transform = `translateY(${this.startIndex * itemHeight}px)`;
+                
+                // 渲染可见项
+                this.render();
+            }
+            
+            render() {
+                if (this.items.length === 0) {
+                    this.contentContainer.innerHTML = `
+                        <div class="empty-state" style="height: 200px; display: flex; align-items: center; justify-content: center;">
+                            <div>
+                                <div class="empty-state-icon">${this.options.emptyIcon || '📋'}</div>
+                                <div>${this.options.emptyText || '暂无数据'}</div>
+                            </div>
+                        </div>`;
                     return;
                 }
                 
-                // 更新管理员密码
-                ADMIN_PASSWORD = newPassword;
-                
-                socket.emit('admin-password-success', { message: '管理员密码已修改' });
-                console.log('管理员修改了密码');
+                const visibleItems = this.items.slice(this.startIndex, this.endIndex);
+                this.contentContainer.innerHTML = visibleItems.map((item, index) => {
+                    const actualIndex = this.startIndex + index;
+                    return this.options.renderItem(item, actualIndex);
+                }).join('');
             }
-        });
-        
-        // 管理员发送弹窗消息给指定用户
-        socket.on('admin-popup', (data) => {
-            if (socket.id === adminSocketId) {
-                const { socketId, message } = data;
-                io.to(socketId).emit('popup-message', { message });
-                console.log(`管理员向 ${socketId} 发送弹窗: ${message}`);
+            
+            handleScroll() {
+                this.update();
             }
-        });
-        
-        // 管理员更改用户页面标题
-        socket.on('admin-change-title', (data) => {
-            if (socket.id === adminSocketId) {
-                const { socketId, title } = data;
-                io.to(socketId).emit('change-title', { title });
-                console.log(`管理员将 ${socketId} 的页面标题更改为: ${title}`);
+            
+            refresh() {
+                this.update();
             }
-        });
-    
-    // 系统管理 - 获取服务器信息
-    socket.on('admin-get-server-info', () => {
-        if (socket.id === adminSocketId) {
-            const serverInfo = {
-                nodeVersion: process.version,
-                platform: process.platform,
-                arch: process.arch,
-                uptime: process.uptime(),
-                memoryUsage: process.memoryUsage(),
-                pid: process.pid,
-                cwd: process.cwd(),
-                isRunning: true
-            };
-            socket.emit('admin-server-info', serverInfo);
         }
-    });
-    
-    // 系统管理 - 关闭服务器
-    socket.on('admin-shutdown-server', () => {
-        if (socket.id === adminSocketId) {
-            console.log('管理员正在关闭服务器...');
-            io.emit('server-shutting-down', { message: '服务器正在关闭，请稍后刷新页面' });
+        
+        // 初始化虚拟列表
+        function initVirtualLists() {
+            // 这里可以初始化各种需要虚拟列表的容器
+            // 例如：用户列表、消息列表等
+        }
+        
+        // 页面加载完成后初始化
+        window.addEventListener('DOMContentLoaded', initVirtualLists);
+        
+        // 桌面通知系统
+        class DesktopNotification {
+            constructor() {
+                this.permission = Notification.permission;
+            }
+            
+            async requestPermission() {
+                if (this.permission !== 'granted') {
+                    this.permission = await Notification.requestPermission();
+                }
+                return this.permission === 'granted';
+            }
+            
+            hasPermission() {
+                return this.permission === 'granted';
+            }
+            
+            sendNotification(title, options = {}) {
+                if (!this.hasPermission()) {
+                    console.warn('桌面通知权限未授予');
+                    return null;
+                }
+                
+                const notification = new Notification(title, {
+                    icon: options.icon || '/favicon.ico',
+                    body: options.body || '',
+                    badge: options.badge || '/favicon.ico',
+                    vibrate: options.vibrate || [200, 100, 200],
+                    data: options.data || {},
+                    actions: options.actions || [],
+                    tag: options.tag || '',
+                    renotify: options.renotify || false,
+                    requireInteraction: options.requireInteraction || false,
+                    silent: options.silent || false
+                });
+                
+                if (options.onClick) {
+                    notification.addEventListener('click', options.onClick);
+                }
+                
+                if (options.onClose) {
+                    notification.addEventListener('close', options.onClose);
+                }
+                
+                return notification;
+            }
+        }
+        
+        // 初始化桌面通知实例
+        const desktopNotification = new DesktopNotification();
+        
+        // 发送系统通知
+        function sendSystemNotification(title, message, options = {}) {
+            return desktopNotification.sendNotification(title, {
+                body: message,
+                ...options
+            });
+        }
+        
+        // 请求桌面通知权限
+        async function requestNotificationPermission() {
+            const granted = await desktopNotification.requestPermission();
+            if (granted) {
+                alert('桌面通知权限已授予');
+            } else {
+                alert('桌面通知权限被拒绝');
+            }
+        }
+        
+        // 监听新消息并发送桌面通知
+        socket.on('message', (data) => {
+            if (desktopNotification.hasPermission()) {
+                sendSystemNotification(
+                    `新消息 - ${data.username}`,
+                    data.message,
+                    {
+                        tag: 'new-message',
+                        requireInteraction: false
+                    }
+                );
+            }
+        });
+        
+        // 监听系统事件并发送桌面通知
+        socket.on('system-event', (data) => {
+            if (desktopNotification.hasPermission()) {
+                sendSystemNotification(
+                    `系统事件 - ${data.level.toUpperCase()}`,
+                    data.message,
+                    {
+                        tag: 'system-event',
+                        requireInteraction: data.level === 'error'
+                    }
+                );
+            }
+        });
+        
+        // 消息搜索功能
+        function searchMessages() {
+            const searchTerm = document.getElementById('messageSearch').value.trim();
+            const selectedRoom = document.getElementById('roomSelect').value || 'main';
+            
+            if (!searchTerm) {
+                alert('请输入搜索内容');
+                return;
+            }
+            
+            socket.emit('admin-search-messages', {
+                searchTerm: searchTerm,
+                roomName: selectedRoom
+            });
+        }
+        
+        // 监听消息搜索结果
+        socket.on('admin-search-results', (data) => {
+            const messagesContainer = document.getElementById('messagesContainer');
+            
+            if (data.messages.length === 0) {
+                messagesContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔍</div>
+                        <div>未找到匹配的消息</div>
+                    </div>`;
+                return;
+            }
+            
+            // 显示搜索结果
+            messagesContainer.innerHTML = data.messages.map(msg => {
+                let contentHtml = '';
+                if (msg.type === 'image') {
+                    contentHtml = `<img src="${msg.message}" alt="图片">`;
+                } else if (msg.type === 'audio') {
+                    contentHtml = `<audio controls><source src="${msg.message}" type="audio/webm">您的浏览器不支持音频播放</audio>`;
+                } else if (msg.type === 'video') {
+                    contentHtml = `<video controls width="100%" max-height="300px"><source src="${msg.message}" type="video/webm">您的浏览器不支持视频播放</video>`;
+                } else {
+                    // 高亮搜索结果
+                    let highlightedMessage = msg.message;
+                    const searchTerm = document.getElementById('messageSearch').value.trim();
+                    if (searchTerm) {
+                        const regex = new RegExp(`(${searchTerm})`, 'gi');
+                        highlightedMessage = msg.message.replace(regex, '<mark>$1</mark>');
+                    }
+                    contentHtml = highlightedMessage;
+                }
+
+                const statusText = msg.status === 'active' ? '正常' : '已撤回';
+                const statusClass = msg.status === 'active' ? 'active' : 'deleted';
+                const recallTime = msg.recallTime ? `<br><small>撤回时间: ${msg.recallTime}</small>` : '';
+
+                return `
+                    <div class="message-item ${msg.status}">
+                        <div class="message-header">
+                            <div>
+                                <span class="message-sender" style="color: ${msg.color}">${escapeHtml(msg.username)}</span>
+                                <span class="message-status ${statusClass}">${statusText}</span>
+                            </div>
+                            <span class="message-time">${msg.timestamp}${recallTime}</span>
+                        </div>
+                        <div class="message-content">${contentHtml}</div>
+                        ${msg.replyTo ? `<div class="reply-info" style="margin-top: 10px; padding: 10px; background: #f0f8ff; border-radius: 5px; font-size: 12px;">
+                            <strong>回复:</strong> ${escapeHtml(msg.replyTo.username)}: ${escapeHtml(msg.replyTo.message)}
+                        </div>` : ''}
+                    </div>
+                `;
+            }).join('');
+        });
+        
+        // 消息引用/回复功能
+        function replyToMessage(messageId, username, message) {
+            // 这里可以实现回复消息的功能
+            console.log('回复消息:', messageId, username, message);
+            // 实际应用中，这里可以打开回复模态框，填充回复内容
+        }
+        
+        function login() {
+            const password = adminPassword.value;
+            socket.emit('admin-login', password);
+        }
+
+        socket.on('admin-login-success', (success) => {
+            if (success) {
+                loginContainer.classList.add('hidden');
+                adminPanel.classList.add('active');
+                loadMessages();
+                loadRooms();
+                loadFiles();
+                // 主动请求最新的用户列表
+                socket.emit('admin-get-users');
+                
+                // 启动用户列表自动刷新定时器（每秒一次）
+                if (userRefreshInterval) {
+                    clearInterval(userRefreshInterval);
+                }
+                userRefreshInterval = setInterval(() => {
+                    socket.emit('admin-get-users');
+                }, 1000);
+            } else {
+                alert('密码错误！');
+                adminPassword.value = '';
+            }
+        })
+        // 修复登录按钮点击事件
+        document.addEventListener('DOMContentLoaded', function() {
+            // 初始化DOM元素引用
+            loginContainer = document.getElementById('loginContainer');
+            adminPanel = document.getElementById('adminPanel');
+            adminPassword = document.getElementById('adminPassword');
+            userList = document.getElementById('userList');
+            userCount = document.getElementById('userCount');
+            messageCount = document.getElementById('messageCount');
+            deletedMessageCount = document.getElementById('deletedMessageCount');
+            systemMessage = document.getElementById('systemMessage');
+            renameModal = document.getElementById('renameModal');
+            newUsername = document.getElementById('newUsername');
+            messagesContainer = document.getElementById('messagesContainer');
+            permissionsModal = document.getElementById('permissionsModal');
+            permissionsForm = document.getElementById('permissionsForm');
+            allowAudio = document.getElementById('allowAudio');
+            allowImage = document.getElementById('allowImage');
+            allowFile = document.getElementById('allowFile');
+            allowSendMessages = document.getElementById('allowSendMessages');
+            allowViewMessages = document.getElementById('allowViewMessages');
+            allowCall = document.getElementById('allowCall');
+            allowAIChat = document.getElementById('allowAIChat');
+            allowAddFriends = document.getElementById('allowAddFriends');
+            allowViewUsers = document.getElementById('allowViewUsers');
+            allowPrivateChat = document.getElementById('allowPrivateChat');
+            allowOpenFriendsPage = document.getElementById('allowOpenFriendsPage');
+            allowRecallMessage = document.getElementById('allowRecallMessage');
+            adminMessageModal = document.getElementById('adminMessageModal');
+            disguiseUsername = document.getElementById('disguiseUsername');
+            disguiseMessageType = document.getElementById('disguiseMessageType');
+            disguiseMessage = document.getElementById('disguiseMessage');
+            disguiseColor = document.getElementById('disguiseColor');
+            usersModal = document.getElementById('usersModal');
+            
+            // 确保登录容器可见，管理面板隐藏
+            if (loginContainer) {
+                loginContainer.classList.remove('hidden');
+                console.log('登录容器已设置为可见');
+            }
+            if (adminPanel) {
+                adminPanel.classList.remove('active');
+                console.log('管理面板已设置为隐藏');
+            }
+            if (adminPassword) {
+                adminPassword.focus();
+                console.log('管理员密码输入框已获得焦点');
+            }
+            
+            // 确保登录表单正确绑定
+            const loginForm = document.querySelector('.login-form form');
+            if (loginForm) {
+                loginForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    login();
+                });
+            }
+            
+            // 确保管理员密码输入框的回车键事件正确绑定
+            if (adminPassword) {
+                adminPassword.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        login();
+                    }
+                });
+            }
+            
+            // 确保newUsername输入框的回车键事件正确绑定
+            if (newUsername) {
+                newUsername.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        confirmRename();
+                    }
+                });
+            }
+            
+            // 确保systemMessage输入框的回车键事件正确绑定
+            if (systemMessage) {
+                systemMessage.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        sendSystemMessage();
+                    }
+                });
+            }
+            
+            // 直接绑定登录按钮的点击事件
+            const loginButton = document.querySelector('.login-form button[type="submit"]');
+            if (loginButton) {
+                loginButton.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    login();
+                });
+            }
+            
+            // 创建深色模式切换按钮
+            const darkModeToggle = document.createElement('button');
+            darkModeToggle.className = 'dark-mode-toggle';
+            darkModeToggle.innerHTML = '🌙';
+            darkModeToggle.title = '切换深色模式';
+            document.body.appendChild(darkModeToggle);
+            
+            // 检查本地存储中的深色模式设置
+            const isDarkMode = localStorage.getItem('darkMode') === 'true';
+            if (isDarkMode) {
+                document.body.classList.add('dark-mode');
+                darkModeToggle.innerHTML = '☀️';
+            }
+            
+            // 绑定深色模式切换事件
+            darkModeToggle.addEventListener('click', function() {
+                const isDarkMode = document.body.classList.toggle('dark-mode');
+                localStorage.setItem('darkMode', isDarkMode);
+                darkModeToggle.innerHTML = isDarkMode ? '☀️' : '🌙';
+            });
+        });
+        
+        // 用户设置管理相关函数
+        let selectedUserIdForSettings = null;
+        
+        function loadUsersForSettings() {
+            socket.emit('admin-get-users');
+        }
+        
+        // 监听用户列表更新
+        socket.on('user-joined', (data) => {
+            updateSettingsUsersList(data.users);
+        });
+        
+        function updateSettingsUsersList(users) {
+            const usersList = document.getElementById('settingsUsersList');
+            
+            if (users.length === 0) {
+                usersList.innerHTML = '<div class="empty-state"><div>暂无用户数据</div></div>';
+                return;
+            }
+            
+            usersList.innerHTML = users.map(user => `
+                    <div class="user-item" onclick="openUserSettingsForm('${user.socketId}', '${escapeHtml(user.username)}')">
+                        <div class="user-info">
+                            <div class="username">${escapeHtml(user.username)}</div>
+                            <div class="socket-id">${user.socketId}</div>
+                            <div class="room-name">房间: ${user.roomName || 'main'}</div>
+                        </div>
+                        <div class="user-actions">
+                            <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); openUserSettingsForm('${user.socketId}', '${escapeHtml(user.username)}')">设置</button>
+                            <button class="btn btn-sm btn-warning" onclick="event.stopPropagation(); openVibrateModal('${user.socketId}', '${escapeHtml(user.username)}')">震动</button>
+                        </div>
+                    </div>
+                `).join('');
+        }
+        
+        function openUserSettingsForm(socketId, username) {
+            selectedUserIdForSettings = socketId;
+            document.getElementById('selectedUsername').textContent = username;
+            
+            // 加载用户当前设置
+            socket.emit('admin-get-user-settings', socketId);
+            
+            document.getElementById('userSettingsForm').style.display = 'block';
+        }
+        
+        function closeUserSettingsForm() {
+            document.getElementById('userSettingsForm').style.display = 'none';
+            selectedUserIdForSettings = null;
+        }
+        
+        function saveUserSettings() {
+            if (!selectedUserIdForSettings) return;
+            
+            const lockUserSettings = document.getElementById('lockUserSettings').checked;
+            const customLockMessage = document.getElementById('customLockMessage').value.trim() || '设置已被管理员锁定';
+            
+            // 获取用户具体设置值
+            const userSettings = {
+                targetLanguage: document.getElementById('userTargetLanguage').value,
+                autoTranslate: document.getElementById('userAutoTranslate').checked,
+                soundNotification: document.getElementById('userSoundNotification').checked,
+                mentionNotification: document.getElementById('userMentionNotification').checked,
+                developerMode: document.getElementById('userDeveloperMode').checked,
+                mirrorVideo: document.getElementById('userMirrorVideo').checked,
+                remoteMirrorVideo: document.getElementById('userRemoteMirrorVideo').checked,
+                autoAdjustVolume: document.getElementById('userAutoAdjustVolume').checked,
+                enableSubtitles: document.getElementById('userEnableSubtitles').checked,
+                speakingThreshold: parseInt(document.getElementById('userSpeakingThreshold').value),
+                volumeReduction: parseInt(document.getElementById('userVolumeReduction').value),
+                subtitlesFontSize: parseInt(document.getElementById('userSubtitlesFontSize').value),
+                enableAIChat: document.getElementById('userEnableAIChat').checked,
+                aiModel: document.getElementById('userAiModel').value
+            };
+            
+            socket.emit('admin-set-user-settings', {
+                socketId: selectedUserIdForSettings,
+                settings: {
+                    locked: lockUserSettings,
+                    lockMessage: customLockMessage
+                },
+                userSettings: userSettings
+            });
+            
+            closeUserSettingsForm();
+        }
+        
+        // 震动强度滑块事件监听
+        document.addEventListener('DOMContentLoaded', function() {
+            const vibrateIntensity = document.getElementById('vibrateIntensity');
+            const vibrateIntensityValue = document.getElementById('vibrateIntensityValue');
+            
+            if (vibrateIntensity && vibrateIntensityValue) {
+                vibrateIntensity.addEventListener('input', function() {
+                    vibrateIntensityValue.textContent = this.value;
+                });
+            }
+        });
+        
+        // 监听用户设置响应
+        socket.on('admin-user-settings', (data) => {
+            document.getElementById('lockUserSettings').checked = data.settings.locked || false;
+            document.getElementById('customLockMessage').value = data.settings.lockMessage || '设置已被管理员锁定';
+            
+            // 设置用户具体设置值
+            document.getElementById('userTargetLanguage').value = data.userSettings?.targetLanguage || 'zh';
+            document.getElementById('userAutoTranslate').checked = data.userSettings?.autoTranslate || false;
+            document.getElementById('userSoundNotification').checked = data.userSettings?.soundNotification !== false;
+            document.getElementById('userMentionNotification').checked = data.userSettings?.mentionNotification !== false;
+            document.getElementById('userDeveloperMode').checked = data.userSettings?.developerMode || false;
+            document.getElementById('userMirrorVideo').checked = data.userSettings?.mirrorVideo !== false;
+            document.getElementById('userRemoteMirrorVideo').checked = data.userSettings?.remoteMirrorVideo || false;
+            document.getElementById('userAutoAdjustVolume').checked = data.userSettings?.autoAdjustVolume !== false;
+            document.getElementById('userEnableSubtitles').checked = data.userSettings?.enableSubtitles || false;
+            document.getElementById('userSpeakingThreshold').value = data.userSettings?.speakingThreshold || 40;
+            document.getElementById('userSpeakingThresholdValue').textContent = data.userSettings?.speakingThreshold || 40;
+            document.getElementById('userVolumeReduction').value = data.userSettings?.volumeReduction || 30;
+            document.getElementById('userVolumeReductionValue').textContent = (data.userSettings?.volumeReduction || 30) + '%';
+            document.getElementById('userSubtitlesFontSize').value = data.userSettings?.subtitlesFontSize || 16;
+            document.getElementById('userSubtitlesFontSizeValue').textContent = (data.userSettings?.subtitlesFontSize || 16) + 'px';
+            document.getElementById('userEnableAIChat').checked = data.userSettings?.enableAIChat || false;
+            document.getElementById('userAiModel').value = data.userSettings?.aiModel || 'glm4';
+        });
+        
+        // 用户设置管理相关函数 - 扩展获取用户设置，包含具体设置值
+        function openUserSettingsForm(socketId, username) {
+            selectedUserIdForSettings = socketId;
+            document.getElementById('selectedUsername').textContent = username;
+            
+            // 加载用户当前设置，包含具体设置值
+            socket.emit('admin-get-user-settings', socketId);
+            
+            document.getElementById('userSettingsForm').style.display = 'block';
+        }
+        
+        // 震动控制功能
+        let selectedUserIdForVibrate = null;
+        let selectedUserNameForVibrate = '';
+        
+        function openVibrateModal(socketId, username) {
+            selectedUserIdForVibrate = socketId;
+            selectedUserNameForVibrate = username;
+            document.getElementById('vibrateUserName').textContent = username;
+            document.getElementById('vibrateModal').style.display = 'block';
+        }
+        
+        function closeVibrateModal() {
+            document.getElementById('vibrateModal').style.display = 'none';
+            selectedUserIdForVibrate = null;
+            selectedUserNameForVibrate = '';
+        }
+        
+        function sendVibrateCommand() {
+            if (!selectedUserIdForVibrate) return;
+            
+            const duration = parseInt(document.getElementById('vibrateDuration').value) || 500;
+            const intensity = parseInt(document.getElementById('vibrateIntensity').value) || 1;
+            
+            socket.emit('admin-vibrate-user', {
+                socketId: selectedUserIdForVibrate,
+                duration: duration,
+                intensity: intensity
+            });
+            
+            // 显示成功提示
+            document.getElementById('vibrateSuccess').style.display = 'block';
             setTimeout(() => {
-                process.exit(0);
+                document.getElementById('vibrateSuccess').style.display = 'none';
+                closeVibrateModal();
             }, 2000);
         }
-    });
-    
-    // 系统管理 - 执行命令
-    socket.on('admin-exec-command', (data) => {
-        if (socket.id === adminSocketId) {
-            const { command } = data;
-
-            const { spawn } = require('child_process');
+        
+        // 通话管理功能
+        let currentCallId = null;
+        
+        // 加载正在进行的通话列表
+        async function loadOngoingCalls() {
+            try {
+                const response = await fetch('/api/admin/calls');
+                const data = await response.json();
+                
+                const callsList = document.getElementById('ongoingCallsList');
+                
+                if (data.calls.length === 0) {
+                    callsList.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📞</div>
+                            <div>暂无正在进行的通话</div>
+                        </div>`;
+                    return;
+                }
+                
+                callsList.innerHTML = data.calls.map(call => {
+                    const startTime = new Date(call.startTime).toLocaleString('zh-CN');
+                    return `
+                        <div class="user-item">
+                            <div class="user-info">
+                                <div class="user-name">${escapeHtml(call.initiatorUsername)} → ${escapeHtml(call.recipientUsername)}</div>
+                                <small style="color: #666;">${call.callType}通话 | 开始于: ${startTime} | 通话ID: ${call.callId}</small>
+                            </div>
+                            <div class="user-actions">
+                                <button class="btn btn-info" onclick="viewCallDetails('${call.callId}')">查看详情</button>
+                                <button class="btn btn-danger" onclick="endCall('${call.callId}')">结束通话</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } catch (error) {
+                console.error('加载通话列表失败:', error);
+                alert('加载通话列表失败');
+            }
+        }
+        
+        // 查看通话详情
+        async function viewCallDetails(callId) {
+            try {
+                const response = await fetch(`/api/admin/calls/${callId}`);
+                const data = await response.json();
+                
+                currentCallId = callId;
+                const call = data.call;
+                const startTime = new Date(call.startTime).toLocaleString('zh-CN');
+                
+                // 更新通话监控信息
+                updateCallMonitoring(callId, call);
+                
+                // 显示通话方式
+                const callMethodDisplay = document.getElementById('callMethodDisplay');
+                const videoModeNote = document.getElementById('videoModeNote');
+                if (call.callMethod === 'socket.io') {
+                    callMethodDisplay.innerHTML = `【Socket.io模式 - 支持管理员监控】`;
+                    videoModeNote.innerHTML = 'Socket.io模式：数据经过服务器转发，管理员可以实时监控通话画面。';
+                    videoModeNote.style.color = '#28a745';
+                } else {
+                    callMethodDisplay.innerHTML = `【WebRTC模式 - 点对点通信】`;
+                    videoModeNote.innerHTML = 'WebRTC为点对点通话，数据不经过服务器，管理员无法查看画面。请使用Socket.io模式进行可监控的通话。';
+                    videoModeNote.style.color = '#dc3545';
+                }
+                
+                const callDetailsInfo = document.getElementById('callDetailsInfo');
+                callDetailsInfo.innerHTML = `
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div>
+                            <strong>通话ID:</strong> ${call.callId}
+                        </div>
+                        <div>
+                            <strong>通话类型:</strong> ${call.callType}
+                        </div>
+                        <div>
+                            <strong>通话方式:</strong> ${call.callMethod === 'socket.io' ? 'Socket.io' : 'WebRTC'}
+                        </div>
+                        <div>
+                            <strong>发起方:</strong> ${escapeHtml(call.initiatorUsername)}
+                        </div>
+                        <div>
+                            <strong>接收方:</strong> ${escapeHtml(call.recipientUsername)}
+                        </div>
+                        <div>
+                            <strong>开始时间:</strong> ${startTime}
+                        </div>
+                        <div>
+                            <strong>状态:</strong> ${call.status}
+                        </div>
+                        <div>
+                            <strong>视频控制:</strong> ${call.controls.videoEnabled ? '启用' : '禁用'}
+                        </div>
+                        <div>
+                            <strong>音频控制:</strong> ${call.controls.audioEnabled ? '启用' : '禁用'}
+                        </div>
+                    </div>
+                    <div style="margin-top: 20px;">
+                        <h4>通话双方</h4>
+                        <div style="display: flex; gap: 20px;">
+                            <div style="flex: 1; background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                                <strong>发起方:</strong> ${escapeHtml(call.initiatorUsername)}
+                                <br>
+                                <small>Socket ID: ${call.initiator}</small>
+                            </div>
+                            <div style="flex: 1; background: #f8f9fa; padding: 15px; border-radius: 10px;">
+                                <strong>接收方:</strong> ${escapeHtml(call.recipientUsername)}
+                                <br>
+                                <small>Socket ID: ${call.recipient}</small>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // 重置视频元素和状态
+                resetVideoDisplay('initiator');
+                resetVideoDisplay('recipient');
+                
+                document.getElementById('callDetailsModal').classList.add('active');
+            } catch (error) {
+                console.error('获取通话详情失败:', error);
+                alert('获取通话详情失败');
+            }
+        }
+        
+        // 重置视频显示
+        function resetVideoDisplay(side) {
+            const video = document.getElementById(`${side}Video`);
+            const container = document.getElementById(`${side}VideoContainer`);
+            const status = document.getElementById(`${side}VideoStatus`);
             
-            // 获取当前操作系统类型
-            const platform = process.platform;
-
-            
-            let cmd, args, options;
-            
-            // 根据不同的操作系统使用不同的命令执行方式
-            if (platform === 'win32') {
-                // Windows系统
-                cmd = 'cmd.exe';
-                args = ['/c', command];
-                options = {
-                    timeout: 10000,
-                    encoding: 'buffer' // 先以buffer形式获取，再转码
-                };
-            } else if (platform === 'linux' || platform === 'darwin') {
-                // Linux或Mac系统
-                cmd = '/bin/sh';
-                args = ['-c', command];
-                options = {
-                    timeout: 10000,
-                    encoding: 'utf8' // Linux/Mac默认使用UTF-8编码
-                };
-            } else {
-                // 其他系统，默认使用UTF-8
-                cmd = '/bin/sh';
-                args = ['-c', command];
-                options = {
-                    timeout: 10000,
-                    encoding: 'utf8'
-                };
+            if (video) {
+                video.style.display = 'none';
+                video.src = '';
+            }
+            if (container) {
+                container.style.display = 'flex';
+            }
+            if (status) {
+                status.textContent = '等待通话数据...';
             }
             
-
-
-            
-            // 使用spawn方法执行命令
-            const child = spawn(cmd, args, options);
-            
-            let stdout = [];
-            let stderr = [];
-            
-            // 收集stdout
-            child.stdout.on('data', (data) => {
-
-                if (Buffer.isBuffer(data)) {
-                    stdout.push(data);
-                } else {
-                    stdout.push(Buffer.from(data, 'utf8'));
-                }
-            });
-            
-            // 收集stderr
-            child.stderr.on('data', (data) => {
-
-                if (Buffer.isBuffer(data)) {
-                    stderr.push(data);
-                } else {
-                    stderr.push(Buffer.from(data, 'utf8'));
-                }
-            });
-            
-            // 命令执行完成
-            child.on('close', (code) => {
-
-                
-                let stdoutStr, stderrStr;
-                
-                // 合并Buffer
-                const stdoutBuffer = Buffer.concat(stdout);
-                const stderrBuffer = Buffer.concat(stderr);
-                
-                // 根据操作系统选择正确的编码解码
-                if (platform === 'win32') {
-                    // Windows系统：尝试使用GBK解码，失败则使用UTF-8
-                    try {
-                        stdoutStr = stdoutBuffer.toString('gbk');
-                        stderrStr = stderrBuffer.toString('gbk');
-
-                    } catch (e) {
-
-                        stdoutStr = stdoutBuffer.toString('utf8');
-                        stderrStr = stderrBuffer.toString('utf8');
+            // 清理MediaSource
+            const socketId = side === 'initiator' ? monitoredCalls.get(currentCallId)?.initiator : monitoredCalls.get(currentCallId)?.recipient;
+            if (socketId && mediaSourceMap.has(socketId)) {
+                try {
+                    const msData = mediaSourceMap.get(socketId);
+                    if (msData && msData.mediaSource.readyState === 'open') {
+                        msData.sourceBuffer.remove(0, Infinity);
                     }
-                } else {
-                    // Linux/Mac系统：直接使用UTF-8解码
-                    stdoutStr = stdoutBuffer.toString('utf8');
-                    stderrStr = stderrBuffer.toString('utf8');
+                    mediaSourceMap.delete(socketId);
+                } catch (e) {
+                    console.error('清理MediaSource失败:', e);
                 }
-                
-
-
-                
-                if (code !== 0) {
-                    // 处理执行错误
-                    const errorMessage = stderrStr || `命令执行失败，退出码: ${code}`;
-
-                    socket.emit('admin-command-result', { success: false, error: errorMessage });
-                } else {
-
-                    socket.emit('admin-command-result', { success: true, output: stdoutStr });
-                }
-            });
+            }
+        }
+        
+        // 关闭通话详情模态框
+        function closeCallDetailsModal() {
+            document.getElementById('callDetailsModal').classList.remove('active');
             
-            // 处理超时
-            child.on('timeout', () => {
-
-                child.kill();
-                socket.emit('admin-command-result', { success: false, error: '命令执行超时' });
-            });
-            
-            // 处理错误
-            child.on('error', (error) => {
-
-                socket.emit('admin-command-result', { success: false, error: error.message });
-            });
-        }
-    });
-    
-    // 获取房间列表
-    socket.on('admin-get-rooms', () => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            socket.emit('admin-rooms', Array.from(rooms.values()));
-        }
-    });
-    
-    // 获取房间内用户列表
-    socket.on('admin-get-room-users', (roomName) => {
-        if (socket.id === adminSocketId) {
-            const room = rooms.get(roomName);
-            if (room) {
-                const roomUsers = room.users.map(userId => users.get(userId)).filter(user => user);
-                socket.emit('admin-room-users', {
-                    roomName: roomName,
-                    users: roomUsers
-                });
-            }
-        }
-    });
-    
-    // 在房间内踢人
-    socket.on('admin-room-kick-user', (data) => {
-        if (socket.id === adminSocketId) {
-            const { roomName, socketId } = data;
-            const room = rooms.get(roomName);
-            if (room) {
-                // 从房间用户列表中移除
-                room.users = room.users.filter(userId => userId !== socketId);
-                
-                // 获取用户信息
-                const user = users.get(socketId);
-                if (user) {
-                    // 发送踢人通知
-                    io.to(socketId).emit('kicked', '你已被管理员踢出房间');
-                    
-                    // 断开用户连接
-                    io.sockets.sockets.get(socketId)?.disconnect();
-                    
-                    // 删除用户信息
-                    users.delete(socketId);
-                    
-                    console.log(`[房间 ${roomName}] 管理员踢出了用户: ${user.username}`);
-                }
-            }
-        }
-    });
-    
-    // 在房间内修改用户权限
-    socket.on('admin-room-set-permissions', (data) => {
-        if (socket.id === adminSocketId) {
-            const { roomName, socketId, permissions } = data;
-            const room = rooms.get(roomName);
-            if (room) {
-                // 检查用户是否在该房间内
-                if (room.users.includes(socketId)) {
-                    const user = users.get(socketId);
-                    if (user) {
-                        user.permissions = {
-                            ...user.permissions,
-                            ...permissions
-                        };
-                        
-                        // 发送权限更新通知
-                        socket.emit('user-permissions-changed', {
-                            socketId: socketId,
-                            permissions: user.permissions,
-                            users: room.users.map(userId => users.get(userId)).filter(user => user)
-                        });
-                        
-                        console.log(`[房间 ${roomName}] 管理员更新了用户 ${user.username} 的权限: ${JSON.stringify(user.permissions)}`);
-                    }
-                }
-            }
-        }
-    });
-    
-    // 在房间内重命名用户
-    socket.on('admin-room-rename-user', (data) => {
-        if (socket.id === adminSocketId) {
-            const { roomName, socketId, newName } = data;
-            const room = rooms.get(roomName);
-            if (room) {
-                // 检查用户是否在该房间内
-                if (room.users.includes(socketId)) {
-                    const user = users.get(socketId);
-                    if (user) {
-                        const oldName = user.username;
-                        user.username = newName;
-                        
-                        // 发送重命名通知给房间内所有用户
-                        room.users.forEach(userId => {
-                            io.to(userId).emit('user-renamed', {
-                                oldName: oldName,
-                                newName: newName,
-                                users: room.users.map(userId => users.get(userId)).filter(user => user)
-                            });
-                        });
-                        
-                        console.log(`[房间 ${roomName}] 管理员将 ${oldName} 重命名为 ${newName}`);
-                    }
-                }
-            }
-        }
-    });
-
-    socket.on('message-recall', (messageId) => {
-        const user = users.get(socket.id);
-        if (user) {
-            // 检查撤回消息权限
-            if (!user.permissions.allowRecallMessage) {
-                socket.emit('permission-denied', { message: '您没有撤回消息的权限' });
-                return;
-            }
-            
-            const room = rooms.get(user.roomName);
-            if (room) {
-                // 查找要撤回的消息
-                const messageIndex = room.messages.findIndex(msg => msg.id === messageId);
-                if (messageIndex !== -1) {
-                    const message = room.messages[messageIndex];
-                    if (message.senderSocketId === socket.id) {
-                        // 从房间消息数组中完全删除消息
-                        room.messages.splice(messageIndex, 1);
-                        
-                        // 从全局消息Map中删除消息
-                        messages.delete(messageId);
-                        
-                        // 发送撤回通知给房间内所有用户
-                        room.users.forEach(userId => {
-                            io.to(userId).emit('message-recalled', messageId);
-                        });
-                        
-                        // 发送给管理员
-                        if (adminSocketId) {
-                            io.to(adminSocketId).emit('message-recalled', messageId);
+            // 清理通话监控资源
+            if (currentCallId) {
+                // 清理MediaSource资源
+                const callInfo = monitoredCalls.get(currentCallId);
+                if (callInfo) {
+                    [callInfo.initiator, callInfo.recipient].forEach(socketId => {
+                        if (mediaSourceMap.has(socketId)) {
+                            try {
+                                const msData = mediaSourceMap.get(socketId);
+                                if (msData) {
+                                    const { mediaSource, sourceBuffer } = msData;
+                                    if (mediaSource.readyState === 'open') {
+                                        try {
+                                            sourceBuffer.remove(0, Infinity);
+                                        } catch (e) {}
+                                    }
+                                    mediaSource.removeEventListener('sourceopen', null);
+                                }
+                            } catch (e) {
+                                console.error('清理MediaSource失败:', e);
+                            }
+                            mediaSourceMap.delete(socketId);
                         }
-                        
-                        console.log(`[房间 ${user.roomName}] ${message.username} 撤回了一条消息（已从历史中删除）`);
-                    }
-                }
-            }
-        }
-    });
-
-    // 通话功能事件处理
-    socket.on('call-request', (data) => {
-        const user = users.get(socket.id);
-        if (user && user.permissions.allowCall) {
-            const targetUser = users.get(data.targetSocketId);
-            if (targetUser) {
-                // 实现通话权限传递：如果发起方有通话权限，而接收方没有，自动为接收方启用通话权限
-                if (!targetUser.permissions.allowCall) {
-                    console.log(`${targetUser.username} 没有通话权限，自动获得通话权限`);
-                    targetUser.permissions.allowCall = true;
+                    });
                 }
                 
-                // 确定通话类型，支持两种字段名
-                const callType = data.callType || data.type;
-                io.to(data.targetSocketId).emit('call-request', {
-                    from: socket.id,
-                    fromUsername: user.username,
-                    fromColor: user.color,
-                    callId: data.callId,
-                    type: callType,
-                    callMethod: data.callMethod // 传递通话方式
-                });
-                console.log(`${user.username} 请求与 ${targetUser.username} ${callType === 'video' ? '视频' : '语音'}通话，使用${data.callMethod === 'webrtc' ? 'WebRTC' : 'Socket.io'}方式`);
-            } else {
-                socket.emit('permission-denied', { message: '目标用户不存在' });
-            }
-        } else {
-            socket.emit('permission-denied', { message: '您没有通话权限' });
-        }
-    });
-
-    socket.on('call-accept', (data) => {
-        const user = users.get(socket.id);
-        if (user && user.permissions.allowCall) {
-            // 添加到正在进行的通话列表
-            const targetUser = users.get(data.targetSocketId);
-            if (targetUser) {
-                ongoingCalls.set(data.callId, {
-                    callId: data.callId,
-                    initiator: data.targetSocketId,
-                    initiatorUsername: targetUser.username,
-                    recipient: socket.id,
-                    recipientUsername: user.username,
-                    callType: 'video', // 暂时默认为video，后续可以从数据中获取
-                    startTime: Date.now(),
-                    status: 'active',
-                    controls: {
-                        videoEnabled: true,
-                        audioEnabled: true
+                monitoredCalls.delete(currentCallId);
+                
+                // 停止并清理媒体流
+                ['initiator', 'recipient'].forEach(side => {
+                    const video = document.getElementById(`${side}Video`);
+                    const container = document.getElementById(`${side}VideoContainer`);
+                    
+                    if (video) {
+                        video.pause();
+                        video.src = '';
+                        video.load();
+                    }
+                    if (container) {
+                        container.style.display = 'flex';
                     }
                 });
-                console.log(`通话已开始，ID: ${data.callId}, 双方: ${targetUser.username} 和 ${user.username}`);
             }
             
-            io.to(data.targetSocketId).emit('call-accepted', {
-                from: socket.id,
-                fromUsername: user.username,
-                callId: data.callId
-            });
-            console.log(`${user.username} 接受了通话请求`);
-        } else {
-            socket.emit('permission-denied', { message: '您没有通话权限' });
+            currentCallId = null;
         }
-    });
-
-    socket.on('call-reject', (data) => {
-        const user = users.get(socket.id);
-        if (user && user.permissions.allowCall) {
-            io.to(data.targetSocketId).emit('call-rejected', {
-                from: socket.id,
-                fromUsername: user.username,
-                callId: data.callId
-            });
-            console.log(`${user.username} 拒绝了通话请求`);
-        }
-    });
-
-    socket.on('call-end', (data) => {
-        const user = users.get(socket.id);
-        if (user && user.permissions.allowCall) {
-            // 从正在进行的通话列表中移除
-            ongoingCalls.delete(data.callId);
-            console.log(`通话已结束，ID: ${data.callId}`);
+        
+        // 处理通话媒体流
+        function handleCallMedia(data) {
+            const callId = data.callId;
+            const fromSocketId = data.from;
             
-            io.to(data.targetSocketId).emit('call-ended', {
-                from: socket.id,
-                callId: data.callId
-            });
-            console.log(`${user.username} 结束了通话`);
-        }
-    });
-    
-    // 监听通话状态更新事件
-    socket.on('call-status', (data) => {
-        const user = users.get(socket.id);
-        if (user && user.permissions.allowCall) {
-            // 广播通话状态更新给所有用户
-            socket.broadcast.emit('call-status', data);
-            console.log(`${user.username} 更新通话状态: ${data.inCall ? '正在通话' : '空闲'}`);
-        }
-    });
-
-    // WebRTC信令转发
-    socket.on('webrtc-signal', (data) => {
-        const user = users.get(socket.id);
-        if (user && user.permissions.allowCall) {
-            io.to(data.targetSocketId).emit('webrtc-signal', {
-                from: socket.id,
-                type: data.type,
-                callId: data.callId,
-                offer: data.offer,
-                answer: data.answer,
-                candidate: data.candidate
-            });
-        }
-    });
-
-    // 通过Socket.io转发音视频数据
-    socket.on('call-media', (data) => {
-        const user = users.get(socket.id);
-        if (user && user.permissions.allowCall) {
-            // 检查目标用户是否在线，只向在线用户发送媒体流
-            if (io.sockets.sockets.has(data.targetSocketId)) {
-                io.to(data.targetSocketId).emit('call-media', {
-                    from: socket.id,
-                    callId: data.callId,
-                    type: data.type,
-                    data: data.data
-                });
-            }
+            // 检查是否正在监控该通话
+            const callInfo = monitoredCalls.get(callId);
+            if (!callInfo) return;
             
-            // 将媒体流同时发送给管理员，用于管理员监控通话画面
-            if (adminSocketId && socket.id !== adminSocketId) {
-                io.to(adminSocketId).emit('call-media', {
-                    from: socket.id,
-                    callId: data.callId,
-                    type: data.type,
-                    data: data.data,
-                    isAdmin: true // 标记为管理员查看的媒体流
-                });
-            }
-        }
-    });
-    
-    // 管理员获取指定房间的消息
-    socket.on('admin-get-room-messages', (roomName) => {
-        if (socket.id === adminSocketId) {
-            const room = rooms.get(roomName);
-            if (room) {
-                socket.emit('admin-room-messages', {
-                    roomName: roomName,
-                    messages: room.messages
-                });
+            // 根据发送者确定显示位置
+            let side = null;
+            if (fromSocketId === callInfo.initiator) {
+                side = 'initiator';
+            } else if (fromSocketId === callInfo.recipient) {
+                side = 'recipient';
             } else {
-                socket.emit('admin-room-error', { message: '房间不存在' });
-            }
-        }
-    });
-
-    socket.on('admin-get-messages', () => {
-        if (socket.id === adminSocketId) {
-            const allMessages = {
-                active: Array.from(messages.values()),
-                deleted: Array.from(deletedMessages.values())
-            };
-            socket.emit('admin-messages', allMessages);
-        }
-    });
-
-    // 好友系统功能
-    
-    // 添加好友
-    socket.on('friend-limit-request', (reason) => {
-        const user = users.get(socket.id);
-        if (!user) return;
-        
-        // 创建申请
-        const request = {
-            id: requestIdCounter++,
-            userId: socket.id,
-            username: user.username,
-            reason: reason,
-            status: 'pending',
-            createdAt: new Date(),
-            updatedAt: new Date()
-        };
-        
-        // 存储申请
-        friendLimitRequests.set(request.id, request);
-        
-        // 通知管理员
-        if (adminSocketId) {
-            io.to(adminSocketId).emit('new-friend-limit-request', request);
-        }
-        
-        // 通知用户申请已提交
-        socket.emit('friend-limit-request-submitted', { message: '好友扩容申请已提交，请等待管理员批准' });
-    });
-
-    socket.on('add-friend', (targetSocketId) => {
-        const user = users.get(socket.id);
-        const targetUser = users.get(targetSocketId);
-        
-        // 不允许添加自己为好友
-        if (socket.id === targetSocketId) {
-            socket.emit('friend-error', { message: '不能添加自己为好友' });
-            return;
-        }
-        
-        if (!user || !targetUser) {
-            socket.emit('friend-error', { message: '用户不存在' });
-            return;
-        }
-        
-        // 检查添加好友权限
-        if (!user.permissions.allowAddFriends) {
-            socket.emit('friend-error', { message: '您没有添加好友的权限' });
-            return;
-        }
-        
-        // 检查是否已经是好友
-        if (!friendships.has(socket.id)) {
-            friendships.set(socket.id, new Set());
-        }
-        if (friendships.get(socket.id).has(targetSocketId)) {
-            socket.emit('friend-error', { message: '已经是好友了' });
-            return;
-        }
-        
-        // 检查好友数量限制
-        // 计算已确认的双向好友数量
-        let confirmedFriends = 0;
-        if (friendships.has(socket.id)) {
-            friendships.get(socket.id).forEach(friendSocketId => {
-                // 检查对方是否也将当前用户添加为好友（双向关系）
-                if (friendships.has(friendSocketId) && friendships.get(friendSocketId).has(socket.id)) {
-                    confirmedFriends++;
-                }
-            });
-        }
-        
-        // 获取用户的好友数量上限
-        const maxFriends = userMaxFriends.get(socket.id) || DEFAULT_MAX_FRIENDS;
-        if (maxFriends !== INFINITE_FRIENDS && confirmedFriends >= maxFriends) {
-            socket.emit('friend-error', { message: `好友数量已达上限（${maxFriends}个），需要管理员同意才能添加更多好友` });
-            return;
-        }
-        
-        // 添加好友关系
-        friendships.get(socket.id).add(targetSocketId);
-        
-        // 通知目标用户
-        io.to(targetSocketId).emit('friend-request', {
-            fromSocketId: socket.id,
-            fromUsername: user.username,
-            fromColor: user.color
-        });
-        
-        console.log(`${user.username} 请求添加 ${targetUser.username} 为好友`);
-    });
-
-    // 快速添加好友（直接成为好友，跳过请求）
-    socket.on('quick-add-friend', (targetSocketId) => {
-        const user = users.get(socket.id);
-        const targetUser = users.get(targetSocketId);
-        
-        // 不允许添加自己为好友
-        if (socket.id === targetSocketId) {
-            socket.emit('friend-error', { message: '不能添加自己为好友' });
-            return;
-        }
-        
-        if (!user || !targetUser) {
-            socket.emit('friend-error', { message: '用户不存在' });
-            return;
-        }
-        
-        // 检查添加好友权限
-        if (!user.permissions.allowAddFriends) {
-            socket.emit('friend-error', { message: '您没有添加好友的权限' });
-            return;
-        }
-        
-        // 检查是否已经是好友
-        if (!friendships.has(socket.id)) {
-            friendships.set(socket.id, new Set());
-        }
-        if (!friendships.has(targetSocketId)) {
-            friendships.set(targetSocketId, new Set());
-        }
-        
-        if (friendships.get(socket.id).has(targetSocketId)) {
-            socket.emit('friend-error', { message: '已经是好友了' });
-            return;
-        }
-        
-        // 检查当前用户的好友数量限制
-        let userConfirmedFriends = 0;
-        friendships.get(socket.id).forEach(friendSocketId => {
-            if (friendships.has(friendSocketId) && friendships.get(friendSocketId).has(socket.id)) {
-                userConfirmedFriends++;
-            }
-        });
-        
-        // 获取用户的好友数量上限
-        const userMaxFriendsValue = userMaxFriends.get(socket.id) || DEFAULT_MAX_FRIENDS;
-        if (userMaxFriendsValue !== INFINITE_FRIENDS && userConfirmedFriends >= userMaxFriendsValue) {
-            socket.emit('friend-error', { message: `好友数量已达上限（${userMaxFriendsValue}个），需要管理员同意才能添加更多好友` });
-            return;
-        }
-        
-        // 检查目标用户的好友数量限制
-        let targetConfirmedFriends = 0;
-        friendships.get(targetSocketId).forEach(friendSocketId => {
-            if (friendships.has(friendSocketId) && friendships.get(friendSocketId).has(targetSocketId)) {
-                targetConfirmedFriends++;
-            }
-        });
-        
-        // 获取目标用户的好友数量上限
-        const targetMaxFriendsValue = userMaxFriends.get(targetSocketId) || DEFAULT_MAX_FRIENDS;
-        if (targetMaxFriendsValue !== INFINITE_FRIENDS && targetConfirmedFriends >= targetMaxFriendsValue) {
-            socket.emit('friend-error', { message: `对方好友数量已达上限（${targetMaxFriendsValue}个）` });
-            return;
-        }
-        
-        // 直接添加双向好友关系
-        friendships.get(socket.id).add(targetSocketId);
-        friendships.get(targetSocketId).add(socket.id);
-        
-        // 通知双方
-        io.to(socket.id).emit('friend-accepted', {
-            friendSocketId: targetSocketId,
-            friendUsername: targetUser.username,
-            friendColor: targetUser.color
-        });
-        
-        io.to(targetSocketId).emit('friend-accepted', {
-            friendSocketId: socket.id,
-            friendUsername: user.username,
-            friendColor: user.color
-        });
-        
-        console.log(`${user.username} 和 ${targetUser.username} 直接成为好友`);
-    });
-    
-    // 接受好友请求
-    socket.on('accept-friend', (fromSocketId) => {
-        const user = users.get(socket.id);
-        const fromUser = users.get(fromSocketId);
-        
-        if (!user || !fromUser) {
-            socket.emit('friend-error', { message: '用户不存在' });
-            return;
-        }
-        
-        // 确保对方已经发送了好友请求
-        if (!friendships.has(fromSocketId) || !friendships.get(fromSocketId).has(socket.id)) {
-            socket.emit('friend-error', { message: '没有收到该用户的好友请求' });
-            return;
-        }
-        
-        // 为当前用户添加好友关系
-        if (!friendships.has(socket.id)) {
-            friendships.set(socket.id, new Set());
-        }
-        friendships.get(socket.id).add(fromSocketId);
-        
-        // 通知双方
-        io.to(socket.id).emit('friend-accepted', {
-            friendSocketId: fromSocketId,
-            friendUsername: fromUser.username,
-            friendColor: fromUser.color
-        });
-        
-        io.to(fromSocketId).emit('friend-accepted', {
-            friendSocketId: socket.id,
-            friendUsername: user.username,
-            friendColor: user.color
-        });
-        
-        console.log(`${user.username} 接受了 ${fromUser.username} 的好友请求`);
-    });
-    
-    // 拒绝好友请求
-    socket.on('reject-friend', (fromSocketId) => {
-        const user = users.get(socket.id);
-        const fromUser = users.get(fromSocketId);
-        
-        if (!user || !fromUser) {
-            socket.emit('friend-error', { message: '用户不存在' });
-            return;
-        }
-        
-        // 移除对方的好友请求
-        if (friendships.has(fromSocketId)) {
-            friendships.get(fromSocketId).delete(socket.id);
-        }
-        
-        // 通知对方
-        io.to(fromSocketId).emit('friend-rejected', {
-            friendSocketId: socket.id,
-            friendUsername: user.username
-        });
-        
-        console.log(`${user.username} 拒绝了 ${fromUser.username} 的好友请求`);
-    });
-    
-    // 删除好友
-    socket.on('remove-friend', (friendSocketId) => {
-        const user = users.get(socket.id);
-        const friendUser = users.get(friendSocketId);
-        
-        if (!user || !friendUser) {
-            socket.emit('friend-error', { message: '用户不存在' });
-            return;
-        }
-        
-        // 移除好友关系
-        if (friendships.has(socket.id)) {
-            friendships.get(socket.id).delete(friendSocketId);
-        }
-        if (friendships.has(friendSocketId)) {
-            friendships.get(friendSocketId).delete(socket.id);
-        }
-        
-        // 通知双方
-        io.to(socket.id).emit('friend-removed', {
-            friendSocketId: friendSocketId,
-            friendUsername: friendUser.username
-        });
-        
-        io.to(friendSocketId).emit('friend-removed', {
-            friendSocketId: socket.id,
-            friendUsername: user.username
-        });
-        
-        console.log(`${user.username} 删除了好友 ${friendUser.username}`);
-    });
-    
-    // JavaScript控制台相关事件处理
-    
-    // 加载用户控制台
-    socket.on('admin-load-user-console', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { socketId } = data;
-            const targetUser = users.get(socketId);
-            
-            if (targetUser) {
-                // 获取用户控制台日志
-                const logs = userConsoleLogs.get(socketId) || [];
-                
-                // 发送日志给管理员
-                socket.emit('admin-console-logs', {
-                    socketId: socketId,
-                    username: targetUser.username,
-                    logs: logs
-                });
-                
-                console.log(`管理员加载了用户 ${targetUser.username} 的控制台`);
-            }
-        }
-    });
-    
-    // 执行控制台代码
-    socket.on('admin-execute-console-code', (data) => {
-        // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const { socketId, code } = data;
-            const targetUser = users.get(socketId);
-            
-            if (targetUser) {
-                // 将代码发送给用户浏览器执行
-                io.to(socketId).emit('execute-console-code', {
-                    code: code,
-                    adminSocketId: socket.id
-                });
-                
-                // 记录执行日志
-                if (!userConsoleLogs.has(socketId)) {
-                    userConsoleLogs.set(socketId, []);
-                }
-                userConsoleLogs.get(socketId).push({
-                    level: 'info',
-                    message: `执行代码: ${code}`,
-                    timestamp: new Date().toISOString()
-                });
-                
-                console.log(`管理员在用户 ${targetUser.username} 的控制台执行了代码`);
-            }
-        }
-    });
-    
-    // 监听用户浏览器执行代码的结果
-    socket.on('console-code-execute-result', (data) => {
-        const { adminSocketId, success, result, error } = data;
-        
-        // 将执行结果发送给管理员
-        if (adminSocketId) {
-            io.to(adminSocketId).emit('admin-console-execute-result', {
-                success: success,
-                result: result,
-                error: error,
-                socketId: socket.id,
-                username: users.get(socket.id)?.username || '未知用户'
-            });
-        }
-    });
-    
-    // 监听用户控制台日志
-    socket.on('console-log', (data) => {
-        const { level = 'log', message } = data;
-        
-        // 记录用户控制台日志
-        if (!userConsoleLogs.has(socket.id)) {
-            userConsoleLogs.set(socket.id, []);
-        }
-        
-        userConsoleLogs.get(socket.id).push({
-            level: level,
-            message: message,
-            timestamp: new Date().toISOString()
-        });
-        
-        // 限制日志数量，最多保存1000条
-        const logs = userConsoleLogs.get(socket.id);
-        if (logs.length > 1000) {
-            logs.splice(0, logs.length - 1000);
-        }
-    });
-
-    // 获取好友列表
-    socket.on('get-friends', () => {
-        const user = users.get(socket.id);
-        if (!user) {
-            return;
-        }
-        
-        // 检查打开好友页面权限
-        if (!user.permissions.allowOpenFriendsPage) {
-            socket.emit('permission-denied', { message: '您没有查看好友页面的权限' });
-            return;
-        }
-        
-        const friendSocketIds = friendships.get(socket.id) || new Set();
-        const friends = [];
-        
-        friendSocketIds.forEach(friendSocketId => {
-            const friendUser = users.get(friendSocketId);
-            if (friendUser) {
-                friends.push({
-                    socketId: friendSocketId,
-                    username: friendUser.username,
-                    color: friendUser.color,
-                    permissions: friendUser.permissions,
-                    online: true
-                });
-            }
-        });
-        
-        socket.emit('friends-list', friends);
-        console.log(`${user.username} 获取好友列表，共 ${friends.length} 个好友`);
-    });
-    
-    // 发送私聊消息
-    socket.on('private-message', (data) => {
-        const user = users.get(socket.id);
-        const targetUser = users.get(data.targetSocketId);
-        
-        if (!user || !targetUser) {
-            socket.emit('private-message-error', { message: '用户不存在' });
-            return;
-        }
-        
-        // 检查私聊权限
-        if (!user.permissions.allowPrivateChat) {
-            socket.emit('private-message-error', { message: '您没有私聊的权限' });
-            return;
-        }
-        
-        // 消息长度限制检查
-        if (data.type === 'text' && data.message && data.message.length > 60) {
-            socket.emit('private-message-error', { message: '消息长度超过限制（最大60字符）' });
-            return;
-        }
-        
-        // 检查是否是好友
-        if (!friendships.has(socket.id) || !friendships.get(socket.id).has(data.targetSocketId)) {
-            socket.emit('private-message-error', { message: '只能给好友发送私聊消息' });
-            return;
-        }
-        
-        const chatId = [socket.id, data.targetSocketId].sort().join('-');
-        const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-        const messageData = {
-            id: messageId,
-            chatId: chatId,
-            fromSocketId: socket.id,
-            fromUsername: user.username,
-            fromColor: user.color,
-            toSocketId: data.targetSocketId,
-            message: data.message,
-            type: data.type || 'text',
-            timestamp: new Date().toLocaleTimeString(),
-            readBy: [socket.id], // 初始时只有发送者已读
-            // 包含额外的文件和音频属性
-            fileName: data.fileName,
-            fileSize: data.fileSize,
-            contentType: data.contentType
-        };
-        
-        // 存储私聊消息
-        if (!privateMessages.has(chatId)) {
-            privateMessages.set(chatId, []);
-        }
-        privateMessages.get(chatId).push(messageData);
-        
-        // 限制私聊消息数量
-        if (privateMessages.get(chatId).length > 100) {
-            privateMessages.get(chatId).shift();
-        }
-        
-        // 发送给双方
-        io.to(socket.id).emit('private-message', messageData);
-        io.to(data.targetSocketId).emit('private-message', messageData);
-        
-        console.log(`[私聊] ${user.username} -> ${targetUser.username}: ${data.type === 'text' ? data.message : data.type}`);
-    });
-    
-    // 获取私聊历史消息
-    socket.on('get-private-messages', (targetSocketId) => {
-        const user = users.get(socket.id);
-        if (!user) {
-            return;
-        }
-        
-        const chatId = [socket.id, targetSocketId].sort().join('-');
-        const messages = privateMessages.get(chatId) || [];
-        
-        socket.emit('private-messages-history', {
-            targetSocketId: targetSocketId,
-            messages: messages
-        });
-        
-        console.log(`${user.username} 获取与 ${targetSocketId} 的私聊历史消息，共 ${messages.length} 条`);
-    });
-    
-    // 管理员私聊功能（不需要好友关系）
-    socket.on('admin-private-message', (data) => {
-        if (socket.id === adminSocketId) {
-            const targetUser = users.get(data.targetSocketId);
-            if (!targetUser) {
-                socket.emit('private-message-error', { message: '用户不存在' });
                 return;
             }
             
-            const chatId = [socket.id, data.targetSocketId].sort().join('-');
-            const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-            const messageData = {
-                id: messageId,
-                chatId: chatId,
-                fromSocketId: socket.id,
-                fromUsername: 'admin',
-                fromColor: '#dc3545',
-                toSocketId: data.targetSocketId,
-                message: data.message,
-                type: data.type || 'text',
-                timestamp: new Date().toLocaleTimeString(),
-                readBy: [socket.id], // 初始时只有发送者已读
-                // 包含额外的文件和音频属性
-                fileName: data.fileName,
-                fileSize: data.fileSize,
-                contentType: data.contentType
-            };
+            const video = document.getElementById(`${side}Video`);
+            const container = document.getElementById(`${side}VideoContainer`);
+            const status = document.getElementById(`${side}VideoStatus`);
             
-            // 存储私聊消息
-            if (!privateMessages.has(chatId)) {
-                privateMessages.set(chatId, []);
-            }
-            privateMessages.get(chatId).push(messageData);
+            if (!video || !container || !status) return;
             
-            // 限制私聊消息数量
-            if (privateMessages.get(chatId).length > 100) {
-                privateMessages.get(chatId).shift();
-            }
-            
-            // 发送给双方
-            io.to(socket.id).emit('private-message', messageData);
-            io.to(data.targetSocketId).emit('private-message', messageData);
-            
-            console.log(`[管理员私聊] admin -> ${targetUser.username}: ${data.type === 'text' ? data.message : data.type}`);
-        }
-    });
-    
-    // 更新历史存储
-let updateHistory = [];
-
-// 活跃的聊天室提示存储
-let activeNotifications = [];
-
-// 管理员发布更新功能
-socket.on('admin-publish-update', (data) => {
-    if (socket.id === adminSocketId) {
-        const { version, content, forceUpdate, target = 'all', probability = null, specificUsers = null } = data;
-        const timestamp = new Date();
-        
-        // 保存到更新历史
-        const updateRecord = {
-            version: version,
-            content: content,
-            forceUpdate: forceUpdate,
-            target: target,
-            probability: probability,
-            specificUsers: specificUsers,
-            timestamp: timestamp,
-            timeString: timestamp.toLocaleString()
-        };
-        updateHistory.unshift(updateRecord); // 最新的更新放在前面
-        
-        // 限制历史记录数量，最多保存20条
-        if (updateHistory.length > 20) {
-            updateHistory = updateHistory.slice(0, 20);
-        }
-        
-        // 根据目标类型选择推送用户
-        let targetSocketIds = [];
-        
-        if (target === 'all') {
-            // 推送给所有用户
-            targetSocketIds = Array.from(users.keys());
-        } else if (target === 'probability') {
-            // 按概率随机推送
-            Array.from(users.keys()).forEach(socketId => {
-                if (Math.random() * 100 <= probability) {
-                    targetSocketIds.push(socketId);
+            try {
+                // 检查是否支持MediaSource
+                if (MediaSource && MediaSource.isTypeSupported('video/webm')) {
+                    // 使用MediaSource方式
+                    if (!mediaSourceMap.has(fromSocketId)) {
+                        // 创建新的MediaSource
+                        const mediaSource = new MediaSource();
+                        video.src = URL.createObjectURL(mediaSource);
+                        video.style.display = 'block';
+                        container.style.display = 'none';
+                        status.textContent = '正在加载视频...';
+                        
+                        mediaSource.addEventListener('sourceopen', () => {
+                            try {
+                                const sourceBuffer = mediaSource.addSourceBuffer('video/webm');
+                                sourceBuffer.mode = 'segments';
+                                sourceBuffer.addEventListener('updateend', () => {
+                                    if (mediaSource.readyState === 'open' && !sourceBuffer.updating) {
+                                        // 可以继续添加更多数据
+                                    }
+                                });
+                                mediaSourceMap.set(fromSocketId, {
+                                    mediaSource: mediaSource,
+                                    sourceBuffer: sourceBuffer,
+                                    video: video
+                                });
+                                status.textContent = '正在播放视频...';
+                            } catch (e) {
+                                console.error('创建SourceBuffer失败:', e);
+                                status.textContent = '视频加载失败';
+                            }
+                        });
+                    }
+                    
+                    // 添加数据到SourceBuffer
+                    const msData = mediaSourceMap.get(fromSocketId);
+                    if (msData && msData.sourceBuffer && !msData.sourceBuffer.updating && msData.mediaSource.readyState === 'open') {
+                        const chunk = new Uint8Array(data.data);
+                        try {
+                            msData.sourceBuffer.appendBuffer(chunk);
+                            video.style.display = 'block';
+                            container.style.display = 'none';
+                            status.textContent = '正在播放视频...';
+                        } catch (e) {
+                            console.error('添加视频数据失败:', e);
+                        }
+                    }
+                } else {
+                    // 回退到Blob方式，但使用更大的缓冲区
+                    if (video.src) {
+                        // 如果已有src，使用现有URL
+                    }
+                    
+                    // 将数据转换为Blob
+                    const blob = new Blob([data.data], { type: 'video/webm' });
+                    
+                    // 创建Object URL
+                    const url = URL.createObjectURL(blob);
+                    video.src = url;
+                    video.style.display = 'block';
+                    container.style.display = 'none';
+                    status.textContent = '正在播放视频...';
+                    
+                    // 尝试播放
+                    video.play().catch(err => {
+                        console.log(`${side}视频自动播放失败:`, err.message);
+                    });
                 }
-            });
-        } else if (target === 'specific') {
-            // 推送给特定用户
-            // 这里假设specificUsers是socketId列表
-            targetSocketIds = specificUsers.filter(socketId => users.has(socketId));
+            } catch (error) {
+                console.error('处理通话媒体流失败:', error);
+                status.textContent = '视频处理失败';
+            }
         }
         
-        // 向目标用户发送更新通知
-        const notificationData = {
-            version: version,
-            content: content,
-            forceUpdate: forceUpdate,
-            timestamp: timestamp.toLocaleTimeString()
-        };
+        // 更新通话监控信息
+        function updateCallMonitoring(callId, callInfo) {
+            monitoredCalls.set(callId, {
+                initiator: callInfo.initiator,
+                recipient: callInfo.recipient
+            });
+        }
         
-        targetSocketIds.forEach(socketId => {
-            io.to(socketId).emit('update-notification', notificationData);
+        // 结束通话
+        async function endCall(callId) {
+            const id = callId || currentCallId;
+            if (!id) {
+                alert('请选择一个通话');
+                return;
+            }
+            
+            if (confirm('确定要结束这个通话吗？')) {
+                try {
+                    const response = await fetch(`/api/admin/calls/${id}/end`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        alert('通话已结束');
+                        loadOngoingCalls();
+                        closeCallDetailsModal();
+                    } else {
+                        alert('结束通话失败: ' + data.error);
+                    }
+                } catch (error) {
+                    console.error('结束通话失败:', error);
+                    alert('结束通话失败');
+                }
+            }
+        }
+        
+        // 切换通话控制
+        async function toggleCallControl(type) {
+            if (!currentCallId) {
+                alert('请选择一个通话');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/admin/calls/${currentCallId}/control`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        type: type,
+                        enabled: false // 切换为禁用，管理员可以随时切换
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    alert(`已切换${type}控制`);
+                    viewCallDetails(currentCallId); // 刷新通话详情
+                } else {
+                    alert('切换控制失败: ' + data.error);
+                }
+            } catch (error) {
+                console.error('切换通话控制失败:', error);
+                alert('切换通话控制失败');
+            }
+        }
+        
+        // 批量操作相关函数
+        function selectAllUsers() {
+            document.querySelectorAll('.user-checkbox').forEach(checkbox => {
+                checkbox.checked = true;
+            });
+        }
+        
+        function deselectAllUsers() {
+            document.querySelectorAll('.user-checkbox').forEach(checkbox => {
+                checkbox.checked = false;
+            });
+        }
+        
+        function batchKickUsers() {
+            const selectedUsers = Array.from(document.querySelectorAll('.user-checkbox:checked')).map(checkbox => checkbox.value);
+            if (selectedUsers.length === 0) {
+                alert('请先选择要踢出的用户');
+                return;
+            }
+            
+            if (confirm(`确定要踢出选中的 ${selectedUsers.length} 个用户吗？`)) {
+                socket.emit('admin-batch-action', {
+                    action: 'kick',
+                    userIds: selectedUsers
+                });
+                
+                // 清空选择
+                deselectAllUsers();
+                
+                // 刷新用户列表
+                socket.emit('admin-get-users');
+            }
+        }
+        
+        function batchMuteUsers() {
+            const selectedUsers = Array.from(document.querySelectorAll('.user-checkbox:checked')).map(checkbox => checkbox.value);
+            if (selectedUsers.length === 0) {
+                alert('请先选择要禁言的用户');
+                return;
+            }
+            
+            const duration = prompt('请输入禁言时长（分钟，-1表示永久）:', '5');
+            const reason = prompt('请输入禁言原因:', '违反聊天室规则');
+            
+            if (duration !== null && reason !== null) {
+                const muteDuration = parseInt(duration);
+                if (!isNaN(muteDuration)) {
+                    socket.emit('admin-batch-action', {
+                        action: 'mute',
+                        userIds: selectedUsers,
+                        duration: muteDuration,
+                        reason: reason
+                    });
+                    
+                    // 清空选择
+                    deselectAllUsers();
+                    
+                    // 刷新用户列表
+                    socket.emit('admin-get-users');
+                } else {
+                    alert('请输入有效的禁言时长');
+                }
+            }
+        }
+        
+        function batchSetPermissions() {
+            const selectedUsers = Array.from(document.querySelectorAll('.user-checkbox:checked')).map(checkbox => checkbox.value);
+            if (selectedUsers.length === 0) {
+                alert('请先选择要设置权限的用户');
+                return;
+            }
+            
+            // 打开权限设置模态框
+            permissionsModal.classList.add('active');
+            
+            // 保存选中的用户ID
+            window.batchSelectedUsers = selectedUsers;
+        }
+        
+        // 重写confirmPermissions函数以支持批量操作
+        function confirmPermissions() {
+            if (window.batchSelectedUsers && window.batchSelectedUsers.length > 0) {
+                // 批量设置权限
+                const permissions = {
+                    allowAudio: allowAudio.checked,
+                    allowImage: allowImage.checked,
+                    allowFile: allowFile.checked,
+                    allowSendMessages: allowSendMessages.checked,
+                    allowViewMessages: allowViewMessages.checked,
+                    allowCall: allowCall.checked,
+                    allowAIChat: allowAIChat.checked,
+                    allowAddFriends: allowAddFriends.checked,
+                    allowViewUsers: allowViewUsers.checked,
+                    allowPrivateChat: allowPrivateChat.checked,
+                    allowOpenFriendsPage: allowOpenFriendsPage.checked,
+                    allowRecallMessage: allowRecallMessage.checked
+                };
+                
+                socket.emit('admin-batch-action', {
+                    action: 'setPermissions',
+                    userIds: window.batchSelectedUsers,
+                    permissions: permissions
+                });
+                
+                // 清空选择
+                window.batchSelectedUsers = null;
+                deselectAllUsers();
+            } else if (selectedPermissionsSocketId) {
+                // 单个用户设置权限
+                if (currentRoomName) {
+                    // 如果在房间用户列表中设置权限，使用房间内权限设置功能
+                    socket.emit('admin-room-set-permissions', {
+                        roomName: currentRoomName,
+                        socketId: selectedPermissionsSocketId,
+                        permissions: {
+                            allowAudio: allowAudio.checked,
+                            allowImage: allowImage.checked,
+                            allowFile: allowFile.checked,
+                            allowSendMessages: allowSendMessages.checked,
+                            allowViewMessages: allowViewMessages.checked,
+                            allowCall: allowCall.checked,
+                            allowAIChat: allowAIChat.checked,
+                            allowAddFriends: allowAddFriends.checked,
+                            allowViewUsers: allowViewUsers.checked,
+                            allowPrivateChat: allowPrivateChat.checked,
+                            allowOpenFriendsPage: allowOpenFriendsPage.checked,
+                            allowRecallMessage: allowRecallMessage.checked
+                        }
+                    });
+                    
+                    // 重新获取房间用户列表
+                    socket.emit('admin-get-room-users', currentRoomName);
+                } else {
+                    // 否则使用全局权限设置功能
+                    socket.emit('admin-set-permissions', {
+                        socketId: selectedPermissionsSocketId,
+                        permissions: {
+                            allowAudio: allowAudio.checked,
+                            allowImage: allowImage.checked,
+                            allowFile: allowFile.checked,
+                            allowSendMessages: allowSendMessages.checked,
+                            allowViewMessages: allowViewMessages.checked,
+                            allowCall: allowCall.checked,
+                            allowAIChat: allowAIChat.checked,
+                            allowAddFriends: allowAddFriends.checked,
+                            allowViewUsers: allowViewUsers.checked,
+                            allowPrivateChat: allowPrivateChat.checked,
+                            allowOpenFriendsPage: allowOpenFriendsPage.checked,
+                            allowRecallMessage: allowRecallMessage.checked
+                        }
+                    });
+                }
+            }
+            
+            closePermissionsModal();
+        }
+        
+        // 页面卸载时清除定时器
+        window.addEventListener('beforeunload', () => {
+            if (userRefreshInterval) {
+                clearInterval(userRefreshInterval);
+            }
+            if (roomDetailsRefreshInterval) {
+                clearInterval(roomDetailsRefreshInterval);
+            }
         });
         
-        console.log(`[更新] 管理员发布版本 ${version}，目标: ${target}${target === 'probability' ? `(${probability}%)` : ''}${target === 'specific' ? `(${specificUsers.length}个用户)` : ''}，强制更新: ${forceUpdate}`);
-    }
-});
-
-// 获取更新历史
-socket.on('get-update-history', () => {
-    if (socket.id === adminSocketId) {
-        socket.emit('update-history', updateHistory);
-    }
-});
-
-// 发送聊天室提示
-socket.on('admin-send-chatroom-notification', (data) => {
-    if (socket.id === adminSocketId) {
-        const { title, content, buttonText, buttonColor, backgroundColor, forceAction, target = 'all', probability = null, specificUsers = null } = data;
-        const timestamp = new Date();
-        
-        // 生成唯一ID
-        const notificationId = 'notification_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
-        
-        // 保存到活跃通知列表
-        const notification = {
-            id: notificationId,
-            title: title,
-            content: content,
-            buttonText: buttonText || '进入聊天室',
-            buttonColor: buttonColor || '#667eea',
-            backgroundColor: backgroundColor || '#ffffff',
-            forceAction: forceAction || false,
-            target: target,
-            probability: probability,
-            specificUsers: specificUsers,
-            timestamp: timestamp,
-            timeString: timestamp.toLocaleString()
-        };
-        
-        activeNotifications.push(notification);
-        
-        // 选择目标用户
-        let targetSocketIds = [];
-        if (target === 'all') {
-            targetSocketIds = Array.from(users.keys());
-        } else if (target === 'probability') {
-            Array.from(users.keys()).forEach(socketId => {
-                if (Math.random() * 100 <= probability) {
-                    targetSocketIds.push(socketId);
-                }
-            });
-        } else if (target === 'specific') {
-            targetSocketIds = specificUsers.filter(socketId => users.has(socketId));
+        // 更新通知相关功能
+        function openUpdateModal() {
+            const updateModal = document.getElementById('updateModal');
+            updateModal.classList.add('active');
         }
         
-        // 发送提示通知
-        const notificationData = {
-            id: notificationId,
-            type: 'chatroom-notification',
-            title: title,
-            content: content,
-            buttonText: buttonText || '进入聊天室',
-            buttonColor: buttonColor || '#667eea',
-            backgroundColor: backgroundColor || '#ffffff',
-            forceAction: forceAction || false,
-            timestamp: timestamp.toLocaleTimeString()
-        };
+        function closeUpdateModal() {
+            const updateModal = document.getElementById('updateModal');
+            updateModal.classList.remove('active');
+            // 重置表单
+            document.getElementById('updateVersion').value = '';
+            document.getElementById('updateContent').value = '';
+            document.getElementById('forceUpdate').checked = false;
+            document.getElementById('updateTarget').value = 'all';
+            document.getElementById('updateProbability').value = '';
+            document.getElementById('specificUsers').value = '';
+        }
         
-        targetSocketIds.forEach(socketId => {
-            io.to(socketId).emit('chatroom-notification', notificationData);
-        });
+        function loadUpdateHistory() {
+            socket.emit('get-update-history');
+        }
         
-        console.log(`[聊天室提示] 管理员发送提示：${title}，ID: ${notificationId}，目标: ${target}${target === 'probability' ? `(${probability}%)` : ''}${target === 'specific' ? `(${specificUsers.length}个用户)` : ''}`);
+        function displayUpdateHistory(history) {
+            const historyContainer = document.getElementById('updateHistory');
+            if (history.length === 0) {
+                historyContainer.innerHTML = '<p>暂无更新历史</p>';
+                return;
+            }
+            
+            const historyHTML = history.map(update => `
+                <div style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h4 style="margin: 0; color: #667eea;">版本 ${update.version}</h4>
+                        <span style="font-size: 12px; color: #999;">${update.timeString}</span>
+                    </div>
+                    <div style="background: #f8f9fa; padding: 12px; border-radius: 6px; margin-bottom: 10px; white-space: pre-wrap; font-size: 14px; color: #666;">
+                        ${update.content}
+                    </div>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <span style="font-size: 12px; padding: 3px 8px; border-radius: 12px; background: ${update.forceUpdate ? '#ff6b6b' : '#4ecdc4'}; color: white;">
+                            ${update.forceUpdate ? '强制更新' : '可选更新'}
+                        </span>
+                        <span style="font-size: 12px; color: #999;">
+                            ${update.target || '全体用户'}
+                        </span>
+                    </div>
+                </div>
+            `).join('');
+            
+            historyContainer.innerHTML = historyHTML;
+        }
         
-        // 通知管理员界面更新活跃通知列表
-        io.to(adminSocketId).emit('active-notifications-update', activeNotifications);
-    }
-});
-
-// 获取活跃的聊天室提示
-socket.on('get-active-notifications', () => {
-    if (socket.id === adminSocketId) {
-        socket.emit('active-notifications', activeNotifications);
-    }
-});
-
-// 删除聊天室提示
-socket.on('delete-chatroom-notification', (data) => {
-    if (socket.id === adminSocketId) {
-        const { notificationId } = data;
-        activeNotifications = activeNotifications.filter(n => n.id !== notificationId);
+        function publishUpdate() {
+            const version = document.getElementById('updateVersion').value;
+            const content = document.getElementById('updateContent').value;
+            const forceUpdate = document.getElementById('forceUpdate').checked;
+            const target = document.getElementById('updateTarget').value;
+            const probability = document.getElementById('updateProbability').value;
+            const specificUsers = document.getElementById('specificUsers').value;
+            
+            if (!version || !content) {
+                alert('请填写版本号和更新内容');
+                return;
+            }
+            
+            // 验证概率值
+            if (target === 'probability' && (!probability || isNaN(probability) || probability < 0 || probability > 100)) {
+                alert('请输入0-100之间的有效概率值');
+                return;
+            }
+            
+            // 验证特定用户
+            if (target === 'specific' && !specificUsers) {
+                alert('请输入特定用户ID，多个用户用逗号分隔');
+                return;
+            }
+            
+            // 发送更新通知到服务器
+            socket.emit('admin-publish-update', {
+                version: version,
+                content: content,
+                forceUpdate: forceUpdate,
+                target: target,
+                probability: target === 'probability' ? parseFloat(probability) : null,
+                specificUsers: target === 'specific' ? specificUsers.split(',').map(id => id.trim()) : null
+            });
+            
+            alert('更新已发布！');
+            closeUpdateModal();
+            loadUpdateHistory(); // 重新加载更新历史
+        }
         
-        // 通知所有客户端删除该提示
-        io.emit('remove-chatroom-notification', { notificationId });
+        // 监听更新目标切换
+        function updateTargetChanged() {
+            const target = document.getElementById('updateTarget').value;
+            const probabilityGroup = document.getElementById('probabilityGroup');
+            const specificUsersGroup = document.getElementById('specificUsersGroup');
+            
+            probabilityGroup.style.display = target === 'probability' ? 'block' : 'none';
+            specificUsersGroup.style.display = target === 'specific' ? 'block' : 'none';
+        }
         
-        // 通知管理员界面更新
-        io.to(adminSocketId).emit('active-notifications-update', activeNotifications);
+        // 聊天室提示相关功能
+        function openChatroomNotificationModal() {
+            const modal = document.getElementById('chatroomNotificationModal');
+            modal.classList.add('active');
+        }
         
-        console.log(`[聊天室提示] 管理员删除提示，ID: ${notificationId}`);
-    }
-});
-
-// 更新聊天室提示
-socket.on('update-chatroom-notification', (data) => {
-    if (socket.id === adminSocketId) {
-        const { notificationId, title, content, buttonText, buttonColor, backgroundColor, forceAction } = data;
-        const notificationIndex = activeNotifications.findIndex(n => n.id === notificationId);
+        function closeChatroomNotificationModal() {
+            const modal = document.getElementById('chatroomNotificationModal');
+            modal.classList.remove('active');
+            // 重置表单
+            document.getElementById('notificationTitle').value = '';
+            document.getElementById('notificationContent').value = '';
+            document.getElementById('notificationButtonText').value = '进入聊天室';
+            document.getElementById('notificationButtonColor').value = '#667eea';
+            document.getElementById('notificationButtonColorText').value = '#667eea';
+            document.getElementById('notificationBackgroundColor').value = '#ffffff';
+            document.getElementById('notificationBackgroundColorText').value = '#ffffff';
+            document.getElementById('notificationForceAction').checked = false;
+            document.getElementById('notificationTarget').value = 'all';
+            document.getElementById('notificationProbability').value = '';
+            document.getElementById('notificationSpecificUsers').value = '';
+            notificationTargetChanged();
+        }
         
-        if (notificationIndex !== -1) {
-            // 更新提示内容
-            activeNotifications[notificationIndex] = {
-                ...activeNotifications[notificationIndex],
+        function notificationTargetChanged() {
+            const target = document.getElementById('notificationTarget').value;
+            const probabilityGroup = document.getElementById('notificationProbabilityGroup');
+            const specificUsersGroup = document.getElementById('notificationSpecificUsersGroup');
+            
+            probabilityGroup.style.display = target === 'probability' ? 'block' : 'none';
+            specificUsersGroup.style.display = target === 'specific' ? 'block' : 'none';
+        }
+        
+        function sendChatroomNotification() {
+            const title = document.getElementById('notificationTitle').value;
+            const content = document.getElementById('notificationContent').value;
+            const buttonText = document.getElementById('notificationButtonText').value;
+            const buttonColor = document.getElementById('notificationButtonColorText').value;
+            const backgroundColor = document.getElementById('notificationBackgroundColorText').value;
+            const forceAction = document.getElementById('notificationForceAction').checked;
+            const target = document.getElementById('notificationTarget').value;
+            const probability = document.getElementById('notificationProbability').value;
+            const specificUsers = document.getElementById('notificationSpecificUsers').value;
+            
+            if (!title || !content) {
+                alert('请填写提示标题和内容');
+                return;
+            }
+            
+            // 验证概率值
+            if (target === 'probability' && (!probability || isNaN(probability) || probability < 0 || probability > 100)) {
+                alert('请输入0-100之间的有效概率值');
+                return;
+            }
+            
+            // 验证特定用户
+            if (target === 'specific' && !specificUsers) {
+                alert('请输入特定用户ID，多个用户用逗号分隔');
+                return;
+            }
+            
+            // 发送通知
+            socket.emit('admin-send-chatroom-notification', {
                 title: title,
                 content: content,
                 buttonText: buttonText,
                 buttonColor: buttonColor,
                 backgroundColor: backgroundColor,
-                forceAction: forceAction
+                forceAction: forceAction,
+                target: target,
+                probability: target === 'probability' ? parseFloat(probability) : null,
+                specificUsers: target === 'specific' ? specificUsers.split(',').map(id => id.trim()) : null
+            });
+            
+            closeChatroomNotificationModal();
+            
+            // 直接显示可交互的提示框
+            const notificationData = {
+                id: 'temp_notification_' + Date.now(),
+                title: title,
+                content: content,
+                buttonText: buttonText,
+                buttonColor: buttonColor,
+                backgroundColor: backgroundColor,
+                forceAction: forceAction,
+                timestamp: new Date().toLocaleTimeString()
             };
             
-            // 通知所有客户端更新该提示
-            io.emit('update-chatroom-notification', {
+            showAdminChatroomNotification(notificationData);
+        }
+        
+        // 管理员界面显示可交互聊天室提示
+        function showAdminChatroomNotification(data) {
+            // 生成唯一ID
+            const notificationId = data.id || ('adminNotification_' + Date.now() + '_' + Math.floor(Math.random() * 1000));
+            
+            // 创建悬浮提示元素
+            const notification = document.createElement('div');
+            notification.id = notificationId;
+            notification.className = 'admin-notification';
+            notification.dataset.notificationId = notificationId;
+            notification.style.cssText = `
+                position: fixed;
+                top: 100px;
+                right: 20px;
+                background: ${data.backgroundColor || '#ffffff'};
+                border-radius: 10px;
+                padding: 20px;
+                max-width: 400px;
+                width: 320px;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+                text-align: center;
+                z-index: 10000;
+                cursor: move;
+                transition: all 0.3s ease;
+                border: 2px solid ${data.buttonColor || '#667eea'};
+            `;
+            
+            // 设置初始位置（右侧垂直排列）
+            const existingNotifications = document.querySelectorAll('.admin-notification');
+            const topPosition = 100 + (existingNotifications.length * 280);
+            notification.style.top = `${topPosition}px`;
+            
+            const notificationHTML = `
+                <div class="notification-header" style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                    <h3 class="notification-title" style="margin: 0; font-size: 18px; color: #333; cursor: pointer;">
+                        ${data.title || '聊天室提示'}
+                    </h3>
+                    <div class="notification-controls" style="display: flex; gap: 8px;">
+                        <button class="control-btn edit-btn" style="padding: 4px 8px; background: #ffc107; color: #333; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                            ✏️
+                        </button>
+                        <button class="control-btn delete-btn" style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                            🗑️
+                        </button>
+                        <button class="control-btn style-btn" style="padding: 4px 8px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">
+                            🎨
+                        </button>
+                    </div>
+                </div>
+                <div class="notification-content" style="margin-bottom: 20px; text-align: left; padding: 12px; border-radius: 6px; 
+                    background: ${data.backgroundColor === '#ffffff' ? '#f8f9fa' : 'rgba(255, 255, 255, 0.1)'};
+                    white-space: pre-wrap; font-size: 14px; color: #666; cursor: pointer;
+                    max-height: 150px; overflow-y: auto;
+                    scrollbar-width: thin; scrollbar-color: ${data.buttonColor || '#667eea'} rgba(0,0,0,0.1);">
+                    ${data.content}
+                </div>
+                <button class="notification-button" style="padding: 10px 25px; background: ${data.buttonColor || '#667eea'};
+                    color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 16px;
+                    transition: all 0.2s; font-weight: 500;">${data.buttonText || '进入聊天室'}</button>
+            `;
+            
+            notification.innerHTML = notificationHTML;
+            document.body.appendChild(notification);
+            
+            // 拖拽功能
+            let isDragging = false;
+            let startX, startY, startLeft, startTop;
+            
+            notification.addEventListener('mousedown', (e) => {
+                if (e.target.closest('.control-btn') || e.target.closest('.notification-button')) {
+                    return;
+                }
+                
+                isDragging = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                startLeft = parseInt(notification.style.left) || notification.offsetLeft;
+                startTop = parseInt(notification.style.top) || notification.offsetTop;
+                notification.style.zIndex = '10001';
+                notification.style.cursor = 'grabbing';
+                
+                document.addEventListener('mousemove', drag);
+                document.addEventListener('mouseup', stopDrag);
+            });
+            
+            function drag(e) {
+                if (!isDragging) return;
+                const dx = e.clientX - startX;
+                const dy = e.clientY - startY;
+                notification.style.left = `${startLeft + dx}px`;
+                notification.style.top = `${startTop + dy}px`;
+            }
+            
+            function stopDrag() {
+                isDragging = false;
+                notification.style.cursor = 'move';
+                document.removeEventListener('mousemove', drag);
+                document.removeEventListener('mouseup', stopDrag);
+            }
+            
+            // 编辑通知
+            notification.querySelector('.edit-btn').addEventListener('click', () => {
+                // 填充表单进行编辑
+                document.getElementById('notificationTitle').value = data.title;
+                document.getElementById('notificationContent').value = data.content;
+                document.getElementById('notificationButtonText').value = data.buttonText || '进入聊天室';
+                document.getElementById('notificationButtonColor').value = data.buttonColor || '#667eea';
+                document.getElementById('notificationButtonColorText').value = data.buttonColor || '#667eea';
+                document.getElementById('notificationBackgroundColor').value = data.backgroundColor || '#ffffff';
+                document.getElementById('notificationBackgroundColorText').value = data.backgroundColor || '#ffffff';
+                document.getElementById('notificationForceAction').checked = data.forceAction;
+                
+                // 打开编辑模态框
+                openChatroomNotificationModal();
+                
+                // 删除临时提示
+                notification.remove();
+            });
+            
+            // 删除通知
+            notification.querySelector('.delete-btn').addEventListener('click', () => {
+                if (confirm('确定要删除这个提示吗？')) {
+                    notification.remove();
+                    // 如果是服务器发送的提示，发送删除请求
+                    if (data.id && !data.id.startsWith('temp_')) {
+                        socket.emit('delete-chatroom-notification', { notificationId: data.id });
+                    }
+                }
+            });
+            
+            // 更改样式
+            notification.querySelector('.style-btn').addEventListener('click', () => {
+                const styleOptions = [
+                    { name: '默认样式', bg: '#ffffff', border: '#667eea' },
+                    { name: '蓝色主题', bg: '#e3f2fd', border: '#2196f3' },
+                    { name: '绿色主题', bg: '#e8f5e8', border: '#4caf50' },
+                    { name: '橙色主题', bg: '#fff3e0', border: '#ff9800' },
+                    { name: '紫色主题', bg: '#f3e5f5', border: '#9c27b0' }
+                ];
+                
+                const style = prompt('请选择样式：\n1. 默认样式\n2. 蓝色主题\n3. 绿色主题\n4. 橙色主题\n5. 紫色主题\n\n请输入数字(1-5)：');
+                if (!style || isNaN(style) || style < 1 || style > 5) {
+                    return;
+                }
+                
+                const selectedStyle = styleOptions[parseInt(style) - 1];
+                
+                // 应用样式
+                notification.style.background = selectedStyle.bg;
+                notification.style.borderColor = selectedStyle.border;
+                notification.querySelector('.notification-content').style.background = selectedStyle.bg === '#ffffff' ? '#f8f9fa' : `rgba(255, 255, 255, 0.1)`;
+                const button = notification.querySelector('.notification-button');
+                button.style.background = selectedStyle.border;
+            });
+            
+            // 长按删除
+            let longPressTimer;
+            notification.addEventListener('mousedown', (e) => {
+                if (e.target.closest('.control-btn') || e.target.closest('.notification-button')) {
+                    return;
+                }
+                
+                longPressTimer = setTimeout(() => {
+                    if (confirm('确定要删除这个提示吗？')) {
+                        notification.remove();
+                        // 如果是服务器发送的提示，发送删除请求
+                        if (data.id && !data.id.startsWith('temp_')) {
+                            socket.emit('delete-chatroom-notification', { notificationId: data.id });
+                        }
+                    }
+                }, 800);
+            });
+            
+            notification.addEventListener('mouseup', () => {
+                clearTimeout(longPressTimer);
+            });
+            
+            notification.addEventListener('mouseleave', () => {
+                clearTimeout(longPressTimer);
+            });
+            
+            // 右键菜单
+            notification.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                
+                const contextMenu = document.createElement('div');
+                contextMenu.style.cssText = `
+                    position: fixed;
+                    background: white;
+                    border: 1px solid #ddd;
+                    border-radius: 8px;
+                    padding: 8px 0;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                    z-index: 10002;
+                    left: ${e.clientX}px;
+                    top: ${e.clientY}px;
+                `;
+                
+                const menuItems = [
+                    { text: '编辑', icon: '✏️', action: () => {
+                        // 填充表单进行编辑
+                        document.getElementById('notificationTitle').value = data.title;
+                        document.getElementById('notificationContent').value = data.content;
+                        document.getElementById('notificationButtonText').value = data.buttonText || '进入聊天室';
+                        document.getElementById('notificationButtonColor').value = data.buttonColor || '#667eea';
+                        document.getElementById('notificationButtonColorText').value = data.buttonColor || '#667eea';
+                        document.getElementById('notificationBackgroundColor').value = data.backgroundColor || '#ffffff';
+                        document.getElementById('notificationBackgroundColorText').value = data.backgroundColor || '#ffffff';
+                        document.getElementById('notificationForceAction').checked = data.forceAction;
+                        
+                        // 打开编辑模态框
+                        openChatroomNotificationModal();
+                        
+                        // 删除临时提示
+                        notification.remove();
+                        contextMenu.remove();
+                    }},
+                    { text: '删除', icon: '🗑️', action: () => {
+                        if (confirm('确定要删除这个提示吗？')) {
+                            notification.remove();
+                            // 如果是服务器发送的提示，发送删除请求
+                            if (data.id && !data.id.startsWith('temp_')) {
+                                socket.emit('delete-chatroom-notification', { notificationId: data.id });
+                            }
+                        }
+                        contextMenu.remove();
+                    }},
+                    { text: '更改样式', icon: '🎨', action: () => {
+                        const styleOptions = [
+                            { name: '默认样式', bg: '#ffffff', border: '#667eea' },
+                            { name: '蓝色主题', bg: '#e3f2fd', border: '#2196f3' },
+                            { name: '绿色主题', bg: '#e8f5e8', border: '#4caf50' },
+                            { name: '橙色主题', bg: '#fff3e0', border: '#ff9800' },
+                            { name: '紫色主题', bg: '#f3e5f5', border: '#9c27b0' }
+                        ];
+                        
+                        const style = prompt('请选择样式：\n1. 默认样式\n2. 蓝色主题\n3. 绿色主题\n4. 橙色主题\n5. 紫色主题\n\n请输入数字(1-5)：');
+                        if (!style || isNaN(style) || style < 1 || style > 5) {
+                            contextMenu.remove();
+                            return;
+                        }
+                        
+                        const selectedStyle = styleOptions[parseInt(style) - 1];
+                        
+                        // 应用样式
+                        notification.style.background = selectedStyle.bg;
+                        notification.style.borderColor = selectedStyle.border;
+                        notification.querySelector('.notification-content').style.background = selectedStyle.bg === '#ffffff' ? '#f8f9fa' : `rgba(255, 255, 255, 0.1)`;
+                        const button = notification.querySelector('.notification-button');
+                        button.style.background = selectedStyle.border;
+                        
+                        contextMenu.remove();
+                    }}
+                ];
+                
+                menuItems.forEach(item => {
+                    const menuItem = document.createElement('div');
+                    menuItem.style.cssText = `
+                        padding: 10px 15px;
+                        cursor: pointer;
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                        transition: background-color 0.2s;
+                    `;
+                    
+                    menuItem.innerHTML = `
+                        <span>${item.icon}</span>
+                        <span>${item.text}</span>
+                    `;
+                    
+                    menuItem.addEventListener('mouseenter', () => {
+                        menuItem.style.backgroundColor = '#f5f5f5';
+                    });
+                    
+                    menuItem.addEventListener('mouseleave', () => {
+                        menuItem.style.backgroundColor = 'transparent';
+                    });
+                    
+                    menuItem.addEventListener('click', item.action);
+                    
+                    contextMenu.appendChild(menuItem);
+                });
+                
+                document.body.appendChild(contextMenu);
+                
+                // 点击外部关闭
+                setTimeout(() => {
+                    document.addEventListener('click', function outsideClickHandler(e) {
+                        if (!contextMenu.contains(e.target)) {
+                            contextMenu.remove();
+                            document.removeEventListener('click', outsideClickHandler);
+                        }
+                    });
+                }, 100);
+            });
+        }
+        
+        // 活跃提示管理相关功能
+        let editingNotificationId = null;
+        
+        // 刷新活跃提示列表
+        function refreshActiveNotifications() {
+            socket.emit('get-active-notifications');
+        }
+        
+        // 显示活跃提示列表
+        function displayActiveNotifications(notifications) {
+            const container = document.getElementById('activeNotificationsList');
+            if (notifications.length === 0) {
+                container.innerHTML = '<div class="empty-state"><p>暂无活跃提示</p></div>';
+                return;
+            }
+            
+            const notificationsHTML = notifications.map(notification => `
+                <div class="notification-item" style="background: white; padding: 15px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 4px solid ${notification.buttonColor || '#667eea'};">
+                    <div class="notification-header" style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: flex-start;">
+                        <div>
+                            <h4 style="margin: 0; font-size: 16px; color: #333;">${notification.title}</h4>
+                            <span style="font-size: 12px; color: #999;">${notification.timeString}</span>
+                        </div>
+                        <div class="notification-actions" style="display: flex; gap: 8px;">
+                            <button class="btn btn-sm btn-info" onclick="editActiveNotification('${notification.id}')" style="padding: 5px 10px; font-size: 12px;">✏️ 编辑</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteActiveNotification('${notification.id}')" style="padding: 5px 10px; font-size: 12px;">🗑️ 删除</button>
+                            <button class="btn btn-sm btn-warning" onclick="changeNotificationStyle('${notification.id}')" style="padding: 5px 10px; font-size: 12px;">🎨 样式</button>
+                        </div>
+                    </div>
+                    <div class="notification-content" style="margin-bottom: 12px; background: #f8f9fa; padding: 12px; border-radius: 6px; white-space: pre-wrap; font-size: 13px; color: #666;">
+                        ${notification.content}
+                    </div>
+                    <div class="notification-meta" style="display: flex; gap: 15px; font-size: 12px; color: #999;">
+                        <div><strong>目标：</strong>${notification.target === 'all' ? '全体用户' : notification.target === 'probability' ? `概率推送(${notification.probability}%)` : `特定用户(${notification.specificUsers?.length || 0}个)`}</div>
+                        <div><strong>按钮：</strong>${notification.buttonText || '进入聊天室'}</div>
+                        <div><strong>强制：</strong>${notification.forceAction ? '是' : '否'}</div>
+                    </div>
+                </div>
+            `).join('');
+            
+            container.innerHTML = notificationsHTML;
+        }
+        
+        // 编辑活跃提示
+        function editActiveNotification(notificationId) {
+            // 查找要编辑的提示
+            socket.emit('get-active-notifications', (notifications) => {
+                const notification = notifications.find(n => n.id === notificationId);
+                if (!notification) return;
+                
+                // 打开编辑模态框
+                const modal = document.getElementById('editNotificationModal');
+                if (!modal) {
+                    createEditNotificationModal();
+                }
+                
+                // 填充表单
+                document.getElementById('editNotificationId').value = notification.id;
+                document.getElementById('editNotificationTitle').value = notification.title;
+                document.getElementById('editNotificationContent').value = notification.content;
+                document.getElementById('editNotificationButtonText').value = notification.buttonText || '进入聊天室';
+                document.getElementById('editNotificationButtonColor').value = notification.buttonColor || '#667eea';
+                document.getElementById('editNotificationButtonColorText').value = notification.buttonColor || '#667eea';
+                document.getElementById('editNotificationBackgroundColor').value = notification.backgroundColor || '#ffffff';
+                document.getElementById('editNotificationBackgroundColorText').value = notification.backgroundColor || '#ffffff';
+                document.getElementById('editNotificationForceAction').checked = notification.forceAction;
+                
+                // 显示模态框
+                document.getElementById('editNotificationModal').classList.add('active');
+            });
+        }
+        
+        // 创建编辑模态框
+        function createEditNotificationModal() {
+            const modalHTML = `
+                <div class="modal" id="editNotificationModal">
+                    <div class="modal-content">
+                        <h3>编辑聊天室提示</h3>
+                        <form onsubmit="event.preventDefault(); saveEditedNotification();">
+                            <input type="hidden" id="editNotificationId">
+                            <div class="input-group">
+                                <label>提示标题</label>
+                                <input type="text" id="editNotificationTitle" required>
+                            </div>
+                            <div class="input-group">
+                                <label>提示内容</label>
+                                <textarea id="editNotificationContent" rows="5" required></textarea>
+                            </div>
+                            <div class="input-group">
+                                <label>按钮文本</label>
+                                <input type="text" id="editNotificationButtonText" value="进入聊天室">
+                            </div>
+                            <div class="input-group">
+                                <label>按钮颜色</label>
+                                <input type="color" id="editNotificationButtonColor" value="#667eea">
+                                <input type="text" id="editNotificationButtonColorText" placeholder="例如：#667eea" value="#667eea" style="margin-left: 10px; width: 120px;">
+                            </div>
+                            <div class="input-group">
+                                <label>背景颜色</label>
+                                <input type="color" id="editNotificationBackgroundColor" value="#ffffff">
+                                <input type="text" id="editNotificationBackgroundColorText" placeholder="例如：#ffffff" value="#ffffff" style="margin-left: 10px; width: 120px;">
+                            </div>
+                            <div class="input-group">
+                                <label>强制操作</label>
+                                <input type="checkbox" id="editNotificationForceAction">
+                                <span style="margin-left: 10px; color: #666;">勾选后用户必须点击按钮，无法关闭</span>
+                            </div>
+                            <div class="modal-buttons">
+                                <button type="button" class="btn btn-cancel" onclick="closeEditNotificationModal()">取消</button>
+                                <button type="submit" class="btn btn-confirm">保存修改</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            `;
+            
+            document.body.insertAdjacentHTML('beforeend', modalHTML);
+            
+            // 添加颜色同步
+            const buttonColorPicker = document.getElementById('editNotificationButtonColor');
+            const buttonColorText = document.getElementById('editNotificationButtonColorText');
+            const bgColorPicker = document.getElementById('editNotificationBackgroundColor');
+            const bgColorText = document.getElementById('editNotificationBackgroundColorText');
+            
+            buttonColorPicker.addEventListener('input', (e) => {
+                buttonColorText.value = e.target.value;
+            });
+            buttonColorText.addEventListener('input', (e) => {
+                if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) {
+                    buttonColorPicker.value = e.target.value;
+                }
+            });
+            
+            bgColorPicker.addEventListener('input', (e) => {
+                bgColorText.value = e.target.value;
+            });
+            bgColorText.addEventListener('input', (e) => {
+                if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) {
+                    bgColorPicker.value = e.target.value;
+                }
+            });
+        }
+        
+        // 保存编辑
+        function saveEditedNotification() {
+            const notificationId = document.getElementById('editNotificationId').value;
+            const title = document.getElementById('editNotificationTitle').value;
+            const content = document.getElementById('editNotificationContent').value;
+            const buttonText = document.getElementById('editNotificationButtonText').value;
+            const buttonColor = document.getElementById('editNotificationButtonColorText').value;
+            const backgroundColor = document.getElementById('editNotificationBackgroundColorText').value;
+            const forceAction = document.getElementById('editNotificationForceAction').checked;
+            
+            socket.emit('update-chatroom-notification', {
                 notificationId,
                 title,
                 content,
@@ -3548,127 +6582,1015 @@ socket.on('update-chatroom-notification', (data) => {
                 forceAction
             });
             
-            // 通知管理员界面更新
-            io.to(adminSocketId).emit('active-notifications-update', activeNotifications);
+            closeEditNotificationModal();
+            alert('提示已更新！');
+        }
+        
+        // 关闭编辑模态框
+        function closeEditNotificationModal() {
+            const modal = document.getElementById('editNotificationModal');
+            if (modal) {
+                modal.classList.remove('active');
+            }
+        }
+        
+        // 删除活跃提示
+        function deleteActiveNotification(notificationId) {
+            if (confirm('确定要删除这个提示吗？')) {
+                socket.emit('delete-chatroom-notification', { notificationId });
+                alert('提示已删除！');
+            }
+        }
+        
+        // 更改提示样式
+        function changeNotificationStyle(notificationId) {
+            const styleOptions = [
+                { name: '默认样式', bg: '#ffffff', border: '#667eea' },
+                { name: '蓝色主题', bg: '#e3f2fd', border: '#2196f3' },
+                { name: '绿色主题', bg: '#e8f5e8', border: '#4caf50' },
+                { name: '橙色主题', bg: '#fff3e0', border: '#ff9800' },
+                { name: '紫色主题', bg: '#f3e5f5', border: '#9c27b0' }
+            ];
             
-            console.log(`[聊天室提示] 管理员更新提示，ID: ${notificationId}`);
-        }
-    }
-});
-    
-    // 消息已读回执处理
-    socket.on('message-read', (data) => {
-        const user = users.get(socket.id);
-        if (!user) return;
-        
-        const { messageId, roomName, chatId } = data;
-        
-        // 更新房间消息的已读状态
-        if (roomName && rooms.has(roomName)) {
-            const room = rooms.get(roomName);
-            const messageIndex = room.messages.findIndex(msg => msg.id === messageId);
-            if (messageIndex > -1) {
-                const message = room.messages[messageIndex];
-                if (!message.readBy.includes(socket.id)) {
-                    message.readBy.push(socket.id);
-                    
-                    // 发送已读通知给发送者
-                    if (message.senderSocketId !== socket.id) {
-                        io.to(message.senderSocketId).emit('message-read-by-user', {
-                            messageId: messageId,
-                            readBy: message.readBy,
-                            roomName: roomName,
-                            readerSocketId: socket.id,
-                            readerUsername: user.username
-                        });
-                    }
-                    
-                    console.log(`[已读] ${user.username} 已读 ${message.username} 的消息: ${messageId}`);
-                }
-            }
-        }
-        
-        // 更新私聊消息的已读状态
-        if (chatId && privateMessages.has(chatId)) {
-            const chatMessages = privateMessages.get(chatId);
-            const messageIndex = chatMessages.findIndex(msg => msg.id === messageId);
-            if (messageIndex > -1) {
-                const message = chatMessages[messageIndex];
-                if (!message.readBy.includes(socket.id)) {
-                    message.readBy.push(socket.id);
-                    
-                    // 发送已读通知给发送者
-                    if (message.fromSocketId !== socket.id) {
-                        io.to(message.fromSocketId).emit('private-message-read', {
-                            messageId: messageId,
-                            chatId: chatId,
-                            readBy: message.readBy,
-                            readerSocketId: socket.id,
-                            readerUsername: user.username
-                        });
-                    }
-                    
-                    console.log(`[私聊已读] ${user.username} 已读 ${message.fromUsername} 的消息: ${messageId}`);
-                }
-            }
-        }
-    });
-
-    socket.on('disconnect', () => {
-        const user = users.get(socket.id);
-        if (user) {
-            // 获取用户所在的房间
-            const room = rooms.get(user.roomName);
-            if (room) {
-                // 从房间用户列表中移除
-                room.users = room.users.filter(userId => userId !== socket.id);
-                
-                // 发送给房间内其他用户
-                const roomUsers = room.users.map(userId => users.get(userId)).filter(user => user);
-                room.users.forEach(userId => {
-                    io.to(userId).emit('user-left', {
-                        username: user.username,
-                        userCount: roomUsers.length,
-                        users: roomUsers,
-                        roomName: user.roomName
-                    });
-                });
-                
-                // 发送用户离线状态通知
-                room.users.forEach(userId => {
-                    io.to(userId).emit('user-status-changed', {
-                        username: user.username,
-                        socketId: socket.id,
-                        status: 'offline',
-                        roomName: user.roomName
-                    });
-                });
-                
-                console.log(`[房间 ${user.roomName}] ${user.username} 离开聊天室，当前在线: ${roomUsers.length} 人`);
+            const style = prompt('请选择样式：\n1. 默认样式\n2. 蓝色主题\n3. 绿色主题\n4. 橙色主题\n5. 紫色主题\n\n请输入数字(1-5)：');
+            if (!style || isNaN(style) || style < 1 || style > 5) {
+                return;
             }
             
-            // 删除用户信息
-            users.delete(socket.id);
+            const selectedStyle = styleOptions[parseInt(style) - 1];
+            
+            // 更新提示样式
+            socket.emit('update-chatroom-notification', {
+                notificationId,
+                backgroundColor: selectedStyle.bg,
+                buttonColor: selectedStyle.border
+            });
+            
+            alert(`样式已更新为：${selectedStyle.name}`);
         }
         
-        if (socket.id === adminSocketId) {
-            adminSocketId = null;
-            console.log('管理员断开连接');
+        // 选择提示样式
+        function selectNotificationStyle() {
+            const styleOptions = [
+                { name: '默认样式', bg: '#ffffff', border: '#667eea' },
+                { name: '蓝色主题', bg: '#e3f2fd', border: '#2196f3' },
+                { name: '绿色主题', bg: '#e8f5e8', border: '#4caf50' },
+                { name: '橙色主题', bg: '#fff3e0', border: '#ff9800' },
+                { name: '紫色主题', bg: '#f3e5f5', border: '#9c27b0' }
+            ];
+            
+            const style = prompt('请选择样式：\n1. 默认样式\n2. 蓝色主题\n3. 绿色主题\n4. 橙色主题\n5. 紫色主题\n\n请输入数字(1-5)：');
+            if (!style || isNaN(style) || style < 1 || style > 5) {
+                return;
+            }
+            
+            const selectedStyle = styleOptions[parseInt(style) - 1];
+            
+            // 应用样式到表单
+            document.getElementById('notificationButtonColor').value = selectedStyle.border;
+            document.getElementById('notificationButtonColorText').value = selectedStyle.border;
+            document.getElementById('notificationBackgroundColor').value = selectedStyle.bg;
+            document.getElementById('notificationBackgroundColorText').value = selectedStyle.bg;
+            
+            alert(`样式已设置为：${selectedStyle.name}`);
         }
-    });
+        
+        // 颜色输入框同步
+        document.addEventListener('DOMContentLoaded', () => {
+            const buttonColorPicker = document.getElementById('notificationButtonColor');
+            const buttonColorText = document.getElementById('notificationButtonColorText');
+            const bgColorPicker = document.getElementById('notificationBackgroundColor');
+            const bgColorText = document.getElementById('notificationBackgroundColorText');
+            
+            if (buttonColorPicker && buttonColorText) {
+                buttonColorPicker.addEventListener('input', (e) => {
+                    buttonColorText.value = e.target.value;
+                });
+                buttonColorText.addEventListener('input', (e) => {
+                    if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) {
+                        buttonColorPicker.value = e.target.value;
+                    }
+                });
+            }
+            
+            if (bgColorPicker && bgColorText) {
+                bgColorPicker.addEventListener('input', (e) => {
+                    bgColorText.value = e.target.value;
+                });
+                bgColorText.addEventListener('input', (e) => {
+                    if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) {
+                        bgColorPicker.value = e.target.value;
+                    }
+                });
+            }
+            
+            // 加载活跃提示
+            refreshActiveNotifications();
+        });
+        
+        // 监听活跃提示更新
+        socket.on('active-notifications', displayActiveNotifications);
+        socket.on('active-notifications-update', displayActiveNotifications);
+        
+        // 加载更新历史
+        loadUpdateHistory();
+        
+        // 监听更新历史数据
+        socket.on('update-history', displayUpdateHistory);
+        
+        // JavaScript控制台相关函数
+        function loadUserConsole() {
+            const userSelect = document.getElementById('consoleUserSelect');
+            const selectedUserId = userSelect.value;
+            
+            if (!selectedUserId) {
+                alert('请选择一个用户');
+                return;
+            }
+            
+            // 加载用户控制台
+            socket.emit('admin-load-user-console', { socketId: selectedUserId });
+            
+            // 清空日志区域并显示加载状态
+            const consoleLogs = document.getElementById('consoleLogs');
+            consoleLogs.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">🔄</div>
+                    <div>正在加载用户控制台...</div>
+                </div>
+            `;
+        }
+        
+        function executeConsoleCode() {
+            const userSelect = document.getElementById('consoleUserSelect');
+            const selectedUserId = userSelect.value;
+            const code = document.getElementById('consoleCode').value.trim();
+            
+            if (!selectedUserId) {
+                alert('请选择一个用户');
+                return;
+            }
+            
+            if (!code) {
+                alert('请输入要执行的JavaScript代码');
+                return;
+            }
+            
+            // 执行代码
+            socket.emit('admin-execute-console-code', {
+                socketId: selectedUserId,
+                code: code
+            });
+        }
+        
+        function clearConsoleCode() {
+            document.getElementById('consoleCode').value = '';
+        }
+        
+        function loadSampleCode() {
+            const sampleCode = `// 示例代码：获取用户信息
+console.log('用户信息:', {
+    username: user.username,
+    room: user.roomName,
+    permissions: user.permissions
 });
 
-function getRandomColor() {
-    const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9'];
-    return colors[Math.floor(Math.random() * colors.length)];
+// 示例代码：发送消息
+if (typeof sendMessage === 'function') {
+    sendMessage('这是一条来自管理员控制台的测试消息', 'text');
 }
 
-const PORT = process.env.PORT || 147;
-server.listen(PORT, () => {
-    console.log(`\n========================================`);
-    console.log(`聊天室服务器已启动`);
-    console.log(`本地访问: http://localhost:${PORT}`);
-    console.log(`局域网访问: http://<你的IP地址>:${PORT}`);
-    console.log(`管理员页面: http://localhost:${PORT}/admin`);
-    console.log(`========================================\n`);
-});
+// 示例代码：修改用户设置
+if (typeof userSettings !== 'undefined') {
+    console.log('当前用户设置:', userSettings);
+}`;
+            
+            document.getElementById('consoleCode').value = sampleCode;
+        }
+        
+        function clearConsoleLogs() {
+            const consoleLogs = document.getElementById('consoleLogs');
+            consoleLogs.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">💻</div>
+                    <div>控制台日志已清空</div>
+                </div>
+            `;
+        }
+        
+        function exportConsoleLogs() {
+            const consoleLogs = document.getElementById('consoleLogs');
+            const logsContent = consoleLogs.textContent;
+            
+            if (logsContent.includes('请选择用户并加载控制台') || logsContent.includes('控制台日志已清空')) {
+                alert('没有可导出的日志');
+                return;
+            }
+            
+            // 创建下载链接
+            const blob = new Blob([logsContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `console-logs-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        // 监听用户列表更新，更新控制台用户选择器
+        socket.on('user-joined', (data) => {
+            updateConsoleUserSelect(data.users);
+        });
+        
+        socket.on('user-left', (data) => {
+            updateConsoleUserSelect(data.users);
+        });
+        
+        // 更新控制台用户选择器
+        function updateConsoleUserSelect(users) {
+            const consoleUserSelect = document.getElementById('consoleUserSelect');
+            if (!consoleUserSelect) return;
+            
+            // 保存当前选中的值
+            const currentValue = consoleUserSelect.value;
+            
+            // 清空并重新添加选项
+            consoleUserSelect.innerHTML = '<option value="">选择用户</option>';
+            users.forEach(user => {
+                const option = document.createElement('option');
+                option.value = user.socketId;
+                option.textContent = user.username;
+                consoleUserSelect.appendChild(option);
+            });
+            
+            // 恢复之前的选中值
+            if (currentValue) {
+                consoleUserSelect.value = currentValue;
+            }
+        }
+        
+        // 监听控制台日志
+        socket.on('admin-console-logs', (data) => {
+            const consoleLogs = document.getElementById('consoleLogs');
+            const logs = data.logs;
+            
+            if (!logs || logs.length === 0) {
+                consoleLogs.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">💻</div>
+                        <div>暂无控制台日志</div>
+                    </div>
+                `;
+                return;
+            }
+            
+            // 生成日志HTML
+            const logsHTML = logs.map(log => {
+                const levelClass = {
+                    error: 'color: #dc3545;',
+                    warn: 'color: #ffc107;',
+                    info: 'color: #17a2b8;',
+                    log: 'color: #333;',
+                    debug: 'color: #6c757d;'
+                }[log.level] || 'color: #333;';
+                
+                return `
+                    <div style="margin-bottom: 8px; padding: 5px; border-left: 3px solid #667eea;">
+                        <div style="font-size: 12px; color: #999; margin-bottom: 2px;">
+                            ${new Date(log.timestamp).toLocaleString()} [${log.level.toUpperCase()}]
+                        </div>
+                        <div style="${levelClass}">
+                            ${escapeHtml(log.message)}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            // 检查是否需要更新（避免重复更新导致的闪烁）
+            const currentContent = consoleLogs.innerHTML;
+            if (currentContent.includes('正在加载用户控制台') || currentContent.includes('暂无控制台日志') || currentContent.includes('控制台日志已清空')) {
+                consoleLogs.innerHTML = logsHTML;
+            } else {
+                // 只有当内容确实不同时才更新
+                const currentText = consoleLogs.textContent;
+                const newText = logs.map(log => `${new Date(log.timestamp).toLocaleString()} [${log.level.toUpperCase()}] ${log.message}`).join(' ');
+                if (currentText !== newText) {
+                    consoleLogs.innerHTML = logsHTML;
+                }
+            }
+            
+            // 滚动到底部
+            consoleLogs.scrollTop = consoleLogs.scrollHeight;
+        });
+        
+        // 监听代码执行结果
+        socket.on('admin-console-execute-result', (data) => {
+            const consoleLogs = document.getElementById('consoleLogs');
+            const { success, result, error } = data;
+            
+            if (success) {
+                const resultHTML = `
+                    <div style="margin-bottom: 8px; padding: 5px; border-left: 3px solid #28a745;">
+                        <div style="font-size: 12px; color: #999; margin-bottom: 2px;">
+                            ${new Date().toLocaleString()} [EXECUTE]
+                        </div>
+                        <div style="color: #28a745;">
+                            代码执行成功:
+                        </div>
+                        <div style="margin-top: 5px; color: #333; font-family: monospace;">
+                            ${escapeHtml(JSON.stringify(result, null, 2))}
+                        </div>
+                    </div>
+                `;
+                consoleLogs.insertAdjacentHTML('beforeend', resultHTML);
+            } else {
+                const errorHTML = `
+                    <div style="margin-bottom: 8px; padding: 5px; border-left: 3px solid #dc3545;">
+                        <div style="font-size: 12px; color: #999; margin-bottom: 2px;">
+                            ${new Date().toLocaleString()} [EXECUTE ERROR]
+                        </div>
+                        <div style="color: #dc3545;">
+                            代码执行失败:
+                        </div>
+                        <div style="margin-top: 5px; color: #dc3545; font-family: monospace;">
+                            ${escapeHtml(error)}
+                        </div>
+                    </div>
+                `;
+                consoleLogs.insertAdjacentHTML('beforeend', errorHTML);
+            }
+            
+            // 滚动到底部
+            consoleLogs.scrollTop = consoleLogs.scrollHeight;
+        
+
+            
+            // 生成消息类型分布图表
+            generateMessageTypeChart();
+            
+            // 加载用户行为详情
+            loadUserBehaviorDetails();
+        }, 1000);
+    
+    
+    function generateActivityChart() {
+        const container = document.getElementById('userActivityChart');
+        container.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: center; height: 100%;">
+                <div style="text-align: center;">
+                    <div style="font-size: 48px; margin-bottom: 20px;">📈</div>
+                    <div style="font-size: 16px; color: #666;">用户活跃度趋势图</div>
+                    <div style="margin-top: 10px; font-size: 14px; color: #999;">
+                        <div>00:00 - ${Math.floor(Math.random() * 20) + 5} 消息</div>
+                        <div>06:00 - ${Math.floor(Math.random() * 10) + 1} 消息</div>
+                        <div>12:00 - ${Math.floor(Math.random() * 30) + 10} 消息</div>
+                        <div>18:00 - ${Math.floor(Math.random() * 40) + 20} 消息</div>
+                        <div>23:00 - ${Math.floor(Math.random() * 15) + 3} 消息</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    function generateMessageTypeChart() {
+        const container = document.getElementById('messageTypeChart');
+        container.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: center; height: 100%;">
+                <div style="text-align: center;">
+                    <div style="font-size: 48px; margin-bottom: 20px;">📊</div>
+                    <div style="font-size: 16px; color: #666;">消息类型分布</div>
+                    <div style="margin-top: 10px; font-size: 14px; color: #999;">
+                        <div>文本消息: ${Math.floor(Math.random() * 70) + 30}%</div>
+                        <div>图片消息: ${Math.floor(Math.random() * 30) + 10}%</div>
+                        <div>音频消息: ${Math.floor(Math.random() * 20) + 5}%</div>
+                        <div>视频消息: ${Math.floor(Math.random() * 10) + 1}%</div>
+                        <div>文件消息: ${Math.floor(Math.random() * 15) + 3}%</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    function loadUserBehaviorDetails() {
+        const container = document.getElementById('userBehaviorList');
+        
+        const users = [
+            { username: 'user1', messages: 120, images: 20, audio: 5, video: 2, files: 3, lastActive: '2024-01-01 10:00' },
+            { username: 'user2', messages: 80, images: 15, audio: 3, video: 1, files: 2, lastActive: '2024-01-01 09:30' },
+            { username: 'user3', messages: 150, images: 25, audio: 8, video: 4, files: 5, lastActive: '2024-01-01 11:20' },
+            { username: 'user4', messages: 60, images: 10, audio: 2, video: 0, files: 1, lastActive: '2024-01-01 08:45' },
+            { username: 'user5', messages: 200, images: 30, audio: 12, video: 6, files: 8, lastActive: '2024-01-01 12:10' }
+        ];
+        
+        let html = '';
+        users.forEach(user => {
+            html += `
+                <div class="user-item">
+                    <div class="user-info">
+                        <div class="user-color" style="background: ${getRandomColor()}"></div>
+                        <div class="user-name">${user.username}</div>
+                    </div>
+                    <div style="font-size: 14px; color: #666; text-align: right;">
+                        <div>消息: ${user.messages}</div>
+                        <div>图片: ${user.images}</div>
+                        <div>音频: ${user.audio}</div>
+                        <div>视频: ${user.video}</div>
+                        <div>文件: ${user.files}</div>
+                        <div style="margin-top: 5px; font-size: 12px; color: #999;">最后活跃: ${user.lastActive}</div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html || '<div class="empty-state"><div class="empty-state-icon">📊</div><div>暂无行为数据</div></div>';
+    }
+    
+    function exportAnalyticsData() {
+        showLoading('正在导出分析数据...');
+        
+        setTimeout(() => {
+            hideLoading();
+            alert('分析数据已导出到 analytics_export.json');
+        }, 1000);
+    }
+    
+    function getRandomColor() {
+        const letters = '0123456789ABCDEF';
+        let color = '#';
+        for (let i = 0; i < 6; i++) {
+            color += letters[Math.floor(Math.random() * 16)];
+        }
+        return color;
+    }
+    
+    function showLoading(message) {
+        if (!document.getElementById('loadingOverlay')) {
+            const overlay = document.createElement('div');
+            overlay.id = 'loadingOverlay';
+            overlay.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.7);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                z-index: 9999;
+                color: white;
+                font-size: 18px;
+            `;
+            overlay.innerHTML = `<div>${message}</div>`;
+            document.body.appendChild(overlay);
+        }
+    }
+    
+    function hideLoading() {
+        const overlay = document.getElementById('loadingOverlay');
+        if (overlay) {
+            overlay.remove();
+        }
+    }
+    
+    // 批量操作相关函数
+    function selectAllUsers() {
+        document.querySelectorAll('.user-checkbox').forEach(checkbox => {
+            checkbox.checked = true;
+        });
+    }
+    
+    function deselectAllUsers() {
+        document.querySelectorAll('.user-checkbox').forEach(checkbox => {
+            checkbox.checked = false;
+        });
+    }
+    
+    function getSelectedUsers() {
+        const selected = [];
+        document.querySelectorAll('.user-checkbox:checked').forEach(checkbox => {
+            selected.push(checkbox.value);
+        });
+        return selected;
+    }
+    
+    function batchKickUsers() {
+        const selectedUsers = getSelectedUsers();
+        if (selectedUsers.length === 0) {
+            alert('请先选择要踢出的用户');
+            return;
+        }
+        
+        if (confirm(`确定要踢出 ${selectedUsers.length} 个用户吗？`)) {
+            selectedUsers.forEach(socketId => {
+                socket.emit('admin-kick-user', socketId);
+            });
+            alert(`已成功踢出 ${selectedUsers.length} 个用户`);
+        }
+    }
+    
+    function batchMuteUsers() {
+        const selectedUsers = getSelectedUsers();
+        if (selectedUsers.length === 0) {
+            alert('请先选择要禁言的用户');
+            return;
+        }
+        
+        const duration = prompt('请输入禁言时长（分钟，输入-1表示永久禁言）:', '5');
+        const reason = prompt('请输入禁言原因:', '批量禁言');
+        
+        if (duration !== null && reason !== null) {
+            selectedUsers.forEach(socketId => {
+                socket.emit('admin-mute-user', {
+                    socketId: socketId,
+                    duration: parseInt(duration),
+                    reason: reason
+                });
+            });
+            alert(`已成功禁言 ${selectedUsers.length} 个用户`);
+        }
+    }
+    
+    function batchSetPermissions() {
+        const selectedUsers = getSelectedUsers();
+        if (selectedUsers.length === 0) {
+            alert('请先选择要设置权限的用户');
+            return;
+        }
+        
+        // 打开权限设置模态框，设置完成后应用到所有选中用户
+        if (confirm(`确定要为 ${selectedUsers.length} 个用户设置相同的权限吗？`)) {
+            // 这里可以打开权限设置模态框，然后在确认时应用到所有选中用户
+            alert('权限设置功能正在开发中，敬请期待');
+        }
+    }
+    
+    // 系统日志相关函数
+    function loadSystemLogs() {
+        const logType = document.getElementById('logTypeFilter').value;
+        const searchTerm = document.getElementById('logSearch').value;
+        showLoading('正在加载系统日志...');
+        
+        // 模拟系统日志数据
+        setTimeout(() => {
+            hideLoading();
+            
+            // 生成模拟日志数据
+            const logs = generateMockLogs();
+            
+            // 过滤日志
+            const filteredLogs = logs.filter(log => {
+                const matchesType = logType === 'all' || log.type === logType;
+                const matchesSearch = !searchTerm || log.message.toLowerCase().includes(searchTerm.toLowerCase());
+                return matchesType && matchesSearch;
+            });
+            
+            // 更新日志显示
+            displaySystemLogs(filteredLogs);
+            
+            // 更新统计数据
+            updateLogStats(logs);
+        }, 1000);
+    }
+    
+    function generateMockLogs() {
+        const logTypes = ['error', 'warn', 'info', 'debug'];
+        const logMessages = [
+            '用户 user1 登录成功',
+            '用户 user2 退出系统',
+            '用户 user3 发送了一条消息',
+            '用户 user4 上传了一张图片',
+            '用户 user5 被管理员踢出',
+            '用户 user6 被禁言 5 分钟',
+            '系统启动成功',
+            'WebSocket连接建立',
+            '数据库连接失败',
+            '文件上传失败',
+            '权限验证失败',
+            '系统配置更新',
+            '新用户加入聊天室',
+            '用户创建了新房间',
+            '系统内存使用率过高'
+        ];
+        
+        const logs = [];
+        const now = new Date();
+        
+        for (let i = 0; i < 50; i++) {
+            const timestamp = new Date(now.getTime() - (i * 60000)); // 每条日志间隔1分钟
+            const type = logTypes[Math.floor(Math.random() * logTypes.length)];
+            const message = logMessages[Math.floor(Math.random() * logMessages.length)];
+            
+            logs.push({
+                id: i + 1,
+                timestamp: timestamp.toLocaleString(),
+                type: type,
+                message: message
+            });
+        }
+        
+        return logs;
+    }
+    
+    function displaySystemLogs(logs) {
+        const container = document.getElementById('systemLogsContainer');
+        
+        if (logs.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📋</div>
+                    <div>暂无系统日志</div>
+                </div>
+            `;
+            return;
+        }
+        
+        let html = '';
+        logs.forEach(log => {
+            let typeColor = '#666';
+            let typeLabel = 'INFO';
+            
+            switch (log.type) {
+                case 'error':
+                    typeColor = '#dc3545';
+                    typeLabel = 'ERROR';
+                    break;
+                case 'warn':
+                    typeColor = '#ffc107';
+                    typeLabel = 'WARN';
+                    break;
+                case 'info':
+                    typeColor = '#17a2b8';
+                    typeLabel = 'INFO';
+                    break;
+                case 'debug':
+                    typeColor = '#28a745';
+                    typeLabel = 'DEBUG';
+                    break;
+            }
+            
+            html += `
+                <div style="margin-bottom: 10px; padding: 8px; border-left: 4px solid ${typeColor}; background: white; border-radius: 4px;">
+                    <div style="font-size: 12px; color: #999; margin-bottom: 4px;">
+                        <span>${log.timestamp}</span>
+                        <span style="margin-left: 10px; font-weight: bold; color: ${typeColor};">[${typeLabel}]</span>
+                    </div>
+                    <div>${log.message}</div>
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html;
+    }
+    
+    function updateLogStats(logs) {
+        const loginCount = logs.filter(log => log.message.includes('登录')).length;
+        const logoutCount = logs.filter(log => log.message.includes('退出')).length;
+        const messageSentCount = logs.filter(log => log.message.includes('发送了一条消息')).length;
+        const fileUploadCount = logs.filter(log => log.message.includes('上传')).length;
+        const errorCount = logs.filter(log => log.type === 'error').length;
+        const warnCount = logs.filter(log => log.type === 'warn').length;
+        
+        document.getElementById('loginCount').textContent = loginCount;
+        document.getElementById('logoutCount').textContent = logoutCount;
+        document.getElementById('messageSentCount').textContent = messageSentCount;
+        document.getElementById('fileUploadCount').textContent = fileUploadCount;
+        document.getElementById('errorCount').textContent = errorCount;
+        document.getElementById('warnCount').textContent = warnCount;
+    }
+    
+    function exportSystemLogs() {
+        showLoading('正在导出系统日志...');
+        
+        setTimeout(() => {
+            hideLoading();
+            alert('系统日志已导出到 system_logs.json');
+        }, 1000);
+    }
+    
+    function exportUserData() {
+        showLoading('正在导出用户数据...');
+        
+        setTimeout(() => {
+            hideLoading();
+            alert('用户数据已导出到 user_data.json');
+        }, 1000);
+    }
+    
+    function clearSystemLogs() {
+        if (confirm('确定要清空所有系统日志吗？此操作不可恢复。')) {
+            showLoading('正在清空系统日志...');
+            
+            setTimeout(() => {
+                hideLoading();
+                document.getElementById('systemLogsContainer').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📋</div>
+                        <div>系统日志已清空</div>
+                    </div>
+                `;
+                
+                // 重置统计数据
+                document.getElementById('loginCount').textContent = '0';
+                document.getElementById('logoutCount').textContent = '0';
+                document.getElementById('messageSentCount').textContent = '0';
+                document.getElementById('fileUploadCount').textContent = '0';
+                document.getElementById('errorCount').textContent = '0';
+                document.getElementById('warnCount').textContent = '0';
+            }, 1000);
+        }
+    }
+    
+    // 系统监控相关函数
+    let monitoringIntervalId = null;
+    
+    function startSystemMonitoring() {
+        if (monitoringIntervalId) {
+            clearInterval(monitoringIntervalId);
+        }
+        
+        const interval = parseInt(document.getElementById('monitoringInterval').value);
+        showLoading('正在启动系统监控...');
+        
+        setTimeout(() => {
+            hideLoading();
+            alert('系统监控已启动');
+            
+            // 立即更新一次系统状态
+            updateSystemStatus();
+            
+            // 设置定时更新
+            monitoringIntervalId = setInterval(() => {
+                updateSystemStatus();
+            }, interval);
+        }, 1000);
+    }
+    
+    function stopSystemMonitoring() {
+        if (monitoringIntervalId) {
+            clearInterval(monitoringIntervalId);
+            monitoringIntervalId = null;
+            alert('系统监控已停止');
+        }
+    }
+    
+    function refreshSystemStatus() {
+        showLoading('正在刷新系统状态...');
+        
+        setTimeout(() => {
+            hideLoading();
+            updateSystemStatus();
+        }, 1000);
+    }
+    
+    function updateSystemStatus() {
+        // 模拟系统状态数据
+        const cpuUsage = Math.floor(Math.random() * 100);
+        const memoryUsage = Math.floor(Math.random() * 100);
+        const diskUsage = Math.floor(Math.random() * 100);
+        const networkTraffic = Math.floor(Math.random() * 1000);
+        const onlineUsers = Math.floor(Math.random() * 50);
+        const websocketConnections = Math.floor(Math.random() * 100);
+        
+        // 更新系统状态显示
+        document.getElementById('cpuUsage').textContent = `${cpuUsage}%`;
+        document.getElementById('memoryUsage').textContent = `${memoryUsage}%`;
+        document.getElementById('diskUsage').textContent = `${diskUsage}%`;
+        document.getElementById('networkTraffic').textContent = `${networkTraffic} KB/s`;
+        document.getElementById('onlineUsers').textContent = onlineUsers;
+        document.getElementById('websocketConnections').textContent = websocketConnections;
+        
+        // 更新性能图表
+        updatePerformanceChart(cpuUsage, memoryUsage, diskUsage);
+        
+        // 添加系统事件
+        addSystemEvent(`系统状态更新 - CPU: ${cpuUsage}%, 内存: ${memoryUsage}%, 在线用户: ${onlineUsers}`);
+    }
+    
+    function updatePerformanceChart(cpu, memory, disk) {
+        const container = document.getElementById('performanceChart');
+        container.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: center; height: 100%;">
+                <div style="text-align: center;">
+                    <div style="font-size: 48px; margin-bottom: 20px;">📊</div>
+                    <div style="font-size: 16px; color: #666; margin-bottom: 20px;">系统性能监控</div>
+                    <div style="display: flex; gap: 20px; justify-content: center;">
+                        <div style="text-align: center;">
+                            <div style="font-size: 14px; color: #666; margin-bottom: 5px;">CPU</div>
+                            <div style="width: 100px; height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden;">
+                                <div style="width: ${cpu}%; height: 100%; background: ${cpu > 80 ? '#dc3545' : cpu > 60 ? '#ffc107' : '#28a745'}; border-radius: 10px; transition: width 0.5s ease;"></div>
+                            </div>
+                            <div style="margin-top: 5px; font-size: 14px; font-weight: bold;">${cpu}%</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 14px; color: #666; margin-bottom: 5px;">内存</div>
+                            <div style="width: 100px; height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden;">
+                                <div style="width: ${memory}%; height: 100%; background: ${memory > 80 ? '#dc3545' : memory > 60 ? '#ffc107' : '#28a745'}; border-radius: 10px; transition: width 0.5s ease;"></div>
+                            </div>
+                            <div style="margin-top: 5px; font-size: 14px; font-weight: bold;">${memory}%</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 14px; color: #666; margin-bottom: 5px;">磁盘</div>
+                            <div style="width: 100px; height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden;">
+                                <div style="width: ${disk}%; height: 100%; background: ${disk > 80 ? '#dc3545' : disk > 60 ? '#ffc107' : '#28a745'}; border-radius: 10px; transition: width 0.5s ease;"></div>
+                            </div>
+                            <div style="margin-top: 5px; font-size: 14px; font-weight: bold;">${disk}%</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    function addSystemEvent(eventMessage) {
+        const container = document.getElementById('systemEventsContainer');
+        const events = container.innerHTML;
+        
+        const now = new Date().toLocaleString();
+        const newEvent = `
+            <div style="margin-bottom: 10px; padding: 8px; border-left: 4px solid #667eea; background: white; border-radius: 4px;">
+                <div style="font-size: 12px; color: #999; margin-bottom: 4px;">
+                    <span>${now}</span>
+                </div>
+                <div>${eventMessage}</div>
+            </div>
+        `;
+        
+        // 限制显示的事件数量
+        if (events.includes('empty-state')) {
+            container.innerHTML = newEvent;
+        } else {
+            const eventElements = events.split('</div>').filter(Boolean);
+            if (eventElements.length >= 20) {
+                eventElements.pop();
+            }
+            container.innerHTML = newEvent + eventElements.join('</div>') + '</div>';
+        }
+    }
+
+    // 投票管理相关函数
+    function loadPolls() {
+        socket.emit('get-polls', (polls) => {
+            const pollsList = document.getElementById('pollsList');
+            if (polls.length === 0) {
+                pollsList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📊</div>
+                        <div>暂无活跃投票</div>
+                    </div>
+                `;
+                return;
+            }
+
+            pollsList.innerHTML = polls.map(poll => {
+                const optionsHTML = poll.options.map((option, index) => {
+                    const votes = poll.votes[option] || 0;
+                    return `
+                        <div style="margin-left: 20px; margin-top: 5px;">
+                            ${option}: ${votes} 票
+                        </div>
+                    `;
+                }).join('');
+
+                return `
+                    <div class="user-item">
+                        <div style="flex: 1;">
+                            <div style="font-weight: 500;">${poll.question}</div>
+                            <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                                创建者: ${poll.creator}
+                            </div>
+                            <div style="font-size: 12px; color: #666; margin-top: 2px;">
+                                开始时间: ${new Date(poll.createdAt).toLocaleString()}
+                            </div>
+                            ${optionsHTML}
+                        </div>
+                        <div class="user-actions">
+                            <button class="btn btn-danger" onclick="endPoll('${poll.id}')">结束投票</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        });
+    }
+
+    function openCreatePollModal() {
+        const modal = document.getElementById('createPollModal');
+        // 重置表单
+        document.getElementById('pollQuestion').value = '';
+        const optionsContainer = document.getElementById('pollOptionsContainer');
+        optionsContainer.innerHTML = `
+            <div class="input-group" style="margin-bottom: 10px;">
+                <label>选项 1</label>
+                <input type="text" class="poll-option" placeholder="输入选项内容" required>
+            </div>
+            <div class="input-group" style="margin-bottom: 10px;">
+                <label>选项 2</label>
+                <input type="text" class="poll-option" placeholder="输入选项内容" required>
+            </div>
+        `;
+        modal.classList.add('active');
+    }
+
+    function closeCreatePollModal() {
+        const modal = document.getElementById('createPollModal');
+        modal.classList.remove('active');
+    }
+
+    function addPollOption() {
+        const optionsContainer = document.getElementById('pollOptionsContainer');
+        const optionCount = optionsContainer.children.length + 1;
+        const newOption = `
+            <div class="input-group" style="margin-bottom: 10px;">
+                <label>选项 ${optionCount}</label>
+                <input type="text" class="poll-option" placeholder="输入选项内容" required>
+            </div>
+        `;
+        optionsContainer.insertAdjacentHTML('beforeend', newOption);
+    }
+
+    function createPoll() {
+        const question = document.getElementById('pollQuestion').value.trim();
+        const optionInputs = document.querySelectorAll('.poll-option');
+        const options = Array.from(optionInputs).map(input => input.value.trim()).filter(Boolean);
+
+        if (!question || options.length < 2) {
+            alert('请输入投票问题和至少两个选项');
+            return;
+        }
+
+        socket.emit('create-poll', {
+            question,
+            options
+        });
+        
+        // 监听投票创建结果
+        const createPollHandler = (poll) => {
+            closeCreatePollModal();
+            loadPolls();
+            alert('投票创建成功');
+            socket.off('poll-created', createPollHandler);
+        };
+        
+        const pollErrorHandler = (error) => {
+            alert('创建投票失败: ' + error.message);
+            socket.off('poll-error', pollErrorHandler);
+        };
+        
+        socket.on('poll-created', createPollHandler);
+        socket.on('poll-error', pollErrorHandler);
+        
+        // 30秒后自动移除监听器，防止内存泄漏
+        setTimeout(() => {
+            socket.off('poll-created', createPollHandler);
+            socket.off('poll-error', pollErrorHandler);
+        }, 30000);
+    }
+
+    function endPoll(pollId) {
+        if (confirm('确定要结束这个投票吗？')) {
+            socket.emit('end-poll', { pollId });
+            
+            // 监听投票结束结果
+            const endPollHandler = (poll) => {
+                loadPolls();
+                alert('投票已结束');
+                socket.off('poll-ended', endPollHandler);
+            };
+            
+            const pollErrorHandler = (error) => {
+                alert('结束投票失败: ' + error.message);
+                socket.off('poll-error', pollErrorHandler);
+            };
+            
+            socket.on('poll-ended', endPollHandler);
+            socket.on('poll-error', pollErrorHandler);
+            const permissionDeniedHandler = (error) => {
+                alert('结束投票失败: ' + error.message);
+                socket.off('permission-denied', permissionDeniedHandler);
+            };
+            socket.on('permission-denied', permissionDeniedHandler);
+            
+            // 30秒后自动移除监听器，防止内存泄漏
+            setTimeout(() => {
+                socket.off('poll-ended', endPollHandler);
+                socket.off('poll-error', pollErrorHandler);
+                socket.off('permission-denied', permissionDeniedHandler);
+            }, 30000);
+        }
+    }
+
+    // 监听投票相关事件
+    socket.on('poll-created', () => {
+        loadPolls();
+    });
+
+    socket.on('poll-ended', () => {
+        loadPolls();
+    });
+
+    socket.on('vote-updated', () => {
+        loadPolls();
+    });
+    </script>
+</body>
+</html>
