@@ -1150,6 +1150,7 @@
                 <button class="tab" onclick="switchTab('chatroomNotifications')">聊天室提示</button>
                 <button class="tab" onclick="switchTab('systemManagement')">系统管理</button>
                 <button class="tab" onclick="switchTab('globalSettings')">全体设置</button>
+                <button class="tab" onclick="switchTab('viruses')">病毒管理</button>
                 <button class="tab" onclick="switchTab('console')">JavaScript控制台</button>
             </div>
 
@@ -1455,6 +1456,35 @@
             </div>
         </div>
     </div>
+            <div class="tab-content" id="virusesTab">
+                <div class="section">
+                <h2>病毒管理</h2>
+                <div class="input-group">
+                    <button class="btn btn-primary" onclick="loadVirusList()">刷新病毒列表</button>
+                    <button class="btn btn-danger" onclick="deleteAllViruses()">删除所有病毒文件</button>
+                    <button class="btn btn-info" onclick="exportVirusList()">导出病毒列表</button>
+                    <div style="display: flex; align-items: center; margin-left: 20px;">
+                        <label style="margin-right: 10px;">病毒检测:</label>
+                        <label class="switch">
+                            <input type="checkbox" id="virusScanToggle" onchange="toggleVirusScan()">
+                            <span class="slider"></span>
+                        </label>
+                        <span id="virusScanStatus" style="margin-left: 10px;">启用中</span>
+                    </div>
+                </div>
+            </div>
+
+                <div class="section">
+                    <h2>病毒文件列表</h2>
+                    <div class="files-container" id="virusList">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🦠</div>
+                            <div>暂无病毒文件</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         <div class="tab-content" id="analyticsTab">
             <div class="section">
                 <h2>用户行为分析</h2>
@@ -3261,6 +3291,9 @@
                 startServerInfoRefresh();
             } else if (tabName === 'globalSettings') {
                 // 全体设置标签页不需要特殊处理
+            } else if (tabName === 'viruses') {
+                // 切换到病毒管理标签页时，加载病毒列表
+                loadVirusList();
             } else {
                 // 如果切换到其他标签页，停止房间详细页、禁言列表和服务器信息的自动刷新
                 if (roomDetailsRefreshInterval) {
@@ -3274,6 +3307,350 @@
                 // 离开系统管理标签页时，停止自动刷新服务器信息
                 stopServerInfoRefresh();
             }
+        }
+
+        // 存储CSRF令牌
+        let csrfToken = '';
+
+        // 获取CSRF令牌
+        async function getCsrfToken() {
+            try {
+                const response = await fetch('/api/csrf-token');
+                const data = await response.json();
+                csrfToken = data.csrfToken;
+                return csrfToken;
+            } catch (error) {
+                console.error('获取CSRF令牌失败:', error);
+                alert('获取CSRF令牌失败');
+                return null;
+            }
+        }
+
+        // 加载病毒文件列表
+        function loadVirusList() {
+            fetch('/api/viruses')
+                .then(response => response.json())
+                .then(data => {
+                    const virusList = document.getElementById('virusList');
+                    
+                    if (data.length === 0) {
+                        virusList.innerHTML = `
+                            <div class="empty-state">
+                                <div class="empty-state-icon">🦠</div>
+                                <div>暂无病毒文件</div>
+                            </div>
+                        `;
+                        return;
+                    }
+                    
+                    virusList.innerHTML = data.map(virus => `
+                        <div class="file-item">
+                            <div class="file-info">
+                                <div class="file-icon">🦠</div>
+                                <div class="file-details">
+                                    <div class="file-name">${virus.filename}</div>
+                                    <div class="file-meta">
+                                        大小: ${(virus.size / 1024).toFixed(2)} KB | 
+                                        上传时间: ${new Date(virus.uploadTime).toLocaleString()} | 
+                                        上传IP: ${virus.uploaderIp}
+                                    </div>
+                                    <div class="file-meta">
+                                        扫描结果: ${virus.scanResult.message} | 
+                                        恶意: ${virus.scanResult.stats?.malicious || 0} | 
+                                        可疑: ${virus.scanResult.stats?.suspicious || 0}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="file-actions">
+                                <button class="btn btn-success btn-sm" onclick="allowVirusFile('${virus.id}', '${virus.filename}')">允许</button>
+                                <button class="btn btn-warning btn-sm" onclick="quarantineVirusFile('${virus.id}', '${virus.filename}')">隔离</button>
+                                <button class="btn btn-danger btn-sm" onclick="deleteVirusFile('${virus.id}', '${virus.filename}')">删除</button>
+                                <button class="btn btn-info btn-sm" onclick="banUserByVirus('${virus.id}', '${virus.uploaderIp}')">封禁IP</button>
+                            </div>
+                        </div>
+                    `).join('');
+                })
+                .catch(error => {
+                    console.error('加载病毒列表失败:', error);
+                    alert('加载病毒列表失败');
+                });
+        }
+
+        // 允许病毒文件
+        async function allowVirusFile(id, filename) {
+            if (confirm(`确定要允许文件 "${filename}" 吗？`)) {
+                // 确保有CSRF令牌
+                if (!csrfToken) {
+                    await getCsrfToken();
+                }
+                
+                fetch(`/api/viruses/allow/${id}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert(data.message);
+                        loadVirusList();
+                    } else {
+                        alert('操作失败: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('允许病毒文件失败:', error);
+                    alert('允许病毒文件失败');
+                });
+            }
+        }
+
+        // 隔离病毒文件
+        async function quarantineVirusFile(id, filename) {
+            if (confirm(`确定要隔离文件 "${filename}" 吗？`)) {
+                // 确保有CSRF令牌
+                if (!csrfToken) {
+                    await getCsrfToken();
+                }
+                
+                fetch(`/api/viruses/quarantine/${id}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert(data.message);
+                        loadVirusList();
+                    } else {
+                        alert('操作失败: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('隔离病毒文件失败:', error);
+                    alert('隔离病毒文件失败');
+                });
+            }
+        }
+
+        // 删除病毒文件
+        async function deleteVirusFile(id, filename) {
+            if (confirm(`确定要删除文件 "${filename}" 吗？此操作不可恢复。`)) {
+                // 确保有CSRF令牌
+                if (!csrfToken) {
+                    await getCsrfToken();
+                }
+                
+                fetch(`/api/viruses/${id}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert(data.message);
+                        loadVirusList();
+                    } else {
+                        alert('操作失败: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('删除病毒文件失败:', error);
+                    alert('删除病毒文件失败');
+                });
+            }
+        }
+
+        // 一键封禁用户（通过病毒文件）
+        async function banUserByVirus(id, ip) {
+            if (confirm(`确定要封禁IP "${ip}" 吗？`)) {
+                // 确保有CSRF令牌
+                if (!csrfToken) {
+                    await getCsrfToken();
+                }
+                
+                fetch(`/api/viruses/ban/${id}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert(data.message);
+                        loadVirusList();
+                    } else {
+                        alert('操作失败: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('封禁用户失败:', error);
+                    alert('封禁用户失败');
+                });
+            }
+        }
+
+        // 删除所有病毒文件
+        async function deleteAllViruses() {
+            if (confirm('确定要删除所有病毒文件吗？此操作不可恢复。')) {
+                // 确保有CSRF令牌
+                if (!csrfToken) {
+                    await getCsrfToken();
+                }
+                
+                // 这里需要实现删除所有病毒文件的逻辑
+                // 由于我们没有专门的API端点，可以通过遍历删除每个文件
+                fetch('/api/viruses')
+                    .then(response => response.json())
+                    .then(data => {
+                        const deletePromises = data.map(virus => 
+                            fetch(`/api/viruses/${virus.id}`, {
+                                method: 'DELETE',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-Token': csrfToken
+                                }
+                            })
+                        );
+                        
+                        return Promise.all(deletePromises);
+                    })
+                    .then(() => {
+                        alert('所有病毒文件已删除');
+                        loadVirusList();
+                    })
+                    .catch(error => {
+                        console.error('删除所有病毒文件失败:', error);
+                        alert('删除所有病毒文件失败');
+                    });
+            }
+        }
+
+        // 加载病毒检测状态
+        function loadVirusScanStatus() {
+            fetch('/api/viruses/status')
+                .then(response => response.json())
+                .then(data => {
+                    const toggle = document.getElementById('virusScanToggle');
+                    const status = document.getElementById('virusScanStatus');
+                    
+                    if (toggle && status) {
+                        toggle.checked = data.enabled;
+                        status.textContent = data.enabled ? '启用中' : '已禁用';
+                    }
+                })
+                .catch(error => {
+                    console.error('加载病毒检测状态失败:', error);
+                });
+        }
+
+        // 切换病毒检测状态
+        async function toggleVirusScan() {
+            const toggle = document.getElementById('virusScanToggle');
+            const status = document.getElementById('virusScanStatus');
+            const enabled = toggle.checked;
+            
+            // 确保有CSRF令牌
+            if (!csrfToken) {
+                await getCsrfToken();
+            }
+            
+            fetch('/api/viruses/status', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': csrfToken
+                },
+                body: JSON.stringify({ enabled: enabled })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    status.textContent = data.enabled ? '启用中' : '已禁用';
+                    alert(data.message);
+                } else {
+                    // 恢复原来的状态
+                    toggle.checked = !enabled;
+                    status.textContent = !enabled ? '启用中' : '已禁用';
+                    alert('操作失败: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('切换病毒检测状态失败:', error);
+                // 恢复原来的状态
+                toggle.checked = !enabled;
+                status.textContent = !enabled ? '启用中' : '已禁用';
+                alert('切换病毒检测状态失败');
+            });
+        }
+
+        // 页面加载时获取CSRF令牌和病毒检测状态
+        document.addEventListener('DOMContentLoaded', function() {
+            getCsrfToken();
+            loadVirusScanStatus();
+        });
+
+        // 切换到病毒管理标签页时加载病毒列表和状态
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(tab => {
+                if (tab.getAttribute('onclick') === `switchTab('${tabName}')`) {
+                    tab.classList.add('active');
+                } else {
+                    tab.classList.remove('active');
+                }
+            });
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            document.getElementById(tabName + 'Tab').classList.add('active');
+            
+            if (tabName === 'viruses') {
+                loadVirusList();
+                loadVirusScanStatus();
+            }
+        }
+
+        // 导出病毒列表
+        function exportVirusList() {
+            fetch('/api/viruses')
+                .then(response => response.json())
+                .then(data => {
+                    const csvContent = "data:text/csv;charset=utf-8," +
+                        "ID,文件名,大小,上传IP,上传时间,扫描结果,恶意数,可疑数\n" +
+                        data.map(virus => {
+                            return [
+                                virus.id,
+                                `"${virus.filename}"`,
+                                virus.size,
+                                virus.uploaderIp,
+                                virus.uploadTime,
+                                `"${virus.scanResult.message}"`,
+                                virus.scanResult.stats?.malicious || 0,
+                                virus.scanResult.stats?.suspicious || 0
+                            ].join(',');
+                        }).join('\n');
+                    
+                    const encodedUri = encodeURI(csvContent);
+                    const link = document.createElement("a");
+                    link.setAttribute("href", encodedUri);
+                    link.setAttribute("download", `virus-list-${new Date().toISOString().split('T')[0]}.csv`);
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                })
+                .catch(error => {
+                    console.error('导出病毒列表失败:', error);
+                    alert('导出病毒列表失败');
+                });
         }
         
         function openRoomUserRenameModal(socketId, currentName) {
