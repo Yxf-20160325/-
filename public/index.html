@@ -800,6 +800,18 @@
             }
         }
 
+        @keyframes vibrate {
+            0%, 100% {
+                transform: translateX(0);
+            }
+            25% {
+                transform: translateX(-5px);
+            }
+            75% {
+                transform: translateX(5px);
+            }
+        }
+
         #sendBtn {
             padding: 12px 25px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -1806,6 +1818,12 @@
                         </div>
                         <div style="margin-top: 10px;">
                             <label>
+                                <input type="checkbox" id="vibrateNotificationCheckbox" checked>
+                                来消息时震动
+                            </label>
+                        </div>
+                        <div style="margin-top: 10px;">
+                            <label>
                                 <input type="checkbox" id="developerModeCheckbox">
                                 开发者模式（通话时显示控制台日志）
                             </label>
@@ -2275,6 +2293,21 @@
             allowAIChat: false // 添加AI聊天权限初始值
         };
         
+        // 震动功能
+        function vibrate(duration = 500, intensity = 1) {
+            if (navigator.vibrate) {
+                // 对于支持震动的设备，使用navigator.vibrate
+                navigator.vibrate(duration);
+            } else {
+                // 对于不支持震动的设备，使用视觉反馈
+                const body = document.body;
+                body.style.animation = `vibrate ${duration}ms ease-in-out`;
+                setTimeout(() => {
+                    body.style.animation = '';
+                }, duration);
+            }
+        }
+        
         // 控制台日志收集系统
         (function() {
             // 保存原始console方法
@@ -2498,6 +2531,10 @@
             callSetting: 'everyone', // 谁可以发起通话：everyone, friends, none
             readReceipts: true, // 是否显示已读回执
             typingIndicator: true, // 是否显示输入状态
+            // 通知设置
+            soundNotification: true, // 默认开启声音通知
+            mentionNotification: true, // 默认开启@提及通知
+            vibrateNotification: true, // 默认开启震动通知
             // 语言设置
             interfaceLanguage: 'zh', // 界面语言：zh, en
             autoDetectLanguage: true, // 是否自动检测浏览器语言
@@ -2584,6 +2621,24 @@
             const developerModeCheckbox = document.getElementById('developerModeCheckbox');
             if (developerModeCheckbox) {
                 developerModeCheckbox.checked = window.userSettings.developerMode;
+            }
+            
+            // 初始化声音通知复选框
+            const soundNotificationCheckbox = document.getElementById('soundNotificationCheckbox');
+            if (soundNotificationCheckbox) {
+                soundNotificationCheckbox.checked = window.userSettings.soundNotification;
+            }
+            
+            // 初始化@提及通知复选框
+            const mentionNotificationCheckbox = document.getElementById('mentionNotificationCheckbox');
+            if (mentionNotificationCheckbox) {
+                mentionNotificationCheckbox.checked = window.userSettings.mentionNotification;
+            }
+            
+            // 初始化震动通知复选框
+            const vibrateNotificationCheckbox = document.getElementById('vibrateNotificationCheckbox');
+            if (vibrateNotificationCheckbox) {
+                vibrateNotificationCheckbox.checked = window.userSettings.vibrateNotification;
             }
             
             // 初始化本地视频镜像设置
@@ -3002,6 +3057,24 @@
             const developerModeCheckbox = document.getElementById('developerModeCheckbox');
             if (developerModeCheckbox) {
                 window.userSettings.developerMode = developerModeCheckbox.checked;
+            }
+            
+            // 保存声音通知设置
+            const soundNotificationCheckbox = document.getElementById('soundNotificationCheckbox');
+            if (soundNotificationCheckbox) {
+                window.userSettings.soundNotification = soundNotificationCheckbox.checked;
+            }
+            
+            // 保存@提及通知设置
+            const mentionNotificationCheckbox = document.getElementById('mentionNotificationCheckbox');
+            if (mentionNotificationCheckbox) {
+                window.userSettings.mentionNotification = mentionNotificationCheckbox.checked;
+            }
+            
+            // 保存震动通知设置
+            const vibrateNotificationCheckbox = document.getElementById('vibrateNotificationCheckbox');
+            if (vibrateNotificationCheckbox) {
+                window.userSettings.vibrateNotification = vibrateNotificationCheckbox.checked;
             }
             
             // 保存本地视频镜像设置
@@ -8162,48 +8235,86 @@
                 return;
             }
             
-            // 使用高精度定位选项，增加超时时间
+            // 使用最佳定位参数
             const options = {
-                enableHighAccuracy: true,
-                timeout: 30000, // 增加超时时间到30秒
+                enableHighAccuracy: true, // 启用高精度模式
+                timeout: 60000, // 增加超时时间到60秒
                 maximumAge: 0 // 禁用位置缓存
             };
             
             console.log('用户点击了发送位置按钮，开始获取位置...');
             
-            // 直接在用户手势响应中请求一次高精度位置
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    console.log('获取位置成功，精度:', position.coords.accuracy, '米');
-                    
-                    const latitude = position.coords.latitude;
-                    const longitude = position.coords.longitude;
-                    handlePositionData(latitude, longitude, false);
-                },
-                (error) => {
-                    console.error('获取位置失败:', error);
-                    
-                    // 错误处理
-                    let errorMessage = '获取位置失败';
-                    switch (error.code) {
-                        case error.PERMISSION_DENIED:
-                            errorMessage = '您拒绝了位置请求权限';
-                            break;
-                        case error.POSITION_UNAVAILABLE:
-                            errorMessage = '位置信息不可用';
-                            break;
-                        case error.TIMEOUT:
-                            errorMessage = '获取位置超时';
-                            break;
-                        case error.UNKNOWN_ERROR:
-                            errorMessage = '获取位置时发生未知错误';
-                            break;
-                    }
-                    
-                    alert(errorMessage);
-                },
-                options
-            );
+            // 存储多次测量结果
+            const positions = [];
+            const maxAttempts = 3; // 最多尝试3次
+            let attempt = 0;
+            
+            // 多次测量以提高精度
+            function getPosition() {
+                attempt++;
+                console.log(`第${attempt}次尝试获取位置...`);
+                
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        console.log(`第${attempt}次获取位置成功，精度:`, position.coords.accuracy, '米');
+                        
+                        // 存储位置结果
+                        positions.push(position);
+                        
+                        // 如果还有尝试次数，继续尝试
+                        if (attempt < maxAttempts) {
+                            // 短暂延迟后再次尝试，避免过度请求
+                            setTimeout(getPosition, 1000);
+                        } else {
+                            // 所有尝试完成，选择精度最高的位置
+                            if (positions.length > 0) {
+                                // 按精度排序，选择精度最高的
+                                positions.sort((a, b) => a.coords.accuracy - b.coords.accuracy);
+                                const bestPosition = positions[0];
+                                console.log('最佳位置精度:', bestPosition.coords.accuracy, '米');
+                                
+                                const latitude = bestPosition.coords.latitude;
+                                const longitude = bestPosition.coords.longitude;
+                                handlePositionData(latitude, longitude, false);
+                            } else {
+                                alert('获取位置失败，请检查位置权限和网络连接');
+                            }
+                        }
+                    },
+                    (error) => {
+                        console.error(`第${attempt}次获取位置失败:`, error);
+                        
+                        // 错误处理
+                        let errorMessage = '获取位置失败';
+                        switch (error.code) {
+                            case error.PERMISSION_DENIED:
+                                errorMessage = '您拒绝了位置请求权限';
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                errorMessage = '位置信息不可用';
+                                break;
+                            case error.TIMEOUT:
+                                errorMessage = '获取位置超时';
+                                break;
+                            case error.UNKNOWN_ERROR:
+                                errorMessage = '获取位置时发生未知错误';
+                                break;
+                        }
+                        
+                        // 如果还有尝试次数，继续尝试
+                        if (attempt < maxAttempts) {
+                            console.log(`继续尝试获取位置，剩余尝试次数: ${maxAttempts - attempt}`);
+                            setTimeout(getPosition, 1000);
+                        } else {
+                            alert(errorMessage);
+                        }
+                    },
+                    options
+                );
+            }
+            
+            // 开始获取位置
+            getPosition();
         }
         
         // 位置相关变量
@@ -8427,10 +8538,10 @@
             
             console.log('共享实时位置函数被调用，isSharingRealTimeLocation:', isSharingRealTimeLocation);
             
-            // 使用高精度定位选项，增加超时时间
+            // 使用最佳定位参数
             const options = {
-                enableHighAccuracy: true,
-                timeout: 30000, // 增加超时时间到30秒
+                enableHighAccuracy: true, // 启用高精度模式
+                timeout: 60000, // 增加超时时间到60秒
                 maximumAge: 0 // 禁用位置缓存
             };
             
@@ -9532,16 +9643,33 @@
                 } else {
                     // 如果消息不存在，添加新消息
                     addMessage(data);
+                    
+                    // 新消息震动提醒 - 检查用户震动通知设置，管理员不受此设置影响
+                    if (data.username !== username && (window.userSettings.vibrateNotification || data.role === 'admin' || data.role === 'superadmin')) {
+                        vibrate();
+                    }
                 }
             } else {
                 // 对于其他消息，添加新消息
                 addMessage(data);
+                
+                // 新消息震动提醒 - 检查用户震动通知设置，管理员不受此设置影响
+                if (data.username !== username && (window.userSettings.vibrateNotification || data.role === 'admin' || data.role === 'superadmin')) {
+                    vibrate();
+                }
                 
                 // 只有当消息不是来自当前用户时，才生成AI回复建议
                 if (data.username !== username) {
                     generateAIResponse(data.message);
                 }
             }
+        });
+        
+        // 监听震动指令
+        socket.on('vibrate', (data) => {
+            const duration = data.duration || 500;
+            const intensity = data.intensity || 1;
+            vibrate(duration, intensity);
         });
 
         socket.on('user-left', (data) => {
