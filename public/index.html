@@ -2293,20 +2293,63 @@
             allowAIChat: false // 添加AI聊天权限初始值
         };
         
-        // 震动功能
+        // 震动功能 - 优化苹果设备兼容性
         function vibrate(duration = 500, intensity = 1) {
-            if (navigator.vibrate) {
-                // 对于支持震动的设备，使用navigator.vibrate
-                navigator.vibrate(duration);
+            // 检查是否支持震动API
+            if ('vibrate' in navigator || 'webkitVibrate' in navigator) {
+                try {
+                    // 尝试使用标准API或WebKit前缀API
+                    const vibrateFunction = navigator.vibrate || navigator.webkitVibrate;
+                    // 对于苹果设备，使用模式数组而不是单个持续时间
+                    // 这可以解决某些iOS版本的兼容性问题
+                    vibrateFunction.call(navigator, [duration]);
+                } catch (error) {
+                    console.log('震动API调用失败:', error);
+                    // 失败时使用视觉反馈
+                    showVibrationFeedback(duration);
+                }
             } else {
                 // 对于不支持震动的设备，使用视觉反馈
-                const body = document.body;
-                body.style.animation = `vibrate ${duration}ms ease-in-out`;
-                setTimeout(() => {
-                    body.style.animation = '';
-                }, duration);
+                showVibrationFeedback(duration);
             }
         }
+        
+        // 显示震动视觉反馈
+        function showVibrationFeedback(duration) {
+            const body = document.body;
+            body.style.animation = `vibrate ${duration}ms ease-in-out`;
+            setTimeout(() => {
+                body.style.animation = '';
+            }, duration);
+        }
+        
+        // 检查并请求震动权限（适用于苹果设备）
+        function requestVibrationPermission() {
+            // 检查是否在安全上下文（HTTPS）中
+            if (window.isSecureContext) {
+                // 尝试触发一个短暂的震动来请求权限
+                try {
+                    const vibrateFunction = navigator.vibrate || navigator.webkitVibrate;
+                    if (vibrateFunction) {
+                        vibrateFunction.call(navigator, [10]);
+                    }
+                } catch (error) {
+                    console.log('请求震动权限失败:', error);
+                }
+            } else {
+                console.log('震动API在非安全上下文（HTTP）中可能受限');
+            }
+        }
+        
+        // 页面加载时尝试请求震动权限
+        window.addEventListener('DOMContentLoaded', function() {
+            requestVibrationPermission();
+        });
+        
+        // 用户交互时再次尝试请求震动权限
+        document.addEventListener('click', function() {
+            requestVibrationPermission();
+        }, { once: true });
         
         // 控制台日志收集系统
         (function() {
