@@ -1009,6 +1009,10 @@ const rooms = new Map();
 const friendships = new Map(); // 存储好友关系: Map<socketId, Set<friendSocketId>>
 const privateMessages = new Map(); // 存储私聊消息: Map<chatId, Array<message>>
 
+// 白板系统数据结构
+const whiteboards = new Map(); // 存储白板数据: Map<whiteboardId, { users: [], data: [] }>
+let whiteboardIdCounter = 1;
+
 // 好友数量限制系统
 const userMaxFriends = new Map(); // 存储用户的好友数量上限: Map<socketId, number>
 const friendLimitRequests = new Map(); // 存储好友扩容申请: Map<requestId, request>
@@ -2551,6 +2555,145 @@ io.on('connection', (socket) => {
         }
     });
     
+    // 白板相关事件
+    socket.on('create-whiteboard', (data) => {
+        try {
+            const whiteboardId = whiteboardIdCounter++;
+            const whiteboard = {
+                id: whiteboardId,
+                name: data.name || `白板 ${whiteboardId}`,
+                creator: socket.id,
+                users: [socket.id],
+                data: [],
+                createdAt: new Date().toISOString()
+            };
+            whiteboards.set(whiteboardId, whiteboard);
+            
+            socket.join(`whiteboard-${whiteboardId}`);
+            socket.emit('whiteboard-created', whiteboard);
+            console.log(`创建白板: ${whiteboardId}, 创建者: ${socket.id}`);
+        } catch (error) {
+            console.error('创建白板失败:', error);
+            socket.emit('whiteboard-error', { message: '创建白板失败' });
+        }
+    });
+    
+    socket.on('join-whiteboard', (data) => {
+        try {
+            const { whiteboardId } = data;
+            const whiteboard = whiteboards.get(whiteboardId);
+            
+            if (!whiteboard) {
+                socket.emit('whiteboard-error', { message: '白板不存在' });
+                return;
+            }
+            
+            if (!whiteboard.users.includes(socket.id)) {
+                whiteboard.users.push(socket.id);
+                whiteboards.set(whiteboardId, whiteboard);
+            }
+            
+            socket.join(`whiteboard-${whiteboardId}`);
+            socket.emit('whiteboard-joined', whiteboard);
+            socket.emit('whiteboard-data', { whiteboardId, data: whiteboard.data });
+            
+            // 通知其他用户有新用户加入
+            socket.to(`whiteboard-${whiteboardId}`).emit('whiteboard-user-joined', {
+                whiteboardId,
+                userId: socket.id,
+                username: Array.from(users.values()).find(u => u.socketId === socket.id)?.username
+            });
+            
+            console.log(`用户加入白板: ${socket.id} -> ${whiteboardId}`);
+        } catch (error) {
+            console.error('加入白板失败:', error);
+            socket.emit('whiteboard-error', { message: '加入白板失败' });
+        }
+    });
+    
+    socket.on('leave-whiteboard', (data) => {
+        try {
+            const { whiteboardId } = data;
+            const whiteboard = whiteboards.get(whiteboardId);
+            
+            if (whiteboard) {
+                whiteboard.users = whiteboard.users.filter(id => id !== socket.id);
+                whiteboards.set(whiteboardId, whiteboard);
+                
+                socket.leave(`whiteboard-${whiteboardId}`);
+                
+                // 通知其他用户有用户离开
+                socket.to(`whiteboard-${whiteboardId}`).emit('whiteboard-user-left', {
+                    whiteboardId,
+                    userId: socket.id
+                });
+                
+                console.log(`用户离开白板: ${socket.id} -> ${whiteboardId}`);
+            }
+        } catch (error) {
+            console.error('离开白板失败:', error);
+        }
+    });
+    
+    socket.on('draw', (data) => {
+        try {
+            const { whiteboardId, drawData } = data;
+            const whiteboard = whiteboards.get(whiteboardId);
+            
+            if (whiteboard) {
+                // 保存绘制数据
+                whiteboard.data.push(drawData);
+                whiteboards.set(whiteboardId, whiteboard);
+                
+                // 广播给其他用户
+                socket.to(`whiteboard-${whiteboardId}`).emit('whiteboard-draw', {
+                    whiteboardId,
+                    x1: drawData.points[0][0],
+                    y1: drawData.points[0][1],
+                    x2: drawData.points[1][0],
+                    y2: drawData.points[1][1],
+                    color: drawData.color,
+                    size: drawData.size,
+                    tool: drawData.tool,
+                    userId: socket.id
+                });
+            }
+        } catch (error) {
+            console.error('绘制事件处理失败:', error);
+        }
+    });
+    
+    socket.on('clear-whiteboard', (data) => {
+        try {
+            const { whiteboardId } = data;
+            const whiteboard = whiteboards.get(whiteboardId);
+            
+            if (whiteboard) {
+                whiteboard.data = [];
+                whiteboards.set(whiteboardId, whiteboard);
+                
+                // 广播给所有用户
+                io.to(`whiteboard-${whiteboardId}`).emit('whiteboard-clear', { whiteboardId });
+                console.log(`清空白板: ${whiteboardId}`);
+            }
+        } catch (error) {
+            console.error('清空白板失败:', error);
+            socket.emit('whiteboard-error', { message: '清空白板失败' });
+        }
+    });
+    
+    socket.on('get-whiteboards', () => {
+        try {
+            const userWhiteboards = Array.from(whiteboards.values()).filter(wb => 
+                wb.users.includes(socket.id)
+            );
+            socket.emit('whiteboards-list', { whiteboards: userWhiteboards });
+        } catch (error) {
+            console.error('获取白板列表失败:', error);
+            socket.emit('whiteboard-error', { message: '获取白板列表失败' });
+        }
+    });
+
     // 断开连接事件
     socket.on('disconnect', () => {
         const user = users.get(socket.id);
@@ -2562,6 +2705,20 @@ io.on('connection', (socket) => {
             if (room) {
                 room.users = room.users.filter(id => id !== socket.id);
             }
+            
+            // 从所有白板中移除用户
+            whiteboards.forEach((whiteboard, whiteboardId) => {
+                if (whiteboard.users.includes(socket.id)) {
+                    whiteboard.users = whiteboard.users.filter(id => id !== socket.id);
+                    whiteboards.set(whiteboardId, whiteboard);
+                    
+                    // 通知其他用户有用户离开
+                    io.to(`whiteboard-${whiteboardId}`).emit('whiteboard-user-left', {
+                        whiteboardId,
+                        userId: socket.id
+                    });
+                }
+            });
             
             // 清理用户数据
             users.delete(socket.id);
@@ -3389,6 +3546,1076 @@ io.on('connection', (socket) => {
             }
         }
     });
+    
+    // 白板系统事件处理
+    socket.on('whiteboard-draw', (data) => {
+        const user = users.get(socket.id);
+        if (user) {
+            // 广播绘制事件给房间内所有用户
+            socket.to(user.roomName).emit('whiteboard-draw', {
+                ...data,
+                username: user.username,
+                color: user.color
+            });
+            console.log(`[房间 ${user.roomName}] ${user.username} 在白板上绘制`);
+        }
+    });
+    
+    socket.on('whiteboard-clear', (data) => {
+        const user = users.get(socket.id);
+        if (user) {
+            // 广播清屏事件给房间内所有用户
+            socket.to(user.roomName).emit('whiteboard-clear', {
+                username: user.username
+            });
+            console.log(`[房间 ${user.roomName}] ${user.username} 清空了白板`);
+        }
+    });
+    
+    socket.on('whiteboard-text', (data) => {
+        const user = users.get(socket.id);
+        if (user) {
+            // 广播文本绘制事件给房间内所有用户
+            socket.to(user.roomName).emit('whiteboard-text', {
+                ...data,
+                username: user.username
+            });
+            console.log(`[房间 ${user.roomName}] ${user.username} 在白板上添加了文本: ${data.text}`);
+        }
+    });
+    
+    socket.on('whiteboard-undo', (data) => {
+        const user = users.get(socket.id);
+        if (user) {
+            // 广播撤销事件给房间内所有用户
+            socket.to(user.roomName).emit('whiteboard-undo', {
+                username: user.username
+            });
+            console.log(`[房间 ${user.roomName}] ${user.username} 撤销了操作`);
+        }
+    });
+    
+    socket.on('whiteboard-save', (data) => {
+        const user = users.get(socket.id);
+        if (user) {
+            console.log(`[房间 ${user.roomName}] ${user.username} 保存了白板内容`);
+            // 可以在这里添加保存白板内容到服务器的逻辑
+        }
+    });
+    
+    // 文档编辑系统事件处理
+    const documents = new Map(); // 存储文档内容: Map<documentId, { content, users, lastModified }>
+    
+    socket.on('document-create', (data) => {
+        const user = users.get(socket.id);
+        if (user) {
+            const documentId = `doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const document = {
+                id: documentId,
+                title: data.title || '新文档',
+                content: data.content || '',
+                creator: user.username,
+                createdAt: new Date(),
+                lastModified: new Date(),
+                users: [socket.id],
+                roomName: user.roomName
+            };
+            
+            documents.set(documentId, document);
+            
+            // 发送创建成功事件给创建者
+            socket.emit('document-create-success', document);
+            
+            // 广播文档创建事件给房间内所有用户
+            socket.to(user.roomName).emit('document-created', document);
+            console.log(`[房间 ${user.roomName}] ${user.username} 创建了文档: ${document.title}`);
+        }
+    });
+    
+    socket.on('document-join', (data) => {
+        const user = users.get(socket.id);
+        if (user && data.documentId) {
+            const document = documents.get(data.documentId);
+            if (document) {
+                // 添加用户到文档用户列表
+                if (!document.users.includes(socket.id)) {
+                    document.users.push(socket.id);
+                }
+                
+                // 发送文档内容给用户
+                socket.emit('document-joined', document);
+                
+                // 广播用户加入事件给其他用户
+                socket.to(document.roomName).emit('document-user-joined', {
+                    documentId: document.id,
+                    username: user.username,
+                    color: user.color
+                });
+                console.log(`[房间 ${document.roomName}] ${user.username} 加入了文档: ${document.title}`);
+            }
+        }
+    });
+    
+    socket.on('document-edit', (data) => {
+        const user = users.get(socket.id);
+        if (user && data.documentId) {
+            const document = documents.get(data.documentId);
+            if (document) {
+                // 更新文档内容
+                document.content = data.content;
+                document.lastModified = new Date();
+                
+                // 广播编辑事件给房间内所有用户
+                socket.to(document.roomName).emit('document-edited', {
+                    documentId: document.id,
+                    content: data.content,
+                    username: user.username,
+                    timestamp: document.lastModified
+                });
+                console.log(`[房间 ${document.roomName}] ${user.username} 编辑了文档: ${document.title}`);
+            }
+        }
+    });
+    
+    socket.on('document-save', (data) => {
+        const user = users.get(socket.id);
+        if (user && data.documentId) {
+            const document = documents.get(data.documentId);
+            if (document) {
+                // 这里可以添加保存文档到服务器的逻辑
+                console.log(`[房间 ${document.roomName}] ${user.username} 保存了文档: ${document.title}`);
+                
+                // 发送保存成功事件给用户
+                socket.emit('document-save-success', {
+                    documentId: document.id,
+                    timestamp: new Date()
+                });
+            }
+        }
+    });
+    
+    socket.on('document-leave', (data) => {
+        const user = users.get(socket.id);
+        if (user && data.documentId) {
+            const document = documents.get(data.documentId);
+            if (document) {
+                // 从文档用户列表中移除用户
+                document.users = document.users.filter(userId => userId !== socket.id);
+                
+                // 广播用户离开事件给其他用户
+                socket.to(document.roomName).emit('document-user-left', {
+                    documentId: document.id,
+                    username: user.username
+                });
+                console.log(`[房间 ${document.roomName}] ${user.username} 离开了文档: ${document.title}`);
+            }
+        }
+    });
+    
+    socket.on('document-list', (data) => {
+        const user = users.get(socket.id);
+        if (user) {
+            // 获取房间内的所有文档
+            const roomDocuments = Array.from(documents.values()).filter(doc => doc.roomName === user.roomName);
+            
+            // 发送文档列表给用户
+            socket.emit('document-list', roomDocuments);
+        }
+    });
+    
+    // 插件系统架构
+    const plugins = new Map(); // 存储插件: Map<pluginId, plugin>
+    const pluginInstances = new Map(); // 存储插件实例: Map<pluginId, instance>
+    
+    // 初始化插件系统
+    function initPlugins() {
+        // 内置插件
+        const builtinPlugins = [
+            {
+                id: 'weather',
+                name: '天气查询',
+                description: '查询城市天气信息',
+                version: '1.0.0',
+                author: 'system',
+                enabled: true,
+                commands: ['weather', '天气']
+            },
+            {
+                id: 'translator',
+                name: '翻译器',
+                description: '翻译文本',
+                version: '1.0.0',
+                author: 'system',
+                enabled: true,
+                commands: ['translate', '翻译']
+            },
+            {
+                id: 'games',
+                name: '小游戏',
+                description: '内置小游戏',
+                version: '1.0.0',
+                author: 'system',
+                enabled: true,
+                commands: ['game', '游戏']
+            },
+            {
+                id: 'vote',
+                name: '投票系统',
+                description: '创建和管理投票',
+                version: '1.0.0',
+                author: 'system',
+                enabled: true,
+                commands: ['vote', '投票']
+            }
+        ];
+        
+        // 注册内置插件
+        builtinPlugins.forEach(plugin => {
+            plugins.set(plugin.id, plugin);
+        });
+        
+        console.log('插件系统初始化完成，加载了', builtinPlugins.length, '个内置插件');
+    }
+    
+    // 初始化插件系统
+    initPlugins();
+    
+    // 插件系统事件处理
+    socket.on('plugin-list', () => {
+        const user = users.get(socket.id);
+        if (user) {
+            const pluginList = Array.from(plugins.values());
+            socket.emit('plugin-list', pluginList);
+        }
+    });
+    
+    socket.on('plugin-execute', (data) => {
+        const user = users.get(socket.id);
+        if (user && data.pluginId && data.command && data.args) {
+            const plugin = plugins.get(data.pluginId);
+            if (plugin && plugin.enabled) {
+                // 执行插件命令
+                executePluginCommand(plugin, data.command, data.args, user);
+            }
+        }
+    });
+    
+    socket.on('plugin-toggle', (data) => {
+        const user = users.get(socket.id);
+        if (user && data.pluginId) {
+            const plugin = plugins.get(data.pluginId);
+            if (plugin) {
+                plugin.enabled = !plugin.enabled;
+                socket.emit('plugin-toggled', {
+                    pluginId: plugin.id,
+                    enabled: plugin.enabled
+                });
+                console.log(`[房间 ${user.roomName}] ${user.username} ${plugin.enabled ? '启用' : '禁用'}了插件: ${plugin.name}`);
+            }
+        }
+    });
+    
+    // 游戏系统事件处理
+    socket.on('game-join', (data) => {
+        const user = users.get(socket.id);
+        if (user && data.gameId) {
+            const game = games.get(data.gameId);
+            if (game) {
+                if (game.type === 'gomoku' && game.status === 'waiting' && game.players.length < 2) {
+                    const updatedGame = joinGomokuGame(data.gameId, socket.id, user.username);
+                    if (updatedGame) {
+                        // 通知所有玩家游戏开始
+                        updatedGame.players.forEach(playerSocketId => {
+                            io.to(playerSocketId).emit('game-start', {
+                                gameId: updatedGame.id,
+                                gameType: 'gomoku',
+                                players: updatedGame.players.map(pid => ({
+                                    socketId: pid,
+                                    username: users.get(pid)?.username || '未知'
+                                })),
+                                board: updatedGame.board,
+                                currentPlayer: updatedGame.currentPlayer
+                            });
+                        });
+                        
+                        // 广播游戏开始事件给房间内其他用户
+                        socket.to(user.roomName).emit('game-started', {
+                            gameId: updatedGame.id,
+                            gameType: updatedGame.type,
+                            players: updatedGame.players.map(pid => users.get(pid)?.username || '未知')
+                        });
+                        
+                        console.log(`[房间 ${user.roomName}] ${user.username} 加入了五子棋游戏 ${updatedGame.id}`);
+                    }
+                } else if (game.type === 'pictionary' && game.status === 'waiting') {
+                    const updatedGame = joinPictionaryGame(data.gameId, socket.id, user.username);
+                    if (updatedGame) {
+                        // 通知所有玩家游戏状态
+                        updatedGame.players.forEach(playerSocketId => {
+                            const isDrawer = playerSocketId === updatedGame.currentDrawer;
+                            io.to(playerSocketId).emit('game-start', {
+                                gameId: updatedGame.id,
+                                gameType: 'pictionary',
+                                players: updatedGame.players.map(pid => ({
+                                    socketId: pid,
+                                    username: users.get(pid)?.username || '未知'
+                                })),
+                                currentDrawer: updatedGame.currentDrawer,
+                                currentDrawerName: users.get(updatedGame.currentDrawer)?.username || '未知',
+                                currentWord: isDrawer ? updatedGame.currentWord : '???',
+                                scores: Object.fromEntries(updatedGame.scores),
+                                currentRound: updatedGame.currentRound,
+                                maxRounds: updatedGame.maxRounds,
+                                status: updatedGame.status
+                            });
+                        });
+                        
+                        // 广播游戏开始事件给房间内其他用户
+                        socket.to(user.roomName).emit('game-started', {
+                            gameId: updatedGame.id,
+                            gameType: updatedGame.type,
+                            players: updatedGame.players.map(pid => users.get(pid)?.username || '未知')
+                        });
+                        
+                        console.log(`[房间 ${user.roomName}] ${user.username} 加入了你画我猜游戏 ${updatedGame.id}`);
+                    }
+                }
+            }
+        }
+    });
+    
+    socket.on('game-move', (data) => {
+        const user = users.get(socket.id);
+        if (user && data.gameId && data.x !== undefined && data.y !== undefined) {
+            const game = games.get(data.gameId);
+            if (game && game.type === 'gomoku') {
+                const updatedGame = makeGomokuMove(data.gameId, socket.id, data.x, data.y);
+                if (updatedGame) {
+                    // 通知所有玩家移动结果
+                    updatedGame.players.forEach(playerSocketId => {
+                        io.to(playerSocketId).emit('game-update', {
+                            gameId: updatedGame.id,
+                            gameType: 'gomoku',
+                            board: updatedGame.board,
+                            currentPlayer: updatedGame.currentPlayer,
+                            lastMove: { x: data.x, y: data.y, player: socket.id },
+                            status: updatedGame.status,
+                            winner: updatedGame.winner
+                        });
+                    });
+                    
+                    // 通知观战者
+                    updatedGame.spectators.forEach(spectatorSocketId => {
+                        io.to(spectatorSocketId).emit('game-update', {
+                            gameId: updatedGame.id,
+                            gameType: 'gomoku',
+                            board: updatedGame.board,
+                            currentPlayer: updatedGame.currentPlayer,
+                            lastMove: { x: data.x, y: data.y, player: socket.id },
+                            status: updatedGame.status,
+                            winner: updatedGame.winner
+                        });
+                    });
+                    
+                    if (updatedGame.status === 'ended') {
+                        const winnerUser = users.get(updatedGame.winner);
+                        console.log(`[房间 ${user.roomName}] 五子棋游戏 ${updatedGame.id} 结束，赢家: ${winnerUser?.username || '未知'}`);
+                    }
+                }
+            }
+        }
+    });
+    
+    // 你画我猜游戏猜词事件
+    socket.on('game-guess', (data) => {
+        const user = users.get(socket.id);
+        if (user && data.gameId && data.guess) {
+            const game = games.get(data.gameId);
+            if (game && game.type === 'pictionary' && game.status === 'playing') {
+                const updatedGame = makePictionaryGuess(data.gameId, socket.id, data.guess);
+                if (updatedGame) {
+                    // 通知所有玩家猜测结果
+                    updatedGame.players.forEach(playerSocketId => {
+                        const isDrawer = playerSocketId === updatedGame.currentDrawer;
+                        io.to(playerSocketId).emit('game-update', {
+                            gameId: updatedGame.id,
+                            gameType: 'pictionary',
+                            currentDrawer: updatedGame.currentDrawer,
+                            currentDrawerName: users.get(updatedGame.currentDrawer)?.username || '未知',
+                            currentWord: isDrawer ? updatedGame.currentWord : '???',
+                            scores: Object.fromEntries(updatedGame.scores),
+                            currentRound: updatedGame.currentRound,
+                            maxRounds: updatedGame.maxRounds,
+                            guesses: updatedGame.guesses.map(guess => ({
+                                ...guess,
+                                username: users.get(guess.playerSocketId)?.username || '未知'
+                            })),
+                            status: updatedGame.status,
+                            winner: updatedGame.winner,
+                            lastGuess: {
+                                player: socket.id,
+                                username: user.username,
+                                guess: data.guess,
+                                isCorrect: updatedGame.guesses[updatedGame.guesses.length - 1]?.isCorrect || false
+                            }
+                        });
+                    });
+                    
+                    // 通知观战者
+                    updatedGame.spectators.forEach(spectatorSocketId => {
+                        io.to(spectatorSocketId).emit('game-update', {
+                            gameId: updatedGame.id,
+                            gameType: 'pictionary',
+                            currentDrawer: updatedGame.currentDrawer,
+                            currentDrawerName: users.get(updatedGame.currentDrawer)?.username || '未知',
+                            scores: Object.fromEntries(updatedGame.scores),
+                            currentRound: updatedGame.currentRound,
+                            maxRounds: updatedGame.maxRounds,
+                            guesses: updatedGame.guesses.map(guess => ({
+                                ...guess,
+                                username: users.get(guess.playerSocketId)?.username || '未知'
+                            })),
+                            status: updatedGame.status,
+                            winner: updatedGame.winner,
+                            lastGuess: {
+                                player: socket.id,
+                                username: user.username,
+                                guess: data.guess,
+                                isCorrect: updatedGame.guesses[updatedGame.guesses.length - 1]?.isCorrect || false
+                            }
+                        });
+                    });
+                    
+                    if (updatedGame.status === 'ended') {
+                        const winnerUser = users.get(updatedGame.winner);
+                        console.log(`[房间 ${user.roomName}] 你画我猜游戏 ${updatedGame.id} 结束，赢家: ${winnerUser?.username || '未知'}`);
+                    }
+                }
+            }
+        }
+    });
+    
+    // 你画我猜游戏跳过词汇事件
+    socket.on('game-skip-word', (data) => {
+        const user = users.get(socket.id);
+        if (user && data.gameId) {
+            const game = games.get(data.gameId);
+            if (game && game.type === 'pictionary' && game.status === 'playing' && game.currentDrawer === socket.id) {
+                const updatedGame = skipWord(data.gameId);
+                if (updatedGame) {
+                    // 通知所有玩家词汇已跳过
+                    updatedGame.players.forEach(playerSocketId => {
+                        const isDrawer = playerSocketId === updatedGame.currentDrawer;
+                        io.to(playerSocketId).emit('game-update', {
+                            gameId: updatedGame.id,
+                            gameType: 'pictionary',
+                            currentDrawer: updatedGame.currentDrawer,
+                            currentDrawerName: users.get(updatedGame.currentDrawer)?.username || '未知',
+                            currentWord: isDrawer ? updatedGame.currentWord : '???',
+                            scores: Object.fromEntries(updatedGame.scores),
+                            currentRound: updatedGame.currentRound,
+                            maxRounds: updatedGame.maxRounds,
+                            guesses: [],
+                            status: updatedGame.status
+                        });
+                    });
+                    
+                    console.log(`[房间 ${user.roomName}] ${user.username} 跳过了词汇，新词汇: ${updatedGame.currentWord}`);
+                }
+            }
+        }
+    });
+    
+    // 你画我猜游戏绘画事件
+    socket.on('game-draw', (data) => {
+        const user = users.get(socket.id);
+        if (user && data.gameId && data.drawingData) {
+            const game = games.get(data.gameId);
+            if (game && game.type === 'pictionary' && game.status === 'playing' && game.currentDrawer === socket.id) {
+                // 广播绘画数据给其他玩家
+                game.players.forEach(playerSocketId => {
+                    if (playerSocketId !== socket.id) {
+                        io.to(playerSocketId).emit('game-draw', {
+                            gameId: game.id,
+                            drawingData: data.drawingData
+                        });
+                    }
+                });
+                
+                // 广播绘画数据给观战者
+                game.spectators.forEach(spectatorSocketId => {
+                    io.to(spectatorSocketId).emit('game-draw', {
+                        gameId: game.id,
+                        drawingData: data.drawingData
+                    });
+                });
+            }
+        }
+    });
+    
+    // 你画我猜游戏清空画布事件
+    socket.on('game-clear-canvas', (data) => {
+        const user = users.get(socket.id);
+        if (user && data.gameId) {
+            const game = games.get(data.gameId);
+            if (game && game.type === 'pictionary' && game.status === 'playing' && game.currentDrawer === socket.id) {
+                // 广播清空画布事件给其他玩家
+                game.players.forEach(playerSocketId => {
+                    if (playerSocketId !== socket.id) {
+                        io.to(playerSocketId).emit('game-clear-canvas', {
+                            gameId: game.id
+                        });
+                    }
+                });
+                
+                // 广播清空画布事件给观战者
+                game.spectators.forEach(spectatorSocketId => {
+                    io.to(spectatorSocketId).emit('game-clear-canvas', {
+                        gameId: game.id
+                    });
+                });
+            }
+        }
+    });
+    
+    socket.on('game-spectate', (data) => {
+        const user = users.get(socket.id);
+        if (user && data.gameId) {
+            const game = games.get(data.gameId);
+            if (game) {
+                if (!game.spectators.includes(socket.id)) {
+                    game.spectators.push(socket.id);
+                }
+                
+                if (game.type === 'gomoku') {
+                    // 发送五子棋游戏状态给观战者
+                    socket.emit('game-spectate-success', {
+                        gameId: game.id,
+                        gameType: 'gomoku',
+                        board: game.board,
+                        currentPlayer: game.currentPlayer,
+                        status: game.status,
+                        players: game.players.map(pid => ({
+                            socketId: pid,
+                            username: users.get(pid)?.username || '未知'
+                        })),
+                        winner: game.winner
+                    });
+                } else if (game.type === 'pictionary') {
+                    // 发送你画我猜游戏状态给观战者
+                    socket.emit('game-spectate-success', {
+                        gameId: game.id,
+                        gameType: 'pictionary',
+                        players: game.players.map(pid => ({
+                            socketId: pid,
+                            username: users.get(pid)?.username || '未知'
+                        })),
+                        currentDrawer: game.currentDrawer,
+                        currentDrawerName: users.get(game.currentDrawer)?.username || '未知',
+                        scores: Object.fromEntries(game.scores),
+                        currentRound: game.currentRound,
+                        maxRounds: game.maxRounds,
+                        guesses: game.guesses.map(guess => ({
+                            ...guess,
+                            username: users.get(guess.playerSocketId)?.username || '未知'
+                        })),
+                        status: game.status,
+                        winner: game.winner
+                    });
+                }
+                
+                console.log(`[房间 ${user.roomName}] ${user.username} 开始观战游戏 ${game.id}`);
+            }
+        }
+    });
+    
+    socket.on('game-leave', (data) => {
+        const user = users.get(socket.id);
+        if (user && data.gameId) {
+            const game = games.get(data.gameId);
+            if (game) {
+                // 从玩家列表移除
+                game.players = game.players.filter(pid => pid !== socket.id);
+                // 从观战者列表移除
+                game.spectators = game.spectators.filter(sid => sid !== socket.id);
+                
+                if (game.players.length === 0) {
+                    // 游戏结束
+                    games.delete(data.gameId);
+                } else if (game.status === 'playing') {
+                    // 游戏状态变为等待
+                    game.status = 'waiting';
+                    if (game.type === 'gomoku') {
+                        game.currentPlayer = game.players[0];
+                    } else if (game.type === 'pictionary') {
+                        game.currentDrawer = game.players[0];
+                    }
+                }
+                
+                console.log(`[房间 ${user.roomName}] ${user.username} 离开了游戏 ${game.id}`);
+            }
+        }
+    });
+    
+    // 执行插件命令
+    function executePluginCommand(plugin, command, args, user) {
+        switch (plugin.id) {
+            case 'weather':
+                executeWeatherPlugin(command, args, user);
+                break;
+            case 'translator':
+                executeTranslatorPlugin(command, args, user);
+                break;
+            case 'games':
+                executeGamesPlugin(command, args, user);
+                break;
+            case 'vote':
+                executeVotePlugin(command, args, user);
+                break;
+            default:
+                // 处理自定义插件
+                break;
+        }
+    }
+    
+    // 天气插件
+    function executeWeatherPlugin(command, args, user) {
+        const city = args.join(' ');
+        if (!city) {
+            socket.emit('plugin-response', {
+                pluginId: 'weather',
+                success: false,
+                message: '请输入城市名称，例如: /weather 北京'
+            });
+            return;
+        }
+        
+        // 模拟天气数据（实际项目中可以使用真实的天气API）
+        const weatherData = {
+            city: city,
+            temperature: Math.floor(Math.random() * 30) + 5,
+            humidity: Math.floor(Math.random() * 50) + 30,
+            windSpeed: Math.floor(Math.random() * 10) + 1,
+            condition: ['晴天', '多云', '阴天', '小雨', '中雨'][Math.floor(Math.random() * 5)],
+            updateTime: new Date().toLocaleString()
+        };
+        
+        socket.emit('plugin-response', {
+            pluginId: 'weather',
+            success: true,
+            data: weatherData,
+            message: `🌤️ ${city} 的天气：${weatherData.condition}，温度 ${weatherData.temperature}°C，湿度 ${weatherData.humidity}%，风速 ${weatherData.windSpeed} m/s`
+        });
+        
+        // 广播天气信息给房间内所有用户
+        socket.to(user.roomName).emit('plugin-broadcast', {
+            pluginId: 'weather',
+            username: user.username,
+            message: `🌤️ ${user.username} 查询了 ${city} 的天气：${weatherData.condition}，温度 ${weatherData.temperature}°C`
+        });
+    }
+    
+    // 翻译插件
+    function executeTranslatorPlugin(command, args, user) {
+        const text = args.join(' ');
+        if (!text) {
+            socket.emit('plugin-response', {
+                pluginId: 'translator',
+                success: false,
+                message: '请输入要翻译的文本，例如: /translate Hello world'
+            });
+            return;
+        }
+        
+        // 模拟翻译（实际项目中可以使用真实的翻译API）
+        const translations = {
+            'hello': '你好',
+            'world': '世界',
+            'hello world': '你好世界',
+            'how are you': '你好吗',
+            'thank you': '谢谢',
+            'goodbye': '再见'
+        };
+        
+        const translatedText = translations[text.toLowerCase()] || `[翻译] ${text}`;
+        
+        socket.emit('plugin-response', {
+            pluginId: 'translator',
+            success: true,
+            data: {
+                original: text,
+                translated: translatedText
+            },
+            message: `🌍 翻译结果：${translatedText}`
+        });
+    }
+    
+    // 游戏管理系统
+    const games = new Map(); // 存储游戏: Map<gameId, game>
+    
+    // 五子棋游戏逻辑
+    function createGomokuGame(creator, roomName) {
+        const gameId = `gomoku-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const game = {
+            id: gameId,
+            type: 'gomoku',
+            creator: creator.username,
+            creatorSocketId: creator.socketId,
+            roomName: roomName,
+            players: [creator.socketId],
+            board: Array(15).fill().map(() => Array(15).fill(null)),
+            currentPlayer: creator.socketId,
+            status: 'waiting', // waiting, playing, ended
+            startTime: null,
+            endTime: null,
+            winner: null,
+            spectators: []
+        };
+        
+        games.set(gameId, game);
+        return game;
+    }
+    
+    function joinGomokuGame(gameId, playerSocketId, playerUsername) {
+        const game = games.get(gameId);
+        if (game && game.status === 'waiting' && game.players.length < 2) {
+            game.players.push(playerSocketId);
+            game.status = 'playing';
+            game.startTime = new Date();
+            return game;
+        }
+        return null;
+    }
+    
+    function makeGomokuMove(gameId, playerSocketId, x, y) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing') return null;
+        
+        if (game.currentPlayer !== playerSocketId) return null;
+        if (game.board[x][y] !== null) return null;
+        
+        // 落子
+        game.board[x][y] = playerSocketId;
+        
+        // 检查胜负
+        if (checkGomokuWin(game.board, x, y, playerSocketId)) {
+            game.status = 'ended';
+            game.endTime = new Date();
+            game.winner = playerSocketId;
+        } else {
+            // 切换玩家
+            game.currentPlayer = game.players[0] === playerSocketId ? game.players[1] : game.players[0];
+        }
+        
+        return game;
+    }
+    
+    function checkGomokuWin(board, x, y, player) {
+        const directions = [
+            [1, 0], // 水平
+            [0, 1], // 垂直
+            [1, 1], // 对角线
+            [1, -1] // 反对角线
+        ];
+        
+        for (const [dx, dy] of directions) {
+            let count = 1;
+            
+            // 正向检查
+            for (let i = 1; i < 5; i++) {
+                const nx = x + i * dx;
+                const ny = y + i * dy;
+                if (nx >= 0 && nx < 15 && ny >= 0 && ny < 15 && board[nx][ny] === player) {
+                    count++;
+                } else {
+                    break;
+                }
+            }
+            
+            // 反向检查
+            for (let i = 1; i < 5; i++) {
+                const nx = x - i * dx;
+                const ny = y - i * dy;
+                if (nx >= 0 && nx < 15 && ny >= 0 && ny < 15 && board[nx][ny] === player) {
+                    count++;
+                } else {
+                    break;
+                }
+            }
+            
+            if (count >= 5) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    // 你画我猜游戏逻辑
+    function createPictionaryGame(creator, roomName) {
+        const gameId = `pictionary-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
+        // 游戏词汇库
+        const words = [
+            '苹果', '香蕉', '猫', '狗', '飞机', '汽车', '足球', '篮球', '电脑', '手机',
+            '电视', '冰箱', '自行车', '雨伞', '手表', '眼镜', '帽子', '鞋子', '衣服', '裤子',
+            '书包', '铅笔', '书本', '学校', '医院', '公园', '动物园', '电影院', '餐厅', '超市',
+            '山', '水', '树', '花', '鸟', '鱼', '太阳', '月亮', '星星', '彩虹',
+            '快乐', '悲伤', '愤怒', '惊讶', '害怕', '爱', '恨', '喜欢', '讨厌', '希望'
+        ];
+        
+        const game = {
+            id: gameId,
+            type: 'pictionary',
+            creator: creator.username,
+            creatorSocketId: creator.socketId,
+            roomName: roomName,
+            players: [creator.socketId],
+            spectators: [],
+            status: 'waiting', // waiting, playing, ended
+            currentRound: 0,
+            maxRounds: 5,
+            currentDrawer: creator.socketId,
+            currentWord: words[Math.floor(Math.random() * words.length)],
+            words: words,
+            scores: new Map(), // Map<socketId, score>
+            startTime: null,
+            endTime: null,
+            winner: null,
+            roundStartTime: null,
+            roundTimeLimit: 60, // 每轮60秒
+            guesses: [] // 存储猜测记录
+        };
+        
+        // 初始化分数
+        game.players.forEach(playerSocketId => {
+            game.scores.set(playerSocketId, 0);
+        });
+        
+        games.set(gameId, game);
+        return game;
+    }
+    
+    function joinPictionaryGame(gameId, playerSocketId, playerUsername) {
+        const game = games.get(gameId);
+        if (game && game.status === 'waiting') {
+            game.players.push(playerSocketId);
+            game.scores.set(playerSocketId, 0);
+            
+            if (game.players.length >= 2) {
+                game.status = 'playing';
+                game.startTime = new Date();
+                game.roundStartTime = new Date();
+            }
+            return game;
+        }
+        return null;
+    }
+    
+    function makePictionaryGuess(gameId, playerSocketId, guess) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing') return null;
+        
+        if (game.currentDrawer === playerSocketId) return null;
+        
+        const normalizedGuess = guess.toLowerCase().trim();
+        const normalizedWord = game.currentWord.toLowerCase().trim();
+        
+        // 检查猜测是否正确
+        const isCorrect = normalizedGuess === normalizedWord;
+        
+        // 记录猜测
+        game.guesses.push({
+            playerSocketId: playerSocketId,
+            guess: guess,
+            isCorrect: isCorrect,
+            timestamp: new Date()
+        });
+        
+        if (isCorrect) {
+            // 加分
+            const currentScore = game.scores.get(playerSocketId) || 0;
+            game.scores.set(playerSocketId, currentScore + 10);
+            
+            // 切换到下一轮
+            game.currentRound++;
+            if (game.currentRound < game.maxRounds) {
+                // 更换 drawer
+                const nextDrawerIndex = (game.players.indexOf(game.currentDrawer) + 1) % game.players.length;
+                game.currentDrawer = game.players[nextDrawerIndex];
+                // 更换词汇
+                game.currentWord = game.words[Math.floor(Math.random() * game.words.length)];
+                game.roundStartTime = new Date();
+                game.guesses = [];
+            } else {
+                // 游戏结束
+                game.status = 'ended';
+                game.endTime = new Date();
+                
+                // 计算赢家
+                let maxScore = 0;
+                let winnerSocketId = null;
+                game.scores.forEach((score, socketId) => {
+                    if (score > maxScore) {
+                        maxScore = score;
+                        winnerSocketId = socketId;
+                    }
+                });
+                game.winner = winnerSocketId;
+            }
+        }
+        
+        return game;
+    }
+    
+    function skipWord(gameId) {
+        const game = games.get(gameId);
+        if (game && game.status === 'playing') {
+            game.currentWord = game.words[Math.floor(Math.random() * game.words.length)];
+            game.roundStartTime = new Date();
+            game.guesses = [];
+            return game;
+        }
+        return null;
+    }
+    
+    // 游戏插件
+    function executeGamesPlugin(command, args, user) {
+        const gameType = args[0] || 'help';
+        
+        switch (gameType) {
+            case 'help':
+                socket.emit('plugin-response', {
+                    pluginId: 'games',
+                    success: true,
+                    message: '🎮 游戏列表：\n/游戏 gomoku - 五子棋\n/游戏 pictionary - 你画我猜\n/游戏 tic-tac-toe - 井字棋'
+                });
+                break;
+            case 'gomoku':
+                const gomokuGame = createGomokuGame(user, user.roomName);
+                socket.emit('plugin-response', {
+                    pluginId: 'games',
+                    success: true,
+                    message: '🎮 五子棋游戏创建成功，等待其他玩家加入...',
+                    data: {
+                        gameType: 'gomoku',
+                        gameId: gomokuGame.id,
+                        roomName: user.roomName
+                    }
+                });
+                
+                // 广播游戏创建事件
+                socket.to(user.roomName).emit('game-created', {
+                    gameType: 'gomoku',
+                    gameId: gomokuGame.id,
+                    creator: user.username,
+                    roomName: user.roomName
+                });
+                break;
+            case 'pictionary':
+                const pictionaryGame = createPictionaryGame(user, user.roomName);
+                socket.emit('plugin-response', {
+                    pluginId: 'games',
+                    success: true,
+                    message: '🎮 你画我猜游戏创建成功，等待其他玩家加入...',
+                    data: {
+                        gameType: 'pictionary',
+                        gameId: pictionaryGame.id,
+                        roomName: user.roomName
+                    }
+                });
+                
+                // 广播游戏创建事件
+                socket.to(user.roomName).emit('game-created', {
+                    gameType: 'pictionary',
+                    gameId: pictionaryGame.id,
+                    creator: user.username,
+                    roomName: user.roomName
+                });
+                break;
+            default:
+                socket.emit('plugin-response', {
+                    pluginId: 'games',
+                    success: false,
+                    message: '未知的游戏类型，请输入 /游戏 help 查看游戏列表'
+                });
+        }
+    }
+    
+    // 投票插件
+    function executeVotePlugin(command, args, user) {
+        const action = args[0] || 'help';
+        
+        switch (action) {
+            case 'help':
+                socket.emit('plugin-response', {
+                    pluginId: 'vote',
+                    success: true,
+                    message: '🗳️ 投票系统：\n/投票 create 问题 选项1 选项2... - 创建投票\n/投票 list - 查看投票列表\n/投票 vote 投票ID 选项索引 - 投票'
+                });
+                break;
+            case 'create':
+                const question = args[1];
+                const options = args.slice(2);
+                if (!question || options.length < 2) {
+                    socket.emit('plugin-response', {
+                        pluginId: 'vote',
+                        success: false,
+                        message: '请输入问题和至少两个选项，例如: /投票 create 你喜欢什么颜色 红色 蓝色 绿色'
+                    });
+                    return;
+                }
+                
+                // 创建投票（复用现有的投票系统）
+                const pollId = `poll-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                const poll = {
+                    id: pollId,
+                    creator: user.username,
+                    question: question,
+                    options: options.map((option, index) => ({
+                        id: `option-${index}`,
+                        text: option,
+                        votes: 0
+                    })),
+                    votes: new Map(),
+                    createdAt: new Date(),
+                    endTime: null,
+                    isActive: true,
+                    roomName: user.roomName
+                };
+                
+                activePolls.set(pollId, poll);
+                
+                socket.emit('plugin-response', {
+                    pluginId: 'vote',
+                    success: true,
+                    message: `🗳️ 投票创建成功：${question}`
+                });
+                
+                // 广播投票创建事件
+                const room = rooms.get(user.roomName);
+                if (room) {
+                    const clientPoll = {
+                        ...poll,
+                        votes: poll.options.map(option => option.votes),
+                        status: poll.isActive ? 'active' : 'ended',
+                        votedUsers: [],
+                        userVotes: {},
+                        options: poll.options.map(option => option.text)
+                    };
+                    
+                    socket.to(user.roomName).emit('poll-created', clientPoll);
+                    socket.emit('poll-created', clientPoll);
+                }
+                break;
+            default:
+                socket.emit('plugin-response', {
+                    pluginId: 'vote',
+                    success: false,
+                    message: '未知的投票命令，请输入 /投票 help 查看帮助'
+                });
+        }
+    }
     
     // 在房间内修改用户权限
     socket.on('admin-room-set-permissions', (data) => {
