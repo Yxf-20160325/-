@@ -1523,6 +1523,8 @@
                 <div class="online-count">在线人数: <span id="userCount">0</span></div>
                 <button class="header-btn" id="usersBtn" title="用户列表">👥</button>
                 <button class="header-btn" id="friendsBtn" title="好友列表">👥</button>
+                <button class="header-btn" onclick="openWhiteboardModal()" title="共享白板">🖍️</button>
+                <button class="header-btn" onclick="openDocumentModal()" title="文档编辑">📄</button>
                 <button class="header-btn" id="settingsBtn" title="设置">⚙️</button>
             </div>
         </div>
@@ -2236,6 +2238,154 @@
         </div>
     </div>
     
+    <!-- 白板模态框 -->
+    <div class="modal" id="whiteboardModal">
+        <div class="modal-content" style="max-width: 90vw; max-height: 90vh; width: 1200px; height: 800px;">
+            <h3>共享白板</h3>
+            <div style="display: flex; flex-direction: column; height: 100%;">
+                <div style="display: flex; gap: 10px; padding: 10px; background: #f8f9fa; border-radius: 5px; margin-bottom: 10px; flex-wrap: wrap;">
+                    <button class="action-btn" id="whiteboardPenBtn" title="画笔">✏️</button>
+                    <button class="action-btn" id="whiteboardTextBtn" title="文本">📝</button>
+                    <button class="action-btn" id="whiteboardEraserBtn" title="橡皮擦">🧽</button>
+                    <button class="action-btn" id="whiteboardClearBtn" title="清空">🗑️</button>
+                    <button class="action-btn" id="whiteboardUndoBtn" title="撤销">↩️</button>
+                    <button class="action-btn" id="whiteboardSaveBtn" title="保存">💾</button>
+                    <input type="color" id="whiteboardColor" value="#000000" style="width: 50px; height: 45px; border: none; border-radius: 5px; cursor: pointer;">
+                    <input type="range" id="whiteboardSize" min="12" max="100" value="24" style="flex: 1; height: 45px; min-width: 100px;">
+                    <span id="whiteboardSizeValue" style="margin-right: 10px; font-weight: bold; min-width: 40px;">24px</span>
+                    <select id="whiteboardFont" style="padding: 8px; border: 1px solid #dee2e6; border-radius: 5px; height: 45px;">
+                        <option value="Arial">Arial</option>
+                        <option value="Times New Roman">Times New Roman</option>
+                        <option value="Courier New">Courier New</option>
+                        <option value="Georgia">Georgia</option>
+                        <option value="Verdana">Verdana</option>
+                    </select>
+                    <button class="action-btn" id="whiteboardExitBtn" title="退出白板" onclick="closeWhiteboardModal()">🚪</button>
+                </div>
+                <div id="textInputContainer" style="display: none; position: absolute; background: white; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; z-index: 1000;">
+                    <input type="text" id="whiteboardTextInput" placeholder="输入文本" style="width: 200px; padding: 5px; border: 1px solid #dee2e6; border-radius: 3px;">
+                    <div style="margin-top: 5px; display: flex; gap: 5px; justify-content: flex-end;">
+                        <button onclick="confirmTextInput()" style="padding: 3px 8px; background: #667eea; color: white; border: none; border-radius: 3px; cursor: pointer;">确认</button>
+                        <button onclick="cancelTextInput()" style="padding: 3px 8px; background: #6c757d; color: white; border: none; border-radius: 3px; cursor: pointer;">取消</button>
+                    </div>
+                </div>
+                <div style="flex: 1; position: relative; background: white; border: 1px solid #dee2e6; border-radius: 5px;">
+                    <canvas id="whiteboardCanvas" style="width: 100%; height: 100%; cursor: crosshair;"></canvas>
+                    <div id="whiteboardUsers" style="position: absolute; top: 10px; right: 10px; background: rgba(255, 255, 255, 0.8); padding: 10px; border-radius: 5px; font-size: 12px;">
+                        <strong>在线用户:</strong>
+                        <div id="whiteboardUserList"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="friend-btn" onclick="closeWhiteboardModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 文档编辑模态框 -->
+    <div class="modal" id="documentModal">
+        <div class="modal-content" style="max-width: 90vw; max-height: 90vh; width: 1000px; height: 700px;">
+            <h3 id="documentTitle">文档编辑</h3>
+            <div style="display: flex; flex-direction: column; height: 100%;">
+                <div style="display: flex; gap: 10px; padding: 10px; background: #f8f9fa; border-radius: 5px; margin-bottom: 10px;">
+                    <input type="text" id="documentTitleInput" placeholder="文档标题" style="flex: 1; padding: 10px; border: 1px solid #dee2e6; border-radius: 5px;">
+                    <button class="action-btn" id="documentSaveBtn" title="保存文档">💾</button>
+                    <button class="action-btn" id="documentImportBtn" title="导入文档">📁</button>
+                    <button class="action-btn" id="documentShareBtn" title="分享文档">📤</button>
+                    <button class="action-btn" id="documentExitBtn" title="退出文档" onclick="closeDocumentModal()">🚪</button>
+                </div>
+                <input type="file" id="documentFileInput" accept=".txt,.md,.doc,.docx,.pdf" style="display: none;">
+                <div style="flex: 1; display: flex;">
+                    <div style="flex: 1; position: relative;">
+                        <textarea id="documentContent" style="width: 100%; height: 100%; padding: 20px; border: 1px solid #dee2e6; border-radius: 5px; resize: none; font-size: 16px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;"></textarea>
+                    </div>
+                    <div style="width: 200px; background: #f8f9fa; border-left: 1px solid #dee2e6; padding: 10px;">
+                        <h4 style="margin-top: 0; margin-bottom: 15px;">在线用户</h4>
+                        <div id="documentUsersList"></div>
+                        <h4 style="margin-top: 20px; margin-bottom: 15px;">文档列表</h4>
+                        <div id="documentList"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="friend-btn" onclick="closeDocumentModal()">关闭</button>
+                <button type="button" class="friend-btn primary" onclick="createNewDocument()">新建文档</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 文档创建模态框 -->
+    <div class="modal" id="documentCreateModal">
+        <div class="modal-content" style="max-width: 500px;">
+            <h3>创建新文档</h3>
+            <div style="margin-bottom: 20px;">
+                <label for="newDocumentTitle" style="display: block; margin-bottom: 10px; font-weight: bold;">文档标题:</label>
+                <input type="text" id="newDocumentTitle" placeholder="输入文档标题" style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 5px;">
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="friend-btn" onclick="closeDocumentCreateModal()">取消</button>
+                <button type="button" class="friend-btn primary" onclick="confirmCreateDocument()">创建</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 插件模态框 -->
+    <div class="modal" id="pluginModal">
+        <div class="modal-content" style="max-width: 800px; max-height: 80vh; overflow-y: auto;">
+            <h3>插件系统</h3>
+            <div style="margin-bottom: 20px;">
+                <h4>内置插件</h4>
+                <div id="pluginList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px;"></div>
+            </div>
+            <div style="margin-bottom: 20px;">
+                <h4>插件命令</h4>
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 5px;">
+                    <p><strong>天气查询:</strong> /weather 城市名称 或 /天气 城市名称</p>
+                    <p><strong>翻译器:</strong> /translate 文本 或 /翻译 文本</p>
+                    <p><strong>小游戏:</strong> /game help 或 /游戏 help</p>
+                    <p><strong>投票系统:</strong> /vote help 或 /投票 help</p>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="friend-btn" onclick="closePluginModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 游戏模态框 -->
+    <div class="modal" id="gameModal">
+        <div class="modal-content" style="max-width: 90vw; max-height: 90vh; width: 800px; height: 700px;">
+            <h3 id="gameTitle">五子棋游戏</h3>
+            <div style="display: flex; flex-direction: column; height: 100%;">
+                <div style="display: flex; gap: 10px; padding: 10px; background: #f8f9fa; border-radius: 5px; margin-bottom: 10px;">
+                    <button class="action-btn" id="gameLeaveBtn" title="离开游戏">🚪</button>
+                    <button class="action-btn" id="gameSpectateBtn" title="观战模式">👁️</button>
+                    <div style="flex: 1; text-align: center; font-weight: bold;" id="gameStatus">等待玩家加入...</div>
+                    <div id="gamePlayers" style="display: flex; gap: 10px;">
+                        <div id="player1" style="padding: 5px 10px; background: #e3f2fd; border-radius: 15px;">玩家1: 等待中</div>
+                        <div id="player2" style="padding: 5px 10px; background: #fff3e0; border-radius: 15px;">玩家2: 等待中</div>
+                    </div>
+                </div>
+                <div style="flex: 1; display: flex;">
+                    <div style="flex: 1; position: relative;">
+                        <canvas id="gameBoard" style="width: 100%; height: 100%; background: #f0e6d2; cursor: pointer;"></canvas>
+                        <div id="gameMessage" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0, 0, 0, 0.8); color: white; padding: 20px; border-radius: 10px; font-size: 24px; font-weight: bold; text-align: center; display: none;"></div>
+                    </div>
+                    <div style="width: 200px; background: #f8f9fa; border-left: 1px solid #dee2e6; padding: 10px;">
+                        <h4 style="margin-top: 0; margin-bottom: 15px;">游戏信息</h4>
+                        <div id="gameInfo"></div>
+                        <h4 style="margin-top: 20px; margin-bottom: 15px;">观战列表</h4>
+                        <div id="spectatorsList"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="friend-btn" onclick="closeGameModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+    
     <!-- 投票创建模态框 -->
     <div class="modal" id="createPollModal">
         <div class="modal-content" style="max-width: 500px;">
@@ -2589,6 +2739,1053 @@
         let searchKeyword = '';
         
         // 消息收藏相关变量
+        
+        // 白板系统相关变量
+        const whiteboardModal = document.getElementById('whiteboardModal');
+        const whiteboardCanvas = document.getElementById('whiteboardCanvas');
+        const whiteboardPenBtn = document.getElementById('whiteboardPenBtn');
+        const whiteboardTextBtn = document.getElementById('whiteboardTextBtn');
+        const whiteboardEraserBtn = document.getElementById('whiteboardEraserBtn');
+        const whiteboardClearBtn = document.getElementById('whiteboardClearBtn');
+        const whiteboardUndoBtn = document.getElementById('whiteboardUndoBtn');
+        const whiteboardSaveBtn = document.getElementById('whiteboardSaveBtn');
+        const whiteboardColor = document.getElementById('whiteboardColor');
+        const whiteboardSize = document.getElementById('whiteboardSize');
+        const whiteboardSizeValue = document.getElementById('whiteboardSizeValue');
+        const whiteboardFont = document.getElementById('whiteboardFont');
+        const whiteboardUserList = document.getElementById('whiteboardUserList');
+        const textInputContainer = document.getElementById('textInputContainer');
+        const whiteboardTextInput = document.getElementById('whiteboardTextInput');
+        
+        let whiteboardCtx = null;
+        let whiteboardIsDrawing = false;
+        let whiteboardLastX = 0;
+        let whiteboardLastY = 0;
+        let whiteboardTool = 'pen';
+        let whiteboardHistory = [];
+        let whiteboardHistoryIndex = -1;
+        let textInputPosition = { x: 0, y: 0 };
+        
+        // 初始化白板
+        function initWhiteboard() {
+            if (!whiteboardCanvas) return;
+            
+            // 设置canvas尺寸
+            const rect = whiteboardCanvas.getBoundingClientRect();
+            whiteboardCanvas.width = rect.width;
+            whiteboardCanvas.height = rect.height;
+            
+            whiteboardCtx = whiteboardCanvas.getContext('2d');
+            whiteboardCtx.lineCap = 'round';
+            whiteboardCtx.lineJoin = 'round';
+            
+            // 绑定鼠标事件
+            whiteboardCanvas.addEventListener('mousedown', startDrawing);
+            whiteboardCanvas.addEventListener('mousemove', draw);
+            whiteboardCanvas.addEventListener('mouseup', stopDrawing);
+            whiteboardCanvas.addEventListener('mouseout', stopDrawing);
+            
+            // 绑定触摸事件
+            whiteboardCanvas.addEventListener('touchstart', startDrawingTouch);
+            whiteboardCanvas.addEventListener('touchmove', drawTouch);
+            whiteboardCanvas.addEventListener('touchend', stopDrawing);
+            
+            // 绑定工具栏事件
+            whiteboardPenBtn.addEventListener('click', () => {
+                whiteboardTool = 'pen';
+                whiteboardCanvas.style.cursor = 'crosshair';
+            });
+            
+            whiteboardTextBtn.addEventListener('click', () => {
+                whiteboardTool = 'text';
+                whiteboardCanvas.style.cursor = 'text';
+            });
+            
+            whiteboardEraserBtn.addEventListener('click', () => {
+                whiteboardTool = 'eraser';
+                whiteboardCanvas.style.cursor = 'eraser';
+            });
+            
+            // 添加画布点击事件以支持文本输入
+            whiteboardCanvas.addEventListener('click', handleCanvasClick);
+            
+            whiteboardClearBtn.addEventListener('click', () => {
+                if (confirm('确定要清空白板吗？')) {
+                    whiteboardCtx.clearRect(0, 0, whiteboardCanvas.width, whiteboardCanvas.height);
+                    whiteboardHistory = [];
+                    whiteboardHistoryIndex = -1;
+                    socket.emit('whiteboard-clear', {});
+                }
+            });
+            
+            whiteboardUndoBtn.addEventListener('click', () => {
+                if (whiteboardHistoryIndex >= 0) {
+                    whiteboardHistoryIndex--;
+                    const history = whiteboardHistoryIndex >= 0 ? whiteboardHistory[whiteboardHistoryIndex] : null;
+                    if (history) {
+                        const img = new Image();
+                        img.onload = function() {
+                            whiteboardCtx.clearRect(0, 0, whiteboardCanvas.width, whiteboardCanvas.height);
+                            whiteboardCtx.drawImage(img, 0, 0);
+                        };
+                        img.src = history;
+                    } else {
+                        whiteboardCtx.clearRect(0, 0, whiteboardCanvas.width, whiteboardCanvas.height);
+                    }
+                    socket.emit('whiteboard-undo', {});
+                }
+            });
+            
+            whiteboardSaveBtn.addEventListener('click', () => {
+                const dataURL = whiteboardCanvas.toDataURL('image/png');
+                const a = document.createElement('a');
+                a.href = dataURL;
+                a.download = `whiteboard-${Date.now()}.png`;
+                a.click();
+                socket.emit('whiteboard-save', {});
+            });
+            
+            whiteboardSize.addEventListener('input', () => {
+                whiteboardSizeValue.textContent = `${whiteboardSize.value}px`;
+            });
+        }
+        
+        // 开始绘制
+        function startDrawing(e) {
+            whiteboardIsDrawing = true;
+            [whiteboardLastX, whiteboardLastY] = getMousePos(whiteboardCanvas, e);
+            saveHistory();
+        }
+        
+        // 触摸开始绘制
+        function startDrawingTouch(e) {
+            e.preventDefault();
+            whiteboardIsDrawing = true;
+            const touch = e.touches[0];
+            [whiteboardLastX, whiteboardLastY] = getTouchPos(whiteboardCanvas, touch);
+            saveHistory();
+        }
+        
+        // 绘制
+        function draw(e) {
+            if (!whiteboardIsDrawing) return;
+            const [x, y] = getMousePos(whiteboardCanvas, e);
+            drawLine(whiteboardLastX, whiteboardLastY, x, y);
+            [whiteboardLastX, whiteboardLastY] = [x, y];
+        }
+        
+        // 触摸绘制
+        function drawTouch(e) {
+            if (!whiteboardIsDrawing) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            const [x, y] = getTouchPos(whiteboardCanvas, touch);
+            drawLine(whiteboardLastX, whiteboardLastY, x, y);
+            [whiteboardLastX, whiteboardLastY] = [x, y];
+        }
+        
+        // 停止绘制
+        function stopDrawing() {
+            whiteboardIsDrawing = false;
+        }
+        
+        // 绘制线条
+        function drawLine(x1, y1, x2, y2) {
+            whiteboardCtx.beginPath();
+            whiteboardCtx.moveTo(x1, y1);
+            whiteboardCtx.lineTo(x2, y2);
+            
+            if (whiteboardTool === 'pen') {
+                whiteboardCtx.strokeStyle = whiteboardColor.value;
+                whiteboardCtx.lineWidth = whiteboardSize.value;
+            } else if (whiteboardTool === 'eraser') {
+                whiteboardCtx.strokeStyle = 'white';
+                whiteboardCtx.lineWidth = 20;
+            }
+            
+            whiteboardCtx.stroke();
+            
+            // 发送绘制事件到服务器
+            socket.emit('whiteboard-draw', {
+                x1, y1, x2, y2,
+                color: whiteboardColor.value,
+                size: whiteboardSize.value,
+                tool: whiteboardTool
+            });
+        }
+        
+        // 获取鼠标位置
+        function getMousePos(canvas, evt) {
+            const rect = canvas.getBoundingClientRect();
+            return [evt.clientX - rect.left, evt.clientY - rect.top];
+        }
+        
+        // 获取触摸位置
+        function getTouchPos(canvas, touch) {
+            const rect = canvas.getBoundingClientRect();
+            return [touch.clientX - rect.left, touch.clientY - rect.top];
+        }
+        
+        // 保存历史记录
+        function saveHistory() {
+            const dataURL = whiteboardCanvas.toDataURL('image/png');
+            whiteboardHistory = whiteboardHistory.slice(0, whiteboardHistoryIndex + 1);
+            whiteboardHistory.push(dataURL);
+            whiteboardHistoryIndex++;
+            
+            // 限制历史记录数量
+            if (whiteboardHistory.length > 50) {
+                whiteboardHistory.shift();
+                whiteboardHistoryIndex--;
+            }
+        }
+        
+        // 打开白板模态框
+        function openWhiteboardModal() {
+            whiteboardModal.classList.add('active');
+            setTimeout(() => {
+                initWhiteboard();
+                updateWhiteboardUsers();
+            }, 100);
+        }
+        
+        // 关闭白板模态框
+        function closeWhiteboardModal() {
+            whiteboardModal.classList.remove('active');
+            cancelTextInput(); // 关闭文本输入框
+        }
+        
+        // 处理画布点击事件
+        function handleCanvasClick(e) {
+            if (whiteboardTool === 'text') {
+                const rect = whiteboardCanvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                // 显示文本输入框
+                textInputPosition = { x, y };
+                textInputContainer.style.left = `${e.clientX}px`;
+                textInputContainer.style.top = `${e.clientY}px`;
+                textInputContainer.style.display = 'block';
+                whiteboardTextInput.focus();
+            }
+        }
+        
+        // 确认文本输入
+        function confirmTextInput() {
+            const text = whiteboardTextInput.value.trim();
+            if (text && whiteboardCtx) {
+                // 保存历史记录
+                saveWhiteboardHistory();
+                
+                // 获取当前选择的字体
+                const font = whiteboardFont.value;
+                
+                // 设置文本样式
+                whiteboardCtx.fillStyle = whiteboardColor.value;
+                whiteboardCtx.font = `${whiteboardSize.value}px ${font}`;
+                whiteboardCtx.textAlign = 'left';
+                whiteboardCtx.textBaseline = 'top';
+                
+                // 绘制文本
+                whiteboardCtx.fillText(text, textInputPosition.x, textInputPosition.y);
+                
+                // 发送文本绘制事件到服务器
+                socket.emit('whiteboard-text', {
+                    text: text,
+                    x: textInputPosition.x,
+                    y: textInputPosition.y,
+                    color: whiteboardColor.value,
+                    size: whiteboardSize.value,
+                    font: font
+                });
+            }
+            
+            // 隐藏文本输入框
+            cancelTextInput();
+        }
+        
+        // 取消文本输入
+        function cancelTextInput() {
+            textInputContainer.style.display = 'none';
+            whiteboardTextInput.value = '';
+        }
+        
+        // 保存白板历史记录
+        function saveWhiteboardHistory() {
+            const dataURL = whiteboardCanvas.toDataURL('image/png');
+            whiteboardHistory = whiteboardHistory.slice(0, whiteboardHistoryIndex + 1);
+            whiteboardHistory.push(dataURL);
+            whiteboardHistoryIndex++;
+            
+            // 限制历史记录数量
+            if (whiteboardHistory.length > 50) {
+                whiteboardHistory.shift();
+                whiteboardHistoryIndex--;
+            }
+        }
+        
+        // 更新白板用户列表
+        function updateWhiteboardUsers() {
+            if (!whiteboardUserList) return;
+            whiteboardUserList.innerHTML = '';
+            allUsers.forEach(user => {
+                const userDiv = document.createElement('div');
+                userDiv.style.display = 'flex';
+                userDiv.style.alignItems = 'center';
+                userDiv.style.marginTop = '5px';
+                
+                const colorDiv = document.createElement('div');
+                colorDiv.style.width = '10px';
+                colorDiv.style.height = '10px';
+                colorDiv.style.borderRadius = '50%';
+                colorDiv.style.marginRight = '5px';
+                colorDiv.style.backgroundColor = user.color;
+                
+                userDiv.appendChild(colorDiv);
+                userDiv.appendChild(document.createTextNode(user.username));
+                whiteboardUserList.appendChild(userDiv);
+            });
+        }
+        
+        // 监听服务器发送的白板绘制事件
+        socket.on('whiteboard-draw', (data) => {
+            if (!whiteboardCtx) return;
+            
+            whiteboardCtx.beginPath();
+            whiteboardCtx.moveTo(data.x1, data.y1);
+            whiteboardCtx.lineTo(data.x2, data.y2);
+            
+            if (data.tool === 'pen') {
+                whiteboardCtx.strokeStyle = data.color;
+                whiteboardCtx.lineWidth = data.size;
+            } else if (data.tool === 'eraser') {
+                whiteboardCtx.strokeStyle = 'white';
+                whiteboardCtx.lineWidth = 20;
+            }
+            
+            whiteboardCtx.stroke();
+        });
+        
+        // 监听服务器发送的白板清屏事件
+        socket.on('whiteboard-clear', (data) => {
+            if (!whiteboardCtx) return;
+            whiteboardCtx.clearRect(0, 0, whiteboardCanvas.width, whiteboardCanvas.height);
+            whiteboardHistory = [];
+            whiteboardHistoryIndex = -1;
+        });
+        
+        // 监听服务器发送的白板撤销事件
+        socket.on('whiteboard-undo', (data) => {
+            // 撤销操作由本地处理，这里可以添加其他逻辑
+        });
+        
+        // 监听服务器发送的白板文本绘制事件
+        socket.on('whiteboard-text', (data) => {
+            if (!whiteboardCtx) return;
+            
+            // 设置文本样式
+            whiteboardCtx.fillStyle = data.color;
+            whiteboardCtx.font = `${data.size}px ${data.font || 'Arial'}`;
+            whiteboardCtx.textAlign = 'left';
+            whiteboardCtx.textBaseline = 'top';
+            
+            // 绘制文本
+            whiteboardCtx.fillText(data.text, data.x, data.y);
+        });
+        
+        // 文档编辑系统相关变量
+        const documentModal = document.getElementById('documentModal');
+        const documentCreateModal = document.getElementById('documentCreateModal');
+        const documentTitle = document.getElementById('documentTitle');
+        const documentTitleInput = document.getElementById('documentTitleInput');
+        const documentContent = document.getElementById('documentContent');
+        const documentSaveBtn = document.getElementById('documentSaveBtn');
+        const documentImportBtn = document.getElementById('documentImportBtn');
+        const documentShareBtn = document.getElementById('documentShareBtn');
+        const documentUsersList = document.getElementById('documentUsersList');
+        const documentFileInput = document.getElementById('documentFileInput');
+        
+        // 游戏系统相关变量
+        const gameModal = document.getElementById('gameModal');
+        const gameTitle = document.getElementById('gameTitle');
+        const gameBoard = document.getElementById('gameBoard');
+        const gameStatus = document.getElementById('gameStatus');
+        const gamePlayers = document.getElementById('gamePlayers');
+        const player1 = document.getElementById('player1');
+        const player2 = document.getElementById('player2');
+        const gameInfo = document.getElementById('gameInfo');
+        const spectatorsList = document.getElementById('spectatorsList');
+        const gameMessage = document.getElementById('gameMessage');
+        const gameLeaveBtn = document.getElementById('gameLeaveBtn');
+        const gameSpectateBtn = document.getElementById('gameSpectateBtn');
+        
+        let gameCtx = null;
+        let currentGame = null;
+        let isSpectating = false;
+        let cellSize = 0;
+        let boardSize = 15;
+        const documentList = document.getElementById('documentList');
+        const newDocumentTitle = document.getElementById('newDocumentTitle');
+        
+        let currentDocument = null;
+        let documentEditingTimeout = null;
+        
+        // 打开文档模态框
+        function openDocumentModal() {
+            documentModal.classList.add('active');
+            setTimeout(() => {
+                loadDocuments();
+            }, 100);
+        }
+        
+        // 处理文档导入
+        function handleDocumentImport() {
+            const file = documentFileInput.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                const content = e.target.result;
+                documentContent.value = content;
+            };
+            
+            reader.readAsText(file);
+        }
+        
+        // 关闭文档模态框
+        function closeDocumentModal() {
+            documentModal.classList.remove('active');
+            currentDocument = null;
+        }
+        
+        // 打开文档创建模态框
+        function createNewDocument() {
+            documentCreateModal.classList.add('active');
+        }
+        
+        // 关闭文档创建模态框
+        function closeDocumentCreateModal() {
+            documentCreateModal.classList.remove('active');
+            newDocumentTitle.value = '';
+        }
+        
+        // 确认创建文档
+        function confirmCreateDocument() {
+            const title = newDocumentTitle.value.trim() || '新文档';
+            socket.emit('document-create', {
+                title: title,
+                content: ''
+            });
+            closeDocumentCreateModal();
+        }
+        
+        // 加载文档列表
+        function loadDocuments() {
+            socket.emit('document-list');
+        }
+        
+        // 加入文档
+        function joinDocument(documentId) {
+            socket.emit('document-join', {
+                documentId: documentId
+            });
+        }
+        
+        // 保存文档
+        function saveDocument() {
+            if (currentDocument) {
+                socket.emit('document-save', {
+                    documentId: currentDocument.id
+                });
+            }
+        }
+        
+        // 离开文档
+        function leaveDocument() {
+            if (currentDocument) {
+                socket.emit('document-leave', {
+                    documentId: currentDocument.id
+                });
+                currentDocument = null;
+            }
+        }
+        
+        // 绑定文档内容编辑事件
+        if (documentContent) {
+            documentContent.addEventListener('input', () => {
+                if (currentDocument) {
+                    // 防抖处理，避免频繁发送编辑事件
+                    clearTimeout(documentEditingTimeout);
+                    documentEditingTimeout = setTimeout(() => {
+                        socket.emit('document-edit', {
+                            documentId: currentDocument.id,
+                            content: documentContent.value
+                        });
+                    }, 300);
+                }
+            });
+        }
+        
+        // 绑定保存按钮事件
+        if (documentSaveBtn) {
+            documentSaveBtn.addEventListener('click', saveDocument);
+        }
+        
+        // 绑定导入文档按钮事件
+        if (documentImportBtn) {
+            documentImportBtn.addEventListener('click', () => {
+                documentFileInput.click();
+            });
+        }
+        
+        // 绑定文件输入变化事件
+        if (documentFileInput) {
+            documentFileInput.addEventListener('change', handleDocumentImport);
+        }
+        
+        // 监听文档创建成功事件
+        socket.on('document-create-success', (document) => {
+            currentDocument = document;
+            documentTitle.textContent = document.title;
+            documentTitleInput.value = document.title;
+            documentContent.value = document.content;
+            loadDocuments();
+        });
+        
+        // 监听文档创建事件（其他用户创建）
+        socket.on('document-created', (document) => {
+            loadDocuments();
+        });
+        
+        // 监听文档加入成功事件
+        socket.on('document-joined', (document) => {
+            currentDocument = document;
+            documentTitle.textContent = document.title;
+            documentTitleInput.value = document.title;
+            documentContent.value = document.content;
+        });
+        
+        // 监听文档编辑事件
+        socket.on('document-edited', (data) => {
+            if (currentDocument && currentDocument.id === data.documentId) {
+                // 避免自己的编辑事件触发更新
+                documentContent.value = data.content;
+            }
+        });
+        
+        // 监听文档保存成功事件
+        socket.on('document-save-success', (data) => {
+            if (currentDocument && currentDocument.id === data.documentId) {
+                showNotification('文档保存成功！');
+            }
+        });
+        
+        // 监听用户加入文档事件
+        socket.on('document-user-joined', (data) => {
+            if (currentDocument && currentDocument.id === data.documentId) {
+                updateDocumentUsers();
+                showNotification(`${data.username} 加入了文档编辑`);
+            }
+        });
+        
+        // 监听用户离开文档事件
+        socket.on('document-user-left', (data) => {
+            if (currentDocument && currentDocument.id === data.documentId) {
+                updateDocumentUsers();
+                showNotification(`${data.username} 离开了文档编辑`);
+            }
+        });
+        
+        // 监听文档列表事件
+        socket.on('document-list', (documents) => {
+            if (documentList) {
+                documentList.innerHTML = '';
+                documents.forEach(doc => {
+                    const docDiv = document.createElement('div');
+                    docDiv.style.padding = '10px';
+                    docDiv.style.borderBottom = '1px solid #dee2e6';
+                    docDiv.style.cursor = 'pointer';
+                    docDiv.style.transition = 'background-color 0.2s';
+                    docDiv.onmouseenter = () => { docDiv.style.backgroundColor = '#e9ecef'; };
+                    docDiv.onmouseleave = () => { docDiv.style.backgroundColor = ''; };
+                    docDiv.onclick = () => joinDocument(doc.id);
+                    
+                    const titleDiv = document.createElement('div');
+                    titleDiv.style.fontWeight = 'bold';
+                    titleDiv.style.marginBottom = '5px';
+                    titleDiv.textContent = doc.title;
+                    
+                    const infoDiv = document.createElement('div');
+                    infoDiv.style.fontSize = '12px';
+                    infoDiv.style.color = '#6c757d';
+                    infoDiv.textContent = `${doc.creator} · ${new Date(doc.lastModified).toLocaleString()}`;
+                    
+                    docDiv.appendChild(titleDiv);
+                    docDiv.appendChild(infoDiv);
+                    documentList.appendChild(docDiv);
+                });
+            }
+        });
+        
+        // 更新文档用户列表
+        function updateDocumentUsers() {
+            if (documentUsersList) {
+                documentUsersList.innerHTML = '';
+                // 这里可以根据实际情况更新用户列表
+                // 暂时显示占位符
+                const placeholder = document.createElement('div');
+                placeholder.style.fontSize = '12px';
+                placeholder.style.color = '#6c757d';
+                placeholder.textContent = '加载中...';
+                documentUsersList.appendChild(placeholder);
+            }
+        }
+        
+        // 插件系统相关变量
+        const pluginModal = document.getElementById('pluginModal');
+        const pluginList = document.getElementById('pluginList');
+        
+        // 打开插件模态框
+        function openPluginModal() {
+            pluginModal.classList.add('active');
+            loadPlugins();
+        }
+        
+        // 关闭插件模态框
+        function closePluginModal() {
+            pluginModal.classList.remove('active');
+        }
+        
+        // 加载插件列表
+        function loadPlugins() {
+            socket.emit('plugin-list');
+        }
+        
+        // 切换插件状态
+        function togglePlugin(pluginId) {
+            socket.emit('plugin-toggle', {
+                pluginId: pluginId
+            });
+        }
+        
+        // 执行插件命令
+        function executePluginCommand(pluginId, command, args) {
+            socket.emit('plugin-execute', {
+                pluginId: pluginId,
+                command: command,
+                args: args
+            });
+        }
+        
+        // 处理消息中的插件命令
+        function handlePluginCommands(message) {
+            if (message.startsWith('/')) {
+                const parts = message.substring(1).split(' ');
+                const command = parts[0].toLowerCase();
+                const args = parts.slice(1);
+                
+                // 映射命令到插件
+                const commandMap = {
+                    'weather': 'weather',
+                    '天气': 'weather',
+                    'translate': 'translator',
+                    '翻译': 'translator',
+                    'game': 'games',
+                    '游戏': 'games',
+                    'vote': 'vote',
+                    '投票': 'vote'
+                };
+                
+                const pluginId = commandMap[command];
+                if (pluginId) {
+                    executePluginCommand(pluginId, command, args);
+                    return true; // 命令已处理
+                }
+            }
+            return false; // 命令未处理
+        }
+        
+        // 监听插件列表事件
+        socket.on('plugin-list', (plugins) => {
+            if (pluginList) {
+                pluginList.innerHTML = '';
+                plugins.forEach(plugin => {
+                    const pluginCard = document.createElement('div');
+                    pluginCard.style.padding = '15px';
+                    pluginCard.style.border = '1px solid #dee2e6';
+                    pluginCard.style.borderRadius = '8px';
+                    pluginCard.style.background = '#f8f9fa';
+                    pluginCard.style.transition = 'all 0.2s';
+                    pluginCard.onmouseenter = () => {
+                        pluginCard.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+                    };
+                    pluginCard.onmouseleave = () => {
+                        pluginCard.style.boxShadow = 'none';
+                    };
+                    
+                    const pluginName = document.createElement('h5');
+                    pluginName.style.marginTop = '0';
+                    pluginName.style.marginBottom = '8px';
+                    pluginName.textContent = plugin.name;
+                    
+                    const pluginDescription = document.createElement('p');
+                    pluginDescription.style.marginBottom = '10px';
+                    pluginDescription.style.fontSize = '14px';
+                    pluginDescription.style.color = '#6c757d';
+                    pluginDescription.textContent = plugin.description;
+                    
+                    const pluginInfo = document.createElement('div');
+                    pluginInfo.style.fontSize = '12px';
+                    pluginInfo.style.color = '#999';
+                    pluginInfo.textContent = `${plugin.version} · ${plugin.author}`;
+                    
+                    const pluginCommands = document.createElement('div');
+                    pluginCommands.style.marginTop = '10px';
+                    pluginCommands.style.fontSize = '12px';
+                    pluginCommands.textContent = `命令: ${plugin.commands.join(', ')}`;
+                    
+                    const pluginToggle = document.createElement('div');
+                    pluginToggle.style.marginTop = '15px';
+                    pluginToggle.style.display = 'flex';
+                    pluginToggle.style.alignItems = 'center';
+                    pluginToggle.style.justifyContent = 'space-between';
+                    
+                    const toggleLabel = document.createElement('span');
+                    toggleLabel.style.fontSize = '14px';
+                    toggleLabel.textContent = plugin.enabled ? '已启用' : '已禁用';
+                    
+                    const toggleSwitch = document.createElement('label');
+                    toggleSwitch.className = 'switch';
+                    toggleSwitch.innerHTML = `
+                        <input type="checkbox" ${plugin.enabled ? 'checked' : ''} onchange="togglePlugin('${plugin.id}')">
+                        <span class="slider"></span>
+                    `;
+                    
+                    pluginToggle.appendChild(toggleLabel);
+                    pluginToggle.appendChild(toggleSwitch);
+                    
+                    pluginCard.appendChild(pluginName);
+                    pluginCard.appendChild(pluginDescription);
+                    pluginCard.appendChild(pluginInfo);
+                    pluginCard.appendChild(pluginCommands);
+                    pluginCard.appendChild(pluginToggle);
+                    
+                    pluginList.appendChild(pluginCard);
+                });
+            }
+        });
+        
+        // 监听插件响应事件
+        socket.on('plugin-response', (data) => {
+            showNotification(data.message);
+        });
+        
+        // 监听插件广播事件
+        socket.on('plugin-broadcast', (data) => {
+            showNotification(data.message);
+        });
+        
+        // 监听插件状态切换事件
+        socket.on('plugin-toggled', (data) => {
+            loadPlugins(); // 重新加载插件列表
+        });
+        
+        // 游戏系统核心逻辑
+        function initGameBoard() {
+            if (!gameBoard) return;
+            
+            const rect = gameBoard.getBoundingClientRect();
+            gameBoard.width = rect.width;
+            gameBoard.height = rect.height;
+            
+            gameCtx = gameBoard.getContext('2d');
+            cellSize = Math.min(gameBoard.width, gameBoard.height) / (boardSize + 1);
+            
+            drawGameBoard();
+        }
+        
+        function drawGameBoard() {
+            if (!gameCtx) return;
+            
+            // 清空画布
+            gameCtx.clearRect(0, 0, gameBoard.width, gameBoard.height);
+            
+            // 绘制棋盘
+            gameCtx.strokeStyle = '#8B4513';
+            gameCtx.lineWidth = 2;
+            
+            // 绘制横线
+            for (let i = 1; i <= boardSize; i++) {
+                const y = i * cellSize;
+                gameCtx.beginPath();
+                gameCtx.moveTo(cellSize, y);
+                gameCtx.lineTo(boardSize * cellSize, y);
+                gameCtx.stroke();
+            }
+            
+            // 绘制竖线
+            for (let i = 1; i <= boardSize; i++) {
+                const x = i * cellSize;
+                gameCtx.beginPath();
+                gameCtx.moveTo(x, cellSize);
+                gameCtx.lineTo(x, boardSize * cellSize);
+                gameCtx.stroke();
+            }
+            
+            // 绘制星位点
+            const starPoints = [3, 7, 11];
+            gameCtx.fillStyle = '#8B4513';
+            starPoints.forEach(x => {
+                starPoints.forEach(y => {
+                    drawCircle(x * cellSize, y * cellSize, 5, '#8B4513');
+                });
+            });
+        }
+        
+        function drawCircle(x, y, radius, color) {
+            gameCtx.fillStyle = color;
+            gameCtx.beginPath();
+            gameCtx.arc(x, y, radius, 0, Math.PI * 2);
+            gameCtx.fill();
+        }
+        
+        function drawGamePieces(board) {
+            if (!gameCtx || !board) return;
+            
+            for (let x = 0; x < boardSize; x++) {
+                for (let y = 0; y < boardSize; y++) {
+                    const player = board[x][y];
+                    if (player) {
+                        const color = player === socket.id ? '#000000' : '#FFFFFF';
+                        const borderColor = '#000000';
+                        
+                        gameCtx.fillStyle = color;
+                        gameCtx.beginPath();
+                        gameCtx.arc((x + 1) * cellSize, (y + 1) * cellSize, cellSize * 0.4, 0, Math.PI * 2);
+                        gameCtx.fill();
+                        
+                        gameCtx.strokeStyle = borderColor;
+                        gameCtx.lineWidth = 2;
+                        gameCtx.stroke();
+                    }
+                }
+            }
+        }
+        
+        function handleGameBoardClick(e) {
+            if (!currentGame || isSpectating) return;
+            if (currentGame.status !== 'playing') return;
+            if (currentGame.currentPlayer !== socket.id) return;
+            
+            const rect = gameBoard.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            
+            // 计算落子位置
+            const x = Math.round((mouseX - cellSize) / cellSize);
+            const y = Math.round((mouseY - cellSize) / cellSize);
+            
+            if (x >= 0 && x < boardSize && y >= 0 && y < boardSize) {
+                // 发送落子请求
+                socket.emit('game-move', {
+                    gameId: currentGame.id,
+                    x: x,
+                    y: y
+                });
+            }
+        }
+        
+        function openGameModal(gameData) {
+            gameModal.classList.add('active');
+            currentGame = gameData;
+            isSpectating = false;
+            
+            setTimeout(() => {
+                initGameBoard();
+                updateGameStatus();
+                updateGamePlayers();
+                updateGameInfo();
+            }, 100);
+            
+            // 绑定点击事件
+            gameBoard.addEventListener('click', handleGameBoardClick);
+            gameLeaveBtn.addEventListener('click', leaveGame);
+            gameSpectateBtn.addEventListener('click', toggleSpectateMode);
+        }
+        
+        function closeGameModal() {
+            gameModal.classList.remove('active');
+            currentGame = null;
+            isSpectating = false;
+            
+            // 解绑事件
+            gameBoard.removeEventListener('click', handleGameBoardClick);
+            gameLeaveBtn.removeEventListener('click', leaveGame);
+            gameSpectateBtn.removeEventListener('click', toggleSpectateMode);
+        }
+        
+        function updateGameStatus() {
+            if (!currentGame) return;
+            
+            switch (currentGame.status) {
+                case 'waiting':
+                    gameStatus.textContent = '等待玩家加入...';
+                    break;
+                case 'playing':
+                    const currentPlayerName = currentGame.players.find(p => p.socketId === currentGame.currentPlayer)?.username || '未知';
+                    gameStatus.textContent = `当前回合: ${currentPlayerName}`;
+                    break;
+                case 'ended':
+                    const winnerName = currentGame.players.find(p => p.socketId === currentGame.winner)?.username || '未知';
+                    gameStatus.textContent = `游戏结束，赢家: ${winnerName}`;
+                    showGameMessage(`游戏结束！\n赢家: ${winnerName}`);
+                    break;
+            }
+        }
+        
+        function updateGamePlayers() {
+            if (!currentGame) return;
+            
+            if (currentGame.players.length >= 1) {
+                player1.textContent = `玩家1: ${currentGame.players[0]?.username || '等待中'}`;
+            } else {
+                player1.textContent = '玩家1: 等待中';
+            }
+            
+            if (currentGame.players.length >= 2) {
+                player2.textContent = `玩家2: ${currentGame.players[1]?.username || '等待中'}`;
+            } else {
+                player2.textContent = '玩家2: 等待中';
+            }
+        }
+        
+        function updateGameInfo() {
+            if (!currentGame) return;
+            
+            gameInfo.innerHTML = `
+                <div>游戏ID: ${currentGame.id}</div>
+                <div>游戏类型: 五子棋</div>
+                <div>状态: ${currentGame.status === 'waiting' ? '等待中' : currentGame.status === 'playing' ? '游戏中' : '已结束'}</div>
+                ${currentGame.startTime ? `<div>开始时间: ${new Date(currentGame.startTime).toLocaleString()}</div>` : ''}
+                ${currentGame.endTime ? `<div>结束时间: ${new Date(currentGame.endTime).toLocaleString()}</div>` : ''}
+            `;
+        }
+        
+        function showGameMessage(message) {
+            gameMessage.textContent = message;
+            gameMessage.style.display = 'block';
+            
+            setTimeout(() => {
+                gameMessage.style.display = 'none';
+            }, 3000);
+        }
+        
+        function leaveGame() {
+            if (currentGame) {
+                socket.emit('game-leave', {
+                    gameId: currentGame.id
+                });
+                closeGameModal();
+            }
+        }
+        
+        function toggleSpectateMode() {
+            if (currentGame) {
+                isSpectating = !isSpectating;
+                gameSpectateBtn.textContent = isSpectating ? '👁️ 观战中' : '👁️ 观战模式';
+                gameStatus.textContent = isSpectating ? '观战模式' : currentGame.status === 'playing' ? `当前回合: ${currentGame.players.find(p => p.socketId === currentGame.currentPlayer)?.username || '未知'}` : gameStatus.textContent;
+            }
+        }
+        
+        // 监听服务器发送的游戏创建事件
+        socket.on('game-created', (data) => {
+            if (data.gameType === 'gomoku') {
+                showNotification(`🎮 ${data.creator} 创建了五子棋游戏，游戏ID: ${data.gameId}`);
+                
+                // 询问是否加入游戏
+                if (confirm(`${data.creator} 创建了五子棋游戏，是否加入？`)) {
+                    socket.emit('game-join', {
+                        gameId: data.gameId
+                    });
+                }
+            }
+        });
+        
+        // 监听服务器发送的游戏开始事件
+        socket.on('game-start', (data) => {
+            currentGame = {
+                id: data.gameId,
+                type: 'gomoku',
+                status: 'playing',
+                players: data.players,
+                board: data.board,
+                currentPlayer: data.currentPlayer,
+                startTime: new Date()
+            };
+            
+            openGameModal(currentGame);
+            drawGamePieces(data.board);
+            showNotification('游戏开始！');
+        });
+        
+        // 监听服务器发送的游戏更新事件
+        socket.on('game-update', (data) => {
+            if (currentGame && currentGame.id === data.gameId) {
+                currentGame.board = data.board;
+                currentGame.currentPlayer = data.currentPlayer;
+                currentGame.status = data.status;
+                currentGame.winner = data.winner;
+                
+                drawGamePieces(data.board);
+                updateGameStatus();
+                updateGamePlayers();
+                updateGameInfo();
+            }
+        });
+        
+        // 监听服务器发送的游戏观战成功事件
+        socket.on('game-spectate-success', (data) => {
+            currentGame = {
+                id: data.gameId,
+                type: 'gomoku',
+                status: data.status,
+                players: data.players,
+                board: data.board,
+                currentPlayer: data.currentPlayer,
+                winner: data.winner
+            };
+            
+            isSpectating = true;
+            openGameModal(currentGame);
+            drawGamePieces(data.board);
+            showNotification('开始观战游戏');
+        });
+        
+        // 重写插件响应事件处理，支持游戏创建
+        socket.on('plugin-response', (data) => {
+            if (data.pluginId === 'games' && data.data && data.data.gameId) {
+                // 游戏创建成功
+                if (data.data.gameType === 'gomoku') {
+                    currentGame = {
+                        id: data.data.gameId,
+                        type: 'gomoku',
+                        status: 'waiting',
+                        players: [{ socketId: socket.id, username: username }],
+                        board: Array(15).fill().map(() => Array(15).fill(null)),
+                        currentPlayer: socket.id
+                    };
+                    
+                    openGameModal(currentGame);
+                    showNotification(data.message);
+                } else {
+                    showNotification(data.message);
+                }
+            } else {
+                showNotification(data.message);
+            }
+        });
         let favoritedMessages = JSON.parse(localStorage.getItem('favoritedMessages') || '[]');
         
         // 检查消息是否已收藏
