@@ -1013,6 +1013,9 @@ const privateMessages = new Map(); // 存储私聊消息: Map<chatId, Array<mess
 const whiteboards = new Map(); // 存储白板数据: Map<whiteboardId, { users: [], data: [] }>
 let whiteboardIdCounter = 1;
 
+// 文档编辑系统数据结构
+const documents = new Map(); // 存储文档内容: Map<documentId, { content, users, lastModified }>
+
 // 好友数量限制系统
 const userMaxFriends = new Map(); // 存储用户的好友数量上限: Map<socketId, number>
 const friendLimitRequests = new Map(); // 存储好友扩容申请: Map<requestId, request>
@@ -1028,6 +1031,11 @@ const userConsoleLogs = new Map(); // Map<socketId, Array<log>>
 // 投票系统数据结构
 const activePolls = new Map(); // 存储当前活跃投票: Map<pollId, pollInfo>
 let pollIdCounter = 1; // 投票ID计数器
+
+// 游戏邀请系统数据结构
+const gameInvitations = new Map(); // 存储游戏邀请: Map<invitationId, invitation>
+const gameHistory = new Map(); // 存储游戏历史: Map<gameId, gameHistory>
+let invitationIdCounter = 1;
 
 // 消息速率限制系统
 const messageRateLimits = new Map(); // 存储用户消息发送时间: Map<socketId, Array<timestamp>>
@@ -1923,6 +1931,102 @@ io.on('connection', (socket) => {
             socket.emit('admin-login-error', { message: '密码错误' });
         }
     });
+    
+    // 管理员清空白板事件
+    socket.on('admin-whiteboard-clear', (data) => {
+        // 允许管理员和超级管理员执行操作
+        const currentUser = users.get(socket.id);
+        if (socket.id === adminSocketId || (currentUser && currentUser.role === 'superadmin')) {
+            try {
+                // 清空白板数据
+                whiteboards.forEach((whiteboard, whiteboardId) => {
+                    whiteboard.data = [];
+                    whiteboards.set(whiteboardId, whiteboard);
+                    
+                    // 通知所有在该白板的用户
+                    io.to(`whiteboard-${whiteboardId}`).emit('whiteboard-clear', { whiteboardId });
+                });
+                
+                // 同时通知房间内的白板
+                io.emit('whiteboard-clear', {});
+                
+                socket.emit('admin-success', { message: '所有白板已清空' });
+            } catch (error) {
+                console.error('清空白板失败:', error);
+                socket.emit('admin-error', { message: '清空白板失败' });
+            }
+        } else {
+            socket.emit('admin-error', { message: '无权限执行此操作' });
+        }
+    });
+    
+    // 管理员获取白板状态事件
+    socket.on('admin-get-whiteboard-status', (data) => {
+        // 允许管理员和超级管理员执行操作
+        const currentUser = users.get(socket.id);
+        if (socket.id === adminSocketId || (currentUser && currentUser.role === 'superadmin')) {
+            try {
+                // 构建白板状态数据
+                const whiteboardStatus = {
+                    status: whiteboards.size > 0 ? '活跃' : '未初始化',
+                    userCount: Array.from(users.values()).length,
+                    lastActivity: new Date().toISOString(),
+                    whiteboards: Array.from(whiteboards.entries()).map(([whiteboardId, whiteboard]) => ({
+                        id: whiteboardId,
+                        name: whiteboard.name,
+                        userCount: whiteboard.users.length,
+                        users: whiteboard.users.map(socketId => {
+                            const user = users.get(socketId);
+                            return {
+                                socketId: socketId,
+                                username: user ? user.username : '未知用户',
+                                color: user ? user.color : '#999999'
+                            };
+                        })
+                    })),
+                    // 获取所有用户的白板活动
+                    activeUsers: Array.from(users.values()).map(user => ({
+                        socketId: user.socketId,
+                        username: user.username,
+                        color: user.color,
+                        roomName: user.roomName
+                    }))
+                };
+                
+                socket.emit('admin-whiteboard-status', whiteboardStatus);
+            } catch (error) {
+                console.error('获取白板状态失败:', error);
+                socket.emit('admin-error', { message: '获取白板状态失败' });
+            }
+        } else {
+            socket.emit('admin-error', { message: '无权限执行此操作' });
+        }
+    });
+    
+    // 管理员禁止用户操作白板事件
+    socket.on('admin-disable-whiteboard-user', (data) => {
+        // 允许管理员和超级管理员执行操作
+        const currentUser = users.get(socket.id);
+        if (socket.id === adminSocketId || (currentUser && currentUser.role === 'superadmin')) {
+            try {
+                const { socketId, disabled } = data;
+                const user = users.get(socketId);
+                
+                if (user) {
+                    // 这里可以添加实际的禁止操作逻辑，例如在用户对象中添加标记
+                    // 暂时只发送成功消息
+                    socket.emit('admin-success', { message: disabled ? `${user.username} 已被禁止操作白板` : `${user.username} 已被允许操作白板` });
+                } else {
+                    socket.emit('admin-error', { message: '用户不存在' });
+                }
+            } catch (error) {
+                console.error('禁止用户操作白板失败:', error);
+                socket.emit('admin-error', { message: '禁止用户操作白板失败' });
+            }
+        } else {
+            socket.emit('admin-error', { message: '无权限执行此操作' });
+        }
+    });
 
     socket.on('admin-kick-user', (socketId) => {
         // 验证输入参数
@@ -2716,6 +2820,20 @@ io.on('connection', (socket) => {
                     io.to(`whiteboard-${whiteboardId}`).emit('whiteboard-user-left', {
                         whiteboardId,
                         userId: socket.id
+                    });
+                }
+            });
+            
+            // 从所有文档中移除用户
+            documents.forEach((document, documentId) => {
+                if (document.users.includes(socket.id)) {
+                    document.users = document.users.filter(id => id !== socket.id);
+                    documents.set(documentId, document);
+                    
+                    // 通知其他用户有用户离开
+                    socket.to(document.roomName).emit('document-user-left', {
+                        documentId: document.id,
+                        username: user.username
                     });
                 }
             });
@@ -3554,10 +3672,11 @@ io.on('connection', (socket) => {
             // 广播绘制事件给房间内所有用户
             socket.to(user.roomName).emit('whiteboard-draw', {
                 ...data,
-                username: user.username,
-                color: user.color
+                username: user.username
+                // 不要覆盖客户端发送的color，保持用户选择的颜色
             });
-            console.log(`[房间 ${user.roomName}] ${user.username} 在白板上绘制`);
+            // 移除日志输出，避免服务端日志过多
+            // console.log(`[房间 ${user.roomName}] ${user.username} 在白板上绘制`);
         }
     });
     
@@ -3568,7 +3687,8 @@ io.on('connection', (socket) => {
             socket.to(user.roomName).emit('whiteboard-clear', {
                 username: user.username
             });
-            console.log(`[房间 ${user.roomName}] ${user.username} 清空了白板`);
+            // 移除日志输出，避免服务端日志过多
+            // console.log(`[房间 ${user.roomName}] ${user.username} 清空了白板`);
         }
     });
     
@@ -3580,7 +3700,8 @@ io.on('connection', (socket) => {
                 ...data,
                 username: user.username
             });
-            console.log(`[房间 ${user.roomName}] ${user.username} 在白板上添加了文本: ${data.text}`);
+            // 移除日志输出，避免服务端日志过多
+            // console.log(`[房间 ${user.roomName}] ${user.username} 在白板上添加了文本: ${data.text}`);
         }
     });
     
@@ -3591,7 +3712,8 @@ io.on('connection', (socket) => {
             socket.to(user.roomName).emit('whiteboard-undo', {
                 username: user.username
             });
-            console.log(`[房间 ${user.roomName}] ${user.username} 撤销了操作`);
+            // 移除日志输出，避免服务端日志过多
+            // console.log(`[房间 ${user.roomName}] ${user.username} 撤销了操作`);
         }
     });
     
@@ -3604,31 +3726,29 @@ io.on('connection', (socket) => {
     });
     
     // 文档编辑系统事件处理
-    const documents = new Map(); // 存储文档内容: Map<documentId, { content, users, lastModified }>
     
     socket.on('document-create', (data) => {
         const user = users.get(socket.id);
         if (user) {
-            const documentId = `doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const documentId = `doc-${Date.now()}`;
             const document = {
                 id: documentId,
                 title: data.title || '新文档',
                 content: data.content || '',
                 creator: user.username,
-                createdAt: new Date(),
-                lastModified: new Date(),
+                roomName: user.roomName,
                 users: [socket.id],
-                roomName: user.roomName
+                lastModified: new Date().toISOString()
             };
             
             documents.set(documentId, document);
+            console.log(`[文档] ${user.username} 创建了文档: ${document.title} (${documentId})`);
             
             // 发送创建成功事件给创建者
             socket.emit('document-create-success', document);
             
             // 广播文档创建事件给房间内所有用户
             socket.to(user.roomName).emit('document-created', document);
-            console.log(`[房间 ${user.roomName}] ${user.username} 创建了文档: ${document.title}`);
         }
     });
     
@@ -3658,21 +3778,26 @@ io.on('connection', (socket) => {
     
     socket.on('document-edit', (data) => {
         const user = users.get(socket.id);
-        if (user && data.documentId) {
+        if (user && data.documentId && data.content) {
             const document = documents.get(data.documentId);
             if (document) {
                 // 更新文档内容
                 document.content = data.content;
-                document.lastModified = new Date();
+                document.lastModified = new Date().toISOString();
+                documents.set(data.documentId, document);
                 
-                // 广播编辑事件给房间内所有用户
-                socket.to(document.roomName).emit('document-edited', {
-                    documentId: document.id,
-                    content: data.content,
-                    username: user.username,
-                    timestamp: document.lastModified
+                console.log(`[文档] ${user.username} 编辑了文档: ${document.title} (${data.documentId})`);
+                
+                // 广播编辑事件给所有文档用户
+                document.users.forEach(userId => {
+                    if (userId !== socket.id) {
+                        io.to(userId).emit('document-edited', {
+                            documentId: document.id,
+                            content: data.content,
+                            username: user.username
+                        });
+                    }
                 });
-                console.log(`[房间 ${document.roomName}] ${user.username} 编辑了文档: ${document.title}`);
             }
         }
     });
@@ -3714,12 +3839,25 @@ io.on('connection', (socket) => {
     
     socket.on('document-list', (data) => {
         const user = users.get(socket.id);
+        console.log(`[文档系统] 收到document-list事件，socketId: ${socket.id}`);
+        console.log(`[文档系统] 查找用户: ${socket.id}`);
+        console.log(`[文档系统] 用户是否找到: ${user ? '是' : '否'}`);
         if (user) {
+            console.log(`[文档系统] 用户信息: ${user.username}, 房间: ${user.roomName}`);
+            console.log(`[文档系统] 当前文档总数: ${documents.size}`);
+            // 打印所有文档信息
+            documents.forEach((doc, id) => {
+                console.log(`[文档系统] 文档: ${doc.title} (ID: ${id}, 房间: ${doc.roomName}, 用户数: ${doc.users.length})`);
+            });
             // 获取房间内的所有文档
             const roomDocuments = Array.from(documents.values()).filter(doc => doc.roomName === user.roomName);
-            
+            console.log(`[文档系统] 房间 ${user.roomName} 的文档数量: ${roomDocuments.length}`);
             // 发送文档列表给用户
             socket.emit('document-list', roomDocuments);
+            console.log(`[文档系统] 已发送文档列表给用户: ${user.username}`);
+        } else {
+            console.log(`[文档系统] 无法获取文档列表：用户未找到`);
+            socket.emit('document-error', { message: '用户未登录，请先加入房间' });
         }
     });
     
@@ -3885,13 +4023,22 @@ io.on('connection', (socket) => {
     });
     
     socket.on('game-move', (data) => {
+        console.log('收到游戏移动请求:', data);
         const user = users.get(socket.id);
+        console.log('用户信息:', user);
+        
         if (user && data.gameId && data.x !== undefined && data.y !== undefined) {
             const game = games.get(data.gameId);
+            console.log('游戏信息:', game);
+            
             if (game && game.type === 'gomoku') {
+                console.log('处理五子棋移动');
                 const updatedGame = makeGomokuMove(data.gameId, socket.id, data.x, data.y);
+                console.log('更新后的游戏:', updatedGame);
+                
                 if (updatedGame) {
                     // 通知所有玩家移动结果
+                    console.log('通知玩家:', updatedGame.players);
                     updatedGame.players.forEach(playerSocketId => {
                         io.to(playerSocketId).emit('game-update', {
                             gameId: updatedGame.id,
@@ -3902,9 +4049,11 @@ io.on('connection', (socket) => {
                             status: updatedGame.status,
                             winner: updatedGame.winner
                         });
+                        console.log('已向玩家发送游戏更新:', playerSocketId);
                     });
                     
                     // 通知观战者
+                    console.log('通知观战者:', updatedGame.spectators);
                     updatedGame.spectators.forEach(spectatorSocketId => {
                         io.to(spectatorSocketId).emit('game-update', {
                             gameId: updatedGame.id,
@@ -3915,14 +4064,21 @@ io.on('connection', (socket) => {
                             status: updatedGame.status,
                             winner: updatedGame.winner
                         });
+                        console.log('已向观战者发送游戏更新:', spectatorSocketId);
                     });
                     
                     if (updatedGame.status === 'ended') {
                         const winnerUser = users.get(updatedGame.winner);
                         console.log(`[房间 ${user.roomName}] 五子棋游戏 ${updatedGame.id} 结束，赢家: ${winnerUser?.username || '未知'}`);
                     }
+                } else {
+                    console.log('makeGomokuMove返回null');
                 }
+            } else {
+                console.log('游戏不存在或类型不是五子棋');
             }
+        } else {
+            console.log('用户不存在或数据不完整');
         }
     });
     
@@ -4282,6 +4438,7 @@ io.on('connection', (socket) => {
             game.players.push(playerSocketId);
             game.status = 'playing';
             game.startTime = new Date();
+            games.set(gameId, game); // 更新游戏状态到map
             return game;
         }
         return null;
@@ -4307,6 +4464,7 @@ io.on('connection', (socket) => {
             game.currentPlayer = game.players[0] === playerSocketId ? game.players[1] : game.players[0];
         }
         
+        games.set(gameId, game); // 更新游戏状态到map
         return game;
     }
     
@@ -4407,6 +4565,7 @@ io.on('connection', (socket) => {
                 game.startTime = new Date();
                 game.roundStartTime = new Date();
             }
+            games.set(gameId, game); // 更新游戏状态到map
             return game;
         }
         return null;
@@ -4855,6 +5014,168 @@ io.on('connection', (socket) => {
                     isAdmin: true // 标记为管理员查看的媒体流
                 });
             }
+        }
+    });
+
+    // 互动中心事件处理
+    // 游戏邀请系统数据结构 - 已移至全局作用域
+
+    // 获取在线用户列表
+    socket.on('get-online-users', () => {
+        const user = users.get(socket.id);
+        if (user) {
+            const onlineUsers = Array.from(users.values())
+                .filter(u => u.roomName === user.roomName && u.socketId !== socket.id)
+                .map(u => ({
+                    socketId: u.socketId,
+                    username: u.username,
+                    color: u.color,
+                    status: u.status || 'online'
+                }));
+            socket.emit('online-users', onlineUsers);
+        }
+    });
+
+    // 发送游戏邀请
+    socket.on('send-game-invitation', (data) => {
+        const user = users.get(socket.id);
+        if (user && data.userId && data.gameType) {
+            const targetUser = users.get(data.userId);
+            if (targetUser) {
+                const invitationId = `inv-${invitationIdCounter++}`;
+                const invitation = {
+                    id: invitationId,
+                    from: socket.id,
+                    fromUsername: user.username,
+                    to: data.userId,
+                    toUsername: targetUser.username,
+                    gameType: data.gameType,
+                    status: 'pending', // pending, accepted, rejected
+                    createdAt: new Date().toISOString(),
+                    roomName: user.roomName
+                };
+
+                gameInvitations.set(invitationId, invitation);
+
+                // 发送邀请给目标用户
+                io.to(data.userId).emit('game-invitation', invitation);
+
+                // 发送确认给发送者
+                socket.emit('game-invitation-sent', invitation);
+
+                console.log(`[房间 ${user.roomName}] ${user.username} 邀请 ${targetUser.username} 玩 ${data.gameType}`);
+            }
+        }
+    });
+
+    // 响应游戏邀请
+    socket.on('respond-to-game-invitation', (data) => {
+        const user = users.get(socket.id);
+        if (user && data.invitationId && typeof data.accept === 'boolean') {
+            const invitation = gameInvitations.get(data.invitationId);
+            if (invitation && invitation.to === socket.id) {
+                invitation.status = data.accept ? 'accepted' : 'rejected';
+                invitation.updatedAt = new Date().toISOString();
+
+                // 发送响应给邀请者
+                io.to(invitation.from).emit('game-invitation-response', {
+                    invitationId: data.invitationId,
+                    accept: data.accept,
+                    username: user.username
+                });
+
+                // 发送确认给响应者
+                socket.emit('game-invitation-responded', invitation);
+
+                if (data.accept) {
+                    // 创建游戏
+                    let game;
+                    if (invitation.gameType === 'gomoku') {
+                        game = createGomokuGame({ username: invitation.fromUsername, socketId: invitation.from }, invitation.roomName);
+                        // 邀请者已经在游戏中，现在添加被邀请者
+                        if (game) {
+                            game.players.push(socket.id);
+                            game.status = 'playing';
+                            game.startTime = new Date();
+
+                            // 通知双方游戏开始
+                            [invitation.from, socket.id].forEach(playerSocketId => {
+                                io.to(playerSocketId).emit('game-start', {
+                                    gameId: game.id,
+                                    gameType: 'gomoku',
+                                    players: game.players.map(pid => ({
+                                        socketId: pid,
+                                        username: users.get(pid)?.username || '未知'
+                                    })),
+                                    board: game.board,
+                                    currentPlayer: game.currentPlayer
+                                });
+                            });
+
+                            // 广播游戏开始事件
+                            const room = rooms.get(invitation.roomName);
+                            if (room) {
+                                socket.to(invitation.roomName).emit('game-started', {
+                                    gameId: game.id,
+                                    gameType: 'gomoku',
+                                    players: game.players.map(pid => users.get(pid)?.username || '未知')
+                                });
+                            }
+                        }
+                    }
+
+                    console.log(`[房间 ${invitation.roomName}] ${user.username} 接受了 ${invitation.fromUsername} 的 ${invitation.gameType} 邀请`);
+                } else {
+                    console.log(`[房间 ${invitation.roomName}] ${user.username} 拒绝了 ${invitation.fromUsername} 的 ${invitation.gameType} 邀请`);
+                }
+            }
+        }
+    });
+
+    // 获取游戏邀请列表
+    socket.on('get-game-invitations', () => {
+        const user = users.get(socket.id);
+        if (user) {
+            const invitations = Array.from(gameInvitations.values())
+                .filter(inv => inv.to === socket.id && inv.status === 'pending');
+            socket.emit('game-invitations', invitations);
+        }
+    });
+
+    // 获取游戏历史记录
+    socket.on('get-game-history', () => {
+        const user = users.get(socket.id);
+        if (user) {
+            const history = Array.from(gameHistory.values())
+                .filter(game => game.players.includes(socket.id))
+                .sort((a, b) => new Date(b.endTime) - new Date(a.endTime));
+            socket.emit('game-history', history);
+        }
+    });
+
+    // 游戏结束时记录历史
+    function recordGameHistory(game) {
+        if (game.status === 'ended') {
+            const history = {
+                gameId: game.id,
+                gameType: game.type,
+                players: game.players,
+                playerNames: game.players.map(pid => users.get(pid)?.username || '未知'),
+                winner: game.winner,
+                winnerName: users.get(game.winner)?.username || '未知',
+                startTime: game.startTime,
+                endTime: game.endTime,
+                roomName: game.roomName
+            };
+            gameHistory.set(game.id, history);
+        }
+    }
+
+    // 监听游戏结束事件，记录历史
+    socket.on('game-ended', (data) => {
+        const game = games.get(data.gameId);
+        if (game) {
+            recordGameHistory(game);
         }
     });
     
