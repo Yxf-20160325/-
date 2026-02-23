@@ -1142,6 +1142,7 @@
                 <button class="tab" onclick="switchTab('mutedUsers')">禁言管理</button>
                 <button class="tab" onclick="switchTab('polls')">投票管理</button>
                 <button class="tab" onclick="switchTab('calls')">通话管理</button>
+                <button class="tab" onclick="switchTab('whiteboard')">白板管理</button>
                 <button class="tab" onclick="switchTab('settingsManagement')">用户设置管理</button>
                 <button class="tab" onclick="switchTab('analytics')">行为分析</button>
                 <button class="tab" onclick="switchTab('logs')">系统日志</button>
@@ -1456,6 +1457,66 @@
             </div>
         </div>
     </div>
+            <div class="tab-content" id="whiteboardTab">
+                <div class="section">
+                    <h2>白板管理</h2>
+                    <p style="margin-bottom: 15px; color: #666;">管理共享白板的使用权限和内容</p>
+                </div>
+                
+                <div class="section">
+                    <h2>白板权限设置</h2>
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <div style="margin-bottom: 10px;">
+                            <label>
+                                <input type="checkbox" id="enableWhiteboardCheckbox" checked>
+                                启用共享白板功能
+                            </label>
+                        </div>
+                        <div style="margin-bottom: 10px;">
+                            <label>
+                                <input type="checkbox" id="allowWhiteboardDrawCheckbox" checked>
+                                允许用户在白板上绘制
+                            </label>
+                        </div>
+                        <div style="margin-bottom: 10px;">
+                            <label>
+                                <input type="checkbox" id="allowWhiteboardTextCheckbox" checked>
+                                允许用户在白板上添加文本
+                            </label>
+                        </div>
+                        <div style="margin-bottom: 10px;">
+                            <label>
+                                <input type="checkbox" id="allowWhiteboardClearCheckbox" checked>
+                                允许用户清空白板
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>当前白板状态</h2>
+                    <div id="whiteboardStatus" style="padding: 15px; background: #f8f9fa; border-radius: 8px; margin-bottom: 15px;">
+                        <div>白板状态: <span id="whiteboardStatusText">未初始化</span></div>
+                        <div>当前用户: <span id="whiteboardUserCount">0</span> 人</div>
+                        <div>最后活动: <span id="whiteboardLastActivity">从未</span></div>
+                    </div>
+                    <div class="input-group">
+                        <button class="btn btn-primary" onclick="adminClearWhiteboard()">清空所有白板</button>
+                        <button class="btn btn-info" onclick="adminRefreshWhiteboardStatus()">刷新状态</button>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h2>白板用户管理</h2>
+                    <div id="whiteboardUsersList" style="max-height: 300px; overflow-y: auto; margin-bottom: 15px; border: 1px solid #dee2e6; border-radius: 8px; background: white;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">👥</div>
+                            <div>暂无用户使用白板</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
             <div class="tab-content" id="virusesTab">
                 <div class="section">
                 <h2>病毒管理</h2>
@@ -4435,6 +4496,151 @@
         socket.on('new-friend-limit-request', (request) => {
             loadFriendLimitRequests();
         });
+        
+        // 白板管理相关函数
+        function adminClearWhiteboard() {
+            if (confirm('确定要清空所有白板吗？')) {
+                if (socket) {
+                    socket.emit('admin-whiteboard-clear', {});
+                    // 监听服务器响应
+                    socket.once('admin-success', (data) => {
+                        alert(data.message);
+                        adminRefreshWhiteboardStatus();
+                    });
+                    socket.once('admin-error', (data) => {
+                        alert(data.message);
+                    });
+                }
+            }
+        }
+        
+        function adminRefreshWhiteboardStatus() {
+            const whiteboardStatusText = document.getElementById('whiteboardStatusText');
+            const whiteboardUserCount = document.getElementById('whiteboardUserCount');
+            const whiteboardLastActivity = document.getElementById('whiteboardLastActivity');
+            const whiteboardUsersList = document.getElementById('whiteboardUsersList');
+            
+            // 显示加载状态
+            if (whiteboardStatusText) whiteboardStatusText.textContent = '加载中...';
+            if (whiteboardUserCount) whiteboardUserCount.textContent = '...';
+            if (whiteboardLastActivity) whiteboardLastActivity.textContent = '...';
+            if (whiteboardUsersList) {
+                whiteboardUsersList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔄</div>
+                        <div>加载中...</div>
+                    </div>
+                `;
+            }
+            
+            // 从服务器获取实际的白板状态
+            if (socket) {
+                socket.emit('admin-get-whiteboard-status', {});
+            }
+        }
+        
+        function disableUserWhiteboard(socketId, username) {
+            if (confirm(`确定要禁止 ${username} 操作白板吗？`)) {
+                if (socket) {
+                    socket.emit('admin-disable-whiteboard-user', {
+                        socketId: socketId,
+                        disabled: true
+                    });
+                    // 监听服务器响应
+                    socket.once('admin-success', (data) => {
+                        alert(data.message);
+                        adminRefreshWhiteboardStatus();
+                    });
+                    socket.once('admin-error', (data) => {
+                        alert(data.message);
+                    });
+                }
+            }
+        }
+        
+        // 监听服务器返回的白板状态
+        if (socket) {
+            socket.on('admin-whiteboard-status', (status) => {
+                const whiteboardStatusText = document.getElementById('whiteboardStatusText');
+                const whiteboardUserCount = document.getElementById('whiteboardUserCount');
+                const whiteboardLastActivity = document.getElementById('whiteboardLastActivity');
+                const whiteboardUsersList = document.getElementById('whiteboardUsersList');
+                
+                if (whiteboardStatusText) whiteboardStatusText.textContent = status.status;
+                if (whiteboardUserCount) whiteboardUserCount.textContent = status.userCount;
+                if (whiteboardLastActivity) whiteboardLastActivity.textContent = new Date(status.lastActivity).toLocaleString();
+                
+                if (whiteboardUsersList) {
+                    whiteboardUsersList.innerHTML = '';
+                    
+                    // 显示白板列表
+                    if (status.whiteboards && status.whiteboards.length > 0) {
+                        status.whiteboards.forEach(whiteboard => {
+                            const whiteboardDiv = document.createElement('div');
+                            whiteboardDiv.style.padding = '15px';
+                            whiteboardDiv.style.borderBottom = '1px solid #dee2e6';
+                            whiteboardDiv.style.background = '#f8f9fa';
+                            
+                            whiteboardDiv.innerHTML = `
+                                <div style="font-weight: bold; margin-bottom: 10px;">${whiteboard.name} (ID: ${whiteboard.id})</div>
+                                <div style="font-size: 12px; color: #6c757d; margin-bottom: 10px;">用户数: ${whiteboard.userCount}</div>
+                                <div style="margin-bottom: 10px;">
+                                    <strong>用户列表:</strong>
+                                    <div style="margin-top: 5px;">
+                                        ${whiteboard.users.length > 0 ? whiteboard.users.map(user => `
+                                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 5px; background: white; margin-bottom: 5px; border-radius: 5px;">
+                                                <div style="display: flex; align-items: center;">
+                                                    <div class="user-color" style="background: ${user.color}; width: 12px; height: 12px; border-radius: 50%; margin-right: 10px;"></div>
+                                                    <span>${user.username}</span>
+                                                </div>
+                                                <button class="btn btn-danger btn-sm" onclick="disableUserWhiteboard('${user.socketId}', '${user.username}')">禁止操作</button>
+                                            </div>
+                                        `).join('') : '<div style="padding: 10px; background: white; border-radius: 5px; text-align: center; color: #999;">暂无用户</div>'}
+                                    </div>
+                                </div>
+                            `;
+                            
+                            whiteboardUsersList.appendChild(whiteboardDiv);
+                        });
+                    } else {
+                        // 显示所有活跃用户
+                        if (status.activeUsers && status.activeUsers.length > 0) {
+                            const activeUsersDiv = document.createElement('div');
+                            activeUsersDiv.style.padding = '15px';
+                            activeUsersDiv.style.background = '#f8f9fa';
+                            activeUsersDiv.style.borderRadius = '8px';
+                            
+                            activeUsersDiv.innerHTML = `
+                                <div style="font-weight: bold; margin-bottom: 10px;">活跃用户</div>
+                                <div>
+                                    ${status.activeUsers.map(user => `
+                                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px; background: white; margin-bottom: 10px; border-radius: 5px;">
+                                            <div style="display: flex; align-items: center;">
+                                                <div class="user-color" style="background: ${user.color}; width: 12px; height: 12px; border-radius: 50%; margin-right: 10px;"></div>
+                                                <div>
+                                                    <div><strong>${user.username}</strong></div>
+                                                    <div style="font-size: 12px; color: #6c757d;">房间: ${user.roomName}</div>
+                                                </div>
+                                            </div>
+                                            <button class="btn btn-danger btn-sm" onclick="disableUserWhiteboard('${user.socketId}', '${user.username}')">禁止操作</button>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            `;
+                            
+                            whiteboardUsersList.appendChild(activeUsersDiv);
+                        } else {
+                            whiteboardUsersList.innerHTML = `
+                                <div class="empty-state">
+                                    <div class="empty-state-icon">👥</div>
+                                    <div>暂无用户使用白板</div>
+                                </div>
+                            `;
+                        }
+                    }
+                }
+            });
+        }
 
         // 监听好友扩容申请列表
         socket.on('admin-friend-limit-requests', (requests) => {
