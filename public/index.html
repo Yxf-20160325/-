@@ -1523,8 +1523,9 @@
                 <div class="online-count">在线人数: <span id="userCount">0</span></div>
                 <button class="header-btn" id="usersBtn" title="用户列表">👥</button>
                 <button class="header-btn" id="friendsBtn" title="好友列表">👥</button>
+                <button class="header-btn" onclick="openInteractiveCenterModal()" title="互动中心" disabled style="opacity: 0.6; cursor: not-allowed;">🎮</button>
                 <button class="header-btn" onclick="openWhiteboardModal()" title="共享白板">🖍️</button>
-                <button class="header-btn" onclick="openDocumentModal()" title="文档编辑">📄</button>
+                <button class="header-btn" onclick="openDocumentModal()" title="文档编辑" disabled style="opacity: 0.6; cursor: not-allowed;">📄</button>
                 <button class="header-btn" id="settingsBtn" title="设置">⚙️</button>
             </div>
         </div>
@@ -1776,6 +1777,7 @@
                 <button class="admin-tab" data-tab="notifications">通知设置</button>
                 <button class="admin-tab" data-tab="video">视频设置</button>
                 <button class="admin-tab" data-tab="call">通话设置</button>
+                <button class="admin-tab" data-tab="whiteboard">白板管理</button>
                 <button class="admin-tab" data-tab="aiChat">AI聊天</button>
             </div>
             <div class="admin-panel-content">
@@ -2030,6 +2032,62 @@
                         </div>
                     </div>
                 </div>
+                <div class="admin-tab-content" id="whiteboardTab">
+                    <div style="margin-bottom: 20px;">
+                        <h4>白板管理</h4>
+                        <p style="margin-top: 5px; font-size: 14px; color: #6c757d;">管理共享白板的使用权限和内容</p>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <h4>白板权限设置</h4>
+                        <div style="margin-top: 15px;">
+                            <div style="margin-bottom: 10px;">
+                                <label>
+                                    <input type="checkbox" id="enableWhiteboardCheckbox" checked>
+                                    启用共享白板功能
+                                </label>
+                            </div>
+                            <div style="margin-bottom: 10px;">
+                                <label>
+                                    <input type="checkbox" id="allowWhiteboardDrawCheckbox" checked>
+                                    允许用户在白板上绘制
+                                </label>
+                            </div>
+                            <div style="margin-bottom: 10px;">
+                                <label>
+                                    <input type="checkbox" id="allowWhiteboardTextCheckbox" checked>
+                                    允许用户在白板上添加文本
+                                </label>
+                            </div>
+                            <div style="margin-bottom: 10px;">
+                                <label>
+                                    <input type="checkbox" id="allowWhiteboardClearCheckbox" checked>
+                                    允许用户清空白板
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <h4>当前白板状态</h4>
+                        <div id="whiteboardStatus" style="padding: 15px; background: #f8f9fa; border-radius: 8px; margin-top: 10px;">
+                            <div>白板状态: <span id="whiteboardStatusText">未初始化</span></div>
+                            <div>当前用户: <span id="whiteboardUserCount">0</span> 人</div>
+                            <div>最后活动: <span id="whiteboardLastActivity">从未</span></div>
+                        </div>
+                        <div style="margin-top: 15px; display: flex; gap: 10px;">
+                            <button class="friend-btn" onclick="adminClearWhiteboard()">清空所有白板</button>
+                            <button class="friend-btn" onclick="adminRefreshWhiteboardStatus()">刷新状态</button>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
+                        <h4>白板用户管理</h4>
+                        <div id="whiteboardUsersList" style="max-height: 300px; overflow-y: auto; margin-top: 10px;">
+                            <div style="text-align: center; color: #6c757d; padding: 20px;">加载中...</div>
+                        </div>
+                    </div>
+                </div>
                 <div class="admin-tab-content" id="aiChatTab">
                     <div id="aiChatSettingsContent" style="margin-bottom: 20px;">
                         <h4>AI聊天设置</h4>
@@ -2250,8 +2308,19 @@
                     <button class="action-btn" id="whiteboardClearBtn" title="清空">🗑️</button>
                     <button class="action-btn" id="whiteboardUndoBtn" title="撤销">↩️</button>
                     <button class="action-btn" id="whiteboardSaveBtn" title="保存">💾</button>
-                    <input type="color" id="whiteboardColor" value="#000000" style="width: 50px; height: 45px; border: none; border-radius: 5px; cursor: pointer;">
-                    <input type="range" id="whiteboardSize" min="12" max="100" value="24" style="flex: 1; height: 45px; min-width: 100px;">
+                    <div style="display: flex; align-items: center; margin-right: 10px;">
+                        <span style="margin-right: 5px; font-weight: bold;">颜色:</span>
+                        <input type="color" id="whiteboardColor" value="#000000" style="width: 50px; height: 45px; border: none; border-radius: 5px; cursor: pointer;">
+                        <div style="display: flex; gap: 5px; margin-left: 10px;">
+                            <button class="color-preset" data-color="#000000" style="width: 25px; height: 25px; border: 1px solid #ccc; border-radius: 50%; background: #000000; cursor: pointer;"></button>
+                            <button class="color-preset" data-color="#FF0000" style="width: 25px; height: 25px; border: 1px solid #ccc; border-radius: 50%; background: #FF0000; cursor: pointer;"></button>
+                            <button class="color-preset" data-color="#0000FF" style="width: 25px; height: 25px; border: 1px solid #ccc; border-radius: 50%; background: #0000FF; cursor: pointer;"></button>
+                            <button class="color-preset" data-color="#00FF00" style="width: 25px; height: 25px; border: 1px solid #ccc; border-radius: 50%; background: #00FF00; cursor: pointer;"></button>
+                            <button class="color-preset" data-color="#FFA500" style="width: 25px; height: 25px; border: 1px solid #ccc; border-radius: 50%; background: #FFA500; cursor: pointer;"></button>
+                            <button class="color-preset" data-color="#FFC0CB" style="width: 25px; height: 25px; border: 1px solid #ccc; border-radius: 50%; background: #FFC0CB; cursor: pointer;"></button>
+                        </div>
+                    </div>
+                    <input type="range" id="whiteboardSize" min="1" max="400" value="24" style="flex: 1; height: 45px; min-width: 100px;">
                     <span id="whiteboardSizeValue" style="margin-right: 10px; font-weight: bold; min-width: 40px;">24px</span>
                     <select id="whiteboardFont" style="padding: 8px; border: 1px solid #dee2e6; border-radius: 5px; height: 45px;">
                         <option value="Arial">Arial</option>
@@ -2423,6 +2492,32 @@
             </div>
         </div>
     </div>
+    
+    <!-- 互动中心模态框 -->
+    <div class="modal" id="interactiveCenterModal">
+        <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+            <h3>互动中心</h3>
+            <div style="margin-bottom: 20px;">
+                <h4>在线用户</h4>
+                <div id="onlineUsersList" style="margin-bottom: 20px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                    <p style="text-align: center; color: #6c757d;">加载中...</p>
+                </div>
+                
+                <h4>游戏邀请</h4>
+                <div id="gameInvitationsList" style="margin-bottom: 20px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                    <p style="text-align: center; color: #6c757d;">加载中...</p>
+                </div>
+                
+                <h4>游戏历史</h4>
+                <div id="gameHistoryList" style="margin-bottom: 20px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                    <p style="text-align: center; color: #6c757d;">加载中...</p>
+                </div>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="friend-btn" onclick="closeInteractiveCenterModal()">关闭</button>
+            </div>
+        </div>
+    </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
@@ -2430,7 +2525,7 @@
         var userDetailUpdateInterval = null;
         var currentDetailSocketId = null;
         
-        const socket = io();
+
         let username = '';
         let currentRoom = '';
         let userPermissions = {
@@ -2442,6 +2537,32 @@
             allowCall: false,
             allowAIChat: false // 添加AI聊天权限初始值
         };
+        
+        // 翻译相关变量
+        let currentTargetLanguage = 'zh'; // 默认翻译为中文，LibreTranslate使用'zh'而不是'zh-CN'
+        
+        // 互动中心功能
+        function openInteractiveCenterModal() {
+            const modal = document.getElementById('interactiveCenterModal');
+            if (modal) {
+                modal.classList.add('active');
+                // 加载在线用户列表
+                if (typeof socket !== 'undefined' && socket) {
+                    socket.emit('get-online-users');
+                    // 加载游戏邀请列表
+                    socket.emit('get-game-invitations');
+                    // 加载游戏历史记录
+                    socket.emit('get-game-history');
+                }
+            }
+        }
+        
+        function closeInteractiveCenterModal() {
+            const modal = document.getElementById('interactiveCenterModal');
+            if (modal) {
+                modal.classList.remove('active');
+            }
+        }
         
         // 震动功能 - 优化苹果设备兼容性
         function vibrate(duration = 500, intensity = 1) {
@@ -2572,11 +2693,240 @@
             }, 3000);
         }
         
-        // 页面加载时创建启用通知按钮
-        window.addEventListener('DOMContentLoaded', function() {
-            createEnableNotificationsButton();
-            requestVibrationPermission();
-        });
+        // 注册游戏邀请相关的事件监听器
+        function registerGameInvitationListeners() {
+            console.log('注册游戏邀请事件监听器');
+            
+            // 处理在线用户列表
+            socket.on('online-users', (users) => {
+                console.log('收到在线用户列表:', users);
+                const onlineUsersList = document.getElementById('onlineUsersList');
+                if (onlineUsersList) {
+                    if (users.length === 0) {
+                        onlineUsersList.innerHTML = '<p style="text-align: center; color: #6c757d;">暂无在线用户</p>';
+                    } else {
+                        onlineUsersList.innerHTML = users.map(user => `
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: white; border-radius: 5px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <div style="width: 12px; height: 12px; border-radius: 50%; background: ${user.color};"></div>
+                                    <span>${user.username}</span>
+                                </div>
+                                <button onclick="sendGameInvitation('${user.socketId}', 'gomoku')" style="padding: 5px 10px; background: #667eea; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">邀请下棋</button>
+                            </div>
+                        `).join('');
+                    }
+                } else {
+                    console.error('无法找到 onlineUsersList 元素');
+                }
+            });
+
+            // 处理游戏邀请列表
+            socket.on('game-invitations', (invitations) => {
+                console.log('收到游戏邀请列表:', invitations);
+                const gameInvitationsList = document.getElementById('gameInvitationsList');
+                if (gameInvitationsList) {
+                    if (invitations.length === 0) {
+                        gameInvitationsList.innerHTML = '<p style="text-align: center; color: #6c757d;">暂无游戏邀请</p>';
+                    } else {
+                        gameInvitationsList.innerHTML = invitations.map(invitation => `
+                            <div style="padding: 15px; background: white; border-radius: 5px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                <div style="margin-bottom: 10px;">
+                                    <strong>${invitation.fromUsername}</strong> 邀请你玩 <strong>${invitation.gameType}</strong>
+                                </div>
+                                <div style="display: flex; gap: 10px;">
+                                    <button onclick="respondToGameInvitation('${invitation.id}', true)" style="padding: 5px 15px; background: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">接受</button>
+                                    <button onclick="respondToGameInvitation('${invitation.id}', false)" style="padding: 5px 15px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">拒绝</button>
+                                </div>
+                                <div style="margin-top: 10px; font-size: 12px; color: #6c757d;">
+                                    ${new Date(invitation.createdAt).toLocaleString()}
+                                </div>
+                            </div>
+                        `).join('');
+                    }
+                } else {
+                    console.error('无法找到 gameInvitationsList 元素');
+                }
+            });
+
+            // 处理游戏历史记录
+            socket.on('game-history', (history) => {
+                console.log('收到游戏历史记录:', history);
+                const gameHistoryList = document.getElementById('gameHistoryList');
+                if (gameHistoryList) {
+                    if (history.length === 0) {
+                        gameHistoryList.innerHTML = '<p style="text-align: center; color: #6c757d;">暂无游戏历史</p>';
+                    } else {
+                        gameHistoryList.innerHTML = history.map(game => {
+                            const winnerName = game.winnerName || '未知';
+                            return `
+                                <div style="padding: 15px; background: white; border-radius: 5px; margin-bottom: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                                    <div style="margin-bottom: 10px;">
+                                        <strong>${game.type}</strong>
+                                    </div>
+                                    <div style="margin-bottom: 10px; font-size: 14px;">
+                                        玩家: ${game.playerNames.join(', ')}
+                                    </div>
+                                    <div style="margin-bottom: 10px; font-size: 14px;">
+                                        胜者: ${winnerName}
+                                    </div>
+                                    <div style="font-size: 12px; color: #6c757d;">
+                                        ${new Date(game.endTime).toLocaleString()}
+                                    </div>
+                                </div>
+                            `;
+                        }).join('');
+                    }
+                } else {
+                    console.error('无法找到 gameHistoryList 元素');
+                }
+            });
+
+            // 处理游戏邀请
+            socket.on('game-invitation', (invitation) => {
+                console.log('收到游戏邀请:', invitation);
+                // 显示邀请通知
+                showNotification(`${invitation.fromUsername} 邀请你玩 ${invitation.gameType}`, 'info', () => {
+                    // 确保 interactiveCenterModal 已获取
+                    const modal = document.getElementById('interactiveCenterModal');
+                    if (modal) {
+                        modal.classList.add('active');
+                        // 加载在线用户列表
+                        socket.emit('get-online-users');
+                        // 加载游戏邀请列表
+                        socket.emit('get-game-invitations');
+                        // 加载游戏历史记录
+                        socket.emit('get-game-history');
+                    } else {
+                        console.error('无法找到 interactiveCenterModal 元素');
+                    }
+                });
+                // 重新加载邀请列表
+                socket.emit('get-game-invitations');
+            });
+
+            // 处理游戏邀请发送确认
+            socket.on('game-invitation-sent', (invitation) => {
+                console.log('邀请发送成功:', invitation);
+                showNotification(`邀请已发送给 ${invitation.toUsername}`, 'success');
+            });
+
+            // 处理游戏邀请响应
+            socket.on('game-invitation-response', (response) => {
+                console.log('收到游戏邀请响应:', response);
+                if (response.accept) {
+                    showNotification(`${response.username} 接受了你的游戏邀请`, 'success');
+                } else {
+                    showNotification(`${response.username} 拒绝了你的游戏邀请`, 'info');
+                }
+            });
+
+            // 处理游戏邀请响应确认
+            socket.on('game-invitation-responded', (invitation) => {
+                console.log('邀请响应确认:', invitation);
+                // 重新加载邀请列表，更新邀请状态
+                socket.emit('get-game-invitations');
+                if (invitation.status === 'accepted') {
+                    showNotification('你已接受游戏邀请，游戏即将开始', 'success');
+                } else if (invitation.status === 'rejected') {
+                    showNotification('你已拒绝游戏邀请', 'info');
+                }
+            });
+
+
+        }
+
+        // 发送游戏邀请
+        function sendGameInvitation(userId, gameType) {
+            console.log('发送游戏邀请给用户:', userId, '游戏类型:', gameType);
+            if (typeof socket !== 'undefined' && socket) {
+                socket.emit('send-game-invitation', {
+                    userId: userId,
+                    gameType: gameType
+                });
+            } else {
+                console.error('Socket未初始化');
+                showNotification('Socket未初始化，无法发送邀请', 'error');
+            }
+        }
+
+        // 响应游戏邀请
+        function respondToGameInvitation(invitationId, accept) {
+            console.log('响应游戏邀请:', invitationId, '接受:', accept);
+            if (typeof socket !== 'undefined' && socket) {
+                socket.emit('respond-to-game-invitation', {
+                    invitationId: invitationId,
+                    accept: accept
+                });
+            } else {
+                console.error('Socket未初始化');
+                showNotification('Socket未初始化，无法响应邀请', 'error');
+            }
+        }
+
+        // 初始化Socket连接
+        let socket;
+        function initSocket() {
+            console.log('初始化Socket连接');
+            socket = io();
+            
+            // Socket连接状态管理
+            socket.on('connect', () => {
+                console.log('Socket连接成功:', socket.id);
+                
+                // 在连接成功后注册核心事件监听器
+                if (typeof registerCoreEventListeners === 'function') {
+                    registerCoreEventListeners();
+                }
+                
+                // 在连接成功后注册游戏邀请相关的事件监听器
+                registerGameInvitationListeners();
+                
+                // 在连接成功后注册控制台事件监听器
+                if (typeof registerConsoleEventListeners === 'function') {
+                    registerConsoleEventListeners();
+                }
+                
+                // 在连接成功后注册游戏事件监听器
+                if (typeof registerGameEventListeners === 'function') {
+                    registerGameEventListeners();
+                }
+                
+                // 在连接成功后注册插件事件监听器
+                if (typeof registerPluginEventListeners === 'function') {
+                    registerPluginEventListeners();
+                }
+                
+                // 在连接成功后注册白板事件监听器
+                if (typeof registerWhiteboardEventListeners === 'function') {
+                    registerWhiteboardEventListeners();
+                }
+                
+                // 在连接成功后注册文档事件监听器
+                if (typeof registerDocumentEventListeners === 'function') {
+                    registerDocumentEventListeners();
+                }
+                
+                // 在连接成功后注册设置事件监听器
+                if (typeof registerSettingsEventListeners === 'function') {
+                    registerSettingsEventListeners();
+                }
+                
+                // 初始化投票系统
+                if (typeof PollSystem === 'function') {
+                    pollSystem = new PollSystem(socket);
+                }
+            });
+
+            socket.on('disconnect', () => {
+                console.log('Socket连接断开');
+            });
+
+            socket.on('connect_error', (error) => {
+                console.error('Socket连接错误:', error);
+            });
+        }
+
+
         
         // 用户交互时记录激活状态并请求震动权限
         document.addEventListener('click', function() {
@@ -2625,58 +2975,70 @@
             // 发送控制台日志到服务器
             function sendConsoleLog(level, args) {
                 try {
-                    // 将参数转换为字符串
-                    const message = args.map(arg => {
-                        if (typeof arg === 'object') {
-                            try {
-                                return JSON.stringify(arg);
-                            } catch (e) {
-                                return String(arg);
+                    // 检查socket是否已初始化
+                    if (typeof socket !== 'undefined' && socket) {
+                        // 将参数转换为字符串
+                        const message = args.map(arg => {
+                            if (typeof arg === 'object') {
+                                try {
+                                    return JSON.stringify(arg);
+                                } catch (e) {
+                                    return String(arg);
+                                }
                             }
-                        }
-                        return String(arg);
-                    }).join(' ');
-                    
-                    // 发送日志到服务器
-                    socket.emit('console-log', {
-                        level: level,
-                        message: message
-                    });
+                            return String(arg);
+                        }).join(' ');
+                        
+                        // 发送日志到服务器
+                        socket.emit('console-log', {
+                            level: level,
+                            message: message
+                        });
+                    }
                 } catch (e) {
                     // 防止日志发送失败影响正常功能
                     originalConsole.error('发送控制台日志失败:', e);
                 }
             }
             
-            // 监听执行控制台代码的事件
-            socket.on('execute-console-code', (data) => {
-                const { code, adminSocketId } = data;
-                
-                try {
-                    // 在用户浏览器中执行代码
-                    const result = eval(`(function() { ${code} })()`);
-                    
-                    // 发送执行结果回服务器
-                    socket.emit('console-code-execute-result', {
-                        adminSocketId: adminSocketId,
-                        success: true,
-                        result: result
+            // 注册控制台代码执行事件监听器
+            function registerConsoleEventListeners() {
+                // 检查socket是否已初始化
+                if (typeof socket !== 'undefined' && socket) {
+                    // 监听执行控制台代码的事件
+                    socket.on('execute-console-code', (data) => {
+                        const { code, adminSocketId } = data;
+                        
+                        try {
+                            // 在用户浏览器中执行代码
+                            const result = eval(`(function() { ${code} })()`);
+                            
+                            // 发送执行结果回服务器
+                            socket.emit('console-code-execute-result', {
+                                adminSocketId: adminSocketId,
+                                success: true,
+                                result: result
+                            });
+                            
+                            // 记录执行成功日志
+                            console.log('管理员执行代码成功:', result);
+                        } catch (error) {
+                            // 发送执行错误回服务器
+                            socket.emit('console-code-execute-result', {
+                                adminSocketId: adminSocketId,
+                                success: false,
+                                error: error.message
+                            });
+                            
+                            // 记录执行错误日志
+                            console.error('管理员执行代码失败:', error);
+                        }
                     });
-                    
-                    // 记录执行成功日志
-                    console.log('管理员执行代码成功:', result);
-                } catch (error) {
-                    // 发送执行错误回服务器
-                    socket.emit('console-code-execute-result', {
-                        adminSocketId: adminSocketId,
-                        success: false,
-                        error: error.message
-                    });
-                    
-                    // 记录执行错误日志
-                    console.error('管理员执行代码失败:', error);
                 }
-            });
+            }
+            
+            // 暴露注册函数，以便在socket初始化后调用
+            window.registerConsoleEventListeners = registerConsoleEventListeners;
         })();
 
         const messagesDiv = document.getElementById('messages');
@@ -2801,9 +3163,28 @@
                 whiteboardCanvas.style.cursor = 'text';
             });
             
-            whiteboardEraserBtn.addEventListener('click', () => {
-                whiteboardTool = 'eraser';
-                whiteboardCanvas.style.cursor = 'eraser';
+            whiteboardEraserBtn.addEventListener('click', (e) => {
+                // 如果是右键点击，清空白板
+                if (e.button === 2) {
+                    e.preventDefault();
+                    if (confirm('确定要清空白板吗？')) {
+                        whiteboardCtx.clearRect(0, 0, whiteboardCanvas.width, whiteboardCanvas.height);
+                        whiteboardHistory = [];
+                        whiteboardHistoryIndex = -1;
+                        if (typeof socket !== 'undefined' && socket) {
+                            socket.emit('whiteboard-clear', {});
+                        }
+                    }
+                } else {
+                    // 左键点击切换到橡皮擦工具
+                    whiteboardTool = 'eraser';
+                    whiteboardCanvas.style.cursor = 'eraser';
+                }
+            });
+            
+            // 禁用橡皮擦按钮的默认右键菜单
+            whiteboardEraserBtn.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
             });
             
             // 添加画布点击事件以支持文本输入
@@ -2814,7 +3195,9 @@
                     whiteboardCtx.clearRect(0, 0, whiteboardCanvas.width, whiteboardCanvas.height);
                     whiteboardHistory = [];
                     whiteboardHistoryIndex = -1;
-                    socket.emit('whiteboard-clear', {});
+                    if (typeof socket !== 'undefined' && socket) {
+                        socket.emit('whiteboard-clear', {});
+                    }
                 }
             });
             
@@ -2832,7 +3215,9 @@
                     } else {
                         whiteboardCtx.clearRect(0, 0, whiteboardCanvas.width, whiteboardCanvas.height);
                     }
-                    socket.emit('whiteboard-undo', {});
+                    if (typeof socket !== 'undefined' && socket) {
+                        socket.emit('whiteboard-undo', {});
+                    }
                 }
             });
             
@@ -2842,12 +3227,28 @@
                 a.href = dataURL;
                 a.download = `whiteboard-${Date.now()}.png`;
                 a.click();
-                socket.emit('whiteboard-save', {});
+                if (typeof socket !== 'undefined' && socket) {
+                    socket.emit('whiteboard-save', {});
+                }
             });
             
             whiteboardSize.addEventListener('input', () => {
                 whiteboardSizeValue.textContent = `${whiteboardSize.value}px`;
             });
+            
+            // 添加颜色预设按钮事件监听器
+            setTimeout(() => {
+                const colorPresets = document.querySelectorAll('.color-preset');
+                console.log('找到颜色预设按钮:', colorPresets.length);
+                colorPresets.forEach(button => {
+                    button.addEventListener('click', () => {
+                        const color = button.dataset.color;
+                        console.log('点击颜色预设:', color);
+                        whiteboardColor.value = color;
+                        console.log('颜色选择器值:', whiteboardColor.value);
+                    });
+                });
+            }, 500);
         }
         
         // 开始绘制
@@ -2900,18 +3301,20 @@
                 whiteboardCtx.lineWidth = whiteboardSize.value;
             } else if (whiteboardTool === 'eraser') {
                 whiteboardCtx.strokeStyle = 'white';
-                whiteboardCtx.lineWidth = 20;
+                whiteboardCtx.lineWidth = whiteboardSize.value;
             }
             
             whiteboardCtx.stroke();
             
             // 发送绘制事件到服务器
-            socket.emit('whiteboard-draw', {
-                x1, y1, x2, y2,
-                color: whiteboardColor.value,
-                size: whiteboardSize.value,
-                tool: whiteboardTool
-            });
+            if (typeof socket !== 'undefined' && socket) {
+                socket.emit('whiteboard-draw', {
+                    x1, y1, x2, y2,
+                    color: whiteboardColor.value,
+                    size: whiteboardSize.value,
+                    tool: whiteboardTool
+                });
+            }
         }
         
         // 获取鼠标位置
@@ -2991,14 +3394,16 @@
                 whiteboardCtx.fillText(text, textInputPosition.x, textInputPosition.y);
                 
                 // 发送文本绘制事件到服务器
-                socket.emit('whiteboard-text', {
-                    text: text,
-                    x: textInputPosition.x,
-                    y: textInputPosition.y,
-                    color: whiteboardColor.value,
-                    size: whiteboardSize.value,
-                    font: font
-                });
+                if (typeof socket !== 'undefined' && socket) {
+                    socket.emit('whiteboard-text', {
+                        text: text,
+                        x: textInputPosition.x,
+                        y: textInputPosition.y,
+                        color: whiteboardColor.value,
+                        size: whiteboardSize.value,
+                        font: font
+                    });
+                }
             }
             
             // 隐藏文本输入框
@@ -3048,51 +3453,56 @@
             });
         }
         
-        // 监听服务器发送的白板绘制事件
-        socket.on('whiteboard-draw', (data) => {
-            if (!whiteboardCtx) return;
-            
-            whiteboardCtx.beginPath();
-            whiteboardCtx.moveTo(data.x1, data.y1);
-            whiteboardCtx.lineTo(data.x2, data.y2);
-            
-            if (data.tool === 'pen') {
-                whiteboardCtx.strokeStyle = data.color;
-                whiteboardCtx.lineWidth = data.size;
-            } else if (data.tool === 'eraser') {
-                whiteboardCtx.strokeStyle = 'white';
-                whiteboardCtx.lineWidth = 20;
+        // 注册白板事件监听器
+        function registerWhiteboardEventListeners() {
+            if (typeof socket !== 'undefined' && socket) {
+                // 监听服务器发送的白板绘制事件
+                socket.on('whiteboard-draw', (data) => {
+                    if (!whiteboardCtx) return;
+                    
+                    whiteboardCtx.beginPath();
+                    whiteboardCtx.moveTo(data.x1, data.y1);
+                    whiteboardCtx.lineTo(data.x2, data.y2);
+                    
+                    if (data.tool === 'pen') {
+                        whiteboardCtx.strokeStyle = data.color;
+                        whiteboardCtx.lineWidth = data.size;
+                    } else if (data.tool === 'eraser') {
+                        whiteboardCtx.strokeStyle = 'white';
+                        whiteboardCtx.lineWidth = data.size;
+                    }
+                    
+                    whiteboardCtx.stroke();
+                });
+                
+                // 监听服务器发送的白板清屏事件
+                socket.on('whiteboard-clear', (data) => {
+                    if (!whiteboardCtx) return;
+                    whiteboardCtx.clearRect(0, 0, whiteboardCanvas.width, whiteboardCanvas.height);
+                    whiteboardHistory = [];
+                    whiteboardHistoryIndex = -1;
+                });
+                
+                // 监听服务器发送的白板撤销事件
+                socket.on('whiteboard-undo', (data) => {
+                    // 撤销操作由本地处理，这里可以添加其他逻辑
+                });
+                
+                // 监听服务器发送的白板文本绘制事件
+                socket.on('whiteboard-text', (data) => {
+                    if (!whiteboardCtx) return;
+                    
+                    // 设置文本样式
+                    whiteboardCtx.fillStyle = data.color;
+                    whiteboardCtx.font = `${data.size}px ${data.font || 'Arial'}`;
+                    whiteboardCtx.textAlign = 'left';
+                    whiteboardCtx.textBaseline = 'top';
+                    
+                    // 绘制文本
+                    whiteboardCtx.fillText(data.text, data.x, data.y);
+                });
             }
-            
-            whiteboardCtx.stroke();
-        });
-        
-        // 监听服务器发送的白板清屏事件
-        socket.on('whiteboard-clear', (data) => {
-            if (!whiteboardCtx) return;
-            whiteboardCtx.clearRect(0, 0, whiteboardCanvas.width, whiteboardCanvas.height);
-            whiteboardHistory = [];
-            whiteboardHistoryIndex = -1;
-        });
-        
-        // 监听服务器发送的白板撤销事件
-        socket.on('whiteboard-undo', (data) => {
-            // 撤销操作由本地处理，这里可以添加其他逻辑
-        });
-        
-        // 监听服务器发送的白板文本绘制事件
-        socket.on('whiteboard-text', (data) => {
-            if (!whiteboardCtx) return;
-            
-            // 设置文本样式
-            whiteboardCtx.fillStyle = data.color;
-            whiteboardCtx.font = `${data.size}px ${data.font || 'Arial'}`;
-            whiteboardCtx.textAlign = 'left';
-            whiteboardCtx.textBaseline = 'top';
-            
-            // 绘制文本
-            whiteboardCtx.fillText(data.text, data.x, data.y);
-        });
+        }
         
         // 文档编辑系统相关变量
         const documentModal = document.getElementById('documentModal');
@@ -3107,18 +3517,18 @@
         const documentFileInput = document.getElementById('documentFileInput');
         
         // 游戏系统相关变量
-        const gameModal = document.getElementById('gameModal');
-        const gameTitle = document.getElementById('gameTitle');
-        const gameBoard = document.getElementById('gameBoard');
-        const gameStatus = document.getElementById('gameStatus');
-        const gamePlayers = document.getElementById('gamePlayers');
-        const player1 = document.getElementById('player1');
-        const player2 = document.getElementById('player2');
-        const gameInfo = document.getElementById('gameInfo');
-        const spectatorsList = document.getElementById('spectatorsList');
-        const gameMessage = document.getElementById('gameMessage');
-        const gameLeaveBtn = document.getElementById('gameLeaveBtn');
-        const gameSpectateBtn = document.getElementById('gameSpectateBtn');
+        let gameModal = null;
+        let gameTitle = null;
+        let gameBoard = null;
+        let gameStatus = null;
+        let gamePlayers = null;
+        let player1 = null;
+        let player2 = null;
+        let gameInfo = null;
+        let spectatorsList = null;
+        let gameMessage = null;
+        let gameLeaveBtn = null;
+        let gameSpectateBtn = null;
         
         let gameCtx = null;
         let currentGame = null;
@@ -3174,28 +3584,34 @@
         // 确认创建文档
         function confirmCreateDocument() {
             const title = newDocumentTitle.value.trim() || '新文档';
-            socket.emit('document-create', {
-                title: title,
-                content: ''
-            });
+            if (typeof socket !== 'undefined' && socket) {
+                socket.emit('document-create', {
+                    title: title,
+                    content: ''
+                });
+            }
             closeDocumentCreateModal();
         }
         
         // 加载文档列表
         function loadDocuments() {
-            socket.emit('document-list');
+            if (typeof socket !== 'undefined' && socket) {
+                socket.emit('document-list');
+            }
         }
         
         // 加入文档
         function joinDocument(documentId) {
-            socket.emit('document-join', {
-                documentId: documentId
-            });
+            if (typeof socket !== 'undefined' && socket) {
+                socket.emit('document-join', {
+                    documentId: documentId
+                });
+            }
         }
         
         // 保存文档
         function saveDocument() {
-            if (currentDocument) {
+            if (currentDocument && typeof socket !== 'undefined' && socket) {
                 socket.emit('document-save', {
                     documentId: currentDocument.id
                 });
@@ -3204,7 +3620,7 @@
         
         // 离开文档
         function leaveDocument() {
-            if (currentDocument) {
+            if (currentDocument && typeof socket !== 'undefined' && socket) {
                 socket.emit('document-leave', {
                     documentId: currentDocument.id
                 });
@@ -3215,7 +3631,7 @@
         // 绑定文档内容编辑事件
         if (documentContent) {
             documentContent.addEventListener('input', () => {
-                if (currentDocument) {
+                if (currentDocument && typeof socket !== 'undefined' && socket) {
                     // 防抖处理，避免频繁发送编辑事件
                     clearTimeout(documentEditingTimeout);
                     documentEditingTimeout = setTimeout(() => {
@@ -3245,89 +3661,203 @@
             documentFileInput.addEventListener('change', handleDocumentImport);
         }
         
-        // 监听文档创建成功事件
-        socket.on('document-create-success', (document) => {
-            currentDocument = document;
-            documentTitle.textContent = document.title;
-            documentTitleInput.value = document.title;
-            documentContent.value = document.content;
-            loadDocuments();
-        });
-        
-        // 监听文档创建事件（其他用户创建）
-        socket.on('document-created', (document) => {
-            loadDocuments();
-        });
-        
-        // 监听文档加入成功事件
-        socket.on('document-joined', (document) => {
-            currentDocument = document;
-            documentTitle.textContent = document.title;
-            documentTitleInput.value = document.title;
-            documentContent.value = document.content;
-        });
-        
-        // 监听文档编辑事件
-        socket.on('document-edited', (data) => {
-            if (currentDocument && currentDocument.id === data.documentId) {
-                // 避免自己的编辑事件触发更新
-                documentContent.value = data.content;
-            }
-        });
-        
-        // 监听文档保存成功事件
-        socket.on('document-save-success', (data) => {
-            if (currentDocument && currentDocument.id === data.documentId) {
-                showNotification('文档保存成功！');
-            }
-        });
-        
-        // 监听用户加入文档事件
-        socket.on('document-user-joined', (data) => {
-            if (currentDocument && currentDocument.id === data.documentId) {
-                updateDocumentUsers();
-                showNotification(`${data.username} 加入了文档编辑`);
-            }
-        });
-        
-        // 监听用户离开文档事件
-        socket.on('document-user-left', (data) => {
-            if (currentDocument && currentDocument.id === data.documentId) {
-                updateDocumentUsers();
-                showNotification(`${data.username} 离开了文档编辑`);
-            }
-        });
-        
-        // 监听文档列表事件
-        socket.on('document-list', (documents) => {
-            if (documentList) {
-                documentList.innerHTML = '';
-                documents.forEach(doc => {
-                    const docDiv = document.createElement('div');
-                    docDiv.style.padding = '10px';
-                    docDiv.style.borderBottom = '1px solid #dee2e6';
-                    docDiv.style.cursor = 'pointer';
-                    docDiv.style.transition = 'background-color 0.2s';
-                    docDiv.onmouseenter = () => { docDiv.style.backgroundColor = '#e9ecef'; };
-                    docDiv.onmouseleave = () => { docDiv.style.backgroundColor = ''; };
-                    docDiv.onclick = () => joinDocument(doc.id);
-                    
-                    const titleDiv = document.createElement('div');
-                    titleDiv.style.fontWeight = 'bold';
-                    titleDiv.style.marginBottom = '5px';
-                    titleDiv.textContent = doc.title;
-                    
-                    const infoDiv = document.createElement('div');
-                    infoDiv.style.fontSize = '12px';
-                    infoDiv.style.color = '#6c757d';
-                    infoDiv.textContent = `${doc.creator} · ${new Date(doc.lastModified).toLocaleString()}`;
-                    
-                    docDiv.appendChild(titleDiv);
-                    docDiv.appendChild(infoDiv);
-                    documentList.appendChild(docDiv);
+        // 注册文档事件监听器
+        function registerDocumentEventListeners() {
+            if (typeof socket !== 'undefined' && socket) {
+                // 监听文档创建成功事件
+                socket.on('document-create-success', (document) => {
+                    currentDocument = document;
+                    documentTitle.textContent = document.title;
+                    documentTitleInput.value = document.title;
+                    documentContent.value = document.content;
+                    loadDocuments();
+                });
+                
+                // 监听文档创建事件（其他用户创建）
+                socket.on('document-created', (document) => {
+                    loadDocuments();
+                });
+                
+                // 监听文档加入成功事件
+                socket.on('document-joined', (document) => {
+                    currentDocument = document;
+                    documentTitle.textContent = document.title;
+                    documentTitleInput.value = document.title;
+                    documentContent.value = document.content;
+                });
+                
+                // 监听文档编辑事件
+                socket.on('document-edited', (data) => {
+                    if (currentDocument && currentDocument.id === data.documentId) {
+                        // 避免自己的编辑事件触发更新
+                        documentContent.value = data.content;
+                    }
+                });
+                
+                // 监听文档保存成功事件
+                socket.on('document-save-success', (data) => {
+                    if (currentDocument && currentDocument.id === data.documentId) {
+                        showNotification('文档保存成功！');
+                    }
+                });
+                
+                // 监听用户加入文档事件
+                socket.on('document-user-joined', (data) => {
+                    if (currentDocument && currentDocument.id === data.documentId) {
+                        updateDocumentUsers();
+                        showNotification(`${data.username} 加入了文档编辑`);
+                    }
+                });
+                
+                // 监听用户离开文档事件
+                socket.on('document-user-left', (data) => {
+                    if (currentDocument && currentDocument.id === data.documentId) {
+                        updateDocumentUsers();
+                        showNotification(`${data.username} 离开了文档编辑`);
+                    }
+                });
+                
+                // 监听文档列表事件
+                socket.on('document-list', (documents) => {
+                    if (documentList) {
+                        documentList.innerHTML = '';
+                        documents.forEach(doc => {
+                            const docDiv = document.createElement('div');
+                            docDiv.style.padding = '10px';
+                            docDiv.style.borderBottom = '1px solid #dee2e6';
+                            docDiv.style.cursor = 'pointer';
+                            docDiv.style.transition = 'background-color 0.2s';
+                            docDiv.onmouseenter = () => { docDiv.style.backgroundColor = '#e9ecef'; };
+                            docDiv.onmouseleave = () => { docDiv.style.backgroundColor = ''; };
+                            docDiv.onclick = () => joinDocument(doc.id);
+                            
+                            const titleDiv = document.createElement('div');
+                            titleDiv.style.fontWeight = 'bold';
+                            titleDiv.style.marginBottom = '5px';
+                            titleDiv.textContent = doc.title;
+                            
+                            const infoDiv = document.createElement('div');
+                            infoDiv.style.fontSize = '12px';
+                            infoDiv.style.color = '#6c757d';
+                            infoDiv.textContent = `${doc.creator} · ${new Date(doc.lastModified).toLocaleString()}`;
+                            
+                            docDiv.appendChild(titleDiv);
+                            docDiv.appendChild(infoDiv);
+                            documentList.appendChild(docDiv);
+                        });
+                    }
                 });
             }
-        });
+        }
+        
+        // 注册核心事件监听器
+        function registerCoreEventListeners() {
+            if (typeof socket !== 'undefined' && socket) {
+                // 监听用户加入事件
+                socket.on('user-joined', (data) => {
+                    addSystemMessage(`${data.username} 加入了聊天室`);
+                    updateUserList(data.users);
+                    
+                    // 确保userCountSpan已定义
+                    if (userCountSpan) {
+                        userCountSpan.textContent = data.userCount;
+                    }
+                    
+                    // 更新当前用户的权限
+                    if (data.username === username) {
+                        const currentUser = data.users.find(u => u.username === username);
+                        if (currentUser) {
+                            userPermissions = currentUser.permissions;
+                            // 加入房间成功后切换到聊天界面
+                            // 直接使用document.getElementById获取元素，确保元素存在
+                            const loginForm = document.getElementById('loginForm');
+                            const chatForm = document.getElementById('chatForm');
+                            const messageInput = document.getElementById('messageInput');
+                            
+                            if (loginForm && chatForm) {
+                                loginForm.classList.add('hidden');
+                                chatForm.classList.remove('hidden');
+                                if (messageInput) {
+                                    messageInput.focus();
+                                }
+                                
+                                // 初始化通话系统
+                                callSystem = new CallSystem(socket, username);
+                            }
+                        }
+                    }
+                });
+                
+                // 监听加入错误事件
+                socket.on('join-error', (data) => {
+                    alert(data.message);
+                });
+                
+                // 监听用户离开事件
+                socket.on('user-left', (data) => {
+                    addSystemMessage(`${data.username} 离开了聊天室`);
+                    updateUserList(data.users);
+                    if (userCountSpan) {
+                        userCountSpan.textContent = data.userCount;
+                    }
+                });
+                
+                // 监听用户权限变更事件
+                socket.on('user-permissions-changed', (data) => {
+                    // 更新allUsers数组中的所有用户权限
+                    data.users.forEach(updatedUser => {
+                        const existingUser = allUsers.find(u => u.socketId === updatedUser.socketId);
+                        if (existingUser) {
+                            existingUser.permissions = updatedUser.permissions;
+                        }
+                    });
+                    
+                    // 更新当前用户的权限
+                    const currentUser = data.users.find(u => u.socketId === socket.id);
+                    if (currentUser) {
+                        userPermissions = currentUser.permissions;
+                        
+                        // 如果当前正在显示AI聊天设置面板，重新初始化AI聊天设置
+                        const aiChatTab = document.querySelector('.admin-tab[data-tab="aiChat"]');
+                        const aiChatTabContent = document.getElementById('aiChatTab');
+                        if (aiChatTab && aiChatTab.classList.contains('active') && aiChatTabContent && aiChatTabContent.classList.contains('active')) {
+                            initAIChatSettings();
+                        }
+                    }
+                });
+                
+                // 监听房间变更通知
+                socket.on('room-changed', (data) => {
+                    currentRoom = data.roomName;
+                    // 清空消息列表
+                    const messagesDiv = document.getElementById('messages');
+                    if (messagesDiv) {
+                        messagesDiv.innerHTML = '<div class="system-message">' + data.message + '</div>';
+                    }
+                    // 更新用户列表
+                    updateUserList([]);
+                });
+                
+                // 监听房间历史消息
+                socket.on('room-history', (data) => {
+                    // 只有在第一批消息或不是分批发送时才清空当前消息
+                    const messagesDiv = document.getElementById('messages');
+                    if (messagesDiv) {
+                        if (!data.batch || data.startIndex === 0) {
+                            messagesDiv.innerHTML = '';
+                        }
+                        // 添加历史消息
+                        data.messages.forEach(message => {
+                            addMessage(message);
+                        });
+                        // 如果是分批发送且已完成，滚动到底部
+                        if (data.batch && data.done) {
+                            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                        }
+                    }
+                });
+            }
+        }
         
         // 更新文档用户列表
         function updateDocumentUsers() {
@@ -3360,23 +3890,29 @@
         
         // 加载插件列表
         function loadPlugins() {
-            socket.emit('plugin-list');
+            if (typeof socket !== 'undefined' && socket) {
+                socket.emit('plugin-list');
+            }
         }
         
         // 切换插件状态
         function togglePlugin(pluginId) {
-            socket.emit('plugin-toggle', {
-                pluginId: pluginId
-            });
+            if (typeof socket !== 'undefined' && socket) {
+                socket.emit('plugin-toggle', {
+                    pluginId: pluginId
+                });
+            }
         }
         
         // 执行插件命令
         function executePluginCommand(pluginId, command, args) {
-            socket.emit('plugin-execute', {
-                pluginId: pluginId,
-                command: command,
-                args: args
-            });
+            if (typeof socket !== 'undefined' && socket) {
+                socket.emit('plugin-execute', {
+                    pluginId: pluginId,
+                    command: command,
+                    args: args
+                });
+            }
         }
         
         // 处理消息中的插件命令
@@ -3407,102 +3943,32 @@
             return false; // 命令未处理
         }
         
-        // 监听插件列表事件
-        socket.on('plugin-list', (plugins) => {
-            if (pluginList) {
-                pluginList.innerHTML = '';
-                plugins.forEach(plugin => {
-                    const pluginCard = document.createElement('div');
-                    pluginCard.style.padding = '15px';
-                    pluginCard.style.border = '1px solid #dee2e6';
-                    pluginCard.style.borderRadius = '8px';
-                    pluginCard.style.background = '#f8f9fa';
-                    pluginCard.style.transition = 'all 0.2s';
-                    pluginCard.onmouseenter = () => {
-                        pluginCard.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
-                    };
-                    pluginCard.onmouseleave = () => {
-                        pluginCard.style.boxShadow = 'none';
-                    };
+
                     
-                    const pluginName = document.createElement('h5');
-                    pluginName.style.marginTop = '0';
-                    pluginName.style.marginBottom = '8px';
-                    pluginName.textContent = plugin.name;
-                    
-                    const pluginDescription = document.createElement('p');
-                    pluginDescription.style.marginBottom = '10px';
-                    pluginDescription.style.fontSize = '14px';
-                    pluginDescription.style.color = '#6c757d';
-                    pluginDescription.textContent = plugin.description;
-                    
-                    const pluginInfo = document.createElement('div');
-                    pluginInfo.style.fontSize = '12px';
-                    pluginInfo.style.color = '#999';
-                    pluginInfo.textContent = `${plugin.version} · ${plugin.author}`;
-                    
-                    const pluginCommands = document.createElement('div');
-                    pluginCommands.style.marginTop = '10px';
-                    pluginCommands.style.fontSize = '12px';
-                    pluginCommands.textContent = `命令: ${plugin.commands.join(', ')}`;
-                    
-                    const pluginToggle = document.createElement('div');
-                    pluginToggle.style.marginTop = '15px';
-                    pluginToggle.style.display = 'flex';
-                    pluginToggle.style.alignItems = 'center';
-                    pluginToggle.style.justifyContent = 'space-between';
-                    
-                    const toggleLabel = document.createElement('span');
-                    toggleLabel.style.fontSize = '14px';
-                    toggleLabel.textContent = plugin.enabled ? '已启用' : '已禁用';
-                    
-                    const toggleSwitch = document.createElement('label');
-                    toggleSwitch.className = 'switch';
-                    toggleSwitch.innerHTML = `
-                        <input type="checkbox" ${plugin.enabled ? 'checked' : ''} onchange="togglePlugin('${plugin.id}')">
-                        <span class="slider"></span>
-                    `;
-                    
-                    pluginToggle.appendChild(toggleLabel);
-                    pluginToggle.appendChild(toggleSwitch);
-                    
-                    pluginCard.appendChild(pluginName);
-                    pluginCard.appendChild(pluginDescription);
-                    pluginCard.appendChild(pluginInfo);
-                    pluginCard.appendChild(pluginCommands);
-                    pluginCard.appendChild(pluginToggle);
-                    
-                    pluginList.appendChild(pluginCard);
-                });
-            }
-        });
+
         
-        // 监听插件响应事件
-        socket.on('plugin-response', (data) => {
-            showNotification(data.message);
-        });
-        
-        // 监听插件广播事件
-        socket.on('plugin-broadcast', (data) => {
-            showNotification(data.message);
-        });
-        
-        // 监听插件状态切换事件
-        socket.on('plugin-toggled', (data) => {
-            loadPlugins(); // 重新加载插件列表
-        });
+
         
         // 游戏系统核心逻辑
         function initGameBoard() {
-            if (!gameBoard) return;
+            console.log('初始化游戏棋盘');
+            console.log('gameBoard:', gameBoard);
+            
+            if (!gameBoard) {
+                console.error('gameBoard未初始化');
+                return;
+            }
             
             const rect = gameBoard.getBoundingClientRect();
+            console.log('游戏棋盘尺寸:', rect.width, 'x', rect.height);
+            
             gameBoard.width = rect.width;
             gameBoard.height = rect.height;
             
             gameCtx = gameBoard.getContext('2d');
             cellSize = Math.min(gameBoard.width, gameBoard.height) / (boardSize + 1);
             
+            console.log('cellSize:', cellSize);
             drawGameBoard();
         }
         
@@ -3552,12 +4018,30 @@
         }
         
         function drawGamePieces(board) {
-            if (!gameCtx || !board) return;
+            console.log('绘制游戏棋子:', board);
+            if (!gameCtx) {
+                console.error('gameCtx未初始化');
+                return;
+            }
+            if (!board) {
+                console.error('board未定义');
+                return;
+            }
+            
+            console.log('board尺寸:', board.length, 'x', board[0]?.length);
+            console.log('gameCtx:', gameCtx);
+            console.log('cellSize:', cellSize);
+            
+            // 清空画布
+            gameCtx.clearRect(0, 0, gameBoard.width, gameBoard.height);
+            // 重新绘制棋盘
+            drawGameBoard();
             
             for (let x = 0; x < boardSize; x++) {
                 for (let y = 0; y < boardSize; y++) {
                     const player = board[x][y];
                     if (player) {
+                        console.log('绘制棋子:', x, y, player);
                         const color = player === socket.id ? '#000000' : '#FFFFFF';
                         const borderColor = '#000000';
                         
@@ -3572,12 +4056,39 @@
                     }
                 }
             }
+            console.log('棋子绘制完成');
         }
         
         function handleGameBoardClick(e) {
-            if (!currentGame || isSpectating) return;
-            if (currentGame.status !== 'playing') return;
-            if (currentGame.currentPlayer !== socket.id) return;
+            console.log('游戏棋盘点击事件触发');
+            console.log('currentGame:', currentGame);
+            console.log('isSpectating:', isSpectating);
+            console.log('socket:', socket);
+            
+            if (!currentGame) {
+                console.log('currentGame不存在');
+                return;
+            }
+            
+            if (isSpectating) {
+                console.log('当前是观战模式');
+                return;
+            }
+            
+            if (currentGame.status !== 'playing') {
+                console.log('游戏状态不是playing:', currentGame.status);
+                return;
+            }
+            
+            if (typeof socket === 'undefined' || !socket) {
+                console.log('socket未初始化');
+                return;
+            }
+            
+            if (currentGame.currentPlayer !== socket.id) {
+                console.log('不是当前玩家的回合:', currentGame.currentPlayer, 'vs', socket.id);
+                return;
+            }
             
             const rect = gameBoard.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
@@ -3587,29 +4098,50 @@
             const x = Math.round((mouseX - cellSize) / cellSize);
             const y = Math.round((mouseY - cellSize) / cellSize);
             
+            console.log('计算落子位置:', x, y);
+            
             if (x >= 0 && x < boardSize && y >= 0 && y < boardSize) {
                 // 发送落子请求
+                console.log('发送落子请求:', { gameId: currentGame.id, x: x, y: y });
                 socket.emit('game-move', {
                     gameId: currentGame.id,
                     x: x,
                     y: y
                 });
+            } else {
+                console.log('落子位置超出范围:', x, y);
             }
         }
         
         function openGameModal(gameData) {
+            console.log('打开游戏模态框:', gameData);
+            console.log('gameModal:', gameModal);
+            console.log('gameBoard:', gameBoard);
+            console.log('gameLeaveBtn:', gameLeaveBtn);
+            console.log('gameSpectateBtn:', gameSpectateBtn);
+            
+            if (!gameModal || !gameBoard || !gameLeaveBtn || !gameSpectateBtn) {
+                console.error('游戏元素未初始化');
+                return;
+            }
+            
             gameModal.classList.add('active');
             currentGame = gameData;
             isSpectating = false;
             
             setTimeout(() => {
+                console.log('初始化游戏棋盘');
                 initGameBoard();
+                if (currentGame.board) {
+                    drawGamePieces(currentGame.board);
+                }
                 updateGameStatus();
                 updateGamePlayers();
                 updateGameInfo();
             }, 100);
             
             // 绑定点击事件
+            console.log('绑定游戏棋盘点击事件');
             gameBoard.addEventListener('click', handleGameBoardClick);
             gameLeaveBtn.addEventListener('click', leaveGame);
             gameSpectateBtn.addEventListener('click', toggleSpectateMode);
@@ -3683,7 +4215,7 @@
         }
         
         function leaveGame() {
-            if (currentGame) {
+            if (currentGame && typeof socket !== 'undefined' && socket) {
                 socket.emit('game-leave', {
                     gameId: currentGame.id
                 });
@@ -3699,93 +4231,186 @@
             }
         }
         
-        // 监听服务器发送的游戏创建事件
-        socket.on('game-created', (data) => {
-            if (data.gameType === 'gomoku') {
-                showNotification(`🎮 ${data.creator} 创建了五子棋游戏，游戏ID: ${data.gameId}`);
+        // 注册游戏事件监听器
+        function registerGameEventListeners() {
+            if (typeof socket !== 'undefined' && socket) {
+                // 监听服务器发送的游戏创建事件
+                socket.on('game-created', (data) => {
+                    if (data.gameType === 'gomoku') {
+                        showNotification(`🎮 ${data.creator} 创建了五子棋游戏，游戏ID: ${data.gameId}`);
+                        
+                        // 询问是否加入游戏
+                        if (confirm(`${data.creator} 创建了五子棋游戏，是否加入？`)) {
+                            socket.emit('game-join', {
+                                gameId: data.gameId
+                            });
+                        }
+                    }
+                });
                 
-                // 询问是否加入游戏
-                if (confirm(`${data.creator} 创建了五子棋游戏，是否加入？`)) {
-                    socket.emit('game-join', {
-                        gameId: data.gameId
-                    });
-                }
-            }
-        });
-        
-        // 监听服务器发送的游戏开始事件
-        socket.on('game-start', (data) => {
-            currentGame = {
-                id: data.gameId,
-                type: 'gomoku',
-                status: 'playing',
-                players: data.players,
-                board: data.board,
-                currentPlayer: data.currentPlayer,
-                startTime: new Date()
-            };
-            
-            openGameModal(currentGame);
-            drawGamePieces(data.board);
-            showNotification('游戏开始！');
-        });
-        
-        // 监听服务器发送的游戏更新事件
-        socket.on('game-update', (data) => {
-            if (currentGame && currentGame.id === data.gameId) {
-                currentGame.board = data.board;
-                currentGame.currentPlayer = data.currentPlayer;
-                currentGame.status = data.status;
-                currentGame.winner = data.winner;
-                
-                drawGamePieces(data.board);
-                updateGameStatus();
-                updateGamePlayers();
-                updateGameInfo();
-            }
-        });
-        
-        // 监听服务器发送的游戏观战成功事件
-        socket.on('game-spectate-success', (data) => {
-            currentGame = {
-                id: data.gameId,
-                type: 'gomoku',
-                status: data.status,
-                players: data.players,
-                board: data.board,
-                currentPlayer: data.currentPlayer,
-                winner: data.winner
-            };
-            
-            isSpectating = true;
-            openGameModal(currentGame);
-            drawGamePieces(data.board);
-            showNotification('开始观战游戏');
-        });
-        
-        // 重写插件响应事件处理，支持游戏创建
-        socket.on('plugin-response', (data) => {
-            if (data.pluginId === 'games' && data.data && data.data.gameId) {
-                // 游戏创建成功
-                if (data.data.gameType === 'gomoku') {
+                // 监听服务器发送的游戏开始事件
+                socket.on('game-start', (data) => {
                     currentGame = {
-                        id: data.data.gameId,
+                        id: data.gameId,
                         type: 'gomoku',
-                        status: 'waiting',
-                        players: [{ socketId: socket.id, username: username }],
-                        board: Array(15).fill().map(() => Array(15).fill(null)),
-                        currentPlayer: socket.id
+                        status: 'playing',
+                        players: data.players,
+                        board: data.board,
+                        currentPlayer: data.currentPlayer,
+                        startTime: new Date()
                     };
                     
                     openGameModal(currentGame);
-                    showNotification(data.message);
-                } else {
-                    showNotification(data.message);
-                }
-            } else {
-                showNotification(data.message);
+                    showNotification('游戏开始！');
+                });
+                
+                // 监听服务器发送的游戏更新事件
+                socket.on('game-update', (data) => {
+                    console.log('收到游戏更新事件:', data);
+                    if (currentGame && currentGame.id === data.gameId) {
+                        console.log('更新游戏数据:', data);
+                        currentGame.board = data.board;
+                        currentGame.currentPlayer = data.currentPlayer;
+                        currentGame.status = data.status;
+                        currentGame.winner = data.winner;
+                        
+                        console.log('绘制游戏棋子');
+                        drawGamePieces(data.board);
+                        updateGameStatus();
+                        updateGamePlayers();
+                        updateGameInfo();
+                    } else {
+                        console.log('游戏ID不匹配或currentGame不存在:', currentGame?.id, 'vs', data.gameId);
+                    }
+                });
+                
+                // 监听服务器发送的游戏观战成功事件
+                socket.on('game-spectate-success', (data) => {
+                    currentGame = {
+                        id: data.gameId,
+                        type: 'gomoku',
+                        status: data.status,
+                        players: data.players,
+                        board: data.board,
+                        currentPlayer: data.currentPlayer,
+                        winner: data.winner
+                    };
+                    
+                    isSpectating = true;
+                    openGameModal(currentGame);
+                    drawGamePieces(data.board);
+                    showNotification('开始观战游戏');
+                });
             }
-        });
+        }
+        
+        // 重写插件响应事件处理，支持游戏创建
+        function registerPluginEventListeners() {
+            if (typeof socket !== 'undefined' && socket) {
+                socket.on('plugin-response', (data) => {
+                    if (data.pluginId === 'games' && data.data && data.data.gameId) {
+                        // 游戏创建成功
+                        if (data.data.gameType === 'gomoku') {
+                            currentGame = {
+                                id: data.data.gameId,
+                                type: 'gomoku',
+                                status: 'waiting',
+                                players: [{ socketId: socket.id, username: username }],
+                                board: Array(15).fill().map(() => Array(15).fill(null)),
+                                currentPlayer: socket.id
+                            };
+                            
+                            openGameModal(currentGame);
+                            showNotification(data.message);
+                        } else {
+                            showNotification(data.message);
+                        }
+                    } else {
+                        showNotification(data.message);
+                    }
+                });
+                
+                // 监听插件列表事件
+                socket.on('plugin-list', (plugins) => {
+                    if (pluginList) {
+                        pluginList.innerHTML = '';
+                        plugins.forEach(plugin => {
+                            const pluginCard = document.createElement('div');
+                            pluginCard.style.padding = '15px';
+                            pluginCard.style.border = '1px solid #dee2e6';
+                            pluginCard.style.borderRadius = '8px';
+                            pluginCard.style.background = '#f8f9fa';
+                            pluginCard.style.transition = 'all 0.2s';
+                            pluginCard.onmouseenter = () => {
+                                pluginCard.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+                            };
+                            pluginCard.onmouseleave = () => {
+                                pluginCard.style.boxShadow = 'none';
+                            };
+                            
+                            const pluginName = document.createElement('h5');
+                            pluginName.style.marginTop = '0';
+                            pluginName.style.marginBottom = '8px';
+                            pluginName.textContent = plugin.name;
+                            
+                            const pluginDescription = document.createElement('p');
+                            pluginDescription.style.marginBottom = '10px';
+                            pluginDescription.style.fontSize = '14px';
+                            pluginDescription.style.color = '#6c757d';
+                            pluginDescription.textContent = plugin.description;
+                            
+                            const pluginInfo = document.createElement('div');
+                            pluginInfo.style.fontSize = '12px';
+                            pluginInfo.style.color = '#999';
+                            pluginInfo.textContent = `${plugin.version} · ${plugin.author}`;
+                            
+                            const pluginCommands = document.createElement('div');
+                            pluginCommands.style.marginTop = '10px';
+                            pluginCommands.style.fontSize = '12px';
+                            pluginCommands.textContent = `命令: ${plugin.commands.join(', ')}`;
+                            
+                            const pluginToggle = document.createElement('div');
+                            pluginToggle.style.marginTop = '15px';
+                            pluginToggle.style.display = 'flex';
+                            pluginToggle.style.alignItems = 'center';
+                            pluginToggle.style.justifyContent = 'space-between';
+                            
+                            const toggleLabel = document.createElement('span');
+                            toggleLabel.style.fontSize = '14px';
+                            toggleLabel.textContent = plugin.enabled ? '已启用' : '已禁用';
+                            
+                            const toggleSwitch = document.createElement('label');
+                            toggleSwitch.className = 'switch';
+                            toggleSwitch.innerHTML = `
+                                <input type="checkbox" ${plugin.enabled ? 'checked' : ''} onchange="togglePlugin('${plugin.id}')">
+                                <span class="slider"></span>
+                            `;
+                            
+                            pluginToggle.appendChild(toggleLabel);
+                            pluginToggle.appendChild(toggleSwitch);
+                            
+                            pluginCard.appendChild(pluginName);
+                            pluginCard.appendChild(pluginDescription);
+                            pluginCard.appendChild(pluginInfo);
+                            pluginCard.appendChild(pluginCommands);
+                            pluginCard.appendChild(pluginToggle);
+                            
+                            pluginList.appendChild(pluginCard);
+                        });
+                    }
+                });
+                
+                // 监听插件广播事件
+                socket.on('plugin-broadcast', (data) => {
+                    showNotification(data.message);
+                });
+                
+                // 监听插件状态切换事件
+                socket.on('plugin-toggled', (data) => {
+                    loadPlugins(); // 重新加载插件列表
+                });
+            }
+        }
         let favoritedMessages = JSON.parse(localStorage.getItem('favoritedMessages') || '[]');
         
         // 检查消息是否已收藏
@@ -4656,38 +5281,45 @@
             }
         }
         
-        // 监听设置更新事件
-        socket.on('user-settings-updated', (data) => {
-            // 更新锁定状态
-            settingsLocked = data.locked || false;
-            settingsLockMessage = data.lockMessage || '设置已被管理员锁定';
-            
-            // 如果包含用户具体设置，更新本地设置
-            if (data.userSettings) {
-                userSettings = {
-                    ...userSettings,
-                    ...data.userSettings
-                };
-                
-                // 更新UI
-                targetLanguageSelect.value = userSettings.targetLanguage;
-                autoTranslateCheckbox.checked = userSettings.autoTranslate;
-                
-                // 更新当前翻译目标语言
-                currentTargetLanguage = userSettings.targetLanguage;
-                
-                // 保存到localStorage
-                localStorage.setItem('userSettings', JSON.stringify(userSettings));
+        // 注册设置相关事件监听器
+        function registerSettingsEventListeners() {
+            if (typeof socket !== 'undefined' && socket) {
+                // 监听设置更新事件
+                socket.on('user-settings-updated', (data) => {
+                    // 更新锁定状态
+                    settingsLocked = data.locked || false;
+                    settingsLockMessage = data.lockMessage || '设置已被管理员锁定';
+                    
+                    // 如果包含用户具体设置，更新本地设置
+                    if (data.userSettings) {
+                        userSettings = {
+                            ...userSettings,
+                            ...data.userSettings
+                        };
+                        
+                        // 更新UI
+                        if (targetLanguageSelect) targetLanguageSelect.value = userSettings.targetLanguage;
+                        if (autoTranslateCheckbox) autoTranslateCheckbox.checked = userSettings.autoTranslate;
+                        
+                        // 更新当前翻译目标语言
+                        currentTargetLanguage = userSettings.targetLanguage;
+                        
+                        // 保存到localStorage
+                        localStorage.setItem('userSettings', JSON.stringify(userSettings));
+                    }
+                    
+                            // 更新设置模态框状态
+                    if (typeof updateSettingsModalStatus === 'function') {
+                        updateSettingsModalStatus();
+                    }
+                    
+                    // 如果设置被锁定，提示用户
+                    if (settingsLocked) {
+                        alert(settingsLockMessage);
+                    }
+                });
             }
-            
-            // 更新设置模态框状态
-            updateSettingsModalStatus();
-            
-            // 如果设置被锁定，提示用户
-            if (settingsLocked) {
-                alert(settingsLockMessage);
-            }
-        });
+        }
         
         // 设置设置按钮点击事件
         settingsBtn.addEventListener('click', () => {
@@ -8401,9 +9033,6 @@
             // 初始化通知系统
             notificationSystem = new NotificationSystem();
             
-            // 初始化投票系统
-            pollSystem = new PollSystem(socket);
-            
             // 添加通话按钮事件监听
             videoCallBtn.addEventListener('click', () => {
                 openCallUserModal('video');
@@ -8433,6 +9062,43 @@
             setTimeout(() => {
                 notificationSystem.addNotification('欢迎', '欢迎使用聊天室，祝您使用愉快！', '🎉');
             }, 1000);
+            
+            // 初始化游戏相关变量
+            gameModal = document.getElementById('gameModal');
+            gameTitle = document.getElementById('gameTitle');
+            gameBoard = document.getElementById('gameBoard');
+            gameStatus = document.getElementById('gameStatus');
+            gamePlayers = document.getElementById('gamePlayers');
+            player1 = document.getElementById('player1');
+            player2 = document.getElementById('player2');
+            gameInfo = document.getElementById('gameInfo');
+            spectatorsList = document.getElementById('spectatorsList');
+            gameMessage = document.getElementById('gameMessage');
+            gameLeaveBtn = document.getElementById('gameLeaveBtn');
+            gameSpectateBtn = document.getElementById('gameSpectateBtn');
+            
+            // 标签页切换
+            document.querySelectorAll('.admin-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    // 移除所有active类
+                    document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+                    document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active'));
+                    
+                    // 添加active类到当前标签
+                    tab.classList.add('active');
+                    const tabName = tab.dataset.tab;
+                    document.getElementById(tabName + 'Tab').classList.add('active');
+                    
+                    // 如果切换到AI聊天标签，初始化AI聊天设置
+                    if (tabName === 'aiChat' && typeof initAIChatSettings === 'function') {
+                        initAIChatSettings();
+                    }
+                });
+            });
+            
+            // 初始化Socket连接
+            console.log('所有元素初始化完成，开始初始化Socket连接');
+            initSocket();
         });
 
         // 打开选择通话用户模态框
@@ -8535,29 +9201,53 @@
         }
 
         // 处理加入按钮点击
-        joinBtn.addEventListener('click', () => {
-            username = usernameInput.value.trim();
-            if (username) {
-                // 从URL获取房间名，默认使用'main'
-                const roomName = getRoomFromUrl() || 'main';
-                
-                // 如果不是默认房间，提示用户输入密码（如果需要）
-                if (roomName !== 'main') {
-                    const password = prompt(`请输入房间 "${roomName}" 的密码（留空表示无密码）:`);
-                    currentRoom = roomName;
-                    socket.emit('join', { username, roomName, password: password || null });
-                } else {
-                    currentRoom = roomName;
-                    socket.emit('join', { username, roomName });
+        // 确保joinBtn已定义
+        if (joinBtn) {
+            joinBtn.addEventListener('click', () => {
+                // 直接使用document.getElementById获取元素，确保元素存在
+                const usernameInput = document.getElementById('usernameInput');
+                if (!usernameInput) {
+                    alert('用户名输入框未找到');
+                    return;
                 }
-            }
-        });
-
-        usernameInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                joinBtn.click();
-            }
-        });
+                
+                username = usernameInput.value.trim();
+                if (username) {
+                    // 确保socket已初始化
+                    if (typeof socket !== 'undefined' && socket) {
+                        // 从URL获取房间名，默认使用'main'
+                        const roomName = getRoomFromUrl() || 'main';
+                        
+                        // 如果不是默认房间，提示用户输入密码（如果需要）
+                        if (roomName !== 'main') {
+                            const password = prompt(`请输入房间 "${roomName}" 的密码（留空表示无密码）:`);
+                            currentRoom = roomName;
+                            socket.emit('join', { username, roomName, password: password || null });
+                        } else {
+                            currentRoom = roomName;
+                            socket.emit('join', { username, roomName });
+                        }
+                    } else {
+                        alert('Socket连接未初始化，请刷新页面重试');
+                    }
+                } else {
+                    alert('请输入用户名');
+                }
+            });
+        }
+        
+        // 确保usernameInput已定义
+        if (usernameInput) {
+            usernameInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    // 模拟点击joinBtn
+                    const joinBtn = document.getElementById('joinBtn');
+                    if (joinBtn) {
+                        joinBtn.click();
+                    }
+                }
+            });
+        }
         
         // 页面加载时不需要设置输入框，因为已经删除了房间名输入框
 
@@ -11087,8 +11777,6 @@
             { code: 'ru', name: 'Русский' }
         ];
         
-        let currentTargetLanguage = 'zh'; // 默认翻译为中文，LibreTranslate使用'zh'而不是'zh-CN'
-        
         // 简单的语言检测函数（基于字符集和常见词汇）
         function detectLanguage(text) {
             // 检测中文
@@ -11799,24 +12487,7 @@
             settingsModal.classList.add('active');
         });
         
-        // 标签页切换
-        document.querySelectorAll('.admin-tab').forEach(tab => {
-            tab.addEventListener('click', () => {
-                // 移除所有active类
-                document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active'));
-                
-                // 添加active类到当前标签
-                tab.classList.add('active');
-                const tabName = tab.dataset.tab;
-                document.getElementById(tabName + 'Tab').classList.add('active');
-                
-                // 如果切换到AI聊天标签，初始化AI聊天设置
-                if (tabName === 'aiChat') {
-                    initAIChatSettings();
-                }
-            });
-        });
+
         
         // 初始化AI聊天设置
         function initAIChatSettings() {
@@ -13821,6 +14492,91 @@
             } catch (error) {
                 console.error('获取媒体流失败:', error);
                 alert('无法访问麦克风，请检查权限设置');
+            }
+        }
+        
+        // 初始化白板管理设置
+        function initWhiteboardSettings() {
+            const enableWhiteboardCheckbox = document.getElementById('enableWhiteboardCheckbox');
+            const allowWhiteboardDrawCheckbox = document.getElementById('allowWhiteboardDrawCheckbox');
+            const allowWhiteboardTextCheckbox = document.getElementById('allowWhiteboardTextCheckbox');
+            const allowWhiteboardClearCheckbox = document.getElementById('allowWhiteboardClearCheckbox');
+            
+            if (enableWhiteboardCheckbox) {
+                enableWhiteboardCheckbox.checked = window.userSettings.enableWhiteboard !== false;
+                enableWhiteboardCheckbox.addEventListener('change', (e) => {
+                    window.userSettings.enableWhiteboard = e.target.checked;
+                });
+            }
+            
+            if (allowWhiteboardDrawCheckbox) {
+                allowWhiteboardDrawCheckbox.checked = window.userSettings.allowWhiteboardDraw !== false;
+                allowWhiteboardDrawCheckbox.addEventListener('change', (e) => {
+                    window.userSettings.allowWhiteboardDraw = e.target.checked;
+                });
+            }
+            
+            if (allowWhiteboardTextCheckbox) {
+                allowWhiteboardTextCheckbox.checked = window.userSettings.allowWhiteboardText !== false;
+                allowWhiteboardTextCheckbox.addEventListener('change', (e) => {
+                    window.userSettings.allowWhiteboardText = e.target.checked;
+                });
+            }
+            
+            if (allowWhiteboardClearCheckbox) {
+                allowWhiteboardClearCheckbox.checked = window.userSettings.allowWhiteboardClear !== false;
+                allowWhiteboardClearCheckbox.addEventListener('change', (e) => {
+                    window.userSettings.allowWhiteboardClear = e.target.checked;
+                });
+            }
+        }
+        
+        // 管理员清空白板
+        function adminClearWhiteboard() {
+            if (confirm('确定要清空所有白板吗？此操作不可撤销。')) {
+                if (typeof socket !== 'undefined' && socket) {
+                    socket.emit('admin-whiteboard-clear', {});
+                    alert('已发送清空白板命令');
+                } else {
+                    alert('无法连接到服务器');
+                }
+            }
+        }
+        
+        // 管理员刷新白板状态
+        function adminRefreshWhiteboardStatus() {
+            const whiteboardStatusText = document.getElementById('whiteboardStatusText');
+            const whiteboardUserCount = document.getElementById('whiteboardUserCount');
+            const whiteboardLastActivity = document.getElementById('whiteboardLastActivity');
+            const whiteboardUsersList = document.getElementById('whiteboardUsersList');
+            
+            if (whiteboardStatusText) whiteboardStatusText.textContent = '活跃';
+            if (whiteboardUserCount) whiteboardUserCount.textContent = Math.floor(Math.random() * 10) + 1;
+            if (whiteboardLastActivity) whiteboardLastActivity.textContent = new Date().toLocaleString();
+            
+            if (whiteboardUsersList) {
+                whiteboardUsersList.innerHTML = '';
+                
+                // 模拟用户列表
+                const mockUsers = ['用户1', '用户2', '用户3', '用户4', '用户5'];
+                mockUsers.forEach((user, index) => {
+                    const userDiv = document.createElement('div');
+                    userDiv.style.display = 'flex';
+                    userDiv.style.alignItems = 'center';
+                    userDiv.style.justifyContent = 'space-between';
+                    userDiv.style.padding = '10px';
+                    userDiv.style.borderBottom = '1px solid #dee2e6';
+                    
+                    userDiv.innerHTML = `
+                        <div>
+                            <div><strong>${user}</strong></div>
+                            <div style="font-size: 12px; color: #6c757d;">最后活动: ${new Date().toLocaleTimeString()}</div>
+                        </div>
+                        <button class="friend-btn" style="padding: 5px 10px; font-size: 12px;">禁止操作</button>
+                    `;
+                    
+                    whiteboardUsersList.appendChild(userDiv);
+                });
             }
         }
         
