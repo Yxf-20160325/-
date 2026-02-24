@@ -2865,13 +2865,23 @@
 
         // 初始化Socket连接
         let socket;
+        let connectionErrorShown = false;
         function initSocket() {
             console.log('初始化Socket连接');
-            socket = io();
+            // 配置socket.io客户端，减少重连次数和超时时间
+            socket = io({
+                reconnection: true,
+                reconnectionAttempts: 3, // 最多尝试3次重连
+                reconnectionDelay: 1000, // 重连延迟1秒
+                reconnectionDelayMax: 5000, // 最大重连延迟5秒
+                timeout: 10000, // 连接超时10秒
+                transports: ['websocket', 'polling']
+            });
             
             // Socket连接状态管理
             socket.on('connect', () => {
                 console.log('Socket连接成功:', socket.id);
+                connectionErrorShown = false; // 重置错误提示状态
                 
                 // 在连接成功后注册核心事件监听器
                 if (typeof registerCoreEventListeners === 'function') {
@@ -2923,6 +2933,48 @@
 
             socket.on('connect_error', (error) => {
                 console.error('Socket连接错误:', error);
+                if (!connectionErrorShown) {
+                    connectionErrorShown = true;
+                    // 显示连接错误提示
+                    const modal = document.createElement('div');
+                    modal.className = 'modal active';
+                    modal.style.cssText = `
+                        position: fixed;
+                        top: 0;
+                        left: 0;
+                        width: 100%;
+                        height: 100%;
+                        background: rgba(0, 0, 0, 0.5);
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                        z-index: 9999;
+                    `;
+                    
+                    const modalContent = document.createElement('div');
+                    modalContent.className = 'modal-content';
+                    modalContent.style.cssText = `
+                        background: white;
+                        padding: 30px;
+                        border-radius: 10px;
+                        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+                        max-width: 500px;
+                        width: 90%;
+                        text-align: center;
+                    `;
+                    
+                    modalContent.innerHTML = `
+                        <h3 style="margin-top: 0; margin-bottom: 20px; color: #dc3545;">网络连接错误</h3>
+                        <p style="margin-bottom: 20px; font-size: 16px;">无法连接到聊天服务器，请检查网络连接后刷新页面重试。</p>
+                        <div style="display: flex; gap: 10px; justify-content: center;">
+                            <button onclick="location.reload()" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px;">刷新页面</button>
+                            <button onclick="this.parentElement.parentElement.parentElement.remove()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px;">关闭</button>
+                        </div>
+                    `;
+                    
+                    modal.appendChild(modalContent);
+                    document.body.appendChild(modal);
+                }
             });
         }
 
@@ -8534,6 +8586,11 @@
             }
             
             createPollButton() {
+                // 检查是否已经存在投票按钮
+                if (document.getElementById('pollBtn')) {
+                    return; // 已经存在投票按钮，不需要再创建
+                }
+                
                 // 创建投票按钮
                 const pollBtn = document.createElement('button');
                 pollBtn.className = 'action-btn';
@@ -8541,8 +8598,8 @@
                 pollBtn.title = '创建投票';
                 pollBtn.innerHTML = '📊';
                 
-                // 添加到操作按钮区域
-                const actionButtons = document.querySelector('.action-buttons');
+                // 添加到第一个操作按钮区域（主聊天界面）
+                const actionButtons = document.querySelector('.input-area .action-buttons');
                 if (actionButtons) {
                     actionButtons.appendChild(pollBtn);
                 }
@@ -10548,15 +10605,15 @@
             // 生成实时位置消息ID
             realTimeLocationMessageId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
             
-            alert('开始共享实时位置，每5秒更新一次');
+            alert('开始共享实时位置，每10秒更新一次');
             
             console.log('共享实时位置函数被调用，isSharingRealTimeLocation:', isSharingRealTimeLocation);
             
-            // 使用最佳定位参数
+            // 优化定位参数，减少多次定位
             const options = {
-                enableHighAccuracy: true, // 启用高精度模式
+                enableHighAccuracy: false, // 关闭高精度模式，减少定位次数
                 timeout: 60000, // 增加超时时间到60秒
-                maximumAge: 0 // 禁用位置缓存
+                maximumAge: 10000 // 允许使用30秒内的缓存位置
             };
             
             console.log('用户点击了共享实时位置按钮，开始获取位置...');
@@ -10577,7 +10634,7 @@
                         return;
                     }
                     
-                    // 设置定时器，每5秒更新一次位置
+                    // 设置定时器，每10秒更新一次位置
                     realTimeLocationInterval = setInterval(() => {
                         console.log('定时更新实时位置...');
                         navigator.geolocation.getCurrentPosition(
@@ -10596,7 +10653,7 @@
                             },
                             options
                         );
-                    }, 5000);
+                    }, 30000);
                 },
                 (error) => {
                     console.error('获取实时位置失败:', error);
