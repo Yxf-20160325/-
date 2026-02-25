@@ -12252,6 +12252,127 @@ io.on('message', (data) => {
                         }
                     }
                 });
+                
+                // 处理批量消息
+                socket.on('message-batch', (messages) => {
+                    messages.forEach(data => {
+                        // 检查是否是实时位置消息更新
+                        if (data.type === 'location' && data.isRealTime) {
+                            // 查找已有的实时位置消息
+                            const existingMessage = document.querySelector(`[data-message-id="${data.id}"]`);
+                            if (existingMessage) {
+                                // 更新已有的消息
+                                const messageDiv = document.createElement('div');
+                                messageDiv.className = 'message';
+                                messageDiv.dataset.messageId = data.id;
+                                
+                                let contentHtml;
+                                const { latitude, longitude, locationName, isRealTime, realTimeTimestamp } = data;
+                                const mapUrl = `https://uri.amap.com/marker?position=${longitude},${latitude}&name=${encodeURIComponent(locationName)}&coordinate=gaode`;
+                                const timeString = realTimeTimestamp ? new Date(realTimeTimestamp).toLocaleTimeString() : '';
+                                const realTimeBadge = isRealTime ? `<span style="background: #17a2b8; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; margin-left: 5px;">实时</span>` : '';
+                                const viewButton = isRealTime ? `<button style="background: #667eea; color: white; border: none; border-radius: 5px; padding: 5px 10px; font-size: 12px; cursor: pointer; margin-top: 5px;" onclick="showRealTimeLocation('${latitude}', '${longitude}', '${locationName}')">查看实时位置</button>` : '';
+                                
+                                contentHtml = `
+                                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <span>📍</span>
+                                            <span>${locationName}</span>
+                                            ${realTimeBadge}
+                                            ${timeString ? `<span style="font-size: 12px; color: #666; margin-left: auto;">${timeString}</span>` : ''}
+                                        </div>
+                                        <a href="${mapUrl}" target="_blank" rel="noopener noreferrer" style="color: #667eea; text-decoration: underline; font-size: 14px;">
+                                            在高德地图中查看
+                                        </a>
+                                        <div style="font-size: 12px; color: #666;">
+                                            纬度: ${latitude.toFixed(4)}, 经度: ${longitude.toFixed(4)}
+                                        </div>
+                                        ${viewButton}
+                                    </div>
+                                `;
+                                
+                                // 检查消息是否已收藏
+                                const isFavorited = isMessageFavorited(data.id);
+                                
+                                // 只有文本消息才显示翻译按钮
+                                let translateBtnHtml = data.type === 'text' ? `<button class="translate-btn" onclick="translateMessage('${data.id}', currentTargetLanguage)" title="翻译消息">🌐</button>` : '';
+                                
+                                let actionsHtml = `
+                                    <div class="message-actions">
+                                        <button class="favorite-btn ${isFavorited ? 'favorited' : ''}" onclick="toggleFavorite('${data.id}')" title="${isFavorited ? '取消收藏' : '收藏消息'}">⭐</button>
+                                        ${translateBtnHtml}
+                                        ${data.username === username ? `<button class="recall-btn" onclick="recallMessage('${data.id}')">撤回</button>` : ''}
+                                    </div>
+                                `;
+                                
+                                // 添加已读状态显示
+                                const isRead = data.readBy && data.readBy.length > 1;
+                                const readStatusHtml = `<span class="read-status" ${isRead ? 'title="已读"' : 'title="未读"'}>${isRead ? '✓✓' : '✓'}</span>`;
+                                
+                                // 获取用户头像
+                                const avatarUrl = data.avatar || getUserAvatar(data.username);
+                                
+                                messageDiv.innerHTML = `
+                                    <input type="checkbox" class="message-checkbox" data-message-id="${data.id}" onclick="toggleMessageSelection('${data.id}')">
+                                    <img src="${avatarUrl}" alt="${data.username}" class="message-avatar">
+                                    <div class="message-content-wrapper">
+                                        <div class="message-header">
+                                            <span class="username" style="color: ${data.color}">${data.username}</span>
+                                            <span class="timestamp">${data.timestamp}</span>
+                                            ${data.username === username ? readStatusHtml : ''}
+                                        </div>
+                                        <div class="message-content">${contentHtml}</div>
+                                        ${actionsHtml}
+                                    </div>
+                                `;
+                                
+                                // 替换已有的消息
+                                existingMessage.replaceWith(messageDiv);
+                            } else {
+                                // 如果消息不存在，添加新消息
+                                addMessage(data);
+                                
+                                // 新消息震动提醒 - 检查用户震动通知设置和交互激活状态，管理员不受此设置影响
+                                if (data.username !== username && (window.userSettings.vibrateNotification || data.role === 'admin' || data.role === 'superadmin')) {
+                                    if (userInteractionActivated) {
+                                        vibrate();
+                                    } else {
+                                        // 如果用户未激活，显示启用通知按钮
+                                        createEnableNotificationsButton();
+                                        console.log('需要用户交互才能启用震动通知');
+                                    }
+                                }
+                                
+                                // 只有当消息不是来自当前用户时，才生成AI回复建议
+                                if (data.username !== username) {
+                                    generateAIResponse(data.message);
+                                }
+                            }
+                        } else {
+                            // 对于其他消息，添加新消息
+                            addMessage(data);
+                            
+                            // 新消息震动提醒 - 检查用户震动通知设置和交互激活状态，管理员不受此设置影响
+                            if (data.username !== username && (window.userSettings.vibrateNotification || data.role === 'admin' || data.role === 'superadmin')) {
+                                if (userInteractionActivated) {
+                                    vibrate();
+                                } else {
+                                    // 如果用户未激活，显示启用通知按钮
+                                    createEnableNotificationsButton();
+                                    console.log('需要用户交互才能启用震动通知');
+                                }
+                            }
+                            
+                            // 只有当消息不是来自当前用户时，才生成AI回复建议
+                            if (data.username !== username) {
+                                generateAIResponse(data.message);
+                            }
+                        }
+                    });
+                    
+                    // 滚动到底部
+                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                });
             }
         }
         
