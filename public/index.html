@@ -4070,6 +4070,9 @@ io.on('message', (data) => {
                                 
                                 // 初始化通话系统
                                 callSystem = new CallSystem(socket, username);
+                                
+                                // 保存页面状态
+                                savePageState();
                             }
                         }
                     }
@@ -9590,6 +9593,64 @@ io.on('message', (data) => {
             modal.classList.remove('active');
         }
         
+        // 保存页面状态到localStorage
+        function savePageState() {
+            try {
+                const state = {
+                    username: username,
+                    currentRoom: currentRoom,
+                    lastActive: Date.now()
+                };
+                localStorage.setItem('chatRoomState', JSON.stringify(state));
+                console.log('页面状态已保存');
+            } catch (error) {
+                console.error('保存页面状态失败:', error);
+            }
+        }
+        
+        // 从localStorage恢复页面状态
+        function restorePageState() {
+            try {
+                const savedState = localStorage.getItem('chatRoomState');
+                if (savedState) {
+                    const state = JSON.parse(savedState);
+                    // 检查状态是否在1小时内
+                    if (Date.now() - state.lastActive < 3600000) {
+                        username = state.username;
+                        currentRoom = state.currentRoom;
+                        console.log('页面状态已恢复:', state);
+                        return true;
+                    } else {
+                        // 状态过期，清除
+                        localStorage.removeItem('chatRoomState');
+                        return false;
+                    }
+                }
+                return false;
+            } catch (error) {
+                console.error('恢复页面状态失败:', error);
+                return false;
+            }
+        }
+        
+        // 监听页面可见性变化
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                // 页面被隐藏，保存状态
+                savePageState();
+            } else {
+                // 页面被显示，检查状态
+                const restored = restorePageState();
+                if (restored && socket && socket.connected && username && currentRoom) {
+                    // 如果已连接且有保存的状态，确保在正确的房间
+                    console.log('页面重新激活，确保在正确的房间');
+                }
+            }
+        });
+        
+        // 监听页面卸载事件
+        window.addEventListener('beforeunload', savePageState);
+        
         // 页面加载完成后初始化
         document.addEventListener('DOMContentLoaded', () => {
             // 首先初始化界面语言
@@ -9601,6 +9662,9 @@ io.on('message', (data) => {
             
             // 初始化通知系统
             notificationSystem = new NotificationSystem();
+            
+            // 恢复页面状态
+            const restored = restorePageState();
             
             // 添加通话按钮事件监听
             videoCallBtn.addEventListener('click', () => {
@@ -9668,6 +9732,17 @@ io.on('message', (data) => {
             // 初始化Socket连接
             console.log('所有元素初始化完成，开始初始化Socket连接');
             initSocket();
+            
+            // 如果恢复了状态，尝试自动加入房间
+            if (restored && username && currentRoom) {
+                console.log('尝试自动加入房间:', currentRoom);
+                // 等待socket连接后加入房间
+                setTimeout(() => {
+                    if (socket && socket.connected) {
+                        socket.emit('join', { username, roomName: currentRoom });
+                    }
+                }, 1000);
+            }
         });
 
         // 打开选择通话用户模态框
