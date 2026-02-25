@@ -8,6 +8,10 @@ const fs = require('fs');
 // 导入病毒扫描器
 const virusScanner = require('./utils/virus-scanner.js');
 
+// 全局变量
+const rooms = new Map();
+const users = new Map();
+
 const app = express();
 app.use(cors({
     origin: ['*'],
@@ -143,6 +147,29 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '300mb' }), asyn
         // 构建响应URL
         const fileUrl = `/uploads/${relativePath ? relativePath + '/' + filename : filename}`;
         
+        // 更新用户统计数据（如果能获取到用户信息）
+        const userIP = req.ip;
+        const user = Array.from(users.values()).find(u => u.ip === userIP);
+        if (user) {
+            user.stats.filesUploaded++;
+            user.experience += 5; // 上传文件获得更多经验值
+            
+            // 检查是否升级
+            const oldLevel = user.level;
+            const newLevel = Math.floor(user.experience / 100) + 1;
+            if (newLevel > oldLevel) {
+                user.level = newLevel;
+                // 通知用户升级
+                if (user.socketId) {
+                    io.to(user.socketId).emit('level-up', { oldLevel, newLevel, experience: user.experience });
+                }
+                console.log(`${user.username} 升级到 ${newLevel} 级`);
+            }
+            
+            // 保存到本地存储
+            saveToStorage();
+        }
+        
         res.json({
             name: filename,
             size: stats.size,
@@ -163,8 +190,7 @@ app.use(express.json({ limit: '30mb' }));
 // 应用API速率限制中间件到所有API端点
 app.use('/api/', apiRateLimitMiddleware);
 
-// 应用CSRF保护中间件到所有非GET请求的API端点
-app.use('/api/', csrfProtectionMiddleware);
+
 
 // 确保 uploads 目录存在
 if (!fs.existsSync(path.join(__dirname, 'uploads'))) {
@@ -182,6 +208,812 @@ let virusFiles = [];
 
 // 病毒检测配置
 let virusScanEnabled = true;
+
+// 本地存储配置
+const STORAGE_DIR = path.join(__dirname, 'storage');
+const USERS_FILE = path.join(STORAGE_DIR, 'users.json');
+const ROOMS_FILE = path.join(STORAGE_DIR, 'rooms.json');
+
+// 确保存储目录存在
+if (!fs.existsSync(STORAGE_DIR)) {
+    fs.mkdirSync(STORAGE_DIR, { recursive: true });
+}
+
+// 加载本地存储的数据
+function loadFromStorage() {
+    try {
+        // 加载用户数据
+        if (fs.existsSync(USERS_FILE)) {
+            const usersData = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+            // 注意：这里只加载用户基本信息，不包括socketId等临时数据
+            console.log('从本地存储加载用户数据:', usersData.length, '个用户');
+        }
+        
+        // 加载房间数据
+        if (fs.existsSync(ROOMS_FILE)) {
+            const roomsData = JSON.parse(fs.readFileSync(ROOMS_FILE, 'utf8'));
+            roomsData.forEach(room => {
+                rooms.set(room.roomName, room);
+            });
+            console.log('从本地存储加载房间数据:', roomsData.length, '个房间');
+        }
+    } catch (error) {
+        console.error('加载本地存储失败:', error);
+    }
+}
+
+// 保存数据到本地存储
+function saveToStorage() {
+    try {
+        // 保存用户数据（只保存基本信息）
+        const usersData = Array.from(users.values()).map(user => ({
+            username: user.username,
+            color: user.color,
+            role: user.role,
+            status: user.status,
+            lastSeen: user.lastSeen,
+            profile: user.profile,
+            level: user.level,
+            experience: user.experience,
+            achievements: user.achievements,
+            stats: user.stats,
+            userSettings: user.userSettings,
+            aiSettings: user.aiSettings
+        }));
+        fs.writeFileSync(USERS_FILE, JSON.stringify(usersData, null, 2));
+        
+        // 保存房间数据
+        const roomsData = Array.from(rooms.values());
+        fs.writeFileSync(ROOMS_FILE, JSON.stringify(roomsData, null, 2));
+        
+        console.log('数据已保存到本地存储');
+    } catch (error) {
+        console.error('保存本地存储失败:', error);
+    }
+}
+
+// 定期保存数据
+setInterval(saveToStorage, 60000); // 每分钟保存一次
+
+// 启动时加载数据
+loadFromStorage();
+
+// 推送通知系统
+const pushSubscriptions = new Map(); // 存储用户的推送订阅
+
+// 注册推送订阅
+app.post('/api/push/subscribe', express.json(), (req, res) => {
+    try {
+        const { socketId, subscription } = req.body;
+        if (!socketId || !subscription) {
+            return res.status(400).json({ error: '缺少必要参数' });
+        }
+        
+        pushSubscriptions.set(socketId, subscription);
+        console.log(`用户 ${socketId} 注册了推送订阅`);
+        res.json({ success: true, message: '推送订阅成功' });
+    } catch (error) {
+        console.error('推送订阅失败:', error);
+        res.status(500).json({ error: '推送订阅失败' });
+    }
+});
+
+// 取消推送订阅
+app.post('/api/push/unsubscribe', express.json(), (req, res) => {
+    try {
+        const { socketId } = req.body;
+        if (!socketId) {
+            return res.status(400).json({ error: '缺少必要参数' });
+        }
+        
+        pushSubscriptions.delete(socketId);
+        console.log(`用户 ${socketId} 取消了推送订阅`);
+        res.json({ success: true, message: '推送订阅已取消' });
+    } catch (error) {
+        console.error('取消推送订阅失败:', error);
+        res.status(500).json({ error: '取消推送订阅失败' });
+    }
+});
+
+// 发送推送通知
+function sendPushNotification(socketId, title, body, data = {}) {
+    const subscription = pushSubscriptions.get(socketId);
+    if (subscription) {
+        // 这里可以集成实际的推送服务，如 Firebase Cloud Messaging 或 Web Push
+        console.log(`发送推送通知给 ${socketId}: ${title} - ${body}`);
+        // 实际的推送逻辑
+    }
+}
+
+// 移动应用接口
+
+// 移动应用登录
+app.post('/api/mobile/login', express.json(), (req, res) => {
+    try {
+        const { username, roomName = 'main', password = null } = req.body;
+        
+        if (!username) {
+            return res.status(400).json({ error: '用户名不能为空' });
+        }
+        
+        // 检查房间是否存在
+        const room = rooms.get(roomName);
+        if (!room) {
+            return res.status(404).json({ error: '房间不存在' });
+        }
+        
+        // 检查密码是否正确
+        if (room.password && room.password !== password) {
+            return res.status(401).json({ error: '密码错误' });
+        }
+        
+        // 检查用户名是否已存在
+        const existingUser = Array.from(users.values()).find(user => user.username === username);
+        if (existingUser) {
+            return res.status(400).json({ error: '用户名已存在' });
+        }
+        
+        // 生成临时socketId（移动应用使用）
+        const mobileSocketId = 'mobile-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        
+        // 创建用户对象
+        const user = {
+            username: username,
+            color: getRandomColor(),
+            socketId: mobileSocketId,
+            ip: req.ip,
+            roomName: roomName,
+            role: 'user',
+            permissions: { ...defaultPermissions },
+            status: 'online',
+            lastSeen: new Date().toISOString(),
+            profile: {
+                avatar: null,
+                bio: '',
+                age: null,
+                location: '',
+                website: ''
+            },
+            level: 1,
+            experience: 0,
+            achievements: [],
+            stats: {
+                messagesSent: 0,
+                filesUploaded: 0,
+                callsMade: 0,
+                friendsAdded: 0,
+                timeSpent: 0
+            },
+            settings: { locked: false, lockMessage: '设置已被管理员锁定' },
+            userSettings: {
+                targetLanguage: 'zh',
+                autoTranslate: false,
+                soundNotification: true,
+                mentionNotification: true,
+                theme: 'light',
+                fontSize: 'medium',
+                notifications: {
+                    messages: true,
+                    calls: true,
+                    friendRequests: true,
+                    mentions: true
+                }
+            },
+            aiSettings: {
+                enable: false,
+                model: 'glm4',
+                glm4: {
+                    apiKey: ''
+                },
+                deepseek: {
+                    modelName: '',
+                    apiKey: ''
+                },
+                siliconflow: {
+                    modelName: '',
+                    apiKey: ''
+                },
+                custom: {
+                    apiUrl: '',
+                    apiKey: '',
+                    modelName: ''
+                }
+            }
+        };
+        
+        // 保存用户
+        users.set(mobileSocketId, user);
+        
+        // 将用户添加到房间
+        room.users.push(mobileSocketId);
+        
+        // 更新房间统计数据
+        room.stats.totalUsers++;
+        room.stats.currentUsers = room.users.length;
+        if (room.users.length > room.stats.peakUsers) {
+            room.stats.peakUsers = room.users.length;
+        }
+        room.stats.lastActivity = new Date();
+        
+        // 生成认证令牌
+        const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        
+        res.json({
+            success: true,
+            token: token,
+            user: {
+                username: user.username,
+                color: user.color,
+                socketId: user.socketId,
+                roomName: user.roomName,
+                status: user.status,
+                profile: user.profile,
+                level: user.level,
+                experience: user.experience
+            },
+            room: {
+                roomName: room.roomName,
+                userCount: room.users.length,
+                settings: room.settings
+            }
+        });
+        
+    } catch (error) {
+        console.error('移动应用登录失败:', error);
+        res.status(500).json({ error: '登录失败' });
+    }
+});
+
+// 移动应用获取消息
+app.get('/api/mobile/messages', express.json(), (req, res) => {
+    try {
+        const { token, roomName, limit = 50, offset = 0 } = req.body;
+        
+        if (!token || !roomName) {
+            return res.status(400).json({ error: '缺少必要参数' });
+        }
+        
+        const room = rooms.get(roomName);
+        if (!room) {
+            return res.status(404).json({ error: '房间不存在' });
+        }
+        
+        // 优先从缓存获取消息
+        let messages = getMessagesFromCache(roomName, limit, offset);
+        
+        // 如果缓存中没有足够的消息，从房间消息中获取
+        if (messages.length < limit) {
+            messages = room.messages
+                .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+                .slice(offset, offset + limit);
+            
+            // 更新缓存
+            messages.forEach(message => {
+                addMessageToCache(roomName, message);
+            });
+        }
+        
+        res.json({
+            success: true,
+            messages: messages,
+            total: room.messages.length
+        });
+        
+    } catch (error) {
+        console.error('获取消息失败:', error);
+        res.status(500).json({ error: '获取消息失败' });
+    }
+});
+
+// 移动应用发送消息
+app.post('/api/mobile/send-message', express.json(), (req, res) => {
+    try {
+        const { token, roomName, message, type = 'text', fileName, fileSize, contentType } = req.body;
+        
+        if (!token || !roomName || !message) {
+            return res.status(400).json({ error: '缺少必要参数' });
+        }
+        
+        // 查找用户（这里简化处理，实际应该验证token）
+        const user = Array.from(users.values()).find(u => u.socketId.includes('mobile-'));
+        if (!user) {
+            return res.status(401).json({ error: '用户未登录' });
+        }
+        
+        const room = rooms.get(roomName);
+        if (!room) {
+            return res.status(404).json({ error: '房间不存在' });
+        }
+        
+        // 生成消息ID
+        const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        
+        // 创建消息数据
+        const messageData = {
+            id: messageId,
+            username: user.username,
+            color: user.color,
+            message: message,
+            type: type,
+            timestamp: new Date().toLocaleTimeString(),
+            senderSocketId: user.socketId,
+            readBy: [user.socketId],
+            pinned: false,
+            pinnedBy: null,
+            pinnedAt: null,
+            fileName: fileName,
+            fileSize: fileSize,
+            contentType: contentType
+        };
+        
+        // 添加消息到房间
+        room.messages.push(messageData);
+        if (room.messages.length > 100) {
+            room.messages.shift();
+        }
+        
+        // 更新用户统计数据
+        user.stats.messagesSent++;
+        user.experience += 1;
+        
+        // 检查是否升级
+        const oldLevel = user.level;
+        const newLevel = Math.floor(user.experience / 100) + 1;
+        if (newLevel > oldLevel) {
+            user.level = newLevel;
+        }
+        
+        // 广播消息
+        room.users.forEach(userId => {
+            const roomUser = users.get(userId);
+            if (roomUser && roomUser.permissions.allowViewMessages) {
+                // 使用批量发送消息
+                sendBatchMessage(userId, messageData);
+                
+                // 发送推送通知给离线用户
+                if (roomUser.status === 'offline') {
+                    sendPushNotification(userId, `来自 ${user.username} 的消息`, message.substring(0, 50) + (message.length > 50 ? '...' : ''), {
+                        type: 'message',
+                        roomName: room.roomName,
+                        messageId: messageId
+                    });
+                }
+            }
+        });
+        
+        // 发送给管理员
+        if (adminSocketId) {
+            sendBatchMessage(adminSocketId, messageData);
+        }
+        
+        res.json({
+            success: true,
+            message: messageData
+        });
+        
+    } catch (error) {
+        console.error('发送消息失败:', error);
+        res.status(500).json({ error: '发送消息失败' });
+    }
+});
+
+// 插件系统
+const plugins = new Map();
+const pluginDir = path.join(__dirname, 'plugins');
+
+// 确保插件目录存在
+if (!fs.existsSync(pluginDir)) {
+    fs.mkdirSync(pluginDir, { recursive: true });
+}
+
+// 加载插件
+function loadPlugins() {
+    try {
+        const pluginFiles = fs.readdirSync(pluginDir).filter(file => file.endsWith('.js'));
+        
+        pluginFiles.forEach(file => {
+            try {
+                const pluginPath = path.join(pluginDir, file);
+                const plugin = require(pluginPath);
+                
+                if (plugin.name && plugin.init) {
+                    plugin.init(app, io, { users, rooms, messages });
+                    plugins.set(plugin.name, plugin);
+                    console.log(`插件加载成功: ${plugin.name}`);
+                }
+            } catch (error) {
+                console.error(`加载插件 ${file} 失败:`, error);
+            }
+        });
+        
+        console.log(`共加载 ${plugins.size} 个插件`);
+    } catch (error) {
+        console.error('加载插件失败:', error);
+    }
+}
+
+// 卸载插件
+function unloadPlugin(pluginName) {
+    try {
+        const plugin = plugins.get(pluginName);
+        if (plugin && plugin.destroy) {
+            plugin.destroy();
+        }
+        plugins.delete(pluginName);
+        console.log(`插件卸载成功: ${pluginName}`);
+    } catch (error) {
+        console.error(`卸载插件 ${pluginName} 失败:`, error);
+    }
+}
+
+// 插件管理API
+app.get('/api/plugins', (req, res) => {
+    try {
+        // 定义自带插件列表
+        const builtinPlugins = ['weather'];
+        
+        const pluginList = Array.from(plugins.values()).map(plugin => ({
+            name: plugin.name,
+            version: plugin.version || '1.0.0',
+            description: plugin.description || '',
+            isBuiltin: builtinPlugins.includes(plugin.name)
+        }));
+        res.json({ plugins: pluginList });
+    } catch (error) {
+        console.error('获取插件列表失败:', error);
+        res.status(500).json({ error: '获取插件列表失败' });
+    }
+});
+
+app.post('/api/plugins/reload', (req, res) => {
+    try {
+        // 卸载所有插件
+        plugins.forEach((plugin, name) => {
+            unloadPlugin(name);
+        });
+        
+        // 重新加载插件
+        loadPlugins();
+        
+        res.json({ success: true, message: '插件已重新加载' });
+    } catch (error) {
+        console.error('重新加载插件失败:', error);
+        res.status(500).json({ error: '重新加载插件失败' });
+    }
+});
+
+// 上传/创建插件API
+app.post('/api/plugins', express.json(), (req, res) => {
+    try {
+        const { name, description, code } = req.body;
+        
+        if (!name || !code) {
+            return res.status(400).json({ error: '缺少必要参数' });
+        }
+        
+        // 验证插件名称
+        const validName = name.replace(/[^a-zA-Z0-9_-]/g, '');
+        if (!validName) {
+            return res.status(400).json({ error: '无效的插件名称' });
+        }
+        
+        // 验证代码安全性（简单的安全检查）
+        const unsafePatterns = [
+            'require("child_process")',
+            'require("fs")',
+            'require("net")',
+            'exec(',
+            'spawn(',
+            'fork(',
+            'fs.readFile',
+            'fs.writeFile',
+            'fs.unlink',
+            'process.exit'
+        ];
+        
+        for (const pattern of unsafePatterns) {
+            if (code.includes(pattern)) {
+                return res.status(400).json({ error: '插件代码包含不安全的操作' });
+            }
+        }
+        
+        // 生成插件文件内容
+        const pluginContent = `// ${description || '用户自定义插件'}
+module.exports = {
+    name: "${validName}",
+    description: "${description || ''}",
+    version: "1.0.0",
+    init: function(app, io, context) {
+        const { users, rooms, messages } = context;
+        
+        // 插件初始化代码
+        ${code}
+    },
+    destroy: function() {
+        // 插件销毁代码
+    }
+};
+`;
+        
+        // 写入插件文件
+        const pluginPath = path.join(pluginDir, `${validName}.js`);
+        fs.writeFileSync(pluginPath, pluginContent);
+        
+        // 重新加载插件
+        loadPlugins();
+        
+        res.json({ success: true, message: '插件创建成功', pluginName: validName });
+    } catch (error) {
+        console.error('创建插件失败:', error);
+        res.status(500).json({ error: '创建插件失败' });
+    }
+});
+
+// 删除插件API
+app.delete('/api/plugins/:name', (req, res) => {
+    try {
+        const { name } = req.params;
+        
+        // 检查是否为自带插件
+        const builtinPlugins = ['weather'];
+        if (builtinPlugins.includes(name)) {
+            return res.status(403).json({ error: '自带插件禁止删除' });
+        }
+        
+        // 卸载插件
+        unloadPlugin(name);
+        
+        // 删除插件文件
+        const pluginPath = path.join(pluginDir, `${name}.js`);
+        if (fs.existsSync(pluginPath)) {
+            fs.unlinkSync(pluginPath);
+        }
+        
+        res.json({ success: true, message: '插件删除成功' });
+    } catch (error) {
+        console.error('删除插件失败:', error);
+        res.status(500).json({ error: '删除插件失败' });
+    }
+});
+
+// 获取插件代码API
+app.get('/api/plugins/:name/code', (req, res) => {
+    try {
+        const { name } = req.params;
+        
+        // 检查是否为自带插件
+        const builtinPlugins = ['weather'];
+        if (builtinPlugins.includes(name)) {
+            return res.status(403).json({ error: '自带插件禁止编辑' });
+        }
+        
+        // 读取插件文件
+        const pluginPath = path.join(pluginDir, `${name}.js`);
+        if (!fs.existsSync(pluginPath)) {
+            return res.status(404).json({ error: '插件不存在' });
+        }
+        
+        const code = fs.readFileSync(pluginPath, 'utf8');
+        
+        // 提取插件代码（去除模块包装）
+        const codeMatch = code.match(/init: function\(app, io, context\) \{[\s\S]*?\n    \},/);
+        let pluginCode = '';
+        if (codeMatch) {
+            pluginCode = codeMatch[0].replace('init: function(app, io, context) {', '').replace('    },', '').trim();
+        }
+        
+        // 提取插件描述
+        const descMatch = code.match(/description: "([^"]*)"/);
+        const description = descMatch ? descMatch[1] : '';
+        
+        res.json({ success: true, name, description, code: pluginCode });
+    } catch (error) {
+        console.error('获取插件代码失败:', error);
+        res.status(500).json({ error: '获取插件代码失败' });
+    }
+});
+
+// 加载插件
+// loadPlugins(); // 移到io创建之后
+
+// API文档生成
+app.get('/api/docs', (req, res) => {
+    try {
+        const docs = {
+            version: '1.0.0',
+            endpoints: [
+                {
+                    method: 'GET',
+                    path: '/api/users',
+                    description: '获取用户列表'
+                },
+                {
+                    method: 'GET',
+                    path: '/api/rooms',
+                    description: '获取房间列表'
+                },
+                {
+                    method: 'POST',
+                    path: '/api/files/upload',
+                    description: '上传文件'
+                },
+                {
+                    method: 'POST',
+                    path: '/api/mobile/login',
+                    description: '移动应用登录'
+                },
+                {
+                    method: 'GET',
+                    path: '/api/mobile/messages',
+                    description: '移动应用获取消息'
+                },
+                {
+                    method: 'POST',
+                    path: '/api/mobile/send-message',
+                    description: '移动应用发送消息'
+                },
+                {
+                    method: 'POST',
+                    path: '/api/push/subscribe',
+                    description: '注册推送订阅'
+                },
+                {
+                    method: 'POST',
+                    path: '/api/push/unsubscribe',
+                    description: '取消推送订阅'
+                },
+                {
+                    method: 'GET',
+                    path: '/api/plugins',
+                    description: '获取插件列表'
+                },
+                {
+                    method: 'POST',
+                    path: '/api/plugins/reload',
+                    description: '重新加载插件'
+                }
+            ]
+        };
+        res.json(docs);
+    } catch (error) {
+        console.error('生成API文档失败:', error);
+        res.status(500).json({ error: '生成API文档失败' });
+    }
+});
+
+// 第三方集成
+// 社交媒体登录接口（示例）
+app.post('/api/auth/social', express.json(), (req, res) => {
+    try {
+        const { provider, token } = req.body;
+        
+        if (!provider || !token) {
+            return res.status(400).json({ error: '缺少必要参数' });
+        }
+        
+        // 这里可以集成实际的社交媒体登录验证
+        // 例如：Google、Facebook、WeChat等
+        
+        // 模拟登录成功
+        const username = `social_${provider}_${Date.now()}`;
+        const socialSocketId = `social-${provider}-${Date.now()}`;
+        
+        // 创建用户对象
+        const user = {
+            username: username,
+            color: getRandomColor(),
+            socketId: socialSocketId,
+            ip: req.ip,
+            roomName: 'main',
+            role: 'user',
+            permissions: { ...defaultPermissions },
+            status: 'online',
+            lastSeen: new Date().toISOString(),
+            profile: {
+                avatar: null,
+                bio: `通过${provider}登录`,
+                age: null,
+                location: '',
+                website: ''
+            },
+            level: 1,
+            experience: 0,
+            achievements: [],
+            stats: {
+                messagesSent: 0,
+                filesUploaded: 0,
+                callsMade: 0,
+                friendsAdded: 0,
+                timeSpent: 0
+            },
+            settings: { locked: false, lockMessage: '设置已被管理员锁定' },
+            userSettings: {
+                targetLanguage: 'zh',
+                autoTranslate: false,
+                soundNotification: true,
+                mentionNotification: true,
+                theme: 'light',
+                fontSize: 'medium',
+                notifications: {
+                    messages: true,
+                    calls: true,
+                    friendRequests: true,
+                    mentions: true
+                }
+            },
+            aiSettings: {
+                enable: false,
+                model: 'glm4',
+                glm4: {
+                    apiKey: ''
+                },
+                deepseek: {
+                    modelName: '',
+                    apiKey: ''
+                },
+                siliconflow: {
+                    modelName: '',
+                    apiKey: ''
+                },
+                custom: {
+                    apiUrl: '',
+                    apiKey: '',
+                    modelName: ''
+                }
+            }
+        };
+        
+        // 保存用户
+        users.set(socialSocketId, user);
+        
+        // 将用户添加到默认房间
+        const room = rooms.get('main');
+        if (room) {
+            room.users.push(socialSocketId);
+        }
+        
+        res.json({
+            success: true,
+            user: {
+                username: user.username,
+                color: user.color,
+                socketId: user.socketId,
+                roomName: user.roomName,
+                status: user.status
+            }
+        });
+        
+    } catch (error) {
+        console.error('社交媒体登录失败:', error);
+        res.status(500).json({ error: '社交媒体登录失败' });
+    }
+});
+
+// 应用CSRF保护中间件到所有非GET请求的API端点
+app.use('/api/', csrfProtectionMiddleware);
+
+// 天气查询API
+app.post('/api/weather', express.json(), async (req, res) => {
+    try {
+        const { city } = req.body;
+        
+        if (!city) {
+            return res.status(400).json({ error: '缺少城市参数' });
+        }
+        
+        // 调用天气API
+        const weatherData = await getWeather(city);
+        
+        res.json({
+            success: true,
+            data: weatherData
+        });
+        
+    } catch (error) {
+        console.error('天气查询失败:', error);
+        res.status(500).json({ error: '天气查询失败' });
+    }
+});
 
 // 获取病毒文件列表
 app.get('/api/viruses', (req, res) => {
@@ -995,15 +1827,274 @@ const io = new Server(server, {
     maxHttpBufferSize: 1e8,
     pingTimeout: 60000,
     pingInterval: 25000,
-    transports: ['websocket', 'polling']
+    transports: ['websocket', 'polling'],
+    // 启用数据压缩
+    perMessageDeflate: {
+        zlibDeflateOptions: {
+            level: 5 // 压缩级别 0-9，6 是平衡性能和压缩率的选择
+        },
+        zlibInflateOptions: {
+            chunkSize: 1024
+        },
+        threshold: 1024, // 当消息大小超过 1KB 时启用压缩
+        concatenateFlush: true
+    }
 });
 
-const users = new Map();
+// 消息变量
 const messages = new Map();
+
+// 加载插件
+loadPlugins();
+
+// 消息批处理系统
+const messageBatches = new Map(); // 存储每个客户端的消息批次
+const BATCH_INTERVAL = 100; // 批处理间隔（毫秒）
+const MAX_BATCH_SIZE = 50; // 最大批次大小
+
+// 处理消息批处理
+function processMessageBatch(socketId) {
+    const batch = messageBatches.get(socketId);
+    if (batch && batch.length > 0) {
+        // 发送批次消息
+        io.to(socketId).emit('message-batch', batch);
+        // 清空批次
+        messageBatches.set(socketId, []);
+    }
+}
+
+// 批量发送消息
+function sendBatchMessage(socketId, message) {
+    if (!messageBatches.has(socketId)) {
+        messageBatches.set(socketId, []);
+        // 设置定时处理批次
+        setTimeout(() => processMessageBatch(socketId), BATCH_INTERVAL);
+    }
+    
+    const batch = messageBatches.get(socketId);
+    batch.push(message);
+    
+    // 如果批次大小达到上限，立即处理
+    if (batch.length >= MAX_BATCH_SIZE) {
+        processMessageBatch(socketId);
+    }
+}
+
+// 消息缓存系统
+const messageCache = new Map(); // 内存缓存
+const CACHE_DIR = path.join(__dirname, 'cache');
+const MAX_CACHE_SIZE = 1000; // 每个房间最大缓存消息数
+const CACHE_EXPIRY = 30 * 60 * 60 * 1000; // 缓存过期时间（24小时）
+
+// 确保缓存目录存在
+if (!fs.existsSync(CACHE_DIR)) {
+    fs.mkdirSync(CACHE_DIR, { recursive: true });
+}
+
+// 初始化房间消息缓存
+function initRoomCache(roomName) {
+    if (!messageCache.has(roomName)) {
+        messageCache.set(roomName, {
+            messages: [],
+            lastUpdated: Date.now(),
+            size: 0
+        });
+    }
+}
+
+// 添加消息到缓存
+function addMessageToCache(roomName, message) {
+    initRoomCache(roomName);
+    const cache = messageCache.get(roomName);
+    
+    // 添加消息到缓存
+    cache.messages.push(message);
+    cache.size = cache.messages.length;
+    cache.lastUpdated = Date.now();
+    
+    // 如果缓存超过最大大小，删除最旧的消息
+    if (cache.size > MAX_CACHE_SIZE) {
+        cache.messages = cache.messages.slice(-MAX_CACHE_SIZE);
+        cache.size = cache.messages.length;
+    }
+    
+    // 异步保存到文件
+    saveCacheToFile(roomName);
+}
+
+// 从缓存获取消息
+function getMessagesFromCache(roomName, limit = 50, offset = 0) {
+    initRoomCache(roomName);
+    const cache = messageCache.get(roomName);
+    
+    // 检查缓存是否过期
+    if (Date.now() - cache.lastUpdated > CACHE_EXPIRY) {
+        // 重新加载缓存
+        loadCacheFromFile(roomName);
+    }
+    
+    // 返回分页消息
+    return cache.messages.slice(offset, offset + limit);
+}
+
+// 保存缓存到文件
+function saveCacheToFile(roomName) {
+    const cache = messageCache.get(roomName);
+    if (cache) {
+        const cachePath = path.join(CACHE_DIR, `${roomName}_messages.json`);
+        try {
+            fs.writeFileSync(cachePath, JSON.stringify({
+                messages: cache.messages,
+                lastUpdated: cache.lastUpdated
+            }));
+        } catch (error) {
+            console.error(`保存缓存失败: ${roomName}`, error);
+        }
+    }
+}
+
+// 从文件加载缓存
+function loadCacheFromFile(roomName) {
+    const cachePath = path.join(CACHE_DIR, `${roomName}_messages.json`);
+    try {
+        if (fs.existsSync(cachePath)) {
+            const data = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+            messageCache.set(roomName, {
+                messages: data.messages || [],
+                lastUpdated: data.lastUpdated || Date.now(),
+                size: (data.messages || []).length
+            });
+        }
+    } catch (error) {
+        console.error(`加载缓存失败: ${roomName}`, error);
+    }
+}
+
+// 清理过期缓存
+function cleanExpiredCache() {
+    const now = Date.now();
+    messageCache.forEach((cache, roomName) => {
+        if (now - cache.lastUpdated > CACHE_EXPIRY) {
+            messageCache.delete(roomName);
+            console.log(`清理过期缓存: ${roomName}`);
+        }
+    });
+}
+
+// 定期清理过期缓存
+setInterval(cleanExpiredCache, 60 * 60 * 1000); // 每小时清理一次
+
+// 天气API配置
+const WEATHER_API_URL = 'https://api-proxy-juhe.jenius.cn/simpleWeather/query';
+const WEATHER_API_KEY = 'cb9fc22848b739befe3f0b3d5e4e9248';
+
+// 天气查询函数
+async function getWeather(city) {
+    try {
+        const https = require('https');
+        const querystring = require('querystring');
+        
+        const postData = querystring.stringify({
+            key: WEATHER_API_KEY,
+            city: city
+        });
+        
+        const options = {
+            hostname: 'api-proxy-juhe.jenius.cn',
+            path: '/simpleWeather/query',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Content-Length': Buffer.byteLength(postData)
+            }
+        };
+        
+        return new Promise((resolve, reject) => {
+            const req = https.request(options, (res) => {
+                let data = '';
+                res.on('data', (chunk) => {
+                    data += chunk;
+                });
+                res.on('end', () => {
+                    try {
+                        const weatherData = JSON.parse(data);
+                        
+                        // 处理API响应，提取需要的字段
+                        console.log('天气API返回的原始数据:', weatherData);
+                        if (weatherData && weatherData.result) {
+                            const result = weatherData.result;
+                            console.log('天气API返回的result字段:', result);
+                            
+                            // 从realtime对象中提取实时天气数据
+                            const realtime = result.realtime || {};
+                            
+                            resolve({
+                                city: result.city || result.cityName || city,
+                                temperature: realtime.temperature || result.temperature || result.temp || '未知',
+                                weather: realtime.info || result.weather || result.weatherDesc || '未知',
+                                wind: `${realtime.direct || ''} ${realtime.power || ''}`.trim() || result.wind || result.windDirection || result.windPower || '未知',
+                                humidity: realtime.humidity || result.humidity || '未知',
+                                updateTime: result.updateTime || result.date || new Date().toLocaleString()
+                            });
+                        } else {
+                            // 如果API响应结构不符合预期，返回默认值
+                            console.log('天气API返回的结构不符合预期');
+                            resolve({
+                                city: city,
+                                temperature: '未知',
+                                weather: '未知',
+                                wind: '未知',
+                                humidity: '未知',
+                                updateTime: new Date().toLocaleString()
+                            });
+                        }
+                    } catch (error) {
+                        console.error('解析天气数据失败:', error);
+                        // 解析失败时返回默认值
+                        resolve({
+                            city: city,
+                            temperature: '未知',
+                            weather: '未知',
+                            wind: '未知',
+                            humidity: '未知',
+                            updateTime: new Date().toLocaleString()
+                        });
+                    }
+                });
+            });
+            
+            req.on('error', (error) => {
+                console.error('天气查询请求失败:', error);
+                // 请求失败时返回默认值
+                resolve({
+                    city: city,
+                    temperature: '未知',
+                    weather: '未知',
+                    wind: '未知',
+                    humidity: '未知',
+                    updateTime: new Date().toLocaleString()
+                });
+            });
+            
+            req.write(postData);
+            req.end();
+        });
+    } catch (error) {
+        console.error('天气查询失败:', error);
+        // 发生异常时返回默认值
+        return {
+            city: city,
+            temperature: '未知',
+            weather: '未知',
+            wind: '未知',
+            humidity: '未知',
+            updateTime: new Date().toLocaleString()
+        };
+    }
+}
 const deletedMessages = new Map();
 
 // 房间系统数据结构
-const rooms = new Map();
 
 // 好友系统数据结构
 const friendships = new Map(); // 存储好友关系: Map<socketId, Set<friendSocketId>>
@@ -1310,14 +2401,40 @@ let defaultPermissions = {
 rooms.set('main', {
     roomName: 'main',
     password: null,
-    creator: 'system',
+    creator: 'system(11)',
     createdAt: new Date(),
     updatedAt: new Date(),
     users: [],
     messages: [],
+    announcements: [], // 房间公告
+    theme: { // 房间主题
+        background: 'default', // 默认背景
+        colorScheme: 'light', // 配色方案：light, dark
+        customCSS: '' // 自定义CSS
+    },
+    stats: { // 房间统计
+        totalMessages: 0,
+        totalUsers: 0,
+        peakUsers: 0,
+        createdAt: new Date(),
+        lastActivity: new Date()
+    },
+    history: { // 历史记录
+        messageHistory: [], // 消息历史
+        userHistory: [], // 用户进出历史
+        eventHistory: [] // 事件历史
+    },
     settings: {
         maxUsers: 100,
-        allowPublicAccess: true
+        allowPublicAccess: true,
+        allowMessages: true,
+        allowFiles: true,
+        allowAudio: true,
+        allowVideo: true,
+        allowCalls: true,
+        allowWhiteboard: true,
+        allowPolls: true,
+        allowGames: true
     }
 });
 
@@ -1391,16 +2508,43 @@ io.on('connection', (socket) => {
                 username: username,
                 color: getRandomColor(),
                 socketId: socket.id,
+                ip: userIP, // 添加IP属性
                 roomName: roomName,
                 role: 'user', // 默认角色为user
                 permissions: { ...defaultPermissions },
-                status: 'online', // 添加在线状态
+                status: 'online', // 在线状态：online, away, busy, offline
+                lastSeen: new Date().toISOString(), // 最后在线时间
+                profile: { // 用户资料
+                    avatar: null, // 头像URL
+                    bio: '', // 个人简介
+                    age: null, // 年龄
+                    location: '', // 位置
+                    website: '' // 个人网站
+                },
+                level: 1, // 用户等级
+                experience: 0, // 经验值
+                achievements: [], // 成就列表
+                stats: { // 统计数据
+                    messagesSent: 0,
+                    filesUploaded: 0,
+                    callsMade: 0,
+                    friendsAdded: 0,
+                    timeSpent: 0 // 在线时间（分钟）
+                },
                 settings: { locked: false, lockMessage: '设置已被管理员锁定' },
                 userSettings: { // 用户具体设置
                     targetLanguage: 'zh',
                     autoTranslate: false,
                     soundNotification: true,
-                    mentionNotification: true
+                    mentionNotification: true,
+                    theme: 'light', // 主题：light, dark
+                    fontSize: 'medium', // 字体大小：small, medium, large
+                    notifications: {
+                        messages: true,
+                        calls: true,
+                        friendRequests: true,
+                        mentions: true
+                    }
                 },
                 aiSettings: { // AI设置
                     enable: false,
@@ -1510,6 +2654,30 @@ io.on('connection', (socket) => {
             // 发送投票列表
             socket.emit('polls-list', roomPolls);
         }, totalMessages > 0 ? Math.ceil(totalMessages / batchSize) * 100 + 100 : 100);
+        
+        // 更新房间统计数据
+        room.stats.totalUsers++;
+        room.stats.currentUsers = room.users.length;
+        if (room.users.length > room.stats.peakUsers) {
+            room.stats.peakUsers = room.users.length;
+        }
+        room.stats.lastActivity = new Date();
+        
+        // 添加用户历史记录
+        room.history.userHistory.push({
+            type: 'join',
+            username: username,
+            timestamp: new Date().toISOString(),
+            ip: userIP
+        });
+        
+        // 添加事件历史记录
+        room.history.eventHistory.push({
+            type: 'user_join',
+            description: `${username} 加入了房间`,
+            timestamp: new Date().toISOString(),
+            username: username
+        });
         
         console.log(`${username} 加入房间 ${roomName}，当前在线: ${roomUsers.length} 人`);
         });
@@ -1805,6 +2973,9 @@ io.on('connection', (socket) => {
                 timestamp: new Date().toLocaleTimeString(),
                 senderSocketId: socket.id,
                 readBy: [socket.id], // 初始时只有发送者已读
+                pinned: false, // 是否置顶
+                pinnedBy: null, // 置顶者
+                pinnedAt: null, // 置顶时间
                 // 包含额外的文件和音频属性
                 fileName: data.fileName,
                 fileSize: data.fileSize,
@@ -1879,27 +3050,519 @@ io.on('connection', (socket) => {
                     }
                 } else {
                     // 对于其他消息，添加新消息
-                    room.messages.push(messageData);
-                    if (room.messages.length > 100) {
-                        room.messages.shift();
-                    }
-                    console.log(`[房间 ${user.roomName}] ${user.username}: ${data.type === 'text' ? data.message : data.type}`);
+                room.messages.push(messageData);
+                if (room.messages.length > 100) {
+                    room.messages.shift();
+                }
+                
+                // 更新用户统计数据
+                user.stats.messagesSent++;
+                
+                // 增加经验值
+                user.experience += 1;
+                
+                // 检查是否升级
+                const oldLevel = user.level;
+                const newLevel = Math.floor(user.experience / 100) + 1;
+                if (newLevel > oldLevel) {
+                    user.level = newLevel;
+                    socket.emit('level-up', { oldLevel, newLevel, experience: user.experience });
+                    console.log(`${user.username} 升级到 ${newLevel} 级`);
+                }
+                
+                console.log(`[房间 ${user.roomName}] ${user.username}: ${data.type === 'text' ? data.message : data.type}`);
                 }
                 
                 // 只发送给房间内有权限查看消息的用户
                 room.users.forEach(userId => {
                     const roomUser = users.get(userId);
                     if (roomUser && roomUser.permissions.allowViewMessages) {
-                        io.to(userId).emit('message', messageData);
+                        // 使用批量发送消息
+                        sendBatchMessage(userId, messageData);
+                        
+                        // 检查用户是否在线，如果离线则发送推送通知
+                        if (roomUser.status === 'offline') {
+                            sendPushNotification(userId, `来自 ${user.username} 的消息`, messageData.message.substring(0, 50) + (messageData.message.length > 50 ? '...' : ''), {
+                                type: 'message',
+                                roomName: room.roomName,
+                                messageId: messageData.id
+                            });
+                        }
                     }
                 });
                 
                 // 发送给管理员
                 if (adminSocketId) {
-                    io.to(adminSocketId).emit('message', messageData);
+                    sendBatchMessage(adminSocketId, messageData);
                 }
             }
         }
+    });
+
+    // 消息置顶事件
+    socket.on('pin-message', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+        
+        const { messageId, roomName, pinned } = data;
+        const room = rooms.get(roomName);
+        
+        if (!room) return;
+        
+        // 检查权限：管理员或房间创建者可以置顶消息
+        const isAdmin = socket.id === adminSocketId || (user && user.role === 'superadmin');
+        const isRoomCreator = room.creator === user.username;
+        
+        if (!isAdmin && !isRoomCreator) {
+            socket.emit('permission-denied', { message: '您没有置顶消息的权限' });
+            return;
+        }
+        
+        // 查找消息
+        const messageIndex = room.messages.findIndex(msg => msg.id === messageId);
+        if (messageIndex === -1) {
+            socket.emit('message-error', { message: '消息不存在' });
+            return;
+        }
+        
+        // 更新消息置顶状态
+        room.messages[messageIndex].pinned = pinned;
+        room.messages[messageIndex].pinnedBy = pinned ? user.username : null;
+        room.messages[messageIndex].pinnedAt = pinned ? new Date().toISOString() : null;
+        
+        // 重新排序消息：置顶消息优先
+        room.messages.sort((a, b) => {
+            if (a.pinned && !b.pinned) return -1;
+            if (!a.pinned && b.pinned) return 1;
+            return new Date(a.timestamp) - new Date(b.timestamp);
+        });
+        
+        // 广播消息更新
+        const updatedMessage = room.messages[messageIndex];
+        room.users.forEach(userId => {
+            const roomUser = users.get(userId);
+            if (roomUser && roomUser.permissions.allowViewMessages) {
+                io.to(userId).emit('message-updated', updatedMessage);
+            }
+        });
+        
+        // 发送给管理员
+        if (adminSocketId) {
+            io.to(adminSocketId).emit('message-updated', updatedMessage);
+        }
+        
+        console.log(`${pinned ? '置顶' : '取消置顶'}消息: ${messageId} 由 ${user.username} 在房间 ${roomName}`);
+    });
+
+    // 消息标记已读事件
+    socket.on('mark-message-read', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+        
+        const { messageId, roomName } = data;
+        const room = rooms.get(roomName);
+        
+        if (!room) return;
+        
+        // 查找消息
+        const messageIndex = room.messages.findIndex(msg => msg.id === messageId);
+        if (messageIndex === -1) {
+            socket.emit('message-error', { message: '消息不存在' });
+            return;
+        }
+        
+        // 检查消息是否已被该用户读取
+        const message = room.messages[messageIndex];
+        if (!message.readBy) {
+            message.readBy = [];
+        }
+        
+        if (!message.readBy.includes(socket.id)) {
+            // 添加到已读列表
+            message.readBy.push(socket.id);
+            
+            // 通知消息发送者有人已读
+            if (message.senderSocketId !== socket.id) {
+                io.to(message.senderSocketId).emit('message-read', {
+                    messageId: message.id,
+                    readBy: user.username,
+                    timestamp: new Date().toLocaleTimeString()
+                });
+            }
+            
+            console.log(`${user.username} 已读消息: ${messageId}`);
+        }
+    });
+
+    // 更新用户资料事件
+    socket.on('update-profile', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+        
+        // 更新用户资料
+        if (data.avatar) user.profile.avatar = data.avatar;
+        if (data.bio) user.profile.bio = data.bio;
+        if (data.age) user.profile.age = data.age;
+        if (data.location) user.profile.location = data.location;
+        if (data.website) user.profile.website = data.website;
+        
+        // 保存到本地存储
+        saveToStorage();
+        
+        // 通知用户更新成功
+        socket.emit('profile-updated', user.profile);
+        
+        // 通知房间内其他用户
+        const room = rooms.get(user.roomName);
+        if (room) {
+            room.users.forEach(userId => {
+                if (userId !== socket.id) {
+                    io.to(userId).emit('user-updated', {
+                        username: user.username,
+                        profile: user.profile
+                    });
+                }
+            });
+        }
+        
+        console.log(`${user.username} 更新了个人资料`);
+    });
+
+    // 更新用户状态事件
+    socket.on('update-status', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+        
+        const { status } = data;
+        if (['online', 'away', 'busy', 'offline'].includes(status)) {
+            user.status = status;
+            user.lastSeen = new Date().toISOString();
+            
+            // 保存到本地存储
+            saveToStorage();
+            
+            // 通知用户更新成功
+            socket.emit('status-updated', { status: user.status });
+            
+            // 通知房间内其他用户
+            const room = rooms.get(user.roomName);
+            if (room) {
+                room.users.forEach(userId => {
+                    if (userId !== socket.id) {
+                        io.to(userId).emit('user-status-updated', {
+                            username: user.username,
+                            status: user.status,
+                            lastSeen: user.lastSeen
+                        });
+                    }
+                });
+            }
+            
+            console.log(`${user.username} 状态更新为: ${status}`);
+        }
+    });
+
+    // 更新用户设置事件
+    socket.on('update-settings', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+        
+        // 更新用户设置
+        if (data.theme) user.userSettings.theme = data.theme;
+        if (data.fontSize) user.userSettings.fontSize = data.fontSize;
+        if (data.notifications) {
+            user.userSettings.notifications = { ...user.userSettings.notifications, ...data.notifications };
+        }
+        
+        // 保存到本地存储
+        saveToStorage();
+        
+        // 通知用户更新成功
+        socket.emit('settings-updated', user.userSettings);
+        
+        console.log(`${user.username} 更新了设置`);
+    });
+
+    // 获取用户信息事件
+    socket.on('get-user-info', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+        
+        socket.emit('user-info', {
+            username: user.username,
+            color: user.color,
+            status: user.status,
+            lastSeen: user.lastSeen,
+            profile: user.profile,
+            level: user.level,
+            experience: user.experience,
+            achievements: user.achievements,
+            stats: user.stats,
+            userSettings: user.userSettings
+        });
+    });
+
+    // 增加用户经验值事件
+    socket.on('add-experience', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+        
+        const { amount } = data;
+        if (amount && typeof amount === 'number' && amount > 0) {
+            user.experience += amount;
+            
+            // 检查是否升级
+            const oldLevel = user.level;
+            const newLevel = Math.floor(user.experience / 100) + 1;
+            
+            if (newLevel > oldLevel) {
+                user.level = newLevel;
+                socket.emit('level-up', { oldLevel, newLevel, experience: user.experience });
+                console.log(`${user.username} 升级到 ${newLevel} 级`);
+            }
+            
+            // 保存到本地存储
+            saveToStorage();
+        }
+    });
+
+    // 更新房间主题事件
+    socket.on('update-room-theme', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+        
+        const { roomName, theme } = data;
+        const room = rooms.get(roomName);
+        
+        if (!room) return;
+        
+        // 检查权限：只有管理员或房间创建者可以更新主题
+        const isAdmin = socket.id === adminSocketId || (user && user.role === 'superadmin');
+        const isRoomCreator = room.creator === user.username;
+        
+        if (!isAdmin && !isRoomCreator) {
+            socket.emit('permission-denied', { message: '您没有更新房间主题的权限' });
+            return;
+        }
+        
+        // 更新主题
+        if (theme.background) room.theme.background = theme.background;
+        if (theme.colorScheme) room.theme.colorScheme = theme.colorScheme;
+        if (theme.customCSS) room.theme.customCSS = theme.customCSS;
+        room.updatedAt = new Date();
+        
+        // 保存到本地存储
+        saveToStorage();
+        
+        // 通知房间内所有用户
+        room.users.forEach(userId => {
+            io.to(userId).emit('room-theme-updated', {
+                roomName: room.roomName,
+                theme: room.theme
+            });
+        });
+        
+        console.log(`${user.username} 更新了房间 ${roomName} 的主题`);
+    });
+
+    // 添加房间公告事件
+    socket.on('add-room-announcement', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+        
+        const { roomName, content, title } = data;
+        const room = rooms.get(roomName);
+        
+        if (!room) return;
+        
+        // 检查权限：只有管理员或房间创建者可以添加公告
+        const isAdmin = socket.id === adminSocketId || (user && user.role === 'superadmin');
+        const isRoomCreator = room.creator === user.username;
+        
+        if (!isAdmin && !isRoomCreator) {
+            socket.emit('permission-denied', { message: '您没有添加房间公告的权限' });
+            return;
+        }
+        
+        // 创建公告
+        const announcement = {
+            id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+            title: title || '公告',
+            content: content,
+            creator: user.username,
+            createdAt: new Date().toISOString()
+        };
+        
+        room.announcements.unshift(announcement); // 添加到公告列表开头
+        room.updatedAt = new Date();
+        
+        // 保存到本地存储
+        saveToStorage();
+        
+        // 通知房间内所有用户
+        room.users.forEach(userId => {
+            io.to(userId).emit('room-announcement-added', {
+                roomName: room.roomName,
+                announcement: announcement
+            });
+        });
+        
+        console.log(`${user.username} 在房间 ${roomName} 添加了公告: ${title}`);
+    });
+
+    // 删除房间公告事件
+    socket.on('delete-room-announcement', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+        
+        const { roomName, announcementId } = data;
+        const room = rooms.get(roomName);
+        
+        if (!room) return;
+        
+        // 检查权限：只有管理员或房间创建者可以删除公告
+        const isAdmin = socket.id === adminSocketId || (user && user.role === 'superadmin');
+        const isRoomCreator = room.creator === user.username;
+        
+        if (!isAdmin && !isRoomCreator) {
+            socket.emit('permission-denied', { message: '您没有删除房间公告的权限' });
+            return;
+        }
+        
+        // 删除公告
+        const initialLength = room.announcements.length;
+        room.announcements = room.announcements.filter(ann => ann.id !== announcementId);
+        
+        if (room.announcements.length !== initialLength) {
+            room.updatedAt = new Date();
+            
+            // 保存到本地存储
+            saveToStorage();
+            
+            // 通知房间内所有用户
+            room.users.forEach(userId => {
+                io.to(userId).emit('room-announcement-deleted', {
+                    roomName: room.roomName,
+                    announcementId: announcementId
+                });
+            });
+            
+            console.log(`${user.username} 在房间 ${roomName} 删除了公告: ${announcementId}`);
+        }
+    });
+
+    // 更新房间设置事件
+    socket.on('update-room-settings', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+        
+        const { roomName, settings } = data;
+        const room = rooms.get(roomName);
+        
+        if (!room) return;
+        
+        // 检查权限：只有管理员或房间创建者可以更新设置
+        const isAdmin = socket.id === adminSocketId || (user && user.role === 'superadmin');
+        const isRoomCreator = room.creator === user.username;
+        
+        if (!isAdmin && !isRoomCreator) {
+            socket.emit('permission-denied', { message: '您没有更新房间设置的权限' });
+            return;
+        }
+        
+        // 更新设置
+        if (settings.maxUsers) room.settings.maxUsers = settings.maxUsers;
+        if (settings.allowPublicAccess !== undefined) room.settings.allowPublicAccess = settings.allowPublicAccess;
+        if (settings.allowMessages !== undefined) room.settings.allowMessages = settings.allowMessages;
+        if (settings.allowFiles !== undefined) room.settings.allowFiles = settings.allowFiles;
+        if (settings.allowAudio !== undefined) room.settings.allowAudio = settings.allowAudio;
+        if (settings.allowVideo !== undefined) room.settings.allowVideo = settings.allowVideo;
+        if (settings.allowCalls !== undefined) room.settings.allowCalls = settings.allowCalls;
+        if (settings.allowWhiteboard !== undefined) room.settings.allowWhiteboard = settings.allowWhiteboard;
+        if (settings.allowPolls !== undefined) room.settings.allowPolls = settings.allowPolls;
+        if (settings.allowGames !== undefined) room.settings.allowGames = settings.allowGames;
+        room.updatedAt = new Date();
+        
+        // 保存到本地存储
+        saveToStorage();
+        
+        // 通知房间内所有用户
+        room.users.forEach(userId => {
+            io.to(userId).emit('room-settings-updated', {
+                roomName: room.roomName,
+                settings: room.settings
+            });
+        });
+        
+        console.log(`${user.username} 更新了房间 ${roomName} 的设置`);
+    });
+
+    // 获取房间统计事件
+    socket.on('get-room-stats', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+        
+        const { roomName } = data;
+        const room = rooms.get(roomName);
+        
+        if (!room) return;
+        
+        // 更新实时统计数据
+        room.stats.currentUsers = room.users.length;
+        room.stats.lastActivity = new Date();
+        
+        // 通知用户
+        socket.emit('room-stats', {
+            roomName: room.roomName,
+            stats: room.stats
+        });
+    });
+
+    // 获取房间历史记录事件
+    socket.on('get-room-history', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+        
+        const { roomName, type, limit = 50 } = data;
+        const room = rooms.get(roomName);
+        
+        if (!room) return;
+        
+        let historyData = {};
+        
+        switch (type) {
+            case 'messages':
+                historyData = {
+                    type: 'messages',
+                    data: room.history.messageHistory.slice(-limit)
+                };
+                break;
+            case 'users':
+                historyData = {
+                    type: 'users',
+                    data: room.history.userHistory.slice(-limit)
+                };
+                break;
+            case 'events':
+                historyData = {
+                    type: 'events',
+                    data: room.history.eventHistory.slice(-limit)
+                };
+                break;
+            default:
+                historyData = {
+                    type: 'all',
+                    messages: room.history.messageHistory.slice(-limit),
+                    users: room.history.userHistory.slice(-limit),
+                    events: room.history.eventHistory.slice(-limit)
+                };
+        }
+        
+        // 通知用户
+        socket.emit('room-history', {
+            roomName: room.roomName,
+            ...historyData
+        });
     });
 
     socket.on('admin-login', (data) => {
@@ -2808,6 +4471,25 @@ io.on('connection', (socket) => {
             const room = rooms.get(user.roomName);
             if (room) {
                 room.users = room.users.filter(id => id !== socket.id);
+                
+                // 更新房间统计数据
+                room.stats.currentUsers = room.users.length;
+                room.stats.lastActivity = new Date();
+                
+                // 添加用户历史记录
+                room.history.userHistory.push({
+                    type: 'leave',
+                    username: user.username,
+                    timestamp: new Date().toISOString()
+                });
+                
+                // 添加事件历史记录
+                room.history.eventHistory.push({
+                    type: 'user_leave',
+                    description: `${user.username} 离开了房间`,
+                    timestamp: new Date().toISOString(),
+                    username: user.username
+                });
             }
             
             // 从所有白板中移除用户
@@ -3927,13 +5609,13 @@ io.on('connection', (socket) => {
         }
     });
     
-    socket.on('plugin-execute', (data) => {
+    socket.on('plugin-execute', async (data) => {
         const user = users.get(socket.id);
         if (user && data.pluginId && data.command && data.args) {
             const plugin = plugins.get(data.pluginId);
             if (plugin && plugin.enabled) {
                 // 执行插件命令
-                executePluginCommand(plugin, data.command, data.args, user);
+                await executePluginCommand(plugin, data.command, data.args, user);
             }
         }
     });
@@ -4314,10 +5996,10 @@ io.on('connection', (socket) => {
     });
     
     // 执行插件命令
-    function executePluginCommand(plugin, command, args, user) {
+    async function executePluginCommand(plugin, command, args, user) {
         switch (plugin.id) {
             case 'weather':
-                executeWeatherPlugin(command, args, user);
+                await executeWeatherPlugin(command, args, user);
                 break;
             case 'translator':
                 executeTranslatorPlugin(command, args, user);
@@ -4335,7 +6017,7 @@ io.on('connection', (socket) => {
     }
     
     // 天气插件
-    function executeWeatherPlugin(command, args, user) {
+    async function executeWeatherPlugin(command, args, user) {
         const city = args.join(' ');
         if (!city) {
             socket.emit('plugin-response', {
@@ -4346,29 +6028,31 @@ io.on('connection', (socket) => {
             return;
         }
         
-        // 模拟天气数据（实际项目中可以使用真实的天气API）
-        const weatherData = {
-            city: city,
-            temperature: Math.floor(Math.random() * 30) + 5,
-            humidity: Math.floor(Math.random() * 50) + 30,
-            windSpeed: Math.floor(Math.random() * 10) + 1,
-            condition: ['晴天', '多云', '阴天', '小雨', '中雨'][Math.floor(Math.random() * 5)],
-            updateTime: new Date().toLocaleString()
-        };
-        
-        socket.emit('plugin-response', {
-            pluginId: 'weather',
-            success: true,
-            data: weatherData,
-            message: `🌤️ ${city} 的天气：${weatherData.condition}，温度 ${weatherData.temperature}°C，湿度 ${weatherData.humidity}%，风速 ${weatherData.windSpeed} m/s`
-        });
-        
-        // 广播天气信息给房间内所有用户
-        socket.to(user.roomName).emit('plugin-broadcast', {
-            pluginId: 'weather',
-            username: user.username,
-            message: `🌤️ ${user.username} 查询了 ${city} 的天气：${weatherData.condition}，温度 ${weatherData.temperature}°C`
-        });
+        try {
+            // 使用实际的天气API获取数据
+            const weatherData = await getWeather(city);
+            
+            socket.emit('plugin-response', {
+                pluginId: 'weather',
+                success: true,
+                data: weatherData,
+                message: `🌤️ ${city} 的天气：${weatherData.weather}，温度 ${weatherData.temperature}，湿度 ${weatherData.humidity}%，风力 ${weatherData.wind}`
+            });
+            
+            // 广播天气信息给房间内所有用户
+            socket.to(user.roomName).emit('plugin-broadcast', {
+                pluginId: 'weather',
+                username: user.username,
+                message: `🌤️ ${user.username} 查询了 ${city} 的天气：${weatherData.weather}，温度 ${weatherData.temperature}`
+            });
+        } catch (error) {
+            console.error('天气查询失败:', error);
+            socket.emit('plugin-response', {
+                pluginId: 'weather',
+                success: false,
+                message: '天气查询失败，请稍后重试'
+            });
+        }
     }
     
     // 翻译插件
