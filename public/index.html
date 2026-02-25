@@ -1232,7 +1232,90 @@
         #messageInput {
             flex-basis: 100%;
         }
-        @media (max-width: 768px) {}
+        @media (max-width: 768px) {
+            .container {
+                width: 100%;
+                height: 100vh;
+                border-radius: 0;
+            }
+            
+            .chat-container {
+                flex-direction: column;
+            }
+            
+            .messages {
+                padding: 15px;
+                width: 100%;
+            }
+            
+            .users-panel {
+                width: 100%;
+                height: 200px;
+                border-left: none;
+                border-top: 1px solid #dee2e6;
+            }
+            
+            .action-btn {
+                width: 40px;
+                height: 40px;
+                font-size: 16px;
+            }
+            
+            #chatForm {
+                flex-wrap: wrap;
+                padding: 10px;
+            }
+            
+            #messageInput {
+                flex-basis: 100%;
+                margin-bottom: 10px;
+            }
+            
+            .action-buttons {
+                order: -1;
+                width: 100%;
+                justify-content: space-around;
+                margin-bottom: 10px;
+            }
+            
+            #sendBtn {
+                flex-basis: 100%;
+                margin-top: 10px;
+            }
+            
+            .header h1 {
+                font-size: 20px;
+            }
+            
+            .header-actions {
+                gap: 10px;
+            }
+            
+            .header-btn {
+                width: 35px;
+                height: 35px;
+                font-size: 16px;
+            }
+            
+            .video-content {
+                flex-direction: column;
+                height: 80%;
+            }
+            
+            .video-box {
+                height: 50%;
+            }
+            
+            .emoji-panel {
+                width: 90%;
+                right: 5%;
+                left: 5%;
+            }
+            
+            .emoji-grid {
+                grid-template-columns: repeat(6, 1fr);
+            }
+        }
 
         .switch {
             position: relative;
@@ -1527,6 +1610,9 @@
                 <button class="header-btn" onclick="openWhiteboardModal()" title="共享白板">🖍️</button>
                 <button class="header-btn" onclick="openDocumentModal()" title="文档编辑" disabled style="opacity: 0.6; cursor: not-allowed;">📄</button>
                 <button class="header-btn" id="settingsBtn" title="设置">⚙️</button>
+                <button class="header-btn" id="locationShareStatus" onclick="stopRealTimeLocationSharing()" title="停止位置共享" style="display: none; background: #dc3545; color: white; animation: pulse 1s infinite;">
+                    📍
+                </button>
             </div>
         </div>
         
@@ -1777,8 +1863,9 @@
                 <button class="admin-tab" data-tab="notifications">通知设置</button>
                 <button class="admin-tab" data-tab="video">视频设置</button>
                 <button class="admin-tab" data-tab="call">通话设置</button>
-                <button class="admin-tab" data-tab="whiteboard">白板管理</button>
+                
                 <button class="admin-tab" data-tab="aiChat">AI聊天</button>
+                <button class="admin-tab" data-tab="plugins">插件管理</button>
             </div>
             <div class="admin-panel-content">
                 <div class="admin-tab-content active" id="translationTab">
@@ -2249,6 +2336,66 @@
                         </div>
                     </div>
                 </div>
+                
+                <!-- 插件管理选项卡 -->
+                <div class="admin-tab-content" id="pluginsTab">
+                    <div style="margin-bottom: 20px;">
+                        <h4>插件管理</h4>
+                        <p style="margin-bottom: 15px; font-size: 14px; color: #6c757d;">创建、编辑和管理聊天室插件。</p>
+                        
+                        <!-- 插件列表 -->
+                        <div style="margin-bottom: 20px;">
+                            <h5 style="margin-bottom: 10px;">已安装的插件</h5>
+                            <div id="pluginList" style="max-height: 300px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px;">
+                                <p style="text-align: center; color: #6c757d;">加载中...</p>
+                            </div>
+                        </div>
+                        
+                        <!-- 创建新插件 -->
+                        <div style="margin-bottom: 20px;">
+                            <h5 style="margin-bottom: 10px;">创建新插件</h5>
+                            <div style="display: flex; flex-direction: column; gap: 10px;">
+                                <input type="text" id="newPluginName" placeholder="插件名称" style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 5px; font-size: 14px;">
+                                <input type="text" id="newPluginDescription" placeholder="插件描述" style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 5px; font-size: 14px;">
+                                <textarea id="newPluginCode" placeholder="插件代码 (JavaScript)" style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 5px; font-size: 14px; resize: vertical; min-height: 200px;">// 插件示例：欢迎新用户
+io.on('user-joined', (data) => {
+    const { username, roomName } = data;
+    io.to(roomName).emit('message', {
+        id: 'welcome_' + Date.now(),
+        username: '系统',
+        message: `欢迎 ${username} 加入聊天室！`,
+        type: 'text',
+        color: '#667eea',
+        timestamp: new Date().toISOString(),
+        isSystem: true
+    });
+});
+
+// 添加命令处理
+io.on('message', (data) => {
+    const { message, roomName } = data;
+    if (message.startsWith('/hello')) {
+        io.to(roomName).emit('message', {
+            id: 'hello_' + Date.now(),
+            username: '插件',
+            message: '你好！我是一个测试插件。',
+            type: 'text',
+            color: '#4CAF50',
+            timestamp: new Date().toISOString()
+        });
+    }
+});</textarea>
+                                <div style="display: flex; gap: 10px;">
+                                    <button type="button" id="createPluginBtn" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px;">创建插件</button>
+                                    <button type="button" id="reloadPluginsBtn" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px;">重新加载插件</button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 插件操作结果 -->
+                        <div id="pluginResult" style="margin-top: 15px; padding: 10px; border-radius: 5px; display: none;"></div>
+                    </div>
+                </div>
             </div>
             <div class="modal-buttons">
                 <button type="button" class="btn btn-cancel" onclick="closeSettingsModal()">取消</button>
@@ -2538,6 +2685,22 @@
             allowAIChat: false // 添加AI聊天权限初始值
         };
         
+        // CSRF令牌
+        let csrfToken = '';
+        
+        // 获取CSRF令牌
+        async function getCsrfToken() {
+            try {
+                const response = await fetch('/api/csrf-token');
+                const data = await response.json();
+                csrfToken = data.csrfToken;
+                return csrfToken;
+            } catch (error) {
+                console.error('获取CSRF令牌失败:', error);
+                return null;
+            }
+        }
+        
         // 翻译相关变量
         let currentTargetLanguage = 'zh'; // 默认翻译为中文，LibreTranslate使用'zh'而不是'zh-CN'
         
@@ -2563,6 +2726,11 @@
                 modal.classList.remove('active');
             }
         }
+        
+        // 语音录制相关变量
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let isRecording = false;
         
         // 震动功能 - 优化苹果设备兼容性
         function vibrate(duration = 500, intensity = 1) {
@@ -2904,6 +3072,73 @@
                 // 在连接成功后注册插件事件监听器
                 if (typeof registerPluginEventListeners === 'function') {
                     registerPluginEventListeners();
+                }
+                
+                // 在连接成功后注册消息相关事件监听器
+                if (typeof registerMessageListeners === 'function') {
+                    registerMessageListeners();
+                }
+                if (typeof registerVibrateListener === 'function') {
+                    registerVibrateListener();
+                }
+                if (typeof registerUserLeftListener === 'function') {
+                    registerUserLeftListener();
+                }
+                if (typeof registerUserRenamedListener === 'function') {
+                    registerUserRenamedListener();
+                }
+                if (typeof registerSystemMessageListener === 'function') {
+                    registerSystemMessageListener();
+                }
+                if (typeof registerMessagesClearedListener === 'function') {
+                    registerMessagesClearedListener();
+                }
+                if (typeof registerKickedListener === 'function') {
+                    registerKickedListener();
+                }
+                if (typeof registerMessageRecalledListener === 'function') {
+                    registerMessageRecalledListener();
+                }
+                if (typeof registerMessageReadListener === 'function') {
+                    registerMessageReadListener();
+                }
+                if (typeof registerPrivateMessageReadListener === 'function') {
+                    registerPrivateMessageReadListener();
+                }
+                
+                // 在连接成功后注册好友系统事件监听器
+                if (typeof registerFriendsListListener === 'function') {
+                    registerFriendsListListener();
+                }
+                if (typeof registerFriendSystemListeners === 'function') {
+                    registerFriendSystemListeners();
+                }
+                if (typeof registerPrivateMessagesHistoryListener === 'function') {
+                    registerPrivateMessagesHistoryListener();
+                }
+                if (typeof registerFriendErrorListener === 'function') {
+                    registerFriendErrorListener();
+                }
+                if (typeof registerMentionNotificationListener === 'function') {
+                    registerMentionNotificationListener();
+                }
+                
+                // 在连接成功后注册房间相关事件监听器
+                if (typeof registerRoomEventListeners === 'function') {
+                    registerRoomEventListeners();
+                }
+                
+                // 在连接成功后注册用户状态和头像更新事件监听器
+                if (typeof registerUserStatusChangedListener === 'function') {
+                    registerUserStatusChangedListener();
+                }
+                if (typeof registerAvatarUpdatedListener === 'function') {
+                    registerAvatarUpdatedListener();
+                }
+                
+                // 在连接成功后注册旧通话功能事件监听器
+                if (typeof registerOldCallEventListeners === 'function') {
+                    registerOldCallEventListeners();
                 }
                 
                 // 在连接成功后注册白板事件监听器
@@ -4382,6 +4617,37 @@
                     }
                 });
                 
+                // 监听天气响应事件
+                socket.on('weather-response', (data) => {
+                    if (data.success) {
+                        const weather = data.data;
+                        let weatherMessage = `🌤️ 天气查询结果\n城市: ${weather.city}\n温度: ${weather.temperature}\n天气: ${weather.weather}\n风力: ${weather.wind}\n湿度: ${weather.humidity}\n更新时间: ${weather.updateTime}`;
+                        
+                        // 添加未来5天天气预报
+                        if (weather.forecast && weather.forecast.length > 0) {
+                            weatherMessage += '\n\n📅 未来5天天气预报:';
+                            weather.forecast.forEach((day, index) => {
+                                weatherMessage += `\n${index + 1}. ${day.date}: ${day.weather}, ${day.temperature}, ${day.wind}`;
+                            });
+                        }
+                        
+                        // 显示天气信息
+                        addMessage({
+                            id: 'weather-' + Date.now(),
+                            username: '系统',
+                            color: '#667eea',
+                            message: weatherMessage,
+                            type: 'text',
+                            timestamp: new Date().toLocaleTimeString(),
+                            senderSocketId: 'system',
+                            readBy: [socket.id],
+                            pinned: false
+                        });
+                    } else {
+                        showNotification('天气查询失败: ' + (data.error || '未知错误'), 'error');
+                    }
+                });
+                
                 // 监听插件列表事件
                 socket.on('plugin-list', (plugins) => {
                     if (pluginList) {
@@ -4774,6 +5040,232 @@
             initVideoParameterSliders();
             // 立即应用视频参数设置
             applyVideoSettings();
+            
+            // 初始化插件管理
+            initPluginManagement();
+        }
+        
+        // 初始化插件管理
+        function initPluginManagement() {
+            // 加载插件列表
+            loadPluginsList();
+            
+            // 绑定创建插件按钮事件
+            const createPluginBtn = document.getElementById('createPluginBtn');
+            if (createPluginBtn) {
+                createPluginBtn.addEventListener('click', createPlugin);
+            }
+            
+            // 绑定重新加载插件按钮事件
+            const reloadPluginsBtn = document.getElementById('reloadPluginsBtn');
+            if (reloadPluginsBtn) {
+                reloadPluginsBtn.addEventListener('click', reloadPlugins);
+            }
+        }
+        
+        // 加载插件列表
+        async function loadPluginsList() {
+            try {
+                const response = await fetch('/api/plugins');
+                const data = await response.json();
+                
+                const pluginList = document.getElementById('pluginList');
+                if (pluginList) {
+                    if (data.plugins && data.plugins.length > 0) {
+                        pluginList.innerHTML = data.plugins.map(plugin => `
+                            <div style="background: #f8f9fa; padding: 10px; border-radius: 5px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <div style="display: flex; align-items: center;">
+                                        <strong>${plugin.name}</strong>
+                                        ${plugin.isBuiltin ? '<span style="margin-left: 10px; padding: 2px 6px; background: #6c757d; color: white; border-radius: 3px; font-size: 10px;">自带</span>' : ''}
+                                    </div>
+                                    <p style="margin: 5px 0; font-size: 12px; color: #6c757d;">${plugin.description || '无描述'}</p>
+                                    <p style="margin: 0; font-size: 11px; color: #999;">版本: ${plugin.version}</p>
+                                </div>
+                                <div style="display: flex; gap: 5px;">
+                                    <button onclick="editPlugin('${plugin.name}')" ${plugin.isBuiltin ? 'disabled style="padding: 5px 10px; background: #667eea; color: white; border: none; border-radius: 3px; cursor: not-allowed; font-size: 12px; opacity: 0.6;"' : 'style="padding: 5px 10px; background: #667eea; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;"'}>编辑</button>
+                                    <button onclick="deletePlugin('${plugin.name}')" ${plugin.isBuiltin ? 'disabled style="padding: 5px 10px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: not-allowed; font-size: 12px; opacity: 0.6;"' : 'style="padding: 5px 10px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;"'}>删除</button>
+                                </div>
+                            </div>
+                        `).join('');
+                    } else {
+                        pluginList.innerHTML = '<p style="text-align: center; color: #6c757d;">暂无插件</p>';
+                    }
+                }
+            } catch (error) {
+                console.error('加载插件列表失败:', error);
+                const pluginList = document.getElementById('pluginList');
+                if (pluginList) {
+                    pluginList.innerHTML = '<p style="text-align: center; color: #dc3545;">加载插件列表失败</p>';
+                }
+            }
+        }
+        
+        // 创建插件
+        async function createPlugin() {
+            try {
+                const name = document.getElementById('newPluginName').value.trim();
+                const description = document.getElementById('newPluginDescription').value.trim();
+                const code = document.getElementById('newPluginCode').value.trim();
+                
+                if (!name || !code) {
+                    showPluginResult('请填写插件名称和代码', 'error');
+                    return;
+                }
+                
+                // 确保CSRF令牌已获取
+                if (!csrfToken) {
+                    await getCsrfToken();
+                }
+                
+                const response = await fetch('/api/plugins', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken
+                    },
+                    body: JSON.stringify({ name, description, code })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    showPluginResult('插件创建成功', 'success');
+                    // 清空表单
+                    document.getElementById('newPluginName').value = '';
+                    document.getElementById('newPluginDescription').value = '';
+                    document.getElementById('newPluginCode').value = '';
+                    // 重新加载插件列表
+                    loadPluginsList();
+                } else {
+                    showPluginResult('插件创建失败: ' + (data.error || '未知错误'), 'error');
+                }
+            } catch (error) {
+                console.error('创建插件失败:', error);
+                showPluginResult('创建插件失败: ' + error.message, 'error');
+            }
+        }
+        
+        // 编辑插件
+        async function editPlugin(pluginName) {
+            try {
+                // 确保CSRF令牌已获取
+                if (!csrfToken) {
+                    await getCsrfToken();
+                }
+                
+                const response = await fetch(`/api/plugins/${pluginName}/code`, {
+                    headers: {
+                        'X-CSRF-Token': csrfToken
+                    }
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    document.getElementById('newPluginName').value = data.name;
+                    document.getElementById('newPluginDescription').value = data.description;
+                    // 对API密钥进行打码处理
+                    let code = data.code;
+                    code = code.replace(/'cb9fc22848b739befe3f0b3d5e4e9248'/g, "'cb9fc**********5e4e9248' // 已打码");
+                    document.getElementById('newPluginCode').value = code;
+                    showPluginResult('编辑插件: ' + data.name, 'info');
+                } else {
+                    showPluginResult('获取插件代码失败: ' + (data.error || '未知错误'), 'error');
+                }
+            } catch (error) {
+                console.error('编辑插件失败:', error);
+                showPluginResult('编辑插件失败: ' + error.message, 'error');
+            }
+        }
+        
+        // 删除插件
+        async function deletePlugin(pluginName) {
+            if (!confirm(`确定要删除插件 ${pluginName} 吗？`)) {
+                return;
+            }
+            
+            try {
+                // 确保CSRF令牌已获取
+                if (!csrfToken) {
+                    await getCsrfToken();
+                }
+                
+                const response = await fetch(`/api/plugins/${pluginName}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'X-CSRF-Token': csrfToken
+                    }
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    showPluginResult('插件删除成功', 'success');
+                    // 重新加载插件列表
+                    loadPluginsList();
+                } else {
+                    showPluginResult('插件删除失败: ' + (data.error || '未知错误'), 'error');
+                }
+            } catch (error) {
+                console.error('删除插件失败:', error);
+                showPluginResult('删除插件失败: ' + error.message, 'error');
+            }
+        }
+        
+        // 重新加载插件
+        async function reloadPlugins() {
+            try {
+                // 确保CSRF令牌已获取
+                if (!csrfToken) {
+                    await getCsrfToken();
+                }
+                
+                const response = await fetch('/api/plugins/reload', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-Token': csrfToken
+                    }
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    showPluginResult('插件已重新加载', 'success');
+                    // 重新加载插件列表
+                    loadPluginsList();
+                } else {
+                    showPluginResult('重新加载插件失败: ' + (data.error || '未知错误'), 'error');
+                }
+            } catch (error) {
+                console.error('重新加载插件失败:', error);
+                showPluginResult('重新加载插件失败: ' + error.message, 'error');
+            }
+        }
+        
+        // 显示插件操作结果
+        function showPluginResult(message, type) {
+            const resultDiv = document.getElementById('pluginResult');
+            if (resultDiv) {
+                resultDiv.textContent = message;
+                resultDiv.style.display = 'block';
+                
+                // 设置样式
+                if (type === 'success') {
+                    resultDiv.style.backgroundColor = '#d4edda';
+                    resultDiv.style.color = '#155724';
+                    resultDiv.style.border = '1px solid #c3e6cb';
+                } else if (type === 'error') {
+                    resultDiv.style.backgroundColor = '#f8d7da';
+                    resultDiv.style.color = '#721c24';
+                    resultDiv.style.border = '1px solid #f5c6cb';
+                } else {
+                    resultDiv.style.backgroundColor = '#d1ecf1';
+                    resultDiv.style.color = '#0c5460';
+                    resultDiv.style.border = '1px solid #bee5eb';
+                }
+                
+                // 3秒后隐藏
+                setTimeout(() => {
+                    resultDiv.style.display = 'none';
+                }, 3000);
+            }
         }
         
         // 初始化视频参数滑动条
@@ -8586,22 +9078,42 @@
             }
             
             createPollButton() {
-                // 检查是否已经存在投票按钮
-                if (document.getElementById('pollBtn')) {
-                    return; // 已经存在投票按钮，不需要再创建
-                }
-                
-                // 创建投票按钮
-                const pollBtn = document.createElement('button');
-                pollBtn.className = 'action-btn';
-                pollBtn.id = 'pollBtn';
-                pollBtn.title = '创建投票';
-                pollBtn.innerHTML = '📊';
-                
                 // 添加到第一个操作按钮区域（主聊天界面）
                 const actionButtons = document.querySelector('.input-area .action-buttons');
                 if (actionButtons) {
-                    actionButtons.appendChild(pollBtn);
+                    // 检查是否已经存在投票按钮
+                    if (!document.getElementById('pollBtn')) {
+                        // 创建投票按钮
+                        const pollBtn = document.createElement('button');
+                        pollBtn.className = 'action-btn';
+                        pollBtn.id = 'pollBtn';
+                        pollBtn.title = '创建投票';
+                        pollBtn.innerHTML = '📊';
+                        actionButtons.appendChild(pollBtn);
+                    }
+                    
+                    // 检查是否已经存在天气按钮
+                    if (!document.getElementById('weatherBtn')) {
+                        // 创建天气查询按钮
+                        const weatherBtn = document.createElement('button');
+                        weatherBtn.className = 'action-btn';
+                        weatherBtn.id = 'weatherBtn';
+                        weatherBtn.title = '查询天气';
+                        weatherBtn.innerHTML = '🌤️';
+                        
+                        // 天气按钮点击事件
+                        weatherBtn.addEventListener('click', () => {
+                            const city = prompt('请输入城市名称：');
+                            if (city) {
+                                // 发送 /weather 城市 命令
+                                const messageInput = document.getElementById('messageInput');
+                                messageInput.value = `/weather ${city}`;
+                                document.getElementById('sendBtn').click();
+                            }
+                        });
+                        
+                        actionButtons.appendChild(weatherBtn);
+                    }
                 }
             }
             
@@ -9376,7 +9888,7 @@
         // 页面加载时恢复草稿
         restoreDraft();
         
-        sendBtn.addEventListener('click', () => {
+        sendBtn.addEventListener('click', async () => {
             const message = messageInput.value.trim();
             if (message) {
                 if (!userPermissions.allowSendMessages) {
@@ -9387,6 +9899,81 @@
                     alert('消息长度不能超过200字');
                     return;
                 }
+                
+                // 处理天气查询命令
+                if (message.startsWith('/天气 ') || message.startsWith('/weather ')) {
+                    const city = message.substring(message.indexOf(' ') + 1).trim();
+                    if (city) {
+                        try {
+                            // 确保CSRF令牌已获取
+                            if (!csrfToken) {
+                                await getCsrfToken();
+                            }
+                            
+                            const response = await fetch('/api/weather', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-Token': csrfToken
+                                },
+                                body: JSON.stringify({ city })
+                            });
+                            
+                            const data = await response.json();
+                            if (data.success) {
+                                const weatherInfo = data.data;
+                                let weatherMessage = `🌤️ ${weatherInfo.city}天气：\n`;
+                                weatherMessage += `温度：${weatherInfo.temperature}°C\n`;
+                                weatherMessage += `天气：${weatherInfo.weather}\n`;
+                                weatherMessage += `风力：${weatherInfo.wind}\n`;
+                                weatherMessage += `湿度：${weatherInfo.humidity}\n`;
+                                weatherMessage += `更新时间：${weatherInfo.updateTime}`;
+                                
+                                // 显示天气信息
+                                addMessage({
+                                    id: 'weather_' + Date.now(),
+                                    username: '系统',
+                                    message: weatherMessage,
+                                    type: 'text',
+                                    color: '#667eea',
+                                    timestamp: new Date().toISOString(),
+                                    isSystem: true,
+                                    pinned: true
+                                });
+                            } else {
+                                alert('天气查询失败：' + (data.error || '未知错误'));
+                            }
+                        } catch (error) {
+                            console.error('天气查询错误:', error);
+                            alert('天气查询失败，请稍后重试');
+                        }
+                        messageInput.value = '';
+                        clearDraft();
+                        return;
+                    }
+                }
+                
+                // 生成消息ID
+                const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+                
+                // 获取当前用户的颜色
+                const currentUser = allUsers.find(user => user.username === username);
+                const userColor = currentUser ? currentUser.color : '#667eea'; // 默认颜色
+                
+                // 立即显示自己发送的消息
+                addMessage({
+                    id: messageId,
+                    username: username,
+                    color: userColor,
+                    message: message,
+                    type: 'text',
+                    timestamp: new Date().toLocaleTimeString(),
+                    senderSocketId: socket.id,
+                    readBy: [socket.id],
+                    pinned: false
+                });
+                
+                // 发送消息到服务器
                 socket.emit('message', { message, type: 'text' });
                 messageInput.value = '';
                 clearDraft();
@@ -10602,10 +11189,16 @@
             // 立即设置为正在共享，防止重复调用
             isSharingRealTimeLocation = true;
             
+            // 显示位置共享状态指示器
+            document.getElementById('locationShareStatus').style.display = 'block';
+            
             // 生成实时位置消息ID
             realTimeLocationMessageId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
             
-            alert('开始共享实时位置，每10秒更新一次');
+            alert('开始共享实时位置，每30秒更新一次');
+            
+            console.log('位置共享状态指示器已显示');
+
             
             console.log('共享实时位置函数被调用，isSharingRealTimeLocation:', isSharingRealTimeLocation);
             
@@ -10672,7 +11265,12 @@
             }
             isSharingRealTimeLocation = false;
             realTimeLocationMessageId = null;
+            
+            // 隐藏位置共享状态指示器
+            document.getElementById('locationShareStatus').style.display = 'none';
+            
             alert('已停止共享实时位置');
+            console.log('位置共享状态指示器已隐藏');
         }
         
         // 显示实时位置
@@ -11028,170 +11626,14 @@
                     alert('无法访问麦克风，请检查权限设置');
                 }
             } else {
-                mediaRecorder.stop();
-                isRecording = false;
-                audioBtn.classList.remove('recording');
-                audioBtn.title = '发送语音';
-            }
-        });
-
-        socket.on('user-joined', (data) => {
-            addSystemMessage(`${data.username} 加入了聊天室`);
-            updateUserList(data.users);
-            userCountSpan.textContent = data.userCount;
-            
-            // 更新当前用户的权限
-            if (data.username === username) {
-                const currentUser = data.users.find(u => u.username === username);
-                if (currentUser) {
-                    userPermissions = currentUser.permissions;
-                    // 加入房间成功后切换到聊天界面
-                    loginForm.classList.add('hidden');
-                    chatForm.classList.remove('hidden');
-                    messageInput.focus();
-                    
-                    // 初始化通话系统
-                    callSystem = new CallSystem(socket, username);
+                if (mediaRecorder) {
+                    mediaRecorder.stop();
+                    isRecording = false;
+                    audioBtn.classList.remove('recording');
+                    audioBtn.title = '发送语音';
                 }
             }
         });
-        
-        socket.on('user-permissions-changed', (data) => {
-            // 更新allUsers数组中的所有用户权限
-            data.users.forEach(updatedUser => {
-                const existingUser = allUsers.find(u => u.socketId === updatedUser.socketId);
-                if (existingUser) {
-                    existingUser.permissions = updatedUser.permissions;
-                }
-            });
-            
-            // 更新当前用户的权限
-            const currentUser = data.users.find(u => u.socketId === socket.id);
-            if (currentUser) {
-                userPermissions = currentUser.permissions;
-                
-                // 如果当前正在显示AI聊天设置面板，重新初始化AI聊天设置
-                const aiChatTab = document.querySelector('.admin-tab[data-tab="aiChat"]');
-                const aiChatTabContent = document.getElementById('aiChatTab');
-                if (aiChatTab && aiChatTab.classList.contains('active') && aiChatTabContent && aiChatTabContent.classList.contains('active')) {
-                    initAIChatSettings();
-                }
-            }
-        });
-        
-        // 监听AI设置更新
-        socket.on('ai-settings-updated', (data) => {
-            if (data) {
-                // 更新AI设置
-                const aiSettings = data;
-                
-                // 更新启用状态
-                const enableCheckbox = document.getElementById('enableAIChatCheckbox');
-                if (enableCheckbox) {
-                    enableCheckbox.checked = aiSettings.enable || false;
-                }
-                
-                // 更新模型选择
-                const modelRadios = document.querySelectorAll('input[name="aiModel"]');
-                modelRadios.forEach(radio => {
-                    radio.checked = radio.value === aiSettings.model;
-                });
-                
-                // 触发模型选择变更事件，更新配置界面
-                const modelSelect = document.querySelector('input[name="aiModel"]:checked');
-                if (modelSelect) {
-                    modelSelect.dispatchEvent(new Event('change'));
-                }
-                
-                // 更新各模型的配置
-                if (aiSettings.glm4) {
-                    const glm4ApiKey = document.getElementById('glm4ApiKey');
-                    if (glm4ApiKey) {
-                        glm4ApiKey.value = aiSettings.glm4.apiKey || '';
-                    }
-                }
-                if (aiSettings.deepseek) {
-                    const deepseekModelName = document.getElementById('deepseekModelName');
-                    const deepseekApiKey = document.getElementById('deepseekApiKey');
-                    if (deepseekModelName) {
-                        deepseekModelName.value = aiSettings.deepseek.modelName || '';
-                    }
-                    if (deepseekApiKey) {
-                        deepseekApiKey.value = aiSettings.deepseek.apiKey || '';
-                    }
-                }
-                if (aiSettings.siliconflow) {
-                    const siliconflowModelName = document.getElementById('siliconflowModelName');
-                    const siliconflowApiKey = document.getElementById('siliconflowApiKey');
-                    if (siliconflowModelName) {
-                        siliconflowModelName.value = aiSettings.siliconflow.modelName || '';
-                    }
-                    if (siliconflowApiKey) {
-                        siliconflowApiKey.value = aiSettings.siliconflow.apiKey || '';
-                    }
-                }
-                if (aiSettings.custom) {
-                    const customApiUrl = document.getElementById('customApiUrl');
-                    const customApiKey = document.getElementById('customApiKey');
-                    const customModelName = document.getElementById('customModelName');
-                    if (customApiUrl) {
-                        customApiUrl.value = aiSettings.custom.apiUrl || '';
-                    }
-                    if (customApiKey) {
-                        customApiKey.value = aiSettings.custom.apiKey || '';
-                    }
-                    if (customModelName) {
-                        customModelName.value = aiSettings.custom.modelName || '';
-                    }
-                }
-                
-                // 显示通知
-                if (data.message) {
-                    showNotification('AI设置已更新', data.message, 'info');
-                }
-            }
-        });
-        
-        // 通话相关socket事件处理已移至CallSystem类中，不再直接在页面中定义
-        
-
-        socket.on('permission-denied', (data) => {
-            alert(data.message);
-        });
-
-        // 禁言相关事件处理
-        socket.on('muted-error', (data) => {
-            alert(data.message);
-        });
-
-        socket.on('muted', (data) => {
-            const durationText = data.duration === -1 ? '永久' : `${data.duration}分钟`;
-            alert(`您已被禁言${durationText}，原因：${data.reason}`);
-        });
-
-        socket.on('unmuted', () => {
-            alert('您已被解除禁言');
-        });
-        
-        // 聊天室提示事件处理
-        socket.on('chatroom-notification', (data) => {
-            showChatroomNotification(data);
-        });
-        
-        // 更新聊天室提示
-        socket.on('update-chatroom-notification', (data) => {
-            // 重新显示更新后的提示
-            showChatroomNotification(data);
-        });
-        
-        // 移除聊天室提示
-        socket.on('remove-chatroom-notification', (data) => {
-            const notificationModal = document.getElementById('chatroomNotificationModal');
-            if (notificationModal) {
-                notificationModal.remove();
-            }
-        });
-        
         // 显示聊天室提示函数
         function showChatroomNotification(data) {
             // 生成唯一ID
@@ -11532,21 +11974,6 @@
             });
         }
         
-        // 更新通知事件处理
-        socket.on('update-notification', (data) => {
-            showUpdateNotification(data);
-        });
-        
-        // 监听通话结束事件，检查是否有待显示的更新通知
-        document.addEventListener('callEnded', () => {
-            setTimeout(() => {
-                if (pendingUpdateNotification) {
-                    showUpdateNotification(pendingUpdateNotification);
-                    pendingUpdateNotification = null;
-                }
-            }, 1000);
-        });
-        
         // 显示更新通知
         function showUpdateNotification(data) {
             // 如果正在通话中，保存更新通知，等通话结束后显示
@@ -11635,192 +12062,241 @@
             }
         }
 
-        socket.on('message', (data) => {
-            // 检查是否是实时位置消息更新
-            if (data.type === 'location' && data.isRealTime) {
-                // 查找已有的实时位置消息
-                const existingMessage = document.querySelector(`[data-message-id="${data.id}"]`);
-                if (existingMessage) {
-                    // 更新已有的消息
-                    const messageDiv = document.createElement('div');
-                    messageDiv.className = 'message';
-                    messageDiv.dataset.messageId = data.id;
-                    
-                    let contentHtml;
-                    const { latitude, longitude, locationName, isRealTime, realTimeTimestamp } = data;
-                    const mapUrl = `https://uri.amap.com/marker?position=${longitude},${latitude}&name=${encodeURIComponent(locationName)}&coordinate=gaode`;
-                    const timeString = realTimeTimestamp ? new Date(realTimeTimestamp).toLocaleTimeString() : '';
-                    const realTimeBadge = isRealTime ? `<span style="background: #17a2b8; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; margin-left: 5px;">实时</span>` : '';
-                    const viewButton = isRealTime ? `<button style="background: #667eea; color: white; border: none; border-radius: 5px; padding: 5px 10px; font-size: 12px; cursor: pointer; margin-top: 5px;" onclick="showRealTimeLocation('${latitude}', '${longitude}', '${locationName}')">查看实时位置</button>` : '';
-                    
-                    contentHtml = `
-                        <div style="display: flex; flex-direction: column; gap: 10px;">
-                            <div style="display: flex; align-items: center; gap: 8px;">
-                                <span>📍</span>
-                                <span>${locationName}</span>
-                                ${realTimeBadge}
-                                ${timeString ? `<span style="font-size: 12px; color: #666; margin-left: auto;">${timeString}</span>` : ''}
-                            </div>
-                            <a href="${mapUrl}" target="_blank" rel="noopener noreferrer" style="color: #667eea; text-decoration: underline; font-size: 14px;">
-                                在高德地图中查看
-                            </a>
-                            <div style="font-size: 12px; color: #666;">
-                                纬度: ${latitude.toFixed(4)}, 经度: ${longitude.toFixed(4)}
-                            </div>
-                            ${viewButton}
-                        </div>
-                    `;
-                    
-                    // 检查消息是否已收藏
-                    const isFavorited = isMessageFavorited(data.id);
-                    
-                    // 只有文本消息才显示翻译按钮
-                    let translateBtnHtml = data.type === 'text' ? `<button class="translate-btn" onclick="translateMessage('${data.id}', currentTargetLanguage)" title="翻译消息">🌐</button>` : '';
-                    
-                    let actionsHtml = `
-                        <div class="message-actions">
-                            <button class="favorite-btn ${isFavorited ? 'favorited' : ''}" onclick="toggleFavorite('${data.id}')" title="${isFavorited ? '取消收藏' : '收藏消息'}">⭐</button>
-                            ${translateBtnHtml}
-                            ${data.username === username ? `<button class="recall-btn" onclick="recallMessage('${data.id}')">撤回</button>` : ''}
-                        </div>
-                    `;
-                    
-                    // 添加已读状态显示
-                    const isRead = data.readBy && data.readBy.length > 1;
-                    const readStatusHtml = `<span class="read-status" ${isRead ? 'title="已读"' : 'title="未读"'}>${isRead ? '✓✓' : '✓'}</span>`;
-                    
-                    // 获取用户头像
-                    const avatarUrl = data.avatar || getUserAvatar(data.username);
-                    
-                    messageDiv.innerHTML = `
-                        <input type="checkbox" class="message-checkbox" data-message-id="${data.id}" onclick="toggleMessageSelection('${data.id}')">
-                        <img src="${avatarUrl}" alt="${data.username}" class="message-avatar">
-                        <div class="message-content-wrapper">
-                            <div class="message-header">
-                                <span class="username" style="color: ${data.color}">${data.username}</span>
-                                <span class="timestamp">${data.timestamp}</span>
-                                ${data.username === username ? readStatusHtml : ''}
-                            </div>
-                            <div class="message-content">${contentHtml}</div>
-                            ${actionsHtml}
-                        </div>
-                    `;
-                    
-                    // 替换已有的消息
-                    existingMessage.replaceWith(messageDiv);
-                    
-                    // 滚动到底部
-                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
-                } else {
-                    // 如果消息不存在，添加新消息
-                    addMessage(data);
-                    
-                    // 新消息震动提醒 - 检查用户震动通知设置和交互激活状态，管理员不受此设置影响
-                    if (data.username !== username && (window.userSettings.vibrateNotification || data.role === 'admin' || data.role === 'superadmin')) {
-                        if (userInteractionActivated) {
-                            vibrate();
+        // 注册消息事件监听器
+        function registerMessageListeners() {
+            if (socket) {
+                socket.on('message', (data) => {
+                    // 检查是否是实时位置消息更新
+                    if (data.type === 'location' && data.isRealTime) {
+                        // 查找已有的实时位置消息
+                        const existingMessage = document.querySelector(`[data-message-id="${data.id}"]`);
+                        if (existingMessage) {
+                            // 更新已有的消息
+                            const messageDiv = document.createElement('div');
+                            messageDiv.className = 'message';
+                            messageDiv.dataset.messageId = data.id;
+                            
+                            let contentHtml;
+                            const { latitude, longitude, locationName, isRealTime, realTimeTimestamp } = data;
+                            const mapUrl = `https://uri.amap.com/marker?position=${longitude},${latitude}&name=${encodeURIComponent(locationName)}&coordinate=gaode`;
+                            const timeString = realTimeTimestamp ? new Date(realTimeTimestamp).toLocaleTimeString() : '';
+                            const realTimeBadge = isRealTime ? `<span style="background: #17a2b8; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; margin-left: 5px;">实时</span>` : '';
+                            const viewButton = isRealTime ? `<button style="background: #667eea; color: white; border: none; border-radius: 5px; padding: 5px 10px; font-size: 12px; cursor: pointer; margin-top: 5px;" onclick="showRealTimeLocation('${latitude}', '${longitude}', '${locationName}')">查看实时位置</button>` : '';
+                            
+                            contentHtml = `
+                                <div style="display: flex; flex-direction: column; gap: 10px;">
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <span>📍</span>
+                                        <span>${locationName}</span>
+                                        ${realTimeBadge}
+                                        ${timeString ? `<span style="font-size: 12px; color: #666; margin-left: auto;">${timeString}</span>` : ''}
+                                    </div>
+                                    <a href="${mapUrl}" target="_blank" rel="noopener noreferrer" style="color: #667eea; text-decoration: underline; font-size: 14px;">
+                                        在高德地图中查看
+                                    </a>
+                                    <div style="font-size: 12px; color: #666;">
+                                        纬度: ${latitude.toFixed(4)}, 经度: ${longitude.toFixed(4)}
+                                    </div>
+                                    ${viewButton}
+                                </div>
+                            `;
+                            
+                            // 检查消息是否已收藏
+                            const isFavorited = isMessageFavorited(data.id);
+                            
+                            // 只有文本消息才显示翻译按钮
+                            let translateBtnHtml = data.type === 'text' ? `<button class="translate-btn" onclick="translateMessage('${data.id}', currentTargetLanguage)" title="翻译消息">🌐</button>` : '';
+                            
+                            let actionsHtml = `
+                                <div class="message-actions">
+                                    <button class="favorite-btn ${isFavorited ? 'favorited' : ''}" onclick="toggleFavorite('${data.id}')" title="${isFavorited ? '取消收藏' : '收藏消息'}">⭐</button>
+                                    ${translateBtnHtml}
+                                    ${data.username === username ? `<button class="recall-btn" onclick="recallMessage('${data.id}')">撤回</button>` : ''}
+                                </div>
+                            `;
+                            
+                            // 添加已读状态显示
+                            const isRead = data.readBy && data.readBy.length > 1;
+                            const readStatusHtml = `<span class="read-status" ${isRead ? 'title="已读"' : 'title="未读"'}>${isRead ? '✓✓' : '✓'}</span>`;
+                            
+                            // 获取用户头像
+                            const avatarUrl = data.avatar || getUserAvatar(data.username);
+                            
+                            messageDiv.innerHTML = `
+                                <input type="checkbox" class="message-checkbox" data-message-id="${data.id}" onclick="toggleMessageSelection('${data.id}')">
+                                <img src="${avatarUrl}" alt="${data.username}" class="message-avatar">
+                                <div class="message-content-wrapper">
+                                    <div class="message-header">
+                                        <span class="username" style="color: ${data.color}">${data.username}</span>
+                                        <span class="timestamp">${data.timestamp}</span>
+                                        ${data.username === username ? readStatusHtml : ''}
+                                    </div>
+                                    <div class="message-content">${contentHtml}</div>
+                                    ${actionsHtml}
+                                </div>
+                            `;
+                            
+                            // 替换已有的消息
+                            existingMessage.replaceWith(messageDiv);
+                            
+                            // 滚动到底部
+                            messagesDiv.scrollTop = messagesDiv.scrollHeight;
                         } else {
-                            // 如果用户未激活，显示启用通知按钮
-                            createEnableNotificationsButton();
-                            console.log('需要用户交互才能启用震动通知');
+                            // 如果消息不存在，添加新消息
+                            addMessage(data);
+                            
+                            // 新消息震动提醒 - 检查用户震动通知设置和交互激活状态，管理员不受此设置影响
+                            if (data.username !== username && (window.userSettings.vibrateNotification || data.role === 'admin' || data.role === 'superadmin')) {
+                                if (userInteractionActivated) {
+                                    vibrate();
+                                } else {
+                                    // 如果用户未激活，显示启用通知按钮
+                                    createEnableNotificationsButton();
+                                    console.log('需要用户交互才能启用震动通知');
+                                }
+                            }
+                        }
+                    } else {
+                        // 对于其他消息，添加新消息
+                        addMessage(data);
+                        
+                        // 新消息震动提醒 - 检查用户震动通知设置和交互激活状态，管理员不受此设置影响
+                        if (data.username !== username && (window.userSettings.vibrateNotification || data.role === 'admin' || data.role === 'superadmin')) {
+                            if (userInteractionActivated) {
+                                vibrate();
+                            } else {
+                                // 如果用户未激活，显示启用通知按钮
+                                createEnableNotificationsButton();
+                                console.log('需要用户交互才能启用震动通知');
+                            }
+                        }
+                        
+                        // 只有当消息不是来自当前用户时，才生成AI回复建议
+                        if (data.username !== username) {
+                            generateAIResponse(data.message);
                         }
                     }
-                }
-            } else {
-                // 对于其他消息，添加新消息
-                addMessage(data);
-                
-                // 新消息震动提醒 - 检查用户震动通知设置和交互激活状态，管理员不受此设置影响
-                if (data.username !== username && (window.userSettings.vibrateNotification || data.role === 'admin' || data.role === 'superadmin')) {
-                    if (userInteractionActivated) {
-                        vibrate();
-                    } else {
-                        // 如果用户未激活，显示启用通知按钮
-                        createEnableNotificationsButton();
-                        console.log('需要用户交互才能启用震动通知');
+                });
+            }
+        }
+        
+        // 注册震动事件监听器
+        function registerVibrateListener() {
+            if (socket) {
+                socket.on('vibrate', (data) => {
+                    const duration = data.duration || 500;
+                    const intensity = data.intensity || 1;
+                    vibrate(duration, intensity);
+                });
+            }
+        }
+
+        // 注册用户离开事件监听器
+        function registerUserLeftListener() {
+            if (socket) {
+                socket.on('user-left', (data) => {
+                    addSystemMessage(`${data.username} 离开了聊天室`);
+                    updateUserList(data.users);
+                    userCountSpan.textContent = data.userCount;
+                });
+            }
+        }
+
+        // 注册用户重命名事件监听器
+        function registerUserRenamedListener() {
+            if (socket) {
+                socket.on('user-renamed', (data) => {
+                    addSystemMessage(`${data.oldName} 改名为 ${data.newName}`);
+                    updateUserList(data.users);
+                    
+                    // 如果当前用户被重命名，更新本地用户名
+                    if (data.oldName === username) {
+                        username = data.newName;
                     }
-                }
-                
-                // 只有当消息不是来自当前用户时，才生成AI回复建议
-                if (data.username !== username) {
-                    generateAIResponse(data.message);
-                }
+                });
             }
-        });
+        }
+
+        // 注册系统消息事件监听器
+        function registerSystemMessageListener() {
+            if (socket) {
+                socket.on('system-message', (data) => {
+                    addSystemMessage(data.message, true);
+                });
+            }
+        }
+
+        // 注册消息清空事件监听器
+        function registerMessagesClearedListener() {
+            if (socket) {
+                socket.on('messages-cleared', () => {
+                    messagesDiv.innerHTML = '<div class="system-message">消息已被管理员清空</div>';
+                });
+            }
+        }
+
+        // 注册被踢出事件监听器
+        function registerKickedListener() {
+            if (socket) {
+                socket.on('kicked', (message) => {
+                    alert(message);
+                    location.reload();
+                });
+            }
+        }
+
+        // 注册消息撤回事件监听器
+        function registerMessageRecalledListener() {
+            if (socket) {
+                socket.on('message-recalled', (messageId) => {
+                    const messageDiv = document.querySelector(`[data-message-id="${messageId}"]`);
+                    if (messageDiv) {
+                        const username = messageDiv.querySelector('.username').textContent;
+                        messageDiv.innerHTML = `
+                            <div class="message-header">
+                                <span class="username" style="color: ${messageDiv.querySelector('.username').style.color}">${username}</span>
+                                <span class="timestamp">${messageDiv.querySelector('.timestamp').textContent}</span>
+                            </div>
+                            <div class="message-content">[消息已撤回]</div>
+                        `;
+                    }
+                });
+            }
+        }
         
-        // 监听震动指令
-        socket.on('vibrate', (data) => {
-            const duration = data.duration || 500;
-            const intensity = data.intensity || 1;
-            vibrate(duration, intensity);
-        });
-
-        socket.on('user-left', (data) => {
-            addSystemMessage(`${data.username} 离开了聊天室`);
-            updateUserList(data.users);
-            userCountSpan.textContent = data.userCount;
-        });
-
-        socket.on('user-renamed', (data) => {
-            addSystemMessage(`${data.oldName} 改名为 ${data.newName}`);
-            updateUserList(data.users);
-            
-            // 如果当前用户被重命名，更新本地用户名
-            if (data.oldName === username) {
-                username = data.newName;
+        // 注册消息已读通知事件监听器
+        function registerMessageReadListener() {
+            if (socket) {
+                // 消息已读通知（普通聊天）
+                socket.on('message-read-by-user', (data) => {
+                    const messageDiv = document.querySelector(`[data-message-id="${data.messageId}"]`);
+                    if (messageDiv) {
+                        const readStatusElement = messageDiv.querySelector('.read-status');
+                        if (readStatusElement) {
+                            readStatusElement.textContent = '✓✓';
+                            readStatusElement.title = '已读';
+                        }
+                    }
+                });
             }
-        });
-
-        socket.on('system-message', (data) => {
-            addSystemMessage(data.message, true);
-        });
-
-        socket.on('messages-cleared', () => {
-            messagesDiv.innerHTML = '<div class="system-message">消息已被管理员清空</div>';
-        });
-
-        socket.on('kicked', (message) => {
-            alert(message);
-            location.reload();
-        });
-
-        socket.on('message-recalled', (messageId) => {
-            const messageDiv = document.querySelector(`[data-message-id="${messageId}"]`);
-            if (messageDiv) {
-                const username = messageDiv.querySelector('.username').textContent;
-                messageDiv.innerHTML = `
-                    <div class="message-header">
-                        <span class="username" style="color: ${messageDiv.querySelector('.username').style.color}">${username}</span>
-                        <span class="timestamp">${messageDiv.querySelector('.timestamp').textContent}</span>
-                    </div>
-                    <div class="message-content">[消息已撤回]</div>
-                `;
-            }
-        });
+        }
         
-        // 消息已读通知（普通聊天）
-        socket.on('message-read-by-user', (data) => {
-            const messageDiv = document.querySelector(`[data-message-id="${data.messageId}"]`);
-            if (messageDiv) {
-                const readStatusElement = messageDiv.querySelector('.read-status');
-                if (readStatusElement) {
-                    readStatusElement.textContent = '✓✓';
-                    readStatusElement.title = '已读';
-                }
+        // 注册私聊消息已读通知事件监听器
+        function registerPrivateMessageReadListener() {
+            if (socket) {
+                // 消息已读通知（私聊）
+                socket.on('private-message-read', (data) => {
+                    const messageDiv = document.querySelector(`[data-message-id="${data.messageId}"]`);
+                    if (messageDiv) {
+                        const readStatusElement = messageDiv.querySelector('.read-status');
+                        if (readStatusElement) {
+                            readStatusElement.textContent = '✓✓';
+                            readStatusElement.title = '已读';
+                        }
+                    }
+                });
             }
-        });
-        
-        // 消息已读通知（私聊）
-        socket.on('private-message-read', (data) => {
-            const messageDiv = document.querySelector(`[data-message-id="${data.messageId}"]`);
-            if (messageDiv) {
-                const readStatusElement = messageDiv.querySelector('.read-status');
-                if (readStatusElement) {
-                    readStatusElement.textContent = '✓✓';
-                    readStatusElement.title = '已读';
-                }
-            }
-        });
+        }
         
         // 实时翻译功能
         const supportedLanguages = [
@@ -12334,86 +12810,107 @@
         
         // Socket事件处理 - 好友系统
         
-        // 好友列表
-        socket.on('friends-list', (data) => {
-            friends = data;
-            updateFriendsList(data);
-        });
+        // 注册好友列表事件监听器
+        function registerFriendsListListener() {
+            if (socket) {
+                socket.on('friends-list', (data) => {
+                    friends = data;
+                    updateFriendsList(data);
+                });
+            }
+        }
         
 
         
-        // 好友请求
-        socket.on('friend-request', (data) => {
-            const notificationDiv = document.createElement('div');
-            notificationDiv.className = 'system-message';
-            notificationDiv.innerHTML = `
-                <div style="margin-bottom: 10px;">
-                    <strong>${escapeHtml(data.fromUsername)}</strong> 请求添加你为好友
-                </div>
-                <div style="display: flex; gap: 10px; justify-content: center;">
-                    <button class="btn btn-confirm" onclick="socket.emit('accept-friend', '${data.fromSocketId}'); this.parentElement.parentElement.remove();">接受</button>
-                    <button class="btn btn-cancel" onclick="socket.emit('reject-friend', '${data.fromSocketId}'); this.parentElement.parentElement.remove();">拒绝</button>
-                </div>
-            `;
-            messagesDiv.appendChild(notificationDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-        });
+        // 注册好友系统事件监听器
+        function registerFriendSystemListeners() {
+            if (socket) {
+                // 好友请求
+                socket.on('friend-request', (data) => {
+                    const notificationDiv = document.createElement('div');
+                    notificationDiv.className = 'system-message';
+                    notificationDiv.innerHTML = `
+                        <div style="margin-bottom: 10px;">
+                            <strong>${escapeHtml(data.fromUsername)}</strong> 请求添加你为好友
+                        </div>
+                        <div style="display: flex; gap: 10px; justify-content: center;">
+                            <button class="btn btn-confirm" onclick="socket.emit('accept-friend', '${data.fromSocketId}'); this.parentElement.parentElement.remove();">接受</button>
+                            <button class="btn btn-cancel" onclick="socket.emit('reject-friend', '${data.fromSocketId}'); this.parentElement.parentElement.remove();">拒绝</button>
+                        </div>
+                    `;
+                    messagesDiv.appendChild(notificationDiv);
+                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                });
+                
+                // 好友请求被接受
+                socket.on('friend-accepted', (data) => {
+                    alert(`你已成功添加 ${data.friendUsername} 为好友`);
+                    socket.emit('get-friends');
+                });
+                
+                // 好友请求被拒绝
+                socket.on('friend-rejected', (data) => {
+                    alert(`${data.friendUsername} 拒绝了你的好友请求`);
+                });
+                
+                // 好友被添加
+                socket.on('friend-added', (data) => {
+                    alert(`${data.friendUsername} 已添加你为好友`);
+                    socket.emit('get-friends');
+                });
+                
+                // 好友被删除
+                socket.on('friend-removed', (data) => {
+                    alert(`你已删除好友 ${data.friendUsername || '对方'}`);
+                    socket.emit('get-friends');
+                });
+                
+                // 私聊消息
+                socket.on('private-message', (data) => {
+                    addPrivateMessage(data);
+                });
+            }
+        }
         
-        // 好友请求被接受
-        socket.on('friend-accepted', (data) => {
-            alert(`你已成功添加 ${data.friendUsername} 为好友`);
-            socket.emit('get-friends');
-        });
+        // 注册私聊历史消息事件监听器
+        function registerPrivateMessagesHistoryListener() {
+            if (socket) {
+                socket.on('private-messages-history', (data) => {
+                    data.messages.forEach(message => {
+                        addPrivateMessage(message);
+                    });
+                });
+            }
+        }
         
-        // 好友请求被拒绝
-        socket.on('friend-rejected', (data) => {
-            alert(`${data.friendUsername} 拒绝了你的好友请求`);
-        });
+        // 注册好友错误事件监听器
+        function registerFriendErrorListener() {
+            if (socket) {
+                socket.on('friend-error', (data) => {
+                    alert(data.message);
+                });
+            }
+        }
         
-        // 好友被添加
-        socket.on('friend-added', (data) => {
-            alert(`${data.friendUsername} 已添加你为好友`);
-            socket.emit('get-friends');
-        });
-        
-        // 好友被删除
-        socket.on('friend-removed', (data) => {
-            alert(`你已删除好友 ${data.friendUsername || '对方'}`);
-            socket.emit('get-friends');
-        });
-        
-        // 私聊消息
-        socket.on('private-message', (data) => {
-            addPrivateMessage(data);
-        });
-        
-        // 私聊历史消息
-        socket.on('private-messages-history', (data) => {
-            data.messages.forEach(message => {
-                addPrivateMessage(message);
-            });
-        });
-        
-        // 好友错误
-        socket.on('friend-error', (data) => {
-            alert(data.message);
-        });
-        
-        // @通知
-        socket.on('mention-notification', (data) => {
-            const notificationDiv = document.createElement('div');
-            notificationDiv.className = 'system-message mention';
-            notificationDiv.innerHTML = `
-                <strong>${escapeHtml(data.fromUsername)}</strong> @了你：${escapeHtml(data.message)}
-                <div style="font-size: 12px; color: #999; margin-top: 5px;">${data.timestamp}</div>
-            `;
-            messagesDiv.appendChild(notificationDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            
-            // 播放提示音
-            const audio = new Audio('/notification.mp3');
-            audio.play().catch(() => {});
-        });
+        // 注册@通知事件监听器
+        function registerMentionNotificationListener() {
+            if (socket) {
+                socket.on('mention-notification', (data) => {
+                    const notificationDiv = document.createElement('div');
+                    notificationDiv.className = 'system-message mention';
+                    notificationDiv.innerHTML = `
+                        <strong>${escapeHtml(data.fromUsername)}</strong> @了你：${escapeHtml(data.message)}
+                        <div style="font-size: 12px; color: #999; margin-top: 5px;">${data.timestamp}</div>
+                    `;
+                    messagesDiv.appendChild(notificationDiv);
+                    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                    
+                    // 播放提示音
+                    const audio = new Audio('/notification.mp3');
+                    audio.play().catch(() => {});
+                });
+            }
+        }
         
         // 更新好友列表
         function updateFriendsList(friends) {
@@ -12755,45 +13252,50 @@
         
 
         
-        // 房间加入失败
-        socket.on('join-error', (data) => {
-            alert(data.message);
-        });
-        
-        // 房间变更通知
-        socket.on('room-changed', (data) => {
-            currentRoom = data.roomName;
-            // 清空消息列表
-            messagesDiv.innerHTML = '<div class="system-message">' + data.message + '</div>';
-            // 更新用户列表
-            updateUserList([]);
-        });
-        
-        // 房间历史消息
-        socket.on('room-history', (data) => {
-            // 只有在第一批消息或不是分批发送时才清空当前消息
-            if (!data.batch || data.startIndex === 0) {
-                messagesDiv.innerHTML = '';
+        // 注册房间相关事件监听器
+        function registerRoomEventListeners() {
+            if (socket) {
+                // 房间加入失败
+                socket.on('join-error', (data) => {
+                    alert(data.message);
+                });
+                
+                // 房间变更通知
+                socket.on('room-changed', (data) => {
+                    currentRoom = data.roomName;
+                    // 清空消息列表
+                    messagesDiv.innerHTML = '<div class="system-message">' + data.message + '</div>';
+                    // 更新用户列表
+                    updateUserList([]);
+                });
+                
+                // 房间历史消息
+                socket.on('room-history', (data) => {
+                    // 只有在第一批消息或不是分批发送时才清空当前消息
+                    if (!data.batch || data.startIndex === 0) {
+                        messagesDiv.innerHTML = '';
+                    }
+                    // 添加历史消息
+                    data.messages.forEach(message => {
+                        addMessage(message);
+                    });
+                    // 如果是分批发送且已完成，滚动到底部
+                    if (data.batch && data.done) {
+                        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+                    }
+                });
+                
+                // 处理管理员发送的弹窗消息
+                socket.on('popup-message', (data) => {
+                    alert(data.message);
+                });
+                
+                // 处理管理员更改页面标题
+                socket.on('change-title', (data) => {
+                    document.title = data.title;
+                });
             }
-            // 添加历史消息
-            data.messages.forEach(message => {
-                addMessage(message);
-            });
-            // 如果是分批发送且已完成，滚动到底部
-            if (data.batch && data.done) {
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            }
-        });
-        
-        // 处理管理员发送的弹窗消息
-        socket.on('popup-message', (data) => {
-            alert(data.message);
-        });
-        
-        // 处理管理员更改页面标题
-        socket.on('change-title', (data) => {
-            document.title = data.title;
-        });
+        }
 
         function recallMessage(messageId) {
             socket.emit('message-recall', messageId);
@@ -13063,27 +13565,35 @@
             });
         }
 
-        // 处理用户状态变化
-        socket.on('user-status-changed', (data) => {
-            // 更新用户列表
-            if (data.roomName === currentRoom) {
-                // 如果是当前房间的用户状态变化，更新用户列表
-                const updatedUser = allUsers.find(user => user.socketId === data.socketId);
-                if (updatedUser) {
-                    updatedUser.status = data.status;
-                    updateUserList(allUsers);
-                }
+        // 注册用户状态变化事件监听器
+        function registerUserStatusChangedListener() {
+            if (socket) {
+                socket.on('user-status-changed', (data) => {
+                    // 更新用户列表
+                    if (data.roomName === currentRoom) {
+                        // 如果是当前房间的用户状态变化，更新用户列表
+                        const updatedUser = allUsers.find(user => user.socketId === data.socketId);
+                        if (updatedUser) {
+                            updatedUser.status = data.status;
+                            updateUserList(allUsers);
+                        }
+                    }
+                });
             }
-        });
+        }
         
-        // 监听头像更新
-        socket.on('avatar-updated', (data) => {
-            // 保存其他用户的头像
-            if (data.username && data.avatar) {
-                saveUserAvatar(data.username, data.avatar);
-                updateAvatars();
+        // 注册头像更新事件监听器
+        function registerAvatarUpdatedListener() {
+            if (socket) {
+                socket.on('avatar-updated', (data) => {
+                    // 保存其他用户的头像
+                    if (data.username && data.avatar) {
+                        saveUserAvatar(data.username, data.avatar);
+                        updateAvatars();
+                    }
+                });
             }
-        });
+        }
 
         function escapeHtml(text) {
             const div = document.createElement('div');
@@ -13894,37 +14404,42 @@
             // 不需要设置currentDetailSocketId，因为不再使用该变量
         }
         
-        // Socket事件处理（旧通话功能，已被新功能替代）
+        // 注册旧通话功能事件监听器（已被新功能替代）
+        function registerOldCallEventListeners() {
+            if (socket) {
+                // Socket事件处理（旧通话功能，已被新功能替代）
 
-        // 接收通话请求（旧功能，已被新功能替代）
-        socket.on('call-request', (data) => {
-            // 忽略旧的通话请求，只使用新的通话功能
-            console.log('忽略旧通话请求，使用新通话功能');
-        });
+                // 接收通话请求（旧功能，已被新功能替代）
+                socket.on('call-request', (data) => {
+                    // 忽略旧的通话请求，只使用新的通话功能
+                    console.log('忽略旧通话请求，使用新通话功能');
+                });
 
-        // 通话被接受（旧功能，已被新功能替代）
-        socket.on('call-accepted', (data) => {
-            // 忽略旧的通话接受，只使用新的通话功能
-            console.log('忽略旧通话接受，使用新通话功能');
-        });
+                // 通话被接受（旧功能，已被新功能替代）
+                socket.on('call-accepted', (data) => {
+                    // 忽略旧的通话接受，只使用新的通话功能
+                    console.log('忽略旧通话接受，使用新通话功能');
+                });
 
-        // 通话被拒绝（旧功能，已被新功能替代）
-        socket.on('call-rejected', (data) => {
-            // 忽略旧的通话拒绝事件，只使用新的通话功能
-            console.log('忽略旧通话拒绝事件，使用新通话功能');
-        });
+                // 通话被拒绝（旧功能，已被新功能替代）
+                socket.on('call-rejected', (data) => {
+                    // 忽略旧的通话拒绝事件，只使用新的通话功能
+                    console.log('忽略旧通话拒绝事件，使用新通话功能');
+                });
 
-        // 通话结束（旧功能，已被新功能替代）
-        socket.on('call-ended', (data) => {
-            // 忽略旧的通话结束事件，只使用新的通话功能
-            console.log('忽略旧通话结束事件，使用新通话功能');
-        });
+                // 通话结束（旧功能，已被新功能替代）
+                socket.on('call-ended', (data) => {
+                    // 忽略旧的通话结束事件，只使用新的通话功能
+                    console.log('忽略旧通话结束事件，使用新通话功能');
+                });
 
-        // 接收媒体数据（旧功能，已被新功能替代）
-        socket.on('call-media', (data) => {
-            // 忽略旧的媒体数据事件，只使用新的通话功能
-            console.log('忽略旧媒体数据事件，使用新通话功能');
-        });
+                // 接收媒体数据（旧功能，已被新功能替代）
+                socket.on('call-media', (data) => {
+                    // 忽略旧的媒体数据事件，只使用新的通话功能
+                    console.log('忽略旧媒体数据事件，使用新通话功能');
+                });
+            }
+        }
         
         // 处理接收数据队列
         function processReceiveQueue() {
