@@ -1315,6 +1315,66 @@
             .emoji-grid {
                 grid-template-columns: repeat(6, 1fr);
             }
+
+            /* 手机端五子棋棋盘优化 */
+            #gameModal .modal-content {
+                width: 100vw !important;
+                max-width: 100vw !important;
+                height: 100vh !important;
+                max-height: 100vh !important;
+                border-radius: 0 !important;
+                padding: 8px !important;
+            }
+
+            /* 顶部玩家信息栏在手机上紧凑化 */
+            #gameModal #gamePlayers {
+                flex-direction: column !important;
+                gap: 4px !important;
+            }
+
+            #gameModal #gamePlayers > div {
+                padding: 3px 8px !important;
+                font-size: 12px !important;
+            }
+
+            /* 隐藏右侧信息面板，让棋盘占满宽度 */
+            #gameSidePanel {
+                display: none !important;
+            }
+
+            /* 让棋盘区域尽量大 */
+            #gameBoard {
+                width: 100% !important;
+                height: 100% !important;
+            }
+
+            /* 手机端你画我猜全屏 */
+            #pictionaryModal .modal-content {
+                width: 100vw !important;
+                max-width: 100vw !important;
+                height: 100vh !important;
+                max-height: 100vh !important;
+                border-radius: 0 !important;
+                padding: 8px !important;
+            }
+
+            /* 手机端你画我猜主体改为竖向堆叠 */
+            #pictionaryModal .modal-content > div:nth-child(4) {
+                flex-direction: column !important;
+            }
+
+            /* 手机端右侧猜词区改为水平排列、固定高度 */
+            #pictionaryModal #ptGuesses {
+                max-height: 100px !important;
+            }
+
+            /* 右侧面板在手机上设为固定高度 */
+            #pictionaryModal .modal-content > div:nth-child(4) > div:last-child {
+                width: 100% !important;
+                flex-direction: row !important;
+                flex-wrap: wrap;
+                gap: 6px;
+            }
         }
 
         .switch {
@@ -2588,7 +2648,7 @@ io.on('message', (data) => {
                         <canvas id="gameBoard" style="width: 100%; height: 100%; background: #f0e6d2; cursor: pointer;"></canvas>
                         <div id="gameMessage" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0, 0, 0, 0.8); color: white; padding: 20px; border-radius: 10px; font-size: 24px; font-weight: bold; text-align: center; display: none;"></div>
                     </div>
-                    <div style="width: 200px; background: #f8f9fa; border-left: 1px solid #dee2e6; padding: 10px;">
+                    <div id="gameSidePanel" style="width: 200px; background: #f8f9fa; border-left: 1px solid #dee2e6; padding: 10px;">
                         <h4 style="margin-top: 0; margin-bottom: 15px;">游戏信息</h4>
                         <div id="gameInfo"></div>
                         <h4 style="margin-top: 20px; margin-bottom: 15px;">观战列表</h4>
@@ -2643,6 +2703,71 @@ io.on('message', (data) => {
 
             <div class="modal-buttons" style="margin-top:14px;">
                 <button type="button" class="friend-btn" onclick="closeGuessNumberModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 你画我猜游戏模态框 -->
+    <div class="modal" id="pictionaryModal">
+        <div class="modal-content" style="max-width: 860px; max-height: 95vh; width: 95vw; padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+            <h3 style="margin: 0; font-size: 18px;">🎨 你画我猜</h3>
+
+            <!-- 玩家 & 状态栏 -->
+            <div style="display:flex; align-items:center; gap:10px; padding:8px 10px; background:#f8f9fa; border-radius:6px; flex-wrap:wrap;">
+                <div id="ptPlayers" style="display:flex; gap:10px; flex:1; flex-wrap:wrap;"></div>
+                <div id="ptStatus" style="font-weight:bold; color:#667eea; white-space:nowrap;">等待游戏开始...</div>
+                <div id="ptRound" style="color:#6c757d; font-size:13px; white-space:nowrap;"></div>
+            </div>
+
+            <!-- 词汇提示 / 当前词 -->
+            <div id="ptWordArea" style="text-align:center; padding:6px; background:#fff3cd; border-radius:6px; font-weight:bold; font-size:15px; display:none;"></div>
+
+            <!-- 主体：画布 + 猜词区 -->
+            <div style="display:flex; gap:10px; flex:1; min-height:0; overflow:hidden;">
+                <!-- 画布区 -->
+                <div style="flex:1; display:flex; flex-direction:column; gap:6px; min-width:0;">
+                    <!-- 画笔工具栏（仅画画者可用） -->
+                    <div id="ptToolbar" style="display:none; gap:6px; align-items:center; flex-wrap:wrap;">
+                        <label style="font-size:12px; color:#495057;">颜色</label>
+                        <input type="color" id="ptColor" value="#000000" style="width:30px; height:28px; border:none; cursor:pointer; border-radius:4px;">
+                        <label style="font-size:12px; color:#495057;">粗细</label>
+                        <input type="range" id="ptBrushSize" min="2" max="30" value="5" style="width:80px;">
+                        <button id="ptEraserBtn" onclick="ptToggleEraser()" style="padding:3px 10px; border:1px solid #ccc; border-radius:4px; cursor:pointer; font-size:12px; background:white;">橡皮</button>
+                        <button onclick="ptClearCanvas()" style="padding:3px 10px; background:#dc3545; color:white; border:none; border-radius:4px; cursor:pointer; font-size:12px;">清空</button>
+                        <button onclick="ptSkipWord()" style="padding:3px 10px; background:#6c757d; color:white; border:none; border-radius:4px; cursor:pointer; font-size:12px;">换词</button>
+                    </div>
+                    <canvas id="ptCanvas" style="width:100%; flex:1; background:white; border:2px solid #dee2e6; border-radius:6px; cursor:crosshair; touch-action:none; display:block;"></canvas>
+                </div>
+
+                <!-- 猜词区 -->
+                <div style="width:200px; display:flex; flex-direction:column; gap:6px; flex-shrink:0;">
+                    <!-- 分数板 -->
+                    <div style="background:#f8f9fa; border-radius:6px; padding:8px;">
+                        <div style="font-size:12px; font-weight:bold; color:#495057; margin-bottom:6px;">🏆 积分</div>
+                        <div id="ptScores"></div>
+                    </div>
+                    <!-- 猜测历史 -->
+                    <div style="flex:1; background:#f8f9fa; border-radius:6px; padding:8px; overflow-y:auto; min-height:0;">
+                        <div style="font-size:12px; font-weight:bold; color:#495057; margin-bottom:6px;">💬 猜测记录</div>
+                        <div id="ptGuesses" style="font-size:12px; line-height:1.8;"></div>
+                    </div>
+                    <!-- 猜词输入 -->
+                    <div id="ptGuessArea" style="display:none;">
+                        <div style="display:flex; gap:4px;">
+                            <input id="ptGuessInput" type="text" placeholder="输入你的猜测..." maxlength="20"
+                                style="flex:1; padding:6px 8px; border:1px solid #dee2e6; border-radius:4px; font-size:13px; min-width:0;"
+                                onkeydown="if(event.key==='Enter') ptSubmitGuess()">
+                            <button onclick="ptSubmitGuess()" style="padding:6px 10px; background:#43b97f; color:white; border:none; border-radius:4px; cursor:pointer; font-size:13px;">猜</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 结果 -->
+            <div id="ptResult" style="display:none; text-align:center; padding:12px; background:#e8f5e9; border-radius:8px; font-size:18px; font-weight:bold; color:#2e7d32;"></div>
+
+            <div class="modal-buttons" style="margin-top:4px;">
+                <button type="button" class="friend-btn" onclick="closePictionaryModal()">关闭</button>
             </div>
         </div>
     </div>
@@ -2940,6 +3065,7 @@ io.on('message', (data) => {
                                 <div style="display: flex; gap: 8px;">
                                     <button onclick="sendGameInvitation('${user.socketId}', 'gomoku')" style="padding: 5px 10px; background: #667eea; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">♟️ 邀请下棋</button>
                                     <button onclick="sendGameInvitation('${user.socketId}', 'guess-number')" style="padding: 5px 10px; background: #f093fb; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">🔢 猜数字</button>
+                                    <button onclick="sendGameInvitation('${user.socketId}', 'pictionary')" style="padding: 5px 10px; background: #43b97f; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">🎨 你画我猜</button>
                                 </div>
                             </div>
                         `).join('');
@@ -3143,6 +3269,11 @@ io.on('message', (data) => {
                 // 在连接成功后注册猜数字游戏事件监听器
                 if (typeof registerGuessNumberListeners === 'function') {
                     registerGuessNumberListeners();
+                }
+                
+                // 在连接成功后注册你画我猜游戏事件监听器
+                if (typeof registerPictionaryListeners === 'function') {
+                    registerPictionaryListeners();
                 }
                 
                 // 在连接成功后注册消息相关事件监听器
@@ -4481,8 +4612,20 @@ io.on('message', (data) => {
             }
             
             const rect = gameBoard.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
+            // 兼容触摸事件和鼠标事件
+            let clientX, clientY;
+            if (e.touches && e.touches.length > 0) {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else if (e.changedTouches && e.changedTouches.length > 0) {
+                clientX = e.changedTouches[0].clientX;
+                clientY = e.changedTouches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+            const mouseX = clientX - rect.left;
+            const mouseY = clientY - rect.top;
             
             // 计算落子位置
             const x = Math.round((mouseX - cellSize) / cellSize);
@@ -4501,6 +4644,12 @@ io.on('message', (data) => {
             } else {
                 console.log('落子位置超出范围:', x, y);
             }
+        }
+        
+        function handleGameBoardTouch(e) {
+            // 阻止 touchend 后续触发的 click 事件（防止重复落子）
+            e.preventDefault();
+            handleGameBoardClick(e);
         }
         
         function openGameModal(gameData) {
@@ -4531,11 +4680,13 @@ io.on('message', (data) => {
                 
                 // 先移除旧的事件绑定，再重新绑定，防止重复触发
                 gameBoard.removeEventListener('click', handleGameBoardClick);
+                gameBoard.removeEventListener('touchend', handleGameBoardTouch);
                 gameLeaveBtn.removeEventListener('click', leaveGame);
                 gameSpectateBtn.removeEventListener('click', toggleSpectateMode);
                 
                 console.log('绑定游戏棋盘点击事件');
                 gameBoard.addEventListener('click', handleGameBoardClick);
+                gameBoard.addEventListener('touchend', handleGameBoardTouch);
                 gameLeaveBtn.addEventListener('click', leaveGame);
                 gameSpectateBtn.addEventListener('click', toggleSpectateMode);
             }, 100);
@@ -4548,6 +4699,7 @@ io.on('message', (data) => {
             
             // 解绑事件
             gameBoard.removeEventListener('click', handleGameBoardClick);
+            gameBoard.removeEventListener('touchend', handleGameBoardTouch);
             gameLeaveBtn.removeEventListener('click', leaveGame);
             gameSpectateBtn.removeEventListener('click', toggleSpectateMode);
         }
@@ -4778,6 +4930,360 @@ io.on('message', (data) => {
             }
         }
         
+        // ============================================================
+        // 你画我猜游戏逻辑
+        // ============================================================
+        let ptGame = null;           // 当前你画我猜游戏状态
+        let ptCanvas = null;         // 画布元素
+        let ptCtx = null;            // 2D context
+        let ptIsDrawing = false;     // 是否正在画
+        let ptIsDrawer = false;      // 我是否是画画的人
+        let ptUseEraser = false;     // 是否使用橡皮
+        let ptLastX = 0;
+        let ptLastY = 0;
+
+        function openPictionaryModal(gameData) {
+            ptGame = gameData;
+            const modal = document.getElementById('pictionaryModal');
+            if (modal) modal.classList.add('active');
+            
+            // 初始化画布
+            setTimeout(() => {
+                ptCanvas = document.getElementById('ptCanvas');
+                if (!ptCanvas) return;
+                const container = ptCanvas.parentElement;
+                const rect = container.getBoundingClientRect();
+                // 让画布高度自适应容器
+                ptCanvas.width = ptCanvas.offsetWidth || 500;
+                ptCanvas.height = ptCanvas.offsetHeight || 380;
+                ptCtx = ptCanvas.getContext('2d');
+                ptCtx.fillStyle = 'white';
+                ptCtx.fillRect(0, 0, ptCanvas.width, ptCanvas.height);
+                ptCtx.strokeStyle = '#000';
+                ptCtx.lineWidth = 5;
+                ptCtx.lineCap = 'round';
+                ptCtx.lineJoin = 'round';
+
+                // 绑定鼠标事件
+                ptCanvas.addEventListener('mousedown', ptStartDraw);
+                ptCanvas.addEventListener('mousemove', ptDraw);
+                ptCanvas.addEventListener('mouseup', ptStopDraw);
+                ptCanvas.addEventListener('mouseleave', ptStopDraw);
+                // 绑定触摸事件
+                ptCanvas.addEventListener('touchstart', ptStartDrawTouch, { passive: false });
+                ptCanvas.addEventListener('touchmove', ptDrawTouch, { passive: false });
+                ptCanvas.addEventListener('touchend', ptStopDraw);
+
+                ptUpdateUI();
+            }, 120);
+        }
+
+        function closePictionaryModal() {
+            const modal = document.getElementById('pictionaryModal');
+            if (modal) modal.classList.remove('active');
+            if (ptCanvas) {
+                ptCanvas.removeEventListener('mousedown', ptStartDraw);
+                ptCanvas.removeEventListener('mousemove', ptDraw);
+                ptCanvas.removeEventListener('mouseup', ptStopDraw);
+                ptCanvas.removeEventListener('mouseleave', ptStopDraw);
+                ptCanvas.removeEventListener('touchstart', ptStartDrawTouch);
+                ptCanvas.removeEventListener('touchmove', ptDrawTouch);
+                ptCanvas.removeEventListener('touchend', ptStopDraw);
+            }
+            ptGame = null;
+            ptCanvas = null;
+            ptCtx = null;
+            ptIsDrawing = false;
+        }
+
+        // 根据游戏状态更新界面
+        function ptUpdateUI() {
+            if (!ptGame) return;
+
+            // 判断我是否是当前画画者
+            ptIsDrawer = (ptGame.currentDrawer === socket.id);
+
+            // 工具栏显示/隐藏
+            const toolbar = document.getElementById('ptToolbar');
+            if (toolbar) toolbar.style.display = ptIsDrawer ? 'flex' : 'none';
+
+            // 猜词输入区
+            const guessArea = document.getElementById('ptGuessArea');
+            if (guessArea) guessArea.style.display = (!ptIsDrawer && ptGame.status === 'playing') ? 'block' : 'none';
+
+            // 词汇提示
+            const wordArea = document.getElementById('ptWordArea');
+            if (wordArea) {
+                if (ptGame.status === 'playing') {
+                    wordArea.style.display = 'block';
+                    if (ptIsDrawer && ptGame.currentWord) {
+                        wordArea.textContent = '✏️ 你来画：' + ptGame.currentWord;
+                        wordArea.style.background = '#d4edda';
+                    } else {
+                        wordArea.textContent = '❓ 字数提示：' + (ptGame.wordHint || '?个字');
+                        wordArea.style.background = '#fff3cd';
+                    }
+                } else {
+                    wordArea.style.display = 'none';
+                }
+            }
+
+            // 状态
+            const statusEl = document.getElementById('ptStatus');
+            if (statusEl) {
+                if (ptGame.status === 'playing') {
+                    statusEl.textContent = ptIsDrawer ? '✏️ 轮到你画画！' : '🤔 ' + (ptGame.currentDrawerName || '对方') + ' 正在画...';
+                    statusEl.style.color = ptIsDrawer ? '#28a745' : '#667eea';
+                } else if (ptGame.status === 'ended') {
+                    statusEl.textContent = '🎉 游戏结束！';
+                    statusEl.style.color = '#dc3545';
+                } else {
+                    statusEl.textContent = '等待游戏开始...';
+                }
+            }
+
+            // 轮次
+            const roundEl = document.getElementById('ptRound');
+            if (roundEl && ptGame.maxRounds) {
+                roundEl.textContent = `第 ${(ptGame.currentRound || 0) + 1} / ${ptGame.maxRounds} 轮`;
+            }
+
+            // 玩家列表
+            ptRenderPlayers();
+
+            // 积分
+            ptRenderScores();
+        }
+
+        function ptRenderPlayers() {
+            const el = document.getElementById('ptPlayers');
+            if (!el || !ptGame || !ptGame.players) return;
+            el.innerHTML = ptGame.players.map(p => {
+                const isMe = p.socketId === socket.id;
+                const isDrawerNow = p.socketId === ptGame.currentDrawer;
+                return `<div style="padding:4px 10px; background:${isMe ? '#e3f2fd' : '#fff3e0'}; border-radius:12px; font-size:13px; display:flex; align-items:center; gap:4px;">
+                    ${isDrawerNow ? '✏️' : '🤔'} <strong>${p.username}</strong>${isMe ? ' (你)' : ''}
+                </div>`;
+            }).join('');
+        }
+
+        function ptRenderScores() {
+            const el = document.getElementById('ptScores');
+            if (!el || !ptGame || !ptGame.scores) return;
+            const scores = ptGame.scores;
+            const players = ptGame.players || [];
+            el.innerHTML = players.map(p => {
+                const score = scores[p.socketId] || 0;
+                return `<div style="display:flex; justify-content:space-between; font-size:13px; padding:2px 0;">
+                    <span>${p.username}</span>
+                    <strong style="color:#43b97f;">${score}分</strong>
+                </div>`;
+            }).join('');
+        }
+
+        function ptRenderGuesses(guesses) {
+            const el = document.getElementById('ptGuesses');
+            if (!el) return;
+            if (!guesses || guesses.length === 0) {
+                el.innerHTML = '<span style="color:#adb5bd;">还没有猜测记录</span>';
+                return;
+            }
+            el.innerHTML = guesses.map(g => {
+                const color = g.isCorrect ? '#28a745' : '#495057';
+                const icon = g.isCorrect ? '✅' : '❌';
+                return `<div style="color:${color};">${icon} <strong>${g.username}</strong>: ${g.guess}</div>`;
+            }).join('');
+            el.scrollTop = el.scrollHeight;
+        }
+
+        // 画布绘制（鼠标）
+        function ptGetCanvasPos(e) {
+            const rect = ptCanvas.getBoundingClientRect();
+            const scaleX = ptCanvas.width / rect.width;
+            const scaleY = ptCanvas.height / rect.height;
+            return {
+                x: (e.clientX - rect.left) * scaleX,
+                y: (e.clientY - rect.top) * scaleY
+            };
+        }
+
+        function ptStartDraw(e) {
+            if (!ptIsDrawer || !ptGame || ptGame.status !== 'playing') return;
+            ptIsDrawing = true;
+            const pos = ptGetCanvasPos(e);
+            ptLastX = pos.x;
+            ptLastY = pos.y;
+        }
+
+        function ptDraw(e) {
+            if (!ptIsDrawing || !ptIsDrawer) return;
+            const pos = ptGetCanvasPos(e);
+            ptDrawLine(ptLastX, ptLastY, pos.x, pos.y);
+            // 广播绘画数据
+            if (ptGame && socket) {
+                socket.emit('game-draw', {
+                    gameId: ptGame.gameId,
+                    drawingData: { x1: ptLastX, y1: ptLastY, x2: pos.x, y2: pos.y, color: ptUseEraser ? 'white' : document.getElementById('ptColor').value, size: parseInt(document.getElementById('ptBrushSize').value) }
+                });
+            }
+            ptLastX = pos.x;
+            ptLastY = pos.y;
+        }
+
+        function ptStopDraw() {
+            ptIsDrawing = false;
+        }
+
+        // 画布绘制（触摸）
+        function ptStartDrawTouch(e) {
+            e.preventDefault();
+            if (!ptIsDrawer || !ptGame || ptGame.status !== 'playing') return;
+            ptIsDrawing = true;
+            const rect = ptCanvas.getBoundingClientRect();
+            const scaleX = ptCanvas.width / rect.width;
+            const scaleY = ptCanvas.height / rect.height;
+            ptLastX = (e.touches[0].clientX - rect.left) * scaleX;
+            ptLastY = (e.touches[0].clientY - rect.top) * scaleY;
+        }
+
+        function ptDrawTouch(e) {
+            e.preventDefault();
+            if (!ptIsDrawing || !ptIsDrawer) return;
+            const rect = ptCanvas.getBoundingClientRect();
+            const scaleX = ptCanvas.width / rect.width;
+            const scaleY = ptCanvas.height / rect.height;
+            const x = (e.touches[0].clientX - rect.left) * scaleX;
+            const y = (e.touches[0].clientY - rect.top) * scaleY;
+            ptDrawLine(ptLastX, ptLastY, x, y);
+            if (ptGame && socket) {
+                socket.emit('game-draw', {
+                    gameId: ptGame.gameId,
+                    drawingData: { x1: ptLastX, y1: ptLastY, x2: x, y2: y, color: ptUseEraser ? 'white' : document.getElementById('ptColor').value, size: parseInt(document.getElementById('ptBrushSize').value) }
+                });
+            }
+            ptLastX = x;
+            ptLastY = y;
+        }
+
+        function ptDrawLine(x1, y1, x2, y2, color, size) {
+            if (!ptCtx) return;
+            ptCtx.beginPath();
+            ptCtx.strokeStyle = color || (ptUseEraser ? 'white' : (document.getElementById('ptColor')?.value || '#000'));
+            ptCtx.lineWidth = size || parseInt(document.getElementById('ptBrushSize')?.value || 5);
+            ptCtx.lineCap = 'round';
+            ptCtx.lineJoin = 'round';
+            ptCtx.moveTo(x1, y1);
+            ptCtx.lineTo(x2, y2);
+            ptCtx.stroke();
+        }
+
+        function ptToggleEraser() {
+            ptUseEraser = !ptUseEraser;
+            const btn = document.getElementById('ptEraserBtn');
+            if (btn) {
+                btn.style.background = ptUseEraser ? '#ffc107' : 'white';
+                btn.textContent = ptUseEraser ? '✏️ 画笔' : '橡皮';
+            }
+            if (ptCanvas) ptCanvas.style.cursor = ptUseEraser ? 'cell' : 'crosshair';
+        }
+
+        function ptClearCanvas() {
+            if (!ptCtx || !ptCanvas) return;
+            ptCtx.fillStyle = 'white';
+            ptCtx.fillRect(0, 0, ptCanvas.width, ptCanvas.height);
+            if (ptGame && socket) {
+                socket.emit('game-clear-canvas', { gameId: ptGame.gameId });
+            }
+        }
+
+        function ptSkipWord() {
+            if (ptGame && socket) {
+                socket.emit('game-skip-word', { gameId: ptGame.gameId });
+            }
+        }
+
+        function ptSubmitGuess() {
+            const input = document.getElementById('ptGuessInput');
+            if (!input || !input.value.trim() || !ptGame) return;
+            socket.emit('game-guess', { gameId: ptGame.gameId, guess: input.value.trim() });
+            input.value = '';
+        }
+
+        // 注册你画我猜 Socket 事件
+        function registerPictionaryListeners() {
+            socket.on('pictionary-start', (data) => {
+                console.log('你画我猜开始:', data);
+                ptGame = { ...data, gameId: data.gameId };
+                openPictionaryModal(ptGame);
+                showNotification('🎨 你画我猜开始！');
+            });
+
+            // 复用 game-update 事件处理 pictionary
+            socket.on('game-update', (data) => {
+                if (data.gameType !== 'pictionary') return;
+                if (!ptGame || ptGame.gameId !== data.gameId) return;
+
+                // 更新本地状态
+                ptGame.currentDrawer = data.currentDrawer;
+                ptGame.currentDrawerName = data.currentDrawerName;
+                ptGame.scores = data.scores;
+                ptGame.currentRound = data.currentRound;
+                ptGame.maxRounds = data.maxRounds;
+                ptGame.status = data.status;
+                ptGame.winner = data.winner;
+                if (data.currentWord) ptGame.currentWord = data.currentWord;
+                // 更新词汇提示（猜词者只知道字数）
+                if (!ptGame.currentWord || ptGame.currentWord === '???') {
+                    // 服务端会更新 currentDrawer，需要重新判断字数
+                }
+
+                ptRenderGuesses(data.guesses);
+                ptUpdateUI();
+
+                // 最后一次猜对提示
+                if (data.lastGuess && data.lastGuess.isCorrect) {
+                    showNotification(`✅ ${data.lastGuess.username} 猜对了！`);
+                    // 换轮时清空画布
+                    if (ptCtx && ptCanvas) {
+                        ptCtx.fillStyle = 'white';
+                        ptCtx.fillRect(0, 0, ptCanvas.width, ptCanvas.height);
+                    }
+                }
+
+                // 游戏结束
+                if (data.status === 'ended') {
+                    const resultEl = document.getElementById('ptResult');
+                    if (resultEl) {
+                        const winnerName = ptGame.players?.find(p => p.socketId === data.winner)?.username || '未知';
+                        resultEl.style.display = 'block';
+                        resultEl.textContent = data.winner === socket.id ? '🎉 你赢了！' : `🏆 ${winnerName} 获胜！`;
+                    }
+                    const guessArea = document.getElementById('ptGuessArea');
+                    if (guessArea) guessArea.style.display = 'none';
+                    const toolbar = document.getElementById('ptToolbar');
+                    if (toolbar) toolbar.style.display = 'none';
+                }
+            });
+
+            // 接收对方的绘画笔迹
+            socket.on('game-draw', (data) => {
+                if (!ptGame || ptGame.gameId !== data.gameId) return;
+                if (ptIsDrawer) return; // 自己已经画了，不重绘
+                const d = data.drawingData;
+                if (!d) return;
+                ptDrawLine(d.x1, d.y1, d.x2, d.y2, d.color, d.size);
+            });
+
+            // 接收清空画布
+            socket.on('game-clear-canvas', (data) => {
+                if (!ptGame || ptGame.gameId !== data.gameId) return;
+                if (ptCtx && ptCanvas) {
+                    ptCtx.fillStyle = 'white';
+                    ptCtx.fillRect(0, 0, ptCanvas.width, ptCanvas.height);
+                }
+            });
+        }
+
         // 注册游戏事件监听器
         function registerGameEventListeners() {
             if (typeof socket !== 'undefined' && socket) {
@@ -4816,7 +5322,9 @@ io.on('message', (data) => {
                             updateGamePlayers();
                             updateGameInfo();
                             gameBoard.removeEventListener('click', handleGameBoardClick);
+                            gameBoard.removeEventListener('touchend', handleGameBoardTouch);
                             gameBoard.addEventListener('click', handleGameBoardClick);
+                            gameBoard.addEventListener('touchend', handleGameBoardTouch);
                         }, 100);
                     } else {
                         openGameModal(currentGame);
@@ -6263,97 +6771,70 @@ io.on('message', (data) => {
                 }
                 
                 try {
-                    // 创建语音识别实例
+                    // 创建语音识别实例（识别本地麦克风，即自己的声音）
                     this.speechRecognition = new SpeechRecognition();
+                    this.speechRecognition.continuous = true;
+                    this.speechRecognition.interimResults = true;
+                    this.speechRecognition.lang = 'zh-CN';
+                    this.speechRecognition.maxAlternatives = 1;
                     
-                    // 配置语音识别，优化远程音频识别
-                    this.speechRecognition.continuous = true; // 持续识别，适合长时间通话
-                    this.speechRecognition.interimResults = true; // 返回临时结果，提高响应速度
-                    this.speechRecognition.lang = 'zh-CN'; // 设置为中文
-                    this.speechRecognition.maxAlternatives = 3; // 返回多个结果，提高识别率
-                    this.speechRecognition.continuous = true; // 确保持续识别开启
-                    this.speechRecognition.interimResults = true; // 确保临时结果开启
-                    
-                    // 语音识别结果事件处理
+                    // 语音识别结果：识别到自己说的话，通过 socket 发给对方显示
                     this.speechRecognition.onresult = (event) => {
-                        console.log('语音识别结果:', event.results);
-                        let transcript = '';
-                        
-                        // 遍历所有识别结果
                         for (let i = event.resultIndex; i < event.results.length; i++) {
                             const result = event.results[i];
-                            
-                            // 如果结果为空，跳过
-                            if (result.length === 0) {
-                                continue;
-                            }
-                            
-                            // 从多个备选结果中选择最佳结果
-                            let bestTranscript = '';
-                            let highestConfidence = 0;
-                            
-                            for (let j = 0; j < result.length; j++) {
-                                const alternative = result[j];
-                                if (alternative.confidence > highestConfidence) {
-                                    highestConfidence = alternative.confidence;
-                                    bestTranscript = alternative.transcript;
-                                }
-                            }
-                            
-                            // 如果找不到最佳结果，跳过
-                            if (!bestTranscript) {
-                                continue;
-                            }
-                            
-                            // 确保transcript不为空
-                            transcript = bestTranscript;
-                            
-                            console.log('识别到文本:', transcript, '是否最终结果:', result.isFinal, '置信度:', highestConfidence);
-                            
-                            // 根据结果类型更新字幕
-                            if (result.isFinal) {
-                                // 最终结果，显示在字幕中
-                                this.updateSubtitles(transcript);
-                            } else {
-                                // 临时结果，显示在字幕中
-                                this.updateSubtitles(transcript, true);
+                            if (!result[0]) continue;
+                            const text = result[0].transcript.trim();
+                            if (!text) continue;
+                            const isFinal = result.isFinal;
+                            console.log(`[字幕] 识别到自己说话: "${text}" isFinal=${isFinal}`);
+                            // 将自己说的内容通过 socket 发给对方
+                            if (this.currentCallTargetSocketId) {
+                                this.socket.emit('subtitle-data', {
+                                    targetSocketId: this.currentCallTargetSocketId,
+                                    text,
+                                    isFinal
+                                });
                             }
                         }
                     };
                     
                     // 语音识别错误事件处理
                     this.speechRecognition.onerror = (event) => {
-                        console.error('语音识别错误:', event.error);
                         if (event.error === 'not-allowed') {
-                            console.error('语音识别权限被拒绝，请在浏览器设置中允许使用麦克风');
-                        } else if (event.error === 'network') {
-                            console.error('网络错误导致语音识别失败，请检查网络连接');
+                            console.error('[字幕] 麦克风权限被拒绝，字幕无法使用');
                         } else if (event.error === 'no-speech') {
-                            console.log('未检测到语音，等待说话...');
-                        } else if (event.error === 'audio-capture') {
-                            console.error('无法访问麦克风，请检查麦克风是否可用');
+                            // 无语音是正常现象，不报错
+                        } else {
+                            console.warn('[字幕] 语音识别错误:', event.error);
                         }
                     };
                     
-                    // 语音识别开始事件处理
+                    // 语音识别开始
                     this.speechRecognition.onstart = () => {
-                        console.log('语音识别已开始');
+                        console.log('[字幕] 本地语音识别已启动（识别自己说的话）');
+                        this.recognizingAudio = true;
                     };
                     
-                    // 语音识别结束事件处理
+                    // 语音识别意外结束时，若字幕仍启用则自动重启
                     this.speechRecognition.onend = () => {
-                        console.log('语音识别已结束');
-                        // 如果字幕功能仍启用，尝试重新启动
+                        this.recognizingAudio = false;
+                        console.log('[字幕] 语音识别已结束');
                         if (this.isSubtitlesActive) {
                             setTimeout(() => {
-                                this.startSubtitles();
-                            }, 1000);
+                                if (this.isSubtitlesActive && !this.recognizingAudio) {
+                                    try {
+                                        this.speechRecognition.start();
+                                    } catch (e) {
+                                        // 已在运行中，忽略
+                                    }
+                                }
+                            }, 500);
                         }
                     };
                     
-                    console.log('语音识别初始化成功');
+                    console.log('[字幕] 语音识别初始化成功');
                 } catch (error) {
-                    console.error('初始化语音识别失败:', error);
+                    console.error('[字幕] 初始化语音识别失败:', error);
                 }
             }
             
