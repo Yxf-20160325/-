@@ -5762,7 +5762,8 @@ io.on('connection', (socket) => {
                             gameType: 'pictionary',
                             currentDrawer: updatedGame.currentDrawer,
                             currentDrawerName: users.get(updatedGame.currentDrawer)?.username || '未知',
-                            currentWord: isDrawer ? updatedGame.currentWord : '???',
+                            currentWord: isDrawer ? updatedGame.currentWord : null,
+                            wordHint: updatedGame.currentWord.length + '个字',
                             scores: Object.fromEntries(updatedGame.scores),
                             currentRound: updatedGame.currentRound,
                             maxRounds: updatedGame.maxRounds,
@@ -6796,6 +6797,19 @@ io.on('connection', (socket) => {
         }
     });
 
+    // 实时字幕数据转发：本地识别结果发给通话对方显示
+    socket.on('subtitle-data', (data) => {
+        const user = users.get(socket.id);
+        if (user && data.targetSocketId && io.sockets.sockets.has(data.targetSocketId)) {
+            io.to(data.targetSocketId).emit('subtitle-data', {
+                from: socket.id,
+                fromUsername: user.username,
+                text: data.text,
+                isFinal: data.isFinal
+            });
+        }
+    });
+
     // 通过Socket.io转发音视频数据
     socket.on('call-media', (data) => {
         const user = users.get(socket.id);
@@ -6957,6 +6971,42 @@ io.on('connection', (socket) => {
                                 });
 
                                 console.log(`[房间 ${invitation.roomName}] 猜数字游戏 ${updatedGame.id} 开始`);
+                            }
+                        }
+                    } else if (invitation.gameType === 'pictionary') {
+                        game = createPictionaryGame({ username: invitation.fromUsername, socketId: invitation.from }, invitation.roomName);
+                        if (game) {
+                            const updatedGame = joinPictionaryGame(game.id, socket.id, user.username);
+                            if (updatedGame) {
+                                // 通知双方游戏开始
+                                [invitation.from, socket.id].forEach(playerSocketId => {
+                                    const isDrawer = playerSocketId === updatedGame.currentDrawer;
+                                    io.to(playerSocketId).emit('pictionary-start', {
+                                        gameId: updatedGame.id,
+                                        gameType: 'pictionary',
+                                        players: updatedGame.players.map(pid => ({
+                                            socketId: pid,
+                                            username: users.get(pid)?.username || '未知'
+                                        })),
+                                        currentDrawer: updatedGame.currentDrawer,
+                                        currentDrawerName: users.get(updatedGame.currentDrawer)?.username || '未知',
+                                        // 只把当前词汇发给画画的人
+                                        currentWord: isDrawer ? updatedGame.currentWord : null,
+                                        wordHint: updatedGame.currentWord.length + '个字',
+                                        currentRound: updatedGame.currentRound,
+                                        maxRounds: updatedGame.maxRounds,
+                                        scores: Object.fromEntries(updatedGame.scores)
+                                    });
+                                });
+
+                                // 广播给房间其他人
+                                socket.to(invitation.roomName).emit('game-started', {
+                                    gameId: updatedGame.id,
+                                    gameType: 'pictionary',
+                                    players: updatedGame.players.map(pid => users.get(pid)?.username || '未知')
+                                });
+
+                                console.log(`[房间 ${invitation.roomName}] 你画我猜游戏 ${updatedGame.id} 开始`);
                             }
                         }
                     }
