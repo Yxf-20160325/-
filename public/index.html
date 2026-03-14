@@ -1606,7 +1606,7 @@
                 <div class="online-count">在线人数: <span id="userCount">0</span></div>
                 <button class="header-btn" id="usersBtn" title="用户列表">👥</button>
                 <button class="header-btn" id="friendsBtn" title="好友列表">👥</button>
-                <button class="header-btn" onclick="openInteractiveCenterModal()" title="互动中心" disabled style="opacity: 0.6; cursor: not-allowed;">🎮</button>
+                <button class="header-btn" onclick="openInteractiveCenterModal()" title="互动中心">🎮</button>
                 <button class="header-btn" onclick="openWhiteboardModal()" title="共享白板">🖍️</button>
                 <button class="header-btn" onclick="openDocumentModal()" title="文档编辑" disabled style="opacity: 0.6; cursor: not-allowed;">📄</button>
                 <button class="header-btn" id="settingsBtn" title="设置">⚙️</button>
@@ -2601,6 +2601,51 @@ io.on('message', (data) => {
             </div>
         </div>
     </div>
+
+    <!-- 猜数字游戏模态框 -->
+    <div class="modal" id="guessNumberModal">
+        <div class="modal-content" style="max-width: 520px; max-height: 90vh; overflow-y: auto;">
+            <h3>🔢 猜数字游戏</h3>
+            <p style="color:#6c757d;font-size:13px;margin-top:-8px;">服务端随机生成一个 1~100 的数字，双方轮流猜，猜对者获胜！</p>
+
+            <!-- 玩家信息栏 -->
+            <div id="gnPlayers" style="display:flex;gap:12px;margin-bottom:14px;"></div>
+
+            <!-- 状态提示 -->
+            <div id="gnStatus" style="text-align:center;font-weight:bold;margin-bottom:12px;padding:8px;background:#f0f4ff;border-radius:6px;color:#667eea;">等待游戏开始...</div>
+
+            <!-- 输入区 -->
+            <div id="gnInputArea" style="display:none;margin-bottom:14px;">
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <input id="gnInput" type="number" min="1" max="100" placeholder="输入 1~100 的数字" 
+                        style="flex:1;padding:8px 12px;border:1px solid #dee2e6;border-radius:6px;font-size:15px;"
+                        onkeydown="if(event.key==='Enter') submitGuessNumber()">
+                    <button onclick="submitGuessNumber()" 
+                        style="padding:8px 18px;background:#667eea;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">猜！</button>
+                </div>
+                <div id="gnHint" style="margin-top:6px;font-size:13px;color:#6c757d;min-height:18px;"></div>
+            </div>
+
+            <!-- 猜测历史 -->
+            <div style="display:flex;gap:12px;">
+                <div style="flex:1;">
+                    <h4 style="margin:0 0 8px;font-size:13px;color:#495057;" id="gnMyHistoryTitle">我的猜测</h4>
+                    <div id="gnMyHistory" style="background:#f8f9fa;border-radius:6px;padding:8px;min-height:80px;max-height:200px;overflow-y:auto;font-size:13px;"></div>
+                </div>
+                <div style="flex:1;">
+                    <h4 style="margin:0 0 8px;font-size:13px;color:#495057;" id="gnOpponentHistoryTitle">对方的猜测</h4>
+                    <div id="gnOpponentHistory" style="background:#f8f9fa;border-radius:6px;padding:8px;min-height:80px;max-height:200px;overflow-y:auto;font-size:13px;"></div>
+                </div>
+            </div>
+
+            <!-- 结束提示 -->
+            <div id="gnResult" style="display:none;text-align:center;margin-top:14px;padding:14px;background:#e8f5e9;border-radius:8px;font-size:18px;font-weight:bold;color:#2e7d32;"></div>
+
+            <div class="modal-buttons" style="margin-top:14px;">
+                <button type="button" class="friend-btn" onclick="closeGuessNumberModal()">关闭</button>
+            </div>
+        </div>
+    </div>
     
     <!-- 投票创建模态框 -->
     <div class="modal" id="createPollModal">
@@ -2647,6 +2692,11 @@ io.on('message', (data) => {
             <div style="margin-bottom: 20px;">
                 <h4>在线用户</h4>
                 <div id="onlineUsersList" style="margin-bottom: 20px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                    <p style="text-align: center; color: #6c757d;">加载中...</p>
+                </div>
+
+                <h4>当前棋局 <button onclick="refreshActiveGames()" style="font-size:12px;padding:2px 8px;margin-left:8px;cursor:pointer;border:1px solid #ccc;border-radius:4px;background:#fff;">刷新</button></h4>
+                <div id="activeGamesList" style="margin-bottom: 20px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
                     <p style="text-align: center; color: #6c757d;">加载中...</p>
                 </div>
                 
@@ -2712,11 +2762,19 @@ io.on('message', (data) => {
                 // 加载在线用户列表
                 if (typeof socket !== 'undefined' && socket) {
                     socket.emit('get-online-users');
+                    // 加载活跃棋局列表
+                    socket.emit('get-active-games');
                     // 加载游戏邀请列表
                     socket.emit('get-game-invitations');
                     // 加载游戏历史记录
                     socket.emit('get-game-history');
                 }
+            }
+        }
+        
+        function refreshActiveGames() {
+            if (typeof socket !== 'undefined' && socket) {
+                socket.emit('get-active-games');
             }
         }
         
@@ -2879,7 +2937,10 @@ io.on('message', (data) => {
                                     <div style="width: 12px; height: 12px; border-radius: 50%; background: ${user.color};"></div>
                                     <span>${user.username}</span>
                                 </div>
-                                <button onclick="sendGameInvitation('${user.socketId}', 'gomoku')" style="padding: 5px 10px; background: #667eea; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">邀请下棋</button>
+                                <div style="display: flex; gap: 8px;">
+                                    <button onclick="sendGameInvitation('${user.socketId}', 'gomoku')" style="padding: 5px 10px; background: #667eea; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">♟️ 邀请下棋</button>
+                                    <button onclick="sendGameInvitation('${user.socketId}', 'guess-number')" style="padding: 5px 10px; background: #f093fb; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">🔢 猜数字</button>
+                                </div>
                             </div>
                         `).join('');
                     }
@@ -3036,13 +3097,15 @@ io.on('message', (data) => {
         let connectionErrorShown = false;
         function initSocket() {
             console.log('初始化Socket连接');
-            // 配置socket.io客户端，减少重连次数和超时时间
+            // 配置socket.io客户端，优化重连机制
             socket = io({
                 reconnection: true,
-                reconnectionAttempts: 3, // 最多尝试3次重连
+                reconnectionAttempts: 10, // 增加重连尝试次数
                 reconnectionDelay: 1000, // 重连延迟1秒
-                reconnectionDelayMax: 5000, // 最大重连延迟5秒
-                timeout: 10000, // 连接超时10秒
+                reconnectionDelayMax: 10000, // 最大重连延迟10秒
+                timeout: 20000, // 连接超时20秒
+                pingInterval: 30000, // 心跳间隔30秒
+                pingTimeout: 60000, // 心跳超时60秒
                 transports: ['websocket', 'polling']
             });
             
@@ -3050,6 +3113,9 @@ io.on('message', (data) => {
             socket.on('connect', () => {
                 console.log('Socket连接成功:', socket.id);
                 connectionErrorShown = false; // 重置错误提示状态
+                
+                // 显示连接成功通知
+                showNotification('连接成功', '已成功连接到聊天服务器', '✅');
                 
                 // 在连接成功后注册核心事件监听器
                 if (typeof registerCoreEventListeners === 'function') {
@@ -3072,6 +3138,11 @@ io.on('message', (data) => {
                 // 在连接成功后注册插件事件监听器
                 if (typeof registerPluginEventListeners === 'function') {
                     registerPluginEventListeners();
+                }
+
+                // 在连接成功后注册猜数字游戏事件监听器
+                if (typeof registerGuessNumberListeners === 'function') {
+                    registerGuessNumberListeners();
                 }
                 
                 // 在连接成功后注册消息相关事件监听器
@@ -3160,10 +3231,35 @@ io.on('message', (data) => {
                 if (typeof PollSystem === 'function') {
                     pollSystem = new PollSystem(socket);
                 }
+                
+                // 不再自动重新加入房间，用户需要手动操作
             });
 
-            socket.on('disconnect', () => {
-                console.log('Socket连接断开');
+            socket.on('disconnect', (reason) => {
+                console.log('Socket连接断开:', reason);
+                // 显示断开连接通知
+                showNotification('连接断开', '与服务器的连接已断开，正在尝试重连...', '⚠️');
+            });
+
+            socket.on('reconnect', (attemptNumber) => {
+                console.log('Socket重新连接成功，尝试次数:', attemptNumber);
+                // 显示重连成功通知
+                showNotification('连接恢复', '已重新连接到聊天服务器', '✅');
+                // 不再自动重新加入房间，用户需要手动操作
+            });
+
+            socket.on('reconnect_attempt', (attemptNumber) => {
+                console.log('Socket尝试重连，尝试次数:', attemptNumber);
+            });
+
+            socket.on('reconnect_error', (error) => {
+                console.error('Socket重连错误:', error);
+            });
+
+            socket.on('reconnect_failed', () => {
+                console.error('Socket重连失败');
+                // 显示重连失败通知
+                showNotification('连接失败', '无法重新连接到服务器，请检查网络连接后刷新页面', '❌');
             });
 
             socket.on('connect_error', (error) => {
@@ -4332,7 +4428,11 @@ io.on('message', (data) => {
                     const player = board[x][y];
                     if (player) {
                         console.log('绘制棋子:', x, y, player);
-                        const color = player === socket.id ? '#000000' : '#FFFFFF';
+                        // 用 players[0] 的 socketId 判断黑白：第一个玩家（创建者）为黑棋，第二个为白棋
+                        const player0Id = currentGame && currentGame.players && currentGame.players[0]
+                            ? (currentGame.players[0].socketId || currentGame.players[0])
+                            : null;
+                        const color = player === player0Id ? '#000000' : '#FFFFFF';
                         const borderColor = '#000000';
                         
                         gameCtx.fillStyle = color;
@@ -4428,13 +4528,17 @@ io.on('message', (data) => {
                 updateGameStatus();
                 updateGamePlayers();
                 updateGameInfo();
+                
+                // 先移除旧的事件绑定，再重新绑定，防止重复触发
+                gameBoard.removeEventListener('click', handleGameBoardClick);
+                gameLeaveBtn.removeEventListener('click', leaveGame);
+                gameSpectateBtn.removeEventListener('click', toggleSpectateMode);
+                
+                console.log('绑定游戏棋盘点击事件');
+                gameBoard.addEventListener('click', handleGameBoardClick);
+                gameLeaveBtn.addEventListener('click', leaveGame);
+                gameSpectateBtn.addEventListener('click', toggleSpectateMode);
             }, 100);
-            
-            // 绑定点击事件
-            console.log('绑定游戏棋盘点击事件');
-            gameBoard.addEventListener('click', handleGameBoardClick);
-            gameLeaveBtn.addEventListener('click', leaveGame);
-            gameSpectateBtn.addEventListener('click', toggleSpectateMode);
         }
         
         function closeGameModal() {
@@ -4447,7 +4551,154 @@ io.on('message', (data) => {
             gameLeaveBtn.removeEventListener('click', leaveGame);
             gameSpectateBtn.removeEventListener('click', toggleSpectateMode);
         }
-        
+
+        /* ============================================================
+         * 猜数字游戏（轮流猜同一个数，猜对者赢）
+         * ============================================================ */
+        let gnGame = null;
+
+        function openGuessNumberModal(gameData) {
+            gnGame = gameData;
+            document.getElementById('gnResult').style.display = 'none';
+            document.getElementById('gnMyHistory').innerHTML = '';
+            document.getElementById('gnOpponentHistory').innerHTML = '';
+            document.getElementById('gnHint').textContent = '';
+            document.getElementById('gnInput').value = '';
+            gnRenderPlayers();
+            gnUpdateStatus();
+            document.getElementById('guessNumberModal').classList.add('active');
+        }
+
+        function closeGuessNumberModal() {
+            document.getElementById('guessNumberModal').classList.remove('active');
+            gnGame = null;
+        }
+
+        function gnRenderPlayers() {
+            if (!gnGame) return;
+            const container = document.getElementById('gnPlayers');
+            container.innerHTML = (gnGame.players || []).map(p => `
+                <div style="flex:1;padding:8px 12px;border-radius:8px;background:${p.socketId === socket.id ? '#e3f2fd' : '#fff3e0'};text-align:center;">
+                    <div style="font-weight:bold;">${escapeHtml(p.username)}</div>
+                    <div style="font-size:12px;color:#6c757d;">已猜 ${(gnGame.guessCounts && gnGame.guessCounts[p.socketId]) || 0} 次</div>
+                    ${gnGame.currentGuesser === p.socketId && gnGame.status === 'playing' ? '<div style="color:#667eea;font-size:12px;">🎯 猜测中</div>' : ''}
+                </div>
+            `).join('');
+        }
+
+        function gnUpdateStatus() {
+            if (!gnGame) return;
+            const statusEl = document.getElementById('gnStatus');
+            const input = document.getElementById('gnInput');
+            const btn = document.querySelector('#gnInputArea button');
+            const inputArea = document.getElementById('gnInputArea');
+
+            inputArea.style.display = 'block';
+
+            if (gnGame.status === 'ended') {
+                input.disabled = true;
+                if (btn) btn.disabled = true;
+                statusEl.textContent = '游戏结束';
+                statusEl.style.color = '#6c757d';
+                return;
+            }
+
+            const isMyTurn = gnGame.currentGuesser === socket.id;
+            if (isMyTurn) {
+                input.disabled = false;
+                if (btn) btn.disabled = false;
+                statusEl.textContent = '轮到你猜了！🎯';
+                statusEl.style.color = '#28a745';
+                input.focus();
+            } else {
+                input.disabled = true;
+                if (btn) btn.disabled = true;
+                const opponentName = (gnGame.players || []).find(p => p.socketId !== socket.id)?.username || '对方';
+                statusEl.textContent = `等待 ${opponentName} 猜...`;
+                statusEl.style.color = '#6c757d';
+            }
+        }
+
+        function submitGuessNumber() {
+            if (!gnGame || gnGame.status === 'ended') return;
+            if (gnGame.currentGuesser !== socket.id) return;
+            const input = document.getElementById('gnInput');
+            const val = parseInt(input.value, 10);
+            if (isNaN(val) || val < 1 || val > 100) {
+                document.getElementById('gnHint').textContent = '⚠️ 请输入 1~100 之间的整数';
+                return;
+            }
+            socket.emit('guess-number-guess', { gameId: gnGame.gameId || gnGame.id, guess: val });
+            input.value = '';
+            document.getElementById('gnHint').textContent = '⏳ 等待结果...';
+        }
+
+        function gnAppendHistory(containerId, guess, result) {
+            const el = document.getElementById(containerId);
+            const icon = result === 'correct' ? '✅ 猜对了！' : result === 'low' ? '📈 小了' : '📉 大了';
+            const item = document.createElement('div');
+            item.style.cssText = 'padding:3px 0;border-bottom:1px solid #e9ecef;';
+            item.textContent = `猜 ${guess} → ${icon}`;
+            el.appendChild(item);
+            el.scrollTop = el.scrollHeight;
+        }
+
+        function registerGuessNumberListeners() {
+            socket.on('guess-number-start', (data) => {
+                console.log('猜数字游戏开始:', data);
+                gnGame = { ...data, gameId: data.gameId };
+                openGuessNumberModal(gnGame);
+                const firstPlayer = (data.players || []).find(p => p.socketId === data.currentGuesser)?.username || '邀请者';
+                showNotification(`🔢 猜数字开始！由 ${firstPlayer} 先猜`, 'success');
+            });
+
+            socket.on('guess-number-update', (data) => {
+                if (!gnGame || (gnGame.gameId || gnGame.id) !== data.gameId) return;
+
+                gnGame.guessCounts = data.guessCounts;
+                gnGame.currentGuesser = data.currentGuesser;
+                gnGame.status = data.status;
+                gnGame.winner = data.winner;
+
+                const isMe = data.guesserSocketId === socket.id;
+                gnAppendHistory(
+                    isMe ? 'gnMyHistory' : 'gnOpponentHistory',
+                    data.guess, data.result
+                );
+
+                if (isMe) {
+                    const hintMap = { low: '📈 猜小了，试试更大的', high: '📉 猜大了，试试更小的', correct: '✅ 猜对了！' };
+                    document.getElementById('gnHint').textContent = hintMap[data.result] || '';
+                } else {
+                    // 对方猜错了，提示轮到自己
+                    if (data.result !== 'correct' && data.currentGuesser === socket.id) {
+                        document.getElementById('gnHint').textContent = '对方没猜中，轮到你了！';
+                    }
+                }
+
+                gnRenderPlayers();
+                gnUpdateStatus();
+
+                if (data.status === 'ended') {
+                    const resultEl = document.getElementById('gnResult');
+                    resultEl.style.display = 'block';
+                    if (data.winner === socket.id) {
+                        resultEl.textContent = '🎉 你赢了！猜出了答案！';
+                        resultEl.style.background = '#e8f5e9';
+                        resultEl.style.color = '#2e7d32';
+                    } else {
+                        resultEl.textContent = `😢 ${data.winnerName} 猜出了答案，你输了！`;
+                        resultEl.style.background = '#fce4ec';
+                        resultEl.style.color = '#c62828';
+                    }
+                }
+            });
+
+            socket.on('guess-number-error', (data) => {
+                document.getElementById('gnHint').textContent = '⚠️ ' + (data.message || '操作失败');
+            });
+        }
+
         function updateGameStatus() {
             if (!currentGame) return;
             
@@ -4457,7 +4708,13 @@ io.on('message', (data) => {
                     break;
                 case 'playing':
                     const currentPlayerName = currentGame.players.find(p => p.socketId === currentGame.currentPlayer)?.username || '未知';
-                    gameStatus.textContent = `当前回合: ${currentPlayerName}`;
+                    if (isSpectating) {
+                        gameStatus.textContent = `当前回合: ${currentPlayerName}`;
+                    } else if (currentGame.currentPlayer === socket.id) {
+                        gameStatus.textContent = `你的回合 ● 落子`;
+                    } else {
+                        gameStatus.textContent = `等待 ${currentPlayerName} 落子...`;
+                    }
                     break;
                 case 'ended':
                     const winnerName = currentGame.players.find(p => p.socketId === currentGame.winner)?.username || '未知';
@@ -4517,7 +4774,7 @@ io.on('message', (data) => {
             if (currentGame) {
                 isSpectating = !isSpectating;
                 gameSpectateBtn.textContent = isSpectating ? '👁️ 观战中' : '👁️ 观战模式';
-                gameStatus.textContent = isSpectating ? '观战模式' : currentGame.status === 'playing' ? `当前回合: ${currentGame.players.find(p => p.socketId === currentGame.currentPlayer)?.username || '未知'}` : gameStatus.textContent;
+                updateGameStatus();
             }
         }
         
@@ -4542,7 +4799,7 @@ io.on('message', (data) => {
                 socket.on('game-start', (data) => {
                     currentGame = {
                         id: data.gameId,
-                        type: 'gomoku',
+                        type: data.gameType || 'gomoku',
                         status: 'playing',
                         players: data.players,
                         board: data.board,
@@ -4550,7 +4807,20 @@ io.on('message', (data) => {
                         startTime: new Date()
                     };
                     
-                    openGameModal(currentGame);
+                    // 若modal已开启（创建者等待时已打开）则只更新状态，否则打开modal
+                    if (gameModal && gameModal.classList.contains('active')) {
+                        setTimeout(() => {
+                            initGameBoard();
+                            drawGamePieces(currentGame.board);
+                            updateGameStatus();
+                            updateGamePlayers();
+                            updateGameInfo();
+                            gameBoard.removeEventListener('click', handleGameBoardClick);
+                            gameBoard.addEventListener('click', handleGameBoardClick);
+                        }, 100);
+                    } else {
+                        openGameModal(currentGame);
+                    }
                     showNotification('游戏开始！');
                 });
                 
@@ -4563,6 +4833,14 @@ io.on('message', (data) => {
                         currentGame.currentPlayer = data.currentPlayer;
                         currentGame.status = data.status;
                         currentGame.winner = data.winner;
+                        if (data.players) {
+                            currentGame.players = data.players;
+                        }
+                        
+                        // 对手离开时显示提示
+                        if (data.leaveMessage) {
+                            showNotification(data.leaveMessage);
+                        }
                         
                         console.log('绘制游戏棋子');
                         drawGamePieces(data.board);
@@ -4578,7 +4856,7 @@ io.on('message', (data) => {
                 socket.on('game-spectate-success', (data) => {
                     currentGame = {
                         id: data.gameId,
-                        type: 'gomoku',
+                        type: data.gameType || 'gomoku',
                         status: data.status,
                         players: data.players,
                         board: data.board,
@@ -6619,10 +6897,19 @@ io.on('message', (data) => {
                 const webcastMateDeviceId = await this.getWebcastMateDeviceId();
                 
                 const constraints = {
-                    audio: true,
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        sampleRate: 48000,
+                        channelCount: 1
+                    },
                     video: this.currentCallType === 'video' ? {
                         facingMode: this.currentFacingMode,
-                        deviceId: webcastMateDeviceId ? { exact: webcastMateDeviceId } : undefined
+                        deviceId: webcastMateDeviceId ? { exact: webcastMateDeviceId } : undefined,
+                        width: { ideal: 1280, min: 640 },
+                        height: { ideal: 720, min: 360 },
+                        frameRate: { ideal: 30, min: 15 }
                     } : false
                 };
                 
@@ -6647,9 +6934,18 @@ io.on('message', (data) => {
                             console.log('WebcastMate设备失败，尝试使用默认摄像头');
                             
                             const fallbackConstraints = {
-                                audio: true,
+                                audio: {
+                                    echoCancellation: true,
+                                    noiseSuppression: true,
+                                    autoGainControl: true,
+                                    sampleRate: 48000,
+                                    channelCount: 1
+                                },
                                 video: this.currentCallType === 'video' ? {
-                                    facingMode: this.currentFacingMode
+                                    facingMode: this.currentFacingMode,
+                                    width: { ideal: 1280, min: 640 },
+                                    height: { ideal: 720, min: 360 },
+                                    frameRate: { ideal: 30, min: 15 }
                                 } : false
                             };
                             
@@ -7047,11 +7343,43 @@ io.on('message', (data) => {
                         console.log('MediaSource已打开');
                         this.isMediaSourceOpen = true;
                         
-                        // 创建SourceBuffer，使用与MediaRecorder相同的mimeType
-                        const mimeType = 'video/webm; codecs=vp8,opus';
-                        if (this.mediaSource.isTypeSupported(mimeType)) {
-                            this.sourceBuffer = this.mediaSource.addSourceBuffer(mimeType);
-                            console.log('SourceBuffer已创建，mimeType:', mimeType);
+                        // 优先使用与发送方协商一致的 mimeType，回退到常见格式
+                        const candidateMimeTypes = [];
+                        if (this.socketMimeType) candidateMimeTypes.push(this.socketMimeType);
+                        candidateMimeTypes.push(
+                            'video/webm; codecs="vp8,opus"',
+                            'video/webm; codecs=vp8,opus',
+                            'video/webm; codecs=vp9,opus',
+                            'video/webm',
+                            'video/mp4; codecs="avc1.42E01E,mp4a.40.2"',
+                            'video/mp4'
+                        );
+                        // 去重
+                        const seen = new Set();
+                        const mimeTypes = candidateMimeTypes.filter(m => {
+                            if (seen.has(m)) return false;
+                            seen.add(m);
+                            return true;
+                        });
+
+                        let selectedMime = null;
+                        for (const m of mimeTypes) {
+                            if (MediaSource.isTypeSupported(m)) {
+                                selectedMime = m;
+                                break;
+                            }
+                        }
+
+                        if (!selectedMime) {
+                            console.error('浏览器不支持任何候选 mimeType');
+                            return;
+                        }
+
+                        try {
+                            this.sourceBuffer = this.mediaSource.addSourceBuffer(selectedMime);
+                            // 使用 sequence 模式兼容非关键帧开头的数据流
+                            this.sourceBuffer.mode = 'sequence';
+                            console.log('SourceBuffer已创建，mimeType:', selectedMime);
                             
                             // 监听SourceBuffer的updateend事件，用于处理队列中的下一个媒体数据
                             this.updateEndHandler = () => {
@@ -7061,24 +7389,8 @@ io.on('message', (data) => {
                             
                             // 如果队列中有等待处理的媒体数据，立即处理
                             this.processMediaQueue();
-                        } else {
-                            console.error('不支持的mimeType:', mimeType);
-                            // 尝试其他可能的mimeType
-                            const fallbackMimeType = 'video/webm';
-                            if (this.mediaSource.isTypeSupported(fallbackMimeType)) {
-                                this.sourceBuffer = this.mediaSource.addSourceBuffer(fallbackMimeType);
-                                console.log('使用 fallback mimeType 创建SourceBuffer:', fallbackMimeType);
-                                
-                                // 监听SourceBuffer的updateend事件
-                                this.updateEndHandler = () => {
-                                    this.processMediaQueue();
-                                };
-                                this.sourceBuffer.addEventListener('updateend', this.updateEndHandler);
-                                
-                                this.processMediaQueue();
-                            } else {
-                                console.error('不支持任何webm mimeType');
-                            }
+                        } catch (e) {
+                            console.error('addSourceBuffer 失败:', e);
                         }
                     };
                     
@@ -7166,34 +7478,53 @@ io.on('message', (data) => {
                         }
                     }
                     
-                    // 将媒体数据添加到SourceBuffer
-                    this.sourceBuffer.appendBuffer(mediaData);
-                    console.log('媒体数据已添加到SourceBuffer');
-                } catch (error) {
-                    console.error('添加媒体数据到SourceBuffer失败:', error);
-                    
-                    // 根据错误类型采取不同的处理方式
-                    if (error.name === 'QuotaExceededError') {
-                        console.error('SourceBuffer配额超出，尝试清理旧数据');
-                        // 不清空队列，而是尝试重新初始化MediaSource
-                        this.initMediaSource();
-                        // 将数据重新放回队列
-                        this.socketMediaQueue.unshift(mediaData);
-                    } else if (error.name === 'InvalidStateError') {
-                        console.error('SourceBuffer状态无效，可能已关闭，重新初始化MediaSource');
-                        // 将数据重新放回队列
-                        this.socketMediaQueue.unshift(mediaData);
-                        this.initMediaSource();
-                    } else if (error.name === 'TypeError') {
-                        console.error('媒体数据类型错误，跳过该数据');
-                        // 继续处理下一个数据
-                        this.processMediaQueue();
+                    // SourceBuffer.appendBuffer 只接受 ArrayBuffer/ArrayBufferView
+                    // Socket.IO 传来的数据可能是 Blob，需要先转换
+                    const doAppend = (buffer) => {
+                        try {
+                            this.sourceBuffer.appendBuffer(buffer);
+                            console.log('媒体数据已添加到SourceBuffer，大小:', buffer.byteLength, 'bytes');
+                        } catch (appendError) {
+                            console.error('appendBuffer 失败:', appendError.name, appendError.message);
+                            if (appendError.name === 'QuotaExceededError') {
+                                // 缓冲区满：丢弃最旧的 3 秒数据后重试
+                                try {
+                                    const video = document.getElementById('remoteVideo');
+                                    const removeEnd = (video && video.currentTime > 3) ? video.currentTime - 1 : 1;
+                                    this.sourceBuffer.remove(0, removeEnd);
+                                    this.sourceBuffer.addEventListener('updateend', () => {
+                                        try { this.sourceBuffer.appendBuffer(buffer); } catch(e) {}
+                                    }, { once: true });
+                                } catch (e) {
+                                    this.socketMediaQueue.unshift(mediaData);
+                                    setTimeout(() => this.processMediaQueue(), 500);
+                                }
+                            } else if (appendError.name === 'InvalidStateError') {
+                                this.socketMediaQueue.unshift(mediaData);
+                                this.initMediaSource();
+                            } else {
+                                // 其它错误丢弃该帧，继续处理队列
+                                setTimeout(() => this.processMediaQueue(), 0);
+                            }
+                        }
+                    };
+
+                    if (mediaData instanceof Blob) {
+                        // Blob → ArrayBuffer 异步转换
+                        mediaData.arrayBuffer().then(doAppend).catch(err => {
+                            console.error('Blob.arrayBuffer() 转换失败:', err);
+                            setTimeout(() => this.processMediaQueue(), 0);
+                        });
+                    } else if (mediaData instanceof ArrayBuffer || ArrayBuffer.isView(mediaData)) {
+                        doAppend(mediaData);
                     } else {
-                        console.error('未知错误，重新初始化MediaSource');
-                        // 将数据重新放回队列
-                        this.socketMediaQueue.unshift(mediaData);
-                        this.initMediaSource();
+                        console.error('未知媒体数据类型，跳过:', typeof mediaData);
+                        setTimeout(() => this.processMediaQueue(), 0);
                     }
+                } catch (error) {
+                    console.error('processMediaQueue 意外错误:', error);
+                    this.socketMediaQueue.unshift(mediaData);
+                    setTimeout(() => this.initMediaSource(), 1000);
                 }
             }
             
@@ -7993,8 +8324,44 @@ io.on('message', (data) => {
                     // 处理远程轨道
                     this.processRemoteTrack(event, remoteVideo);
                 };
+
+                // 连接状态变化时自动应用比特率限制
+                this.peerConnection.onconnectionstatechange = () => {
+                    const state = this.peerConnection && this.peerConnection.connectionState;
+                    console.log('WebRTC 连接状态:', state);
+                    if (state === 'connected') {
+                        this.applyWebRTCBitrate();
+                    }
+                };
             }
-            
+
+            // 通过 RTCRtpSender.setParameters() 将用户设置的比特率应用到 WebRTC 通道
+            async applyWebRTCBitrate() {
+                if (!this.peerConnection) return;
+                const videoBps = ((window.userSettings && window.userSettings.videoBitrate) || 2000) * 1000;
+                const audioBps = ((window.userSettings && window.userSettings.audioBitrate) || 128) * 1000;
+
+                const senders = this.peerConnection.getSenders();
+                for (const sender of senders) {
+                    if (!sender.track) continue;
+                    try {
+                        const params = sender.getParameters();
+                        if (!params.encodings || params.encodings.length === 0) {
+                            params.encodings = [{}];
+                        }
+                        if (sender.track.kind === 'video') {
+                            params.encodings[0].maxBitrate = videoBps;
+                        } else if (sender.track.kind === 'audio') {
+                            params.encodings[0].maxBitrate = audioBps;
+                        }
+                        await sender.setParameters(params);
+                        console.log(`WebRTC ${sender.track.kind} 比特率已设置:`, sender.track.kind === 'video' ? videoBps : audioBps, 'bps');
+                    } catch (e) {
+                        console.warn('applyWebRTCBitrate 失败:', e);
+                    }
+                }
+            }
+
             // 确保本地媒体流已添加到peerConnection
             ensureLocalStreamAdded() {
                 // 如果peerConnection不存在，立即清除定时器并返回
@@ -8094,23 +8461,31 @@ io.on('message', (data) => {
                     }
                 }
                 
+                // 读取用户设置中的比特率（kbps → bps）
+                const userVideoBps = ((window.userSettings && window.userSettings.videoBitrate) || 2000) * 1000;
+                const userAudioBps = ((window.userSettings && window.userSettings.audioBitrate) || 128) * 1000;
+
                 // 使用Socket.io发送媒体流数据，改进配置
                 const mediaRecorder = new MediaRecorder(this.localStream, {
                     mimeType: selectedMimeType,
-                    videoBitsPerSecond: 800000, // 800Kbps，平衡质量和带宽
-                    audioBitsPerSecond: 64000, // 64Kbps，优化音频质量
-                    bitsPerSecond: 864000 // 总比特率
+                    videoBitsPerSecond: userVideoBps,
+                    audioBitsPerSecond: userAudioBps,
+                    bitsPerSecond: userVideoBps + userAudioBps
                 });
                 
+                // 将 mimeType 保存到实例，供接收端 initMediaSource 动态匹配
+                this.socketMimeType = selectedMimeType;
+
                 mediaRecorder.ondataavailable = (event) => {
                     if (event.data.size > 0 && this.isInCall) {
                         // 检查socket连接状态
                         if (this.socket && this.socket.connected) {
-                            // 发送媒体数据
+                            // 发送媒体数据，附带 mimeType 便于接收方正确解码
                             this.socket.emit('call-media', {
                                 targetSocketId: this.currentCallTargetSocketId,
                                 callId: this.currentCallId,
                                 type: 'media-data',
+                                mimeType: selectedMimeType,
                                 data: event.data
                             });
                         }
@@ -8368,6 +8743,11 @@ io.on('message', (data) => {
             // 处理Socket.io媒体数据
             handleSocketMedia(data) {
                 if (data.type === 'media-data') {
+                    // 记录发送方使用的 mimeType，供 initMediaSource 动态匹配
+                    if (data.mimeType && data.mimeType !== this.socketMimeType) {
+                        this.socketMimeType = data.mimeType;
+                        console.log('收到对方 mimeType:', data.mimeType);
+                    }
                     // 播放媒体数据
                     this.playSocketMedia(data.data);
                 }
@@ -8598,11 +8978,11 @@ io.on('message', (data) => {
                         console.error('未知的通话类型或方式');
                     }
                     
-                    // 确保视频播放，使用之前创建的ensureVideoPlays方法
-                    this.ensureVideoPlays(remoteVideo);
-                    
-                    // 标记视频正在播放，避免重复调用
-                    remoteVideo._socketIoPlaying = true;
+                    // 首帧数据到达时触发一次 play()，之后不再重复调用
+                    if (!remoteVideo._socketIoPlaying) {
+                        remoteVideo._socketIoPlaying = true;
+                        this.ensureVideoPlays(remoteVideo);
+                    }
                 } catch (error) {
                     console.error('播放Socket.io媒体数据失败:', error);
                 }
@@ -8636,10 +9016,15 @@ io.on('message', (data) => {
                 // 清理SourceBuffer
                 this.sourceBuffer = null;
                 this.isMediaSourceOpen = false;
-                
+                this.socketMimeType = null; // 重置协商的 mimeType
+
                 // 清空媒体队列
                 this.socketMediaQueue = [];
                 console.log('媒体队列已清空');
+
+                // 重置 remoteVideo 播放标记
+                const remoteVideoEl = document.getElementById('remoteVideo');
+                if (remoteVideoEl) remoteVideoEl._socketIoPlaying = false;
                 
                 // 清理本地媒体流
                 if (this.localStream) {
@@ -9641,9 +10026,25 @@ io.on('message', (data) => {
             } else {
                 // 页面被显示，检查状态
                 const restored = restorePageState();
-                if (restored && socket && socket.connected && username && currentRoom) {
-                    // 如果已连接且有保存的状态，确保在正确的房间
-                    console.log('页面重新激活，确保在正确的房间');
+                if (restored && username && currentRoom) {
+                    // 检查Socket连接状态
+                    if (socket) {
+                        if (!socket.connected) {
+                            // 连接已断开，尝试重新连接
+                            console.log('页面重新激活，Socket连接已断开，尝试重新连接');
+                            // 重新初始化Socket连接
+                            initSocket();
+                            // 不再自动重新加入房间，用户需要手动操作
+                        } else {
+                            // 连接正常，确保在正确的房间
+                            console.log('页面重新激活，Socket连接正常');
+                        }
+                    } else {
+                        // Socket未初始化，重新初始化
+                        console.log('页面重新激活，Socket未初始化，重新初始化');
+                        initSocket();
+                        // 不再自动加入房间，用户需要手动操作
+                    }
                 }
             }
         });
@@ -9733,16 +10134,8 @@ io.on('message', (data) => {
             console.log('所有元素初始化完成，开始初始化Socket连接');
             initSocket();
             
-            // 如果恢复了状态，尝试自动加入房间
-            if (restored && username && currentRoom) {
-                console.log('尝试自动加入房间:', currentRoom);
-                // 等待socket连接后加入房间
-                setTimeout(() => {
-                    if (socket && socket.connected) {
-                        socket.emit('join', { username, roomName: currentRoom });
-                    }
-                }, 1000);
-            }
+            // 不再自动加入房间，用户需要手动操作
+
         });
 
         // 打开选择通话用户模态框
@@ -9784,20 +10177,6 @@ io.on('message', (data) => {
                 return;
             }
             
-            // 添加通话方式选择
-            const callMethodDiv = document.createElement('div');
-            callMethodDiv.style.cssText = 'margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 5px;';
-            callMethodDiv.innerHTML = `
-                <h4 style="margin-top: 0;">选择通话方式</h4>
-                <label style="margin-right: 20px;">
-                    <input type="radio" name="callMethod" value="webrtc" checked> WebRTC (推荐，有概率无法跨网段)
-                </label>
-                <label>
-                    <input type="radio" name="callMethod" value="socket.io"> Socket.io（不推荐，不太可能能接通）
-                </label>
-            `;
-            callUserList.appendChild(callMethodDiv);
-            
             // 添加用户列表
             const userListTitle = document.createElement('h4');
             userListTitle.textContent = '选择通话对象';
@@ -9824,15 +10203,15 @@ io.on('message', (data) => {
         
         // 开始通话函数
         function startCall(callType, socketId, username) {
-            // 获取用户选择的通话方式
-            const callMethod = document.querySelector('input[name="callMethod"]:checked').value;
+            // 固定使用 WebRTC 通话方式
+            const callMethod = 'webrtc';
             
             // 关闭通话用户列表
             closeCallUserModal();
             
-            // 调用callSystem的startCall方法，传递通话方式
+            // 调用callSystem的startCall方法
             callSystem.startCall(socketId, callType, callMethod);
-            alert(`正在与 ${username} 发起${callType === 'video' ? '视频' : '语音'}通话，使用${callMethod === 'webrtc' ? 'WebRTC' : 'Socket.io'}方式`);
+            alert(`正在与 ${username} 发起${callType === 'video' ? '视频' : '语音'}通话`);
         }
  
         // 从URL路径获取房间名
