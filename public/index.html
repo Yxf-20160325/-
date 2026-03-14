@@ -2735,6 +2735,7 @@ io.on('message', (data) => {
                         <button id="ptEraserBtn" onclick="ptToggleEraser()" style="padding:3px 10px; border:1px solid #ccc; border-radius:4px; cursor:pointer; font-size:12px; background:white;">橡皮</button>
                         <button onclick="ptClearCanvas()" style="padding:3px 10px; background:#dc3545; color:white; border:none; border-radius:4px; cursor:pointer; font-size:12px;">清空</button>
                         <button onclick="ptSkipWord()" style="padding:3px 10px; background:#6c757d; color:white; border:none; border-radius:4px; cursor:pointer; font-size:12px;">换词</button>
+                        <button onclick="ptFinishDrawing()" style="padding:3px 10px; background:#28a745; color:white; border:none; border-radius:4px; cursor:pointer; font-size:12px;">✅ 画完了</button>
                     </div>
                     <canvas id="ptCanvas" style="width:100%; flex:1; background:white; border:2px solid #dee2e6; border-radius:6px; cursor:crosshair; touch-action:none; display:block;"></canvas>
                 </div>
@@ -5202,6 +5203,12 @@ io.on('message', (data) => {
             }
         }
 
+        function ptFinishDrawing() {
+            if (!ptGame || !socket) return;
+            if (!confirm('确认画完了？这将结束本轮并切换到下一轮。')) return;
+            socket.emit('game-finish-drawing', { gameId: ptGame.gameId });
+        }
+
         function ptSubmitGuess() {
             const input = document.getElementById('ptGuessInput');
             if (!input || !input.value.trim() || !ptGame) return;
@@ -5232,13 +5239,21 @@ io.on('message', (data) => {
                 ptGame.status = data.status;
                 ptGame.winner = data.winner;
                 if (data.currentWord) ptGame.currentWord = data.currentWord;
-                // 更新词汇提示（猜词者只知道字数）
-                if (!ptGame.currentWord || ptGame.currentWord === '???') {
-                    // 服务端会更新 currentDrawer，需要重新判断字数
-                }
+                // 更新词汇提示（猜词者只知道字数，每次都同步服务端下发的 wordHint）
+                if (data.wordHint) ptGame.wordHint = data.wordHint;
 
                 ptRenderGuesses(data.guesses);
                 ptUpdateUI();
+
+                // 画者宣告画完，切换下一轮
+                if (data.finishedByDrawer) {
+                    const drawerName = ptGame.players?.find(p => p.socketId === ptGame.currentDrawer)?.username || '画者';
+                    showNotification(`🖌️ 画者宣告画完，进入下一轮！`);
+                    if (ptCtx && ptCanvas) {
+                        ptCtx.fillStyle = 'white';
+                        ptCtx.fillRect(0, 0, ptCanvas.width, ptCanvas.height);
+                    }
+                }
 
                 // 最后一次猜对提示
                 if (data.lastGuess && data.lastGuess.isCorrect) {
