@@ -1,5 +1,5 @@
 {
-  "name": "chatroom"，
+  "name": "chatroom",
   "version": "1.0.0",
   "description": "跨网段聊天室",
   "main": "server.cjs",
