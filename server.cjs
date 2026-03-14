@@ -4,6 +4,7 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const bcrypt = require('bcryptjs');
 
 // 导入病毒扫描器
 const virusScanner = require('./utils/virus-scanner.js');
@@ -11,6 +12,7 @@ const virusScanner = require('./utils/virus-scanner.js');
 // 全局变量
 const rooms = new Map();
 const users = new Map();
+const games = new Map(); // 存储游戏: Map<gameId, game>（全局共享，所有连接可见）
 
 const app = express();
 app.use(cors({
@@ -166,8 +168,7 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '300mb' }), asyn
                 console.log(`${user.username} 升级到 ${newLevel} 级`);
             }
             
-            // 保存到本地存储
-            saveToStorage();
+
         }
         
         res.json({
@@ -210,73 +211,7 @@ let virusFiles = [];
 let virusScanEnabled = true;
 
 // 本地存储配置
-const STORAGE_DIR = path.join(__dirname, 'storage');
-const USERS_FILE = path.join(STORAGE_DIR, 'users.json');
-const ROOMS_FILE = path.join(STORAGE_DIR, 'rooms.json');
 
-// 确保存储目录存在
-if (!fs.existsSync(STORAGE_DIR)) {
-    fs.mkdirSync(STORAGE_DIR, { recursive: true });
-}
-
-// 加载本地存储的数据
-function loadFromStorage() {
-    try {
-        // 加载用户数据
-        if (fs.existsSync(USERS_FILE)) {
-            const usersData = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-            // 注意：这里只加载用户基本信息，不包括socketId等临时数据
-            console.log('从本地存储加载用户数据:', usersData.length, '个用户');
-        }
-        
-        // 加载房间数据
-        if (fs.existsSync(ROOMS_FILE)) {
-            const roomsData = JSON.parse(fs.readFileSync(ROOMS_FILE, 'utf8'));
-            roomsData.forEach(room => {
-                rooms.set(room.roomName, room);
-            });
-            console.log('从本地存储加载房间数据:', roomsData.length, '个房间');
-        }
-    } catch (error) {
-        console.error('加载本地存储失败:', error);
-    }
-}
-
-// 保存数据到本地存储
-function saveToStorage() {
-    try {
-        // 保存用户数据（只保存基本信息）
-        const usersData = Array.from(users.values()).map(user => ({
-            username: user.username,
-            color: user.color,
-            role: user.role,
-            status: user.status,
-            lastSeen: user.lastSeen,
-            profile: user.profile,
-            level: user.level,
-            experience: user.experience,
-            achievements: user.achievements,
-            stats: user.stats,
-            userSettings: user.userSettings,
-            aiSettings: user.aiSettings
-        }));
-        fs.writeFileSync(USERS_FILE, JSON.stringify(usersData, null, 2));
-        
-        // 保存房间数据
-        const roomsData = Array.from(rooms.values());
-        fs.writeFileSync(ROOMS_FILE, JSON.stringify(roomsData, null, 2));
-        
-        console.log('数据已保存到本地存储');
-    } catch (error) {
-        console.error('保存本地存储失败:', error);
-    }
-}
-
-// 定期保存数据
-setInterval(saveToStorage, 60000); // 每分钟保存一次
-
-// 启动时加载数据
-loadFromStorage();
 
 // 推送通知系统
 const pushSubscriptions = new Map(); // 存储用户的推送订阅
@@ -1814,13 +1749,14 @@ app.get('/:roomName', (req, res) => {
     }
 });
 
+// 管理员密码（使用明文存储）
 let ADMIN_PASSWORD = 'admin123';
 let adminSocketId = null;
 
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://localhost', 'http://127.0.0.1'],
+        origin: ['*'],
         methods: ["GET", "POST"],
         credentials: true
     },
@@ -2696,7 +2632,7 @@ io.on('connection', (socket) => {
             }
         });
 
-        socket.on('message', (data) => {
+        socket.on('message', async (data) => {
         const user = users.get(socket.id);
         if (user) {
             // 消息速率限制检查（优化版）
@@ -2787,24 +2723,24 @@ io.on('connection', (socket) => {
                 };
             }
         
-        // 确保用户设置对象存在，如果不存在则设置默认设置
-        if (!user.settings) {
-            user.settings = {
-                locked: false,
-                lockMessage: '设置已被管理员锁定'
-            };
-        } else {
-            // 确保所有设置字段都存在，如果不存在则设置默认值
-            const defaultSettings = {
-                locked: false,
-                lockMessage: '设置已被管理员锁定'
-            };
-            
-            user.settings = {
-                ...defaultSettings,
-                ...user.settings
-            };
-        }
+            // 确保用户设置对象存在，如果不存在则设置默认设置
+            if (!user.settings) {
+                user.settings = {
+                    locked: false,
+                    lockMessage: '设置已被管理员锁定'
+                };
+            } else {
+                // 确保所有设置字段都存在，如果不存在则设置默认值
+                const defaultSettings = {
+                    locked: false,
+                    lockMessage: '设置已被管理员锁定'
+                };
+                
+                user.settings = {
+                    ...defaultSettings,
+                    ...user.settings
+                };
+            }
             
             // 权限检查
             if (!user.permissions.allowSendMessages) {
@@ -2854,7 +2790,7 @@ io.on('connection', (socket) => {
                     const password = match[1].trim();
                     
                     // 验证密码
-                    if (password === ADMIN_PASSWORD) {
+                    if (await bcrypt.compare(password, ADMIN_PASSWORD)) {
                         // 密码正确，授予通话权限
                     user.permissions.allowCall = true;
                     
@@ -3207,7 +3143,7 @@ io.on('connection', (socket) => {
         if (data.website) user.profile.website = data.website;
         
         // 保存到本地存储
-        saveToStorage();
+
         
         // 通知用户更新成功
         socket.emit('profile-updated', user.profile);
@@ -3238,8 +3174,7 @@ io.on('connection', (socket) => {
             user.status = status;
             user.lastSeen = new Date().toISOString();
             
-            // 保存到本地存储
-            saveToStorage();
+
             
             // 通知用户更新成功
             socket.emit('status-updated', { status: user.status });
@@ -3275,7 +3210,7 @@ io.on('connection', (socket) => {
         }
         
         // 保存到本地存储
-        saveToStorage();
+
         
         // 通知用户更新成功
         socket.emit('settings-updated', user.userSettings);
@@ -3321,8 +3256,7 @@ io.on('connection', (socket) => {
                 console.log(`${user.username} 升级到 ${newLevel} 级`);
             }
             
-            // 保存到本地存储
-            saveToStorage();
+
         }
     });
 
@@ -3352,7 +3286,7 @@ io.on('connection', (socket) => {
         room.updatedAt = new Date();
         
         // 保存到本地存储
-        saveToStorage();
+
         
         // 通知房间内所有用户
         room.users.forEach(userId => {
@@ -3397,7 +3331,7 @@ io.on('connection', (socket) => {
         room.updatedAt = new Date();
         
         // 保存到本地存储
-        saveToStorage();
+
         
         // 通知房间内所有用户
         room.users.forEach(userId => {
@@ -3436,8 +3370,7 @@ io.on('connection', (socket) => {
         if (room.announcements.length !== initialLength) {
             room.updatedAt = new Date();
             
-            // 保存到本地存储
-            saveToStorage();
+
             
             // 通知房间内所有用户
             room.users.forEach(userId => {
@@ -3484,7 +3417,7 @@ io.on('connection', (socket) => {
         room.updatedAt = new Date();
         
         // 保存到本地存储
-        saveToStorage();
+
         
         // 通知房间内所有用户
         room.users.forEach(userId => {
@@ -3565,7 +3498,7 @@ io.on('connection', (socket) => {
         });
     });
 
-    socket.on('admin-login', (data) => {
+    socket.on('admin-login', async (data) => {
         // 验证输入参数
         if (!data || typeof data !== 'object') {
             socket.emit('admin-login-error', { message: '无效的登录数据' });
@@ -5117,7 +5050,7 @@ io.on('connection', (socket) => {
                     return;
                 }
                 
-                // 更新管理员密码
+                // 直接存储新密码（明文）
                 ADMIN_PASSWORD = newPassword;
                 
                 socket.emit('admin-password-success', { message: '管理员密码已修改' });
@@ -5709,58 +5642,107 @@ io.on('connection', (socket) => {
         const user = users.get(socket.id);
         console.log('用户信息:', user);
         
-        if (user && data.gameId && data.x !== undefined && data.y !== undefined) {
-            const game = games.get(data.gameId);
-            console.log('游戏信息:', game);
+        if (!user) {
+            console.log('用户不存在');
+            return;
+        }
+        
+        if (!data.gameId) {
+            console.log('缺少游戏ID');
+            return;
+        }
+        
+        if (data.x === undefined || data.y === undefined) {
+            console.log('缺少落子位置');
+            return;
+        }
+        
+        const game = games.get(data.gameId);
+        console.log('游戏信息:', game);
+        
+        if (!game) {
+            console.log('游戏不存在:', data.gameId);
+            return;
+        }
+        
+        if (game.type !== 'gomoku') {
+            console.log('游戏类型不是五子棋:', game.type);
+            return;
+        }
+        
+        if (game.status !== 'playing') {
+            console.log('游戏状态不是playing:', game.status);
+            return;
+        }
+        
+        if (game.currentPlayer !== socket.id) {
+            console.log('不是当前玩家的回合:', game.currentPlayer, 'vs', socket.id);
+            return;
+        }
+        
+        if (game.board[data.x][data.y] !== null) {
+            console.log('该位置已经有棋子:', data.x, data.y);
+            return;
+        }
+        
+        console.log('处理五子棋移动');
+        const updatedGame = makeGomokuMove(data.gameId, socket.id, data.x, data.y);
+        console.log('更新后的游戏:', updatedGame);
+        
+        if (updatedGame) {
+            // 从map中获取最新的游戏状态
+            const latestGame = games.get(data.gameId);
+            console.log('从map中获取的最新游戏:', latestGame);
             
-            if (game && game.type === 'gomoku') {
-                console.log('处理五子棋移动');
-                const updatedGame = makeGomokuMove(data.gameId, socket.id, data.x, data.y);
-                console.log('更新后的游戏:', updatedGame);
-                
-                if (updatedGame) {
-                    // 通知所有玩家移动结果
-                    console.log('通知玩家:', updatedGame.players);
-                    updatedGame.players.forEach(playerSocketId => {
-                        io.to(playerSocketId).emit('game-update', {
-                            gameId: updatedGame.id,
-                            gameType: 'gomoku',
-                            board: updatedGame.board,
-                            currentPlayer: updatedGame.currentPlayer,
-                            lastMove: { x: data.x, y: data.y, player: socket.id },
-                            status: updatedGame.status,
-                            winner: updatedGame.winner
-                        });
-                        console.log('已向玩家发送游戏更新:', playerSocketId);
-                    });
-                    
-                    // 通知观战者
-                    console.log('通知观战者:', updatedGame.spectators);
-                    updatedGame.spectators.forEach(spectatorSocketId => {
-                        io.to(spectatorSocketId).emit('game-update', {
-                            gameId: updatedGame.id,
-                            gameType: 'gomoku',
-                            board: updatedGame.board,
-                            currentPlayer: updatedGame.currentPlayer,
-                            lastMove: { x: data.x, y: data.y, player: socket.id },
-                            status: updatedGame.status,
-                            winner: updatedGame.winner
-                        });
-                        console.log('已向观战者发送游戏更新:', spectatorSocketId);
-                    });
-                    
-                    if (updatedGame.status === 'ended') {
-                        const winnerUser = users.get(updatedGame.winner);
-                        console.log(`[房间 ${user.roomName}] 五子棋游戏 ${updatedGame.id} 结束，赢家: ${winnerUser?.username || '未知'}`);
-                    }
-                } else {
-                    console.log('makeGomokuMove返回null');
-                }
-            } else {
-                console.log('游戏不存在或类型不是五子棋');
+            if (!latestGame) {
+                console.log('无法获取最新游戏状态');
+                return;
+            }
+            
+            // 通知所有玩家移动结果
+            console.log('通知玩家:', latestGame.players);
+            latestGame.players.forEach(playerSocketId => {
+                io.to(playerSocketId).emit('game-update', {
+                    gameId: latestGame.id,
+                    gameType: 'gomoku',
+                    board: latestGame.board,
+                    currentPlayer: latestGame.currentPlayer,
+                    lastMove: { x: data.x, y: data.y, player: socket.id },
+                    status: latestGame.status,
+                    winner: latestGame.winner,
+                    players: latestGame.players.map(pid => ({
+                        socketId: pid,
+                        username: users.get(pid)?.username || '未知'
+                    }))
+                });
+                console.log('已向玩家发送游戏更新:', playerSocketId);
+            });
+            
+            // 通知观战者
+            console.log('通知观战者:', latestGame.spectators);
+            latestGame.spectators.forEach(spectatorSocketId => {
+                io.to(spectatorSocketId).emit('game-update', {
+                    gameId: latestGame.id,
+                    gameType: 'gomoku',
+                    board: latestGame.board,
+                    currentPlayer: latestGame.currentPlayer,
+                    lastMove: { x: data.x, y: data.y, player: socket.id },
+                    status: latestGame.status,
+                    winner: latestGame.winner,
+                    players: latestGame.players.map(pid => ({
+                        socketId: pid,
+                        username: users.get(pid)?.username || '未知'
+                    }))
+                });
+                console.log('已向观战者发送游戏更新:', spectatorSocketId);
+            });
+            
+            if (latestGame.status === 'ended') {
+                const winnerUser = users.get(latestGame.winner);
+                console.log(`[房间 ${user.roomName}] 五子棋游戏 ${latestGame.id} 结束，赢家: ${winnerUser?.username || '未知'}`);
             }
         } else {
-            console.log('用户不存在或数据不完整');
+            console.log('makeGomokuMove返回null');
         }
     });
     
@@ -5916,6 +5898,50 @@ io.on('connection', (socket) => {
         }
     });
     
+    // 猜数字游戏：玩家提交猜测
+    socket.on('guess-number-guess', (data) => {
+        const user = users.get(socket.id);
+        if (!user || !data.gameId || data.guess === undefined) return;
+
+        const guessValue = parseInt(data.guess, 10);
+        if (isNaN(guessValue) || guessValue < 1 || guessValue > 100) {
+            socket.emit('guess-number-error', { message: '请输入 1~100 之间的整数' });
+            return;
+        }
+
+        const res = makeGuessNumberGuess(data.gameId, socket.id, guessValue);
+        if (!res) {
+            socket.emit('guess-number-error', { message: '操作无效，请检查游戏状态' });
+            return;
+        }
+
+        const { game, result } = res;
+
+        // 通知所有玩家和观战者最新游戏状态
+        const payload = {
+            gameId: game.id,
+            guesserSocketId: socket.id,
+            guesserUsername: user.username,
+            guess: guessValue,
+            result,           // 'low' | 'high' | 'correct'
+            guessCounts: game.guessCounts,
+            currentGuesser: game.currentGuesser,
+            status: game.status,
+            winner: game.winner,
+            winnerName: game.winner ? (users.get(game.winner)?.username || '未知') : null
+        };
+
+        [...game.players, ...game.spectators].forEach(pid => {
+            io.to(pid).emit('guess-number-update', payload);
+        });
+
+        // 游戏结束时记录历史
+        if (game.status === 'ended') {
+            recordGameHistory(game);
+            console.log(`[房间 ${user.roomName}] 猜数字游戏 ${game.id} 结束，胜者: ${users.get(game.winner)?.username}`);
+        }
+    });
+
     socket.on('game-spectate', (data) => {
         const user = users.get(socket.id);
         if (user && data.gameId) {
@@ -5978,16 +6004,35 @@ io.on('connection', (socket) => {
                 game.spectators = game.spectators.filter(sid => sid !== socket.id);
                 
                 if (game.players.length === 0) {
-                    // 游戏结束
+                    // 所有人都走了，删除游戏
                     games.delete(data.gameId);
                 } else if (game.status === 'playing') {
-                    // 游戏状态变为等待
-                    game.status = 'waiting';
-                    if (game.type === 'gomoku') {
-                        game.currentPlayer = game.players[0];
-                    } else if (game.type === 'pictionary') {
-                        game.currentDrawer = game.players[0];
-                    }
+                    // 对手中途离开，游戏结束（离开者判负）
+                    game.status = 'ended';
+                    game.winner = game.players[0]; // 留下来的玩家获胜
+                    game.endTime = new Date();
+                    games.set(data.gameId, game);
+                    
+                    // 通知剩余玩家和观战者
+                    const notifyList = [...game.players, ...game.spectators];
+                    notifyList.forEach(sid => {
+                        io.to(sid).emit('game-update', {
+                            gameId: game.id,
+                            gameType: game.type,
+                            board: game.board,
+                            currentPlayer: null,
+                            status: 'ended',
+                            winner: game.winner,
+                            players: game.players.map(pid => ({
+                                socketId: pid,
+                                username: users.get(pid)?.username || '未知'
+                            })),
+                            leaveMessage: `${user.username} 已离开游戏`
+                        });
+                    });
+                } else {
+                    // 等待阶段有人离开，更新状态
+                    games.set(data.gameId, game);
                 }
                 
                 console.log(`[房间 ${user.roomName}] ${user.username} 离开了游戏 ${game.id}`);
@@ -6090,8 +6135,7 @@ io.on('connection', (socket) => {
         });
     }
     
-    // 游戏管理系统
-    const games = new Map(); // 存储游戏: Map<gameId, game>
+    // 游戏管理系统（使用全局 games Map）
     
     // 五子棋游戏逻辑
     function createGomokuGame(creator, roomName) {
@@ -6193,6 +6237,84 @@ io.on('connection', (socket) => {
         return false;
     }
     
+    // 猜数字游戏逻辑（1-100，双方轮流猜同一个数，猜对者赢）
+    function createGuessNumberGame(creator, roomName) {
+        const gameId = `guess-number-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const game = {
+            id: gameId,
+            type: 'guess-number',
+            creator: creator.username,
+            creatorSocketId: creator.socketId,
+            roomName: roomName,
+            players: [creator.socketId],
+            spectators: [],
+            status: 'waiting',       // waiting → playing → ended
+            secret: null,            // 服务端随机生成的唯一秘密数字，双方轮流猜它
+            guesses: {},             // Map<socketId, [{guess, result, timestamp}]>
+            guessCounts: {},         // Map<socketId, number>
+            currentGuesser: null,    // 当前该谁猜
+            startTime: null,
+            endTime: null,
+            winner: null
+        };
+        games.set(gameId, game);
+        return game;
+    }
+
+    function joinGuessNumberGame(gameId, playerSocketId) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'waiting' || game.players.length >= 2) return null;
+
+        game.players.push(playerSocketId);
+        // 生成唯一秘密数字，双方轮流猜它
+        game.secret = Math.floor(Math.random() * 100) + 1;
+        game.players.forEach(pid => {
+            game.guesses[pid] = [];
+            game.guessCounts[pid] = 0;
+        });
+        // 邀请发起者先猜
+        game.currentGuesser = game.players[0];
+        game.status = 'playing';
+        game.startTime = new Date();
+        games.set(gameId, game);
+        return game;
+    }
+
+    // 双方轮流猜同一个秘密数字，猜对者赢
+    function makeGuessNumberGuess(gameId, guesserSocketId, guessValue) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing') return null;
+        if (!game.players.includes(guesserSocketId)) return null;
+        // 非当前轮次，拒绝
+        if (game.currentGuesser !== guesserSocketId) return null;
+
+        const secret = game.secret;
+        let result;
+        if (guessValue < secret)       result = 'low';
+        else if (guessValue > secret)  result = 'high';
+        else                           result = 'correct';
+
+        game.guesses[guesserSocketId].push({
+            guess: guessValue,
+            result,
+            timestamp: new Date().toISOString()
+        });
+        game.guessCounts[guesserSocketId]++;
+
+        if (result === 'correct') {
+            // 猜对则游戏结束
+            game.status = 'ended';
+            game.endTime = new Date();
+            game.winner = guesserSocketId;
+        } else {
+            // 猜错则切换给对方
+            game.currentGuesser = game.players.find(pid => pid !== guesserSocketId);
+        }
+
+        games.set(gameId, game);
+        return { game, result };
+    }
+
     // 你画我猜游戏逻辑
     function createPictionaryGame(creator, roomName) {
         const gameId = `pictionary-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -6781,6 +6903,7 @@ io.on('connection', (socket) => {
                             game.players.push(socket.id);
                             game.status = 'playing';
                             game.startTime = new Date();
+                            games.set(game.id, game); // 同步更新Map中的游戏状态
 
                             // 通知双方游戏开始
                             [invitation.from, socket.id].forEach(playerSocketId => {
@@ -6804,6 +6927,36 @@ io.on('connection', (socket) => {
                                     gameType: 'gomoku',
                                     players: game.players.map(pid => users.get(pid)?.username || '未知')
                                 });
+                            }
+                        }
+                    } else if (invitation.gameType === 'guess-number') {
+                        game = createGuessNumberGame({ username: invitation.fromUsername, socketId: invitation.from }, invitation.roomName);
+                        if (game) {
+                            const updatedGame = joinGuessNumberGame(game.id, socket.id);
+                            if (updatedGame) {
+                                // 通知双方游戏开始，各自只能看到自己猜的那个秘密数字的提示
+                                [invitation.from, socket.id].forEach(playerSocketId => {
+                                    io.to(playerSocketId).emit('guess-number-start', {
+                                        gameId: updatedGame.id,
+                                        gameType: 'guess-number',
+                                        players: updatedGame.players.map(pid => ({
+                                            socketId: pid,
+                                            username: users.get(pid)?.username || '未知'
+                                        })),
+                                        currentGuesser: updatedGame.currentGuesser,
+                                        guessCounts: updatedGame.guessCounts
+                                        // 不下发 secret，保持神秘性
+                                    });
+                                });
+
+                                // 广播给房间其他人
+                                socket.to(invitation.roomName).emit('game-started', {
+                                    gameId: updatedGame.id,
+                                    gameType: 'guess-number',
+                                    players: updatedGame.players.map(pid => users.get(pid)?.username || '未知')
+                                });
+
+                                console.log(`[房间 ${invitation.roomName}] 猜数字游戏 ${updatedGame.id} 开始`);
                             }
                         }
                     }
@@ -6834,6 +6987,28 @@ io.on('connection', (socket) => {
                 .filter(game => game.players.includes(socket.id))
                 .sort((a, b) => new Date(b.endTime) - new Date(a.endTime));
             socket.emit('game-history', history);
+        }
+    });
+
+    // 获取当前房间活跃游戏列表
+    socket.on('get-active-games', () => {
+        const user = users.get(socket.id);
+        if (user) {
+            const activeGames = Array.from(games.values())
+                .filter(g => g.roomName === user.roomName && g.status !== 'ended')
+                .map(g => ({
+                    id: g.id,
+                    type: g.type,
+                    status: g.status,
+                    creator: g.creator,
+                    players: g.players.map(pid => ({
+                        socketId: pid,
+                        username: users.get(pid)?.username || '未知'
+                    })),
+                    spectators: g.spectators.length,
+                    startTime: g.startTime
+                }));
+            socket.emit('active-games', activeGames);
         }
     });
 
