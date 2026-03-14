@@ -5816,6 +5816,73 @@ io.on('connection', (socket) => {
         }
     });
     
+    // 你画我猜游戏：画者主动宣告画完，切换下一轮
+    socket.on('game-finish-drawing', (data) => {
+        const user = users.get(socket.id);
+        if (!user || !data.gameId) return;
+        const game = games.get(data.gameId);
+        if (!game || game.type !== 'pictionary' || game.status !== 'playing' || game.currentDrawer !== socket.id) return;
+
+        // 本轮无人猜对，直接推进到下一轮
+        game.currentRound++;
+        if (game.currentRound < game.maxRounds) {
+            const nextDrawerIndex = (game.players.indexOf(game.currentDrawer) + 1) % game.players.length;
+            game.currentDrawer = game.players[nextDrawerIndex];
+            game.currentWord = game.words[Math.floor(Math.random() * game.words.length)];
+            game.roundStartTime = new Date();
+            game.guesses = [];
+        } else {
+            game.status = 'ended';
+            game.endTime = new Date();
+            let maxScore = 0, winnerSocketId = null;
+            game.scores.forEach((score, sid) => { if (score > maxScore) { maxScore = score; winnerSocketId = sid; } });
+            game.winner = winnerSocketId;
+        }
+        games.set(data.gameId, game);
+
+        // 广播给所有玩家
+        game.players.forEach(playerSocketId => {
+            const isDrawer = playerSocketId === game.currentDrawer;
+            io.to(playerSocketId).emit('game-update', {
+                gameId: game.id,
+                gameType: 'pictionary',
+                currentDrawer: game.currentDrawer,
+                currentDrawerName: users.get(game.currentDrawer)?.username || '未知',
+                currentWord: isDrawer ? game.currentWord : null,
+                wordHint: game.currentWord ? (game.currentWord.length + '个字') : '',
+                scores: Object.fromEntries(game.scores),
+                currentRound: game.currentRound,
+                maxRounds: game.maxRounds,
+                guesses: [],
+                status: game.status,
+                winner: game.winner,
+                finishedByDrawer: true   // 前端用于提示"画者宣告结束"
+            });
+        });
+        game.spectators.forEach(sid => {
+            io.to(sid).emit('game-update', {
+                gameId: game.id,
+                gameType: 'pictionary',
+                currentDrawer: game.currentDrawer,
+                currentDrawerName: users.get(game.currentDrawer)?.username || '未知',
+                scores: Object.fromEntries(game.scores),
+                currentRound: game.currentRound,
+                maxRounds: game.maxRounds,
+                guesses: [],
+                status: game.status,
+                winner: game.winner,
+                finishedByDrawer: true
+            });
+        });
+
+        if (game.status === 'ended') {
+            recordGameHistory(game);
+            console.log(`[房间 ${user.roomName}] 你画我猜游戏 ${game.id} 结束`);
+        } else {
+            console.log(`[房间 ${user.roomName}] ${user.username} 画完了，进入第 ${game.currentRound + 1} 轮`);
+        }
+    });
+
     // 你画我猜游戏跳过词汇事件
     socket.on('game-skip-word', (data) => {
         const user = users.get(socket.id);
@@ -6322,11 +6389,34 @@ io.on('connection', (socket) => {
         
         // 游戏词汇库
         const words = [
-            '苹果', '香蕉', '猫', '狗', '飞机', '汽车', '足球', '篮球', '电脑', '手机',
-            '电视', '冰箱', '自行车', '雨伞', '手表', '眼镜', '帽子', '鞋子', '衣服', '裤子',
-            '书包', '铅笔', '书本', '学校', '医院', '公园', '动物园', '电影院', '餐厅', '超市',
-            '山', '水', '树', '花', '鸟', '鱼', '太阳', '月亮', '星星', '彩虹',
-            '快乐', '悲伤', '愤怒', '惊讶', '害怕', '爱', '恨', '喜欢', '讨厌', '希望'
+            // 🍎 水果蔬菜
+            '苹果', '香蕉', '葡萄', '西瓜', '草莓', '菠萝', '橙子', '樱桃', '芒果', '柠檬',
+            '白菜', '番茄', '黄瓜', '玉米', '蘑菇', '南瓜', '胡萝卜', '辣椒', '大蒜', '洋葱',
+            // 🐶 动物
+            '猫', '狗', '鱼', '鸟', '兔子', '熊猫', '老虎', '大象', '长颈鹿', '企鹅',
+            '鳄鱼', '猴子', '斑马', '骆驼', '蜗牛', '蝴蝶', '乌龟', '螃蟹', '蜜蜂', '鲨鱼',
+            // ✈️ 交通工具
+            '飞机', '汽车', '自行车', '摩托车', '轮船', '火车', '地铁', '直升机', '潜水艇', '热气球',
+            // ⚽ 运动
+            '足球', '篮球', '乒乓球', '羽毛球', '网球', '游泳', '滑板', '跳绳', '钓鱼', '爬山',
+            // 🏠 家居物品
+            '电视', '冰箱', '电脑', '手机', '雨伞', '手表', '眼镜', '帽子', '鞋子', '书包',
+            '枕头', '镜子', '蜡烛', '钥匙', '剪刀', '台灯', '风扇', '锁头', '毛巾', '牙刷',
+            // 🍔 食物
+            '蛋糕', '汉堡', '披萨', '寿司', '火锅', '冰淇淋', '面条', '饺子', '包子', '炒饭',
+            '薯条', '爆米花', '糖果', '巧克力', '奶茶', '咖啡', '面包', '鸡腿', '烤鸭', '螺蛳粉',
+            // 🌲 自然景物
+            '山', '海', '树', '花', '太阳', '月亮', '星星', '彩虹', '云朵', '瀑布',
+            '沙漠', '火山', '闪电', '雪花', '彩霞', '河流', '草地', '森林', '洞穴', '岛屿',
+            // 🏫 场所
+            '学校', '医院', '公园', '超市', '餐厅', '电影院', '动物园', '图书馆', '游乐场', '加油站',
+            '机场', '地铁站', '海滩', '操场', '教室',
+            // 🎭 职业与人物
+            '厨师', '警察', '护士', '老师', '消防员', '宇航员', '魔法师', '海盗', '忍者', '超人',
+            // 🎮 娱乐
+            '吉他', '钢琴', '麦克风', '魔方', '风筝', '扑克', '棋盘', '玩偶', '气球', '烟花',
+            // 😀 表情与动作
+            '跑步', '跳舞', '睡觉', '哭泣', '大笑', '拥抱', '飞翔', '游泳', '打架', '变魔术'
         ];
         
         const game = {
