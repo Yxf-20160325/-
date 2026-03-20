@@ -4302,6 +4302,11 @@ io.on('message', (data) => {
                     registerPluginEventListeners();
                 }
 
+                // 在连接成功后注册对手离开事件监听器
+                if (typeof registerOpponentLeftListener === 'function') {
+                    registerOpponentLeftListener();
+                }
+
                 // 在连接成功后注册猜数字游戏事件监听器
                 if (typeof registerGuessNumberListeners === 'function') {
                     registerGuessNumberListeners();
@@ -6976,20 +6981,26 @@ io.on('message', (data) => {
             typingGame = null;
         }
 
-        // 监听对手离开事件
-        socket.on('opponent-left', (data) => {
-            console.log('对手离开了游戏:', data);
-            showNotification('对手已退出游戏', 'warning');
+        // 注册对手离开事件监听器
+        function registerOpponentLeftListener() {
+            // 移除旧的监听器(如果存在)
+            socket.off('opponent-left');
+            
+            // 监听对手离开事件
+            socket.on('opponent-left', (data) => {
+                console.log('对手离开了游戏:', data);
+                showNotification('对手已退出游戏', 'warning');
 
-            // 关闭打字对战模态框
-            if (data.gameType === 'typing') {
-                closeTypingGame();
-            }
-            // 关闭俄罗斯方块模态框
-            if (data.gameType === 'tetris') {
-                closeTetrisGame();
-            }
-        });
+                // 关闭打字对战模态框
+                if (data.gameType === 'typing') {
+                    closeTypingGame();
+                }
+                // 关闭俄罗斯方块模态框
+                if (data.gameType === 'tetris') {
+                    closeTetrisGame();
+                }
+            });
+        }
 
         function registerTypingListeners() {
             socket.on('typing-start', (data) => {
