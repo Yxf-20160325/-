@@ -4245,14 +4245,30 @@ io.on('message', (data) => {
             console.log('初始化Socket连接');
             // 配置socket.io客户端，优化重连机制
             socket = io({
+                // 明确指定路径，确保与服务器端一致
+                path: '/socket.io/',
+                
+                // 重连配置
                 reconnection: true,
-                reconnectionAttempts: 10, // 增加重连尝试次数
-                reconnectionDelay: 1000, // 重连延迟1秒
-                reconnectionDelayMax: 10000, // 最大重连延迟10秒
-                timeout: 20000, // 连接超时20秒
-                pingInterval: 30000, // 心跳间隔30秒
-                pingTimeout: 60000, // 心跳超时60秒
-                transports: ['websocket', 'polling']
+                reconnectionAttempts: 10,
+                reconnectionDelay: 1000,
+                reconnectionDelayMax: 10000,
+                
+                // 超时配置
+                timeout: 20000,
+                
+                // 心跳配置 - 适配 Render 平台
+                pingInterval: 25000,
+                pingTimeout: 60000,
+                
+                // 传输方式 - 根据环境动态选择
+                transports: window.location.protocol === 'https:'
+                    ? ['websocket', 'polling']
+                    : ['polling', 'websocket'],
+                
+                // 升级配置
+                upgrade: true,
+                rememberUpgrade: true
             });
             
             // Socket连接状态管理
@@ -4408,8 +4424,28 @@ io.on('message', (data) => {
 
             socket.on('disconnect', (reason) => {
                 console.log('Socket连接断开:', reason);
+                console.log('断开原因:', reason);
                 // 显示断开连接通知
                 showNotification('连接断开', '与服务器的连接已断开，正在尝试重连...', '⚠️');
+            });
+
+            // 添加连接错误监听器
+            socket.on('connect_error', (error) => {
+                console.error('Socket连接错误:', error);
+                console.error('错误消息:', error.message);
+                console.error('错误描述:', error.description);
+                console.error('错误上下文:', error.context);
+                console.error('当前传输方式:', socket.io?.engine?.transport?.name || '未知');
+                
+                if (!connectionErrorShown) {
+                    connectionErrorShown = true;
+                    showNotification('连接失败', `无法连接到服务器: ${error.message}`, '❌');
+                }
+            });
+
+            // 添加连接超时监听器
+            socket.on('connect_timeout', (timeout) => {
+                console.error('Socket连接超时:', timeout);
             });
 
             socket.on('reconnect', (attemptNumber) => {
