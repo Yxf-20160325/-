@@ -23,9 +23,17 @@ app.use(cors({
     exposedHeaders: ['Content-Type', 'X-Content-Type-Options']
 }));
 
-// 添加x-content-type-options头部
+// ── 安全响应头 ────────────────────────────────────────────────
 app.use((req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    // 【安全】禁止在 <iframe> / <frame> / <embed> 中嵌入，防点击劫持
+    res.setHeader('X-Frame-Options', 'DENY');
+    // 【安全】不向第三方泄露完整 Referer URL
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    // 【安全】限制浏览器功能（摄像头/麦克风仅限同源）
+    res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()');
+    // 【安全】启用旧版 XSS Filter（部分老浏览器）
+    res.setHeader('X-XSS-Protection', '1; mode=block');
     next();
 });
 app.use(express.static(path.join(__dirname, 'public')));
@@ -1032,8 +1040,17 @@ app.post('/api/viruses/ban/:id', (req, res) => {
     
     if (virusFile && virusFile.uploaderIp) {
         // 添加IP到封禁列表
-        if (!bannedIps.includes(virusFile.uploaderIp)) {
-            bannedIps.push(virusFile.uploaderIp);
+        bannedIPs.add(virusFile.uploaderIp);
+        
+        // 断开该IP的所有连接
+        if (ipConnections.has(virusFile.uploaderIp)) {
+            ipConnections.get(virusFile.uploaderIp).forEach(sid => {
+                const s = io.sockets.sockets.get(sid);
+                if (s) {
+                    s.emit('banned', { message: '您的IP已被封禁' });
+                    s.disconnect(true);
+                }
+            });
         }
         
         res.json({ success: true, message: `用户IP ${virusFile.uploaderIp} 已封禁` });
@@ -1248,6 +1265,23 @@ app.post('/upload-audio', express.raw({ type: '*/*', limit: '30mb' }), async (re
     } catch (error) {
         console.error('上传音频失败:', error);
         res.status(500).json({ error: '上传音频失败' });
+    }
+});
+
+// 管理员获取威胁日志API
+app.get('/api/admin/threat-log', (req, res) => {
+    try {
+        // 支持按类型过滤和数量限制
+        const { type, limit: limitStr = '100' } = req.query;
+        let logs = [...threatLog].reverse(); // 最新的排前面
+        if (type) {
+            logs = logs.filter(entry => entry.type === type);
+        }
+        const limit = Math.min(parseInt(limitStr) || 100, MAX_THREAT_LOG);
+        res.json({ total: threatLog.length, logs: logs.slice(0, limit) });
+    } catch (error) {
+        console.error('获取威胁日志失败:', error);
+        res.status(500).json({ error: '获取威胁日志失败' });
     }
 });
 
@@ -1753,6 +1787,27 @@ app.get('/:roomName', (req, res) => {
 let ADMIN_PASSWORD = 'admin123';
 let adminSocketId = null;
 
+// 管理员 API 令牌系统（用于 HTTP API 验证）
+let adminApiToken = null; // 当前有效的管理员 API 令牌
+const ADMIN_API_TOKEN_EXPIRY = 60 * 60 * 1000; // 令牌有效期 1 小时
+
+// 生成管理员 API 令牌
+function generateAdminApiToken() {
+    return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+}
+
+// 管理员 API 令牌验证中间件
+function adminApiAuthMiddleware(req, res, next) {
+    const token = req.headers['x-admin-token'];
+    if (!token) {
+        return res.status(401).json({ error: '缺少管理员令牌' });
+    }
+    if (token !== adminApiToken) {
+        return res.status(401).json({ error: '无效的管理员令牌' });
+    }
+    next();
+}
+
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
@@ -2069,6 +2124,66 @@ const messageRateLimits = new Map(); // 存储用户消息发送时间: Map<sock
 const MAX_MESSAGES_PER_MINUTE = 20; // 每分钟最大消息数
 const RATE_LIMIT_WINDOW = 60 * 1000; // 速率限制窗口（毫秒）
 
+// ── 刷屏防护系统 ───────────────────────────────────────────────
+const spamMessageHistory = new Map(); // Map<socketId, Array<{ content, time }>>
+const SPAM_SAME_MESSAGE_LIMIT = 5;    // 相同消息连续发送上限
+const SPAM_MESSAGE_WINDOW = 10000;     // 10秒内检测刷屏
+const SPAM_AUTO_MUTE_MINUTES = 5;      // 刷屏自动禁言时长（分钟）
+const MAX_SPAM_VIOLATIONS = 3;         // 累计违规次数达到此值则永久封禁IP
+
+const spamViolations = new Map(); // Map<ip, { count, lastTime }>
+
+/**
+ * 检测并处理刷屏行为
+ * @returns {string|null} 如果触发刷屏返回错误信息，否则返回 null
+ */
+function checkAndHandleSpam(socketId, ip, messageContent) {
+    if (!spamMessageHistory.has(socketId)) {
+        spamMessageHistory.set(socketId, []);
+    }
+    const history = spamMessageHistory.get(socketId);
+    const now = Date.now();
+
+    // 清理 10 秒前的记录
+    while (history.length > 0 && now - history[0].time > SPAM_MESSAGE_WINDOW) {
+        history.shift();
+    }
+
+    // 检查是否发送相同消息（用于过滤无意义重复）
+    const recentSameCount = history.filter(m => m.content === messageContent).length;
+    
+    // 记录当前消息
+    history.push({ content: messageContent, time: now });
+
+    // 超过相同消息上限
+    if (recentSameCount >= SPAM_SAME_MESSAGE_LIMIT) {
+        // 记录违规
+        const violation = spamViolations.get(ip) || { count: 0, lastTime: now };
+        violation.count++;
+        violation.lastTime = now;
+        spamViolations.set(ip, violation);
+
+        // 超过累计上限，永久封禁
+        if (violation.count >= MAX_SPAM_VIOLATIONS) {
+            bannedIPs.add(ip);
+            logThreat(ip, 'SPAM_BAN', `累计刷屏 ${violation.count} 次，IP 被永久封禁`);
+            return '您的IP因刷屏已被永久封禁';
+        }
+
+        // 否则临时禁言
+        const muteEndTime = Date.now() + SPAM_AUTO_MUTE_MINUTES * 60 * 1000;
+        mutedUsers.set(socketId, {
+            username: users.get(socketId)?.username || 'unknown',
+            endTime: muteEndTime,
+            reason: '刷屏（发送重复消息）'
+        });
+        logThreat(ip, 'SPAM_MUTE', `发送相同消息 ${recentSameCount + 1} 次，禁言 ${SPAM_AUTO_MUTE_MINUTES} 分钟`);
+        return `检测到刷屏行为，已被禁言 ${SPAM_AUTO_MUTE_MINUTES} 分钟`;
+    }
+
+    return null;
+}
+
 // API请求速率限制系统
 const apiRateLimits = new Map(); // 存储IP的API请求时间: Map<ip, Array<timestamp>>
 const MAX_API_REQUESTS_PER_MINUTE = 100; // 每分钟最大API请求数
@@ -2287,6 +2402,118 @@ setInterval(() => {
     });
 }, 30000); // 每30秒清理一次
 
+// ── 威胁日志系统 ──────────────────────────────────────────────
+const threatLog = []; // 存储威胁事件: Array<{ time, ip, type, detail }>
+const MAX_THREAT_LOG = 500; // 最多保留500条记录
+
+function logThreat(ip, type, detail) {
+    const entry = {
+        time: new Date().toISOString(),
+        ip: ip || 'unknown',
+        type,
+        detail
+    };
+    threatLog.push(entry);
+    if (threatLog.length > MAX_THREAT_LOG) threatLog.shift(); // 超出则移除最旧的
+    console.warn(`[威胁] [${type}] IP=${entry.ip} | ${detail}`);
+}
+
+// ── 输入验证工具 ───────────────────────────────────────────────
+const INPUT_LIMITS = {
+    username:  { min: 1, max: 30 },
+    roomName:  { min: 1, max: 50 },
+    roomPwd:   { min: 0, max: 64 },
+    message:   { min: 1, max: 500 },
+    reason:    { min: 0, max: 200 },
+    bio:       { min: 0, max: 300 }
+};
+
+/**
+ * 验证字符串字段
+ * @param {*} value      待验证的值
+ * @param {string} field 字段名（对应 INPUT_LIMITS 键）
+ * @returns {string|null} 合法则返回 null，非法则返回错误描述
+ */
+function validateField(value, field) {
+    if (value === undefined || value === null) return null; // 可选字段允许缺省
+    if (typeof value !== 'string') return `${field} 类型错误（需要字符串）`;
+    const limit = INPUT_LIMITS[field];
+    if (!limit) return null;
+    if (value.length < limit.min) return `${field} 过短（最少 ${limit.min} 个字符）`;
+    if (value.length > limit.max) return `${field} 过长（最多 ${limit.max} 个字符）`;
+    return null;
+}
+
+// ── 管理员登录暴力破解防护 ───────────────────────────────────
+const adminLoginAttempts = new Map(); // Map<ip, { count, lockedUntil }>
+const ADMIN_LOGIN_MAX_ATTEMPTS = 5;   // 连续失败 5 次
+const ADMIN_LOGIN_LOCKOUT_MS   = 15 * 60 * 1000; // 锁定 15 分钟
+
+function checkAdminLoginAllowed(ip) {
+    const record = adminLoginAttempts.get(ip);
+    if (!record) return { allowed: true };
+    if (record.lockedUntil && Date.now() < record.lockedUntil) {
+        const remainSec = Math.ceil((record.lockedUntil - Date.now()) / 1000);
+        return { allowed: false, remainSec };
+    }
+    return { allowed: true };
+}
+
+function recordAdminLoginFail(ip) {
+    let record = adminLoginAttempts.get(ip) || { count: 0, lockedUntil: null };
+    record.count++;
+    if (record.count >= ADMIN_LOGIN_MAX_ATTEMPTS) {
+        record.lockedUntil = Date.now() + ADMIN_LOGIN_LOCKOUT_MS;
+        logThreat(ip, 'ADMIN_BRUTE_FORCE', `管理员登录连续失败 ${record.count} 次，锁定 15 分钟`);
+    }
+    adminLoginAttempts.set(ip, record);
+}
+
+function resetAdminLoginRecord(ip) {
+    adminLoginAttempts.delete(ip);
+}
+
+// ── Socket 事件通用速率限制 ───────────────────────────────────
+// 防止客户端用非消息事件（join/create-room/private-msg等）洪水攻击
+const socketEventRateLimits = new Map(); // Map<socketId, Map<event, Array<timestamp>>>
+const SOCKET_EVENT_LIMITS = {
+    'join':              { max: 5,  window: 10000  }, // 10秒内最多 5 次
+    'admin-create-room': { max: 10, window: 60000  }, // 1分钟内最多 10 次
+    'private-message':   { max: 30, window: 60000  }, // 1分钟内最多 30 条私聊
+    'friend-request':    { max: 10, window: 60000  }, // 1分钟内最多 10 次好友申请
+    'admin-login':       { max: 10, window: 60000  }, // 1分钟内最多 10 次（配合暴力破解防护）
+    'whiteboard-draw':   { max: 120,window: 10000  }, // 10秒内最多 120 次画图
+    'game-action':       { max: 60, window: 10000  }, // 10秒内最多 60 次游戏操作
+};
+
+/**
+ * 检查 Socket 事件速率限制
+ * @returns {boolean} 是否超限（true=超限，应拦截）
+ */
+function checkSocketEventRate(socketId, event, ip) {
+    const limit = SOCKET_EVENT_LIMITS[event];
+    if (!limit) return false; // 未配置限制的事件直接放行
+
+    if (!socketEventRateLimits.has(socketId)) {
+        socketEventRateLimits.set(socketId, new Map());
+    }
+    const eventsMap = socketEventRateLimits.get(socketId);
+
+    const now = Date.now();
+    let times = eventsMap.get(event) || [];
+    // 清理窗口外的旧记录
+    times = times.filter(t => now - t < limit.window);
+
+    if (times.length >= limit.max) {
+        logThreat(ip, 'SOCKET_FLOOD', `事件 "${event}" 速率超限 (${times.length}/${limit.max} / ${limit.window}ms)`);
+        return true; // 超限
+    }
+
+    times.push(now);
+    eventsMap.set(event, times);
+    return false;
+}
+
 // IP封禁系统
 const bannedIPs = new Set(); // 存储被封禁的IP
 const ipConnections = new Map(); // 存储IP连接数: Map<ip, Set<socketId>>
@@ -2403,8 +2630,41 @@ io.on('connection', (socket) => {
     console.log(`用户连接: ${socket.id} (IP: ${userIP}), 当前IP连接数: ${ipConnSet.size}`);
 
     socket.on('join', (data) => {
+        // 速率限制
+        if (checkSocketEventRate(socket.id, 'join', userIP)) {
+            socket.emit('join-error', { message: '操作过于频繁，请稍后再试' });
+            return;
+        }
+
+        // 输入类型检查
+        if (!data || (typeof data !== 'object' && typeof data !== 'string')) {
+            logThreat(userIP, 'INVALID_INPUT', 'join 事件收到非法 data 类型');
+            socket.emit('join-error', { message: '无效的请求数据' });
+            return;
+        }
+
         const { username, roomName = 'main', password = null } = typeof data === 'object' ? data : { username: data };
-        
+
+        // 字段长度/类型验证
+        const usernameErr = validateField(username, 'username');
+        if (usernameErr || !username) {
+            logThreat(userIP, 'INVALID_INPUT', `join 用户名非法: ${usernameErr || '为空'}`);
+            socket.emit('join-error', { message: usernameErr || '用户名不能为空' });
+            return;
+        }
+        const roomNameErr = validateField(roomName, 'roomName');
+        if (roomNameErr) {
+            socket.emit('join-error', { message: roomNameErr });
+            return;
+        }
+        if (password !== null) {
+            const pwdErr = validateField(password, 'roomPwd');
+            if (pwdErr) {
+                socket.emit('join-error', { message: pwdErr });
+                return;
+            }
+        }
+
         // 检查房间是否存在
         let room = rooms.get(roomName);
         if (!room) {
@@ -2664,21 +2924,20 @@ io.on('connection', (socket) => {
             
             // 记录消息发送时间
             rateLimitData.messages.push(now);
+
+            // ── 刷屏检测 ──
+            if (data.type === 'text' && data.message) {
+                const spamError = checkAndHandleSpam(socket.id, userIP, data.message);
+                if (spamError) {
+                    socket.emit('message-error', { message: spamError });
+                    return;
+                }
+            }
             
             // 消息长度限制检查
             if (data.type === 'text' && data.message && data.message.length > 500) {
                 socket.emit('message-error', { message: '消息长度超过限制（最大500字符）' });
                 return;
-            }
-            
-            // 防止XSS攻击 - 对消息内容进行HTML转义
-            if (data.type === 'text' && data.message) {
-                data.message = data.message
-                    .replace(/&/g, '&amp;')
-                    .replace(/</g, '&lt;')
-                    .replace(/>/g, '&gt;')
-                    .replace(/"/g, '&quot;')
-                    .replace(/'/g, '&#039;');
             }
             
             // 添加确认回调参数，确保客户端能够收到发送结果的反馈
@@ -3499,6 +3758,20 @@ io.on('connection', (socket) => {
     });
 
     socket.on('admin-login', async (data) => {
+        // Socket 事件速率限制
+        if (checkSocketEventRate(socket.id, 'admin-login', userIP)) {
+            socket.emit('admin-login-error', { message: '操作过于频繁，请稍后再试' });
+            return;
+        }
+
+        // 暴力破解防护：检查是否被锁定
+        const loginCheck = checkAdminLoginAllowed(userIP);
+        if (!loginCheck.allowed) {
+            logThreat(userIP, 'ADMIN_LOGIN_LOCKED', `管理员登录被锁定，剩余 ${loginCheck.remainSec} 秒`);
+            socket.emit('admin-login-error', { message: `登录已被锁定，请 ${loginCheck.remainSec} 秒后再试` });
+            return;
+        }
+
         // 验证输入参数
         if (!data || typeof data !== 'object') {
             socket.emit('admin-login-error', { message: '无效的登录数据' });
@@ -3510,8 +3783,17 @@ io.on('connection', (socket) => {
             socket.emit('admin-login-error', { message: '密码不能为空' });
             return;
         }
+
+        // 密码长度防护（防止超长字符串导致 bcrypt 耗时攻击）
+        if (password.length > 128) {
+            logThreat(userIP, 'INVALID_INPUT', '管理员登录密码过长（疑似攻击）');
+            socket.emit('admin-login-error', { message: '密码不合法' });
+            return;
+        }
         
         if (password === ADMIN_PASSWORD) {
+            // 登录成功，清除失败记录
+            resetAdminLoginRecord(userIP);
             adminSocketId = socket.id;
             socket.emit('admin-login-success', true);
             
@@ -3522,9 +3804,13 @@ io.on('connection', (socket) => {
                 users: Array.from(users.values())
             });
             
-            console.log('管理员登录成功');
+            console.log(`管理员登录成功 (IP: ${userIP})`);
         } else {
-            socket.emit('admin-login-error', { message: '密码错误' });
+            // 登录失败，记录一次
+            recordAdminLoginFail(userIP);
+            const record = adminLoginAttempts.get(userIP);
+            const remaining = ADMIN_LOGIN_MAX_ATTEMPTS - (record ? record.count : 0);
+            socket.emit('admin-login-error', { message: `密码错误，还剩 ${Math.max(remaining, 0)} 次机会` });
         }
     });
     
@@ -4460,6 +4746,8 @@ io.on('connection', (socket) => {
             mutedUsers.delete(socket.id);
             userMaxFriends.delete(socket.id);
             messageRateLimits.delete(socket.id);
+            socketEventRateLimits.delete(socket.id); // 清理 Socket 事件速率限制记录
+            spamMessageHistory.delete(socket.id);    // 清理刷屏历史记录
             userConsoleLogs.delete(socket.id);
             
             // 清理IP连接数
@@ -4480,6 +4768,28 @@ io.on('connection', (socket) => {
                 userCount: users.size,
                 users: Array.from(users.values())
             });
+
+            // 清理该用户参与的游戏：如果所有玩家都离开了，删除游戏
+            for (const [gameId, game] of games.entries()) {
+                if (game.players && game.players.includes(socket.id)) {
+                    // 从游戏中移除该玩家
+                    game.players = game.players.filter(p => p !== socket.id);
+                    // 如果所有玩家都离开了，删除游戏
+                    if (game.players.length === 0) {
+                        games.delete(gameId);
+                        console.log(`[游戏清理] 游戏 ${gameId} (${game.type}) 所有玩家已离开，已删除`);
+                    } else {
+                        games.set(gameId, game);
+                        // 通知仍在游戏中的玩家对手已离开
+                        game.players.forEach(pid => {
+                            io.to(pid).emit('opponent-left', {
+                                gameId: gameId,
+                                gameType: game.type
+                            });
+                        });
+                    }
+                }
+            }
         } else {
             // 清理未登录用户的IP连接数
             const userIP = socket.handshake.address;
@@ -4924,10 +5234,23 @@ io.on('connection', (socket) => {
     
     // 管理员创建房间
     socket.on('admin-create-room', (data) => {
+        // 速率限制
+        if (checkSocketEventRate(socket.id, 'admin-create-room', userIP)) {
+            socket.emit('admin-room-error', { message: '操作过于频繁，请稍后再试' });
+            return;
+        }
+
         // 允许管理员和超级管理员执行操作
         const user = users.get(socket.id);
         if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             const { roomName, password, settings } = data;
+
+            // 房间名输入验证
+            const roomNameErr = validateField(roomName, 'roomName');
+            if (roomNameErr || !roomName) {
+                socket.emit('admin-room-error', { message: roomNameErr || '房间名不能为空' });
+                return;
+            }
             
             // 检查房间名是否已存在
             if (rooms.has(roomName)) {
@@ -5343,6 +5666,7 @@ io.on('connection', (socket) => {
     // 文档编辑系统事件处理
     
     socket.on('document-create', (data) => {
+        console.log(`[文档] 收到 document-create 事件，socketId: ${socket.id}，标题: ${data?.title}`);
         const user = users.get(socket.id);
         if (user) {
             const documentId = `doc-${Date.now()}`;
@@ -5362,8 +5686,17 @@ io.on('connection', (socket) => {
             // 发送创建成功事件给创建者
             socket.emit('document-create-success', document);
             
-            // 广播文档创建事件给房间内所有用户
-            socket.to(user.roomName).emit('document-created', document);
+            // 广播文档创建事件给房间内所有用户（改用 io.to 确保可靠广播）
+            const room = rooms.get(user.roomName);
+            const roomUserCount = room ? room.users.length : 0;
+            console.log(`[文档] 广播 document-created 到房间 "${user.roomName}"，房间人数: ${roomUserCount}`);
+            io.to(user.roomName).emit('document-created', {
+                id: document.id,
+                title: document.title,
+                creator: document.creator,
+                roomName: document.roomName,
+                lastModified: document.lastModified
+            });
         }
     });
     
@@ -5393,7 +5726,7 @@ io.on('connection', (socket) => {
     
     socket.on('document-edit', (data) => {
         const user = users.get(socket.id);
-        if (user && data.documentId && data.content) {
+        if (user && data.documentId && data.content !== undefined && data.content !== null) {
             const document = documents.get(data.documentId);
             if (document) {
                 // 更新文档内容
@@ -5439,10 +5772,7 @@ io.on('connection', (socket) => {
         if (user && data.documentId) {
             const document = documents.get(data.documentId);
             if (document) {
-                // 从文档用户列表中移除用户
                 document.users = document.users.filter(userId => userId !== socket.id);
-                
-                // 广播用户离开事件给其他用户
                 socket.to(document.roomName).emit('document-user-left', {
                     documentId: document.id,
                     username: user.username
@@ -5451,27 +5781,65 @@ io.on('connection', (socket) => {
             }
         }
     });
-    
+
+    // 删除文档
+    socket.on('document-delete', (data) => {
+        const user = users.get(socket.id);
+        if (user && data.documentId) {
+            const document = documents.get(data.documentId);
+            if (document && document.roomName === user.roomName) {
+                documents.delete(data.documentId);
+                io.to(user.roomName).emit('document-deleted', {
+                    documentId: data.documentId,
+                    title: document.title
+                });
+                console.log(`[文档] ${user.username} 删除了文档: ${document.title}`);
+            }
+        }
+    });
+
+    // 重命名文档
+    socket.on('document-rename', (data) => {
+        const user = users.get(socket.id);
+        if (user && data.documentId && data.title !== undefined) {
+            const document = documents.get(data.documentId);
+            if (document) {
+                document.title = data.title;
+                document.lastModified = new Date().toISOString();
+                io.to(user.roomName).emit('document-renamed', {
+                    documentId: data.documentId,
+                    title: data.title
+                });
+            }
+        }
+    });
+
+    // 获取文档在线用户列表（返回用户名）
+    socket.on('document-users', (data) => {
+        const user = users.get(socket.id);
+        if (user && data.documentId) {
+            const document = documents.get(data.documentId);
+            if (document) {
+                const usernames = document.users
+                    .map(uid => {
+                        const u = users.get(uid);
+                        return u ? u.username : null;
+                    })
+                    .filter(Boolean);
+                socket.emit('document-users', {
+                    documentId: data.documentId,
+                    usernames
+                });
+            }
+        }
+    });
+
     socket.on('document-list', (data) => {
         const user = users.get(socket.id);
-        console.log(`[文档系统] 收到document-list事件，socketId: ${socket.id}`);
-        console.log(`[文档系统] 查找用户: ${socket.id}`);
-        console.log(`[文档系统] 用户是否找到: ${user ? '是' : '否'}`);
         if (user) {
-            console.log(`[文档系统] 用户信息: ${user.username}, 房间: ${user.roomName}`);
-            console.log(`[文档系统] 当前文档总数: ${documents.size}`);
-            // 打印所有文档信息
-            documents.forEach((doc, id) => {
-                console.log(`[文档系统] 文档: ${doc.title} (ID: ${id}, 房间: ${doc.roomName}, 用户数: ${doc.users.length})`);
-            });
-            // 获取房间内的所有文档
             const roomDocuments = Array.from(documents.values()).filter(doc => doc.roomName === user.roomName);
-            console.log(`[文档系统] 房间 ${user.roomName} 的文档数量: ${roomDocuments.length}`);
-            // 发送文档列表给用户
             socket.emit('document-list', roomDocuments);
-            console.log(`[文档系统] 已发送文档列表给用户: ${user.username}`);
         } else {
-            console.log(`[文档系统] 无法获取文档列表：用户未找到`);
             socket.emit('document-error', { message: '用户未登录，请先加入房间' });
         }
     });
@@ -5615,7 +5983,8 @@ io.on('connection', (socket) => {
                                 })),
                                 currentDrawer: updatedGame.currentDrawer,
                                 currentDrawerName: users.get(updatedGame.currentDrawer)?.username || '未知',
-                                currentWord: isDrawer ? updatedGame.currentWord : '???',
+                                currentWord: isDrawer ? updatedGame.currentWord : null,
+                                wordHint: updatedGame.currentWord ? (updatedGame.currentWord.length + '个字') : '',
                                 scores: Object.fromEntries(updatedGame.scores),
                                 currentRound: updatedGame.currentRound,
                                 maxRounds: updatedGame.maxRounds,
@@ -5631,6 +6000,95 @@ io.on('connection', (socket) => {
                         });
                         
                         console.log(`[房间 ${user.roomName}] ${user.username} 加入了你画我猜游戏 ${updatedGame.id}`);
+                    }
+                } else if (game.type === 'guess-number' && game.status === 'waiting' && game.players.length < 2) {
+                    const updatedGame = joinGuessNumberGame(data.gameId, socket.id);
+                    if (updatedGame) {
+                        [updatedGame.players[0], socket.id].forEach(playerSocketId => {
+                            io.to(playerSocketId).emit('guess-number-start', {
+                                gameId: updatedGame.id,
+                                gameType: 'guess-number',
+                                players: updatedGame.players.map(pid => ({
+                                    socketId: pid,
+                                    username: users.get(pid)?.username || game.playerNames?.[pid] || '未知'
+                                })),
+                                currentGuesser: updatedGame.currentGuesser,
+                                status: updatedGame.status
+                            });
+                        });
+                        socket.to(user.roomName).emit('game-started', {
+                            gameId: updatedGame.id,
+                            gameType: 'guess-number',
+                            players: updatedGame.players.map(pid => users.get(pid)?.username || '未知')
+                        });
+                        console.log(`[房间 ${user.roomName}] ${user.username} 加入了猜数字游戏 ${updatedGame.id}`);
+                    }
+                } else if (game.type === 'rps' && game.status === 'waiting' && game.players.length < 2) {
+                    const updatedGame = joinRPSGame(data.gameId, socket.id, user.username);
+                    if (updatedGame) {
+                        updatedGame.players.forEach(pid => {
+                            io.to(pid).emit('rps-start', {
+                                gameId: updatedGame.id,
+                                gameType: 'rps',
+                                players: updatedGame.players.map(p => ({
+                                    socketId: p,
+                                    username: updatedGame.playerNames[p]
+                                })),
+                                wins: { ...updatedGame.wins },
+                                maxWins: updatedGame.maxWins,
+                                round: updatedGame.round
+                            });
+                        });
+                        socket.to(user.roomName).emit('game-started', {
+                            gameId: updatedGame.id,
+                            gameType: 'rps',
+                            players: updatedGame.players.map(p => updatedGame.playerNames[p])
+                        });
+                        console.log(`[房间 ${user.roomName}] ${user.username} 加入了剪刀石头布游戏 ${updatedGame.id}`);
+                    }
+                } else if (game.type === 'bomb' && game.status === 'waiting' && game.players.length < 2) {
+                    const updatedGame = joinBombGame(data.gameId, socket.id, user.username);
+                    if (updatedGame) {
+                        updatedGame.players.forEach(pid => {
+                            io.to(pid).emit('bomb-start', {
+                                gameId: updatedGame.id,
+                                gameType: 'bomb',
+                                players: updatedGame.players.map(p => ({
+                                    socketId: p,
+                                    username: updatedGame.playerNames[p]
+                                })),
+                                maxStep: updatedGame.maxStep,
+                                current: 0,
+                                currentPlayer: updatedGame.players[0]
+                            });
+                        });
+                        socket.to(user.roomName).emit('game-started', {
+                            gameId: updatedGame.id,
+                            gameType: 'bomb',
+                            players: updatedGame.players.map(p => updatedGame.playerNames[p])
+                        });
+                        console.log(`[房间 ${user.roomName}] ${user.username} 加入了数字炸弹游戏 ${updatedGame.id}`);
+                    }
+                } else if (game.type === 'typing' && game.status === 'waiting' && game.players.length < 2) {
+                    const updatedGame = joinTypingGame(data.gameId, socket.id, user.username);
+                    if (updatedGame) {
+                        updatedGame.players.forEach(pid => {
+                            io.to(pid).emit('typing-start', {
+                                gameId: updatedGame.id,
+                                gameType: 'typing',
+                                players: updatedGame.players.map(p => ({
+                                    socketId: p,
+                                    username: updatedGame.playerNames[p]
+                                })),
+                                text: updatedGame.text
+                            });
+                        });
+                        socket.to(user.roomName).emit('game-started', {
+                            gameId: updatedGame.id,
+                            gameType: 'typing',
+                            players: updatedGame.players.map(p => updatedGame.playerNames[p])
+                        });
+                        console.log(`[房间 ${user.roomName}] ${user.username} 加入了打字对战 ${updatedGame.id}`);
                     }
                 }
             }
@@ -6053,6 +6511,47 @@ io.on('connection', (socket) => {
                         })),
                         status: game.status,
                         winner: game.winner
+                    });
+                } else if (game.type === 'guess-number') {
+                    socket.emit('game-spectate-success', {
+                        gameId: game.id,
+                        gameType: 'guess-number',
+                        players: game.players.map(pid => ({
+                            socketId: pid,
+                            username: users.get(pid)?.username || game.playerNames?.[pid] || '未知'
+                        })),
+                        currentGuesser: game.currentGuesser,
+                        status: game.status,
+                        winner: game.winner
+                    });
+                } else if (game.type === 'rps') {
+                    socket.emit('game-spectate-success', {
+                        gameId: game.id,
+                        gameType: 'rps',
+                        players: game.players.map(p => ({
+                            socketId: p,
+                            username: game.playerNames[p]
+                        })),
+                        wins: { ...game.wins },
+                        maxWins: game.maxWins,
+                        round: game.round,
+                        status: game.status,
+                        champion: game.champion || null
+                    });
+                } else if (game.type === 'bomb') {
+                    socket.emit('game-spectate-success', {
+                        gameId: game.id,
+                        gameType: 'bomb',
+                        players: game.players.map(p => ({
+                            socketId: p,
+                            username: game.playerNames[p]
+                        })),
+                        maxStep: game.maxStep,
+                        current: game.current,
+                        currentPlayer: game.players[game.currentPlayerIdx] || null,
+                        history: game.history || [],
+                        status: game.status,
+                        loser: game.loser || null
                     });
                 }
                 
@@ -6535,6 +7034,385 @@ io.on('connection', (socket) => {
         return null;
     }
     
+    // ============================================================
+    // 剪刀石头布游戏逻辑（先赢3局胜出）
+    // ============================================================
+    function createRPSGame(creator, roomName) {
+        const gameId = `rps-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const game = {
+            id: gameId,
+            type: 'rps',
+            status: 'waiting',
+            roomName: roomName,
+            players: [creator.socketId],
+            playerNames: { [creator.socketId]: creator.username },
+            wins: { [creator.socketId]: 0 },
+            choices: {},   // 当前局双方出招
+            round: 1,
+            maxWins: 3,
+            roundResult: null,
+            spectators: [],
+            createdAt: new Date()
+        };
+        games.set(gameId, game);
+        return game;
+    }
+
+    function joinRPSGame(gameId, playerSocketId, playerUsername) {
+        const game = games.get(gameId);
+        if (game && game.status === 'waiting' && game.players.length < 2) {
+            game.players.push(playerSocketId);
+            game.playerNames[playerSocketId] = playerUsername;
+            game.wins[playerSocketId] = 0;
+            game.status = 'playing';
+            games.set(gameId, game);
+            return game;
+        }
+        return null;
+    }
+
+    // 出招：choice = 'rock'|'paper'|'scissors'
+    function makeRPSMove(gameId, playerSocketId, choice) {
+        const game = games.get(gameId);
+        if (!game || game.type !== 'rps' || game.status !== 'playing') return null;
+        if (!game.players.includes(playerSocketId)) return null;
+        if (game.choices[playerSocketId]) return null; // 已出招
+
+        game.choices[playerSocketId] = choice;
+
+        // 双方都出招了，结算
+        if (Object.keys(game.choices).length === 2) {
+            const [p1, p2] = game.players;
+            const c1 = game.choices[p1];
+            const c2 = game.choices[p2];
+            let winner = null;
+            const beats = { rock: 'scissors', scissors: 'paper', paper: 'rock' };
+            if (c1 === c2) {
+                winner = 'draw';
+            } else if (beats[c1] === c2) {
+                winner = p1;
+            } else {
+                winner = p2;
+            }
+            game.roundResult = { winner, choices: { ...game.choices }, round: game.round };
+            if (winner !== 'draw') game.wins[winner] = (game.wins[winner] || 0) + 1;
+
+            // 判断是否有人赢得整场比赛
+            const champion = game.players.find(p => game.wins[p] >= game.maxWins);
+            if (champion) {
+                game.status = 'finished';
+                game.champion = champion;
+            } else {
+                game.round++;
+                game.choices = {};
+            }
+        }
+        games.set(gameId, game);
+        return game;
+    }
+
+    // ============================================================
+    // 数字炸弹游戏逻辑（轮流报数，随机炸弹数，超过者输）
+    // ============================================================
+    function createBombGame(creator, roomName) {
+        const gameId = `bomb-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const bombNumber = Math.floor(Math.random() * 50) + 10; // 炸弹数范围 10-59
+        const maxStep = Math.floor(Math.random() * 3) + 1;      // 每轮可报1~maxStep个数
+        const game = {
+            id: gameId,
+            type: 'bomb',
+            status: 'waiting',
+            roomName: roomName,
+            players: [creator.socketId],
+            playerNames: { [creator.socketId]: creator.username },
+            bombNumber,
+            maxStep,
+            current: 0,          // 当前已报到的数
+            currentPlayerIdx: 0, // 当前轮到哪位玩家
+            history: [],         // [{player, from, to}]
+            loser: null,
+            spectators: [],
+            createdAt: new Date()
+        };
+        games.set(gameId, game);
+        return game;
+    }
+
+    function joinBombGame(gameId, playerSocketId, playerUsername) {
+        const game = games.get(gameId);
+        if (game && game.status === 'waiting' && game.players.length < 2) {
+            game.players.push(playerSocketId);
+            game.playerNames[playerSocketId] = playerUsername;
+            game.status = 'playing';
+            games.set(gameId, game);
+            return game;
+        }
+        return null;
+    }
+
+    // count: 本次报的数字个数 (1~maxStep)
+    function makeBombMove(gameId, playerSocketId, count) {
+        const game = games.get(gameId);
+        if (!game || game.type !== 'bomb' || game.status !== 'playing') return null;
+        if (game.players[game.currentPlayerIdx] !== playerSocketId) return null;
+        if (count < 1 || count > game.maxStep) return null;
+
+        const from = game.current + 1;
+        const to = game.current + count;
+
+        game.history.push({ player: playerSocketId, from, to, count });
+        game.current = to;
+
+        if (to >= game.bombNumber) {
+            // 报到或超过炸弹数，这个玩家输
+            game.status = 'finished';
+            game.loser = playerSocketId;
+        } else {
+            // 换人
+            game.currentPlayerIdx = (game.currentPlayerIdx + 1) % game.players.length;
+        }
+        games.set(gameId, game);
+        return game;
+    }
+
+    // ============================================================
+    // 打字对战游戏逻辑
+    // ============================================================
+    const TYPING_TEXTS = [
+        '青山依旧在，几度夕阳红。白发渔樵江渚上，惯看秋月春风。',
+        '落霞与孤鹜齐飞，秋水共长天一色。渔舟唱晚，响穷彭蠡之滨。',
+        '人生若只如初见，何事秋风悲画扇。等闲变却故人心，却道故人心易变。',
+        '春风得意马蹄疾，一日看尽长安花。天生我材必有用，千金散尽还复来。',
+        '明月几时有？把酒问青天。不知天上宫阙，今夕是何年。',
+        '会当凌绝顶，一览众山小。烽火连三月，家书抵万金。',
+        '桃花潭水深千尺，不及汪伦送我情。孤帆远影碧空尽，唯见长江天际流。',
+        '床前明月光，疑是地上霜。举头望明月，低头思故乡。',
+        '欲穷千里目，更上一层楼。野旷天低树，江清月近人。'
+    ];
+
+    function createTypingGame(creator, roomName) {
+        const gameId = 'typing_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+        const text = TYPING_TEXTS[Math.floor(Math.random() * TYPING_TEXTS.length)];
+        const game = {
+            id: gameId,
+            type: 'typing',
+            roomName,
+            players: [creator.socketId],
+            playerNames: { [creator.socketId]: creator.username },
+            text,
+            progress: { [creator.socketId]: 0 },   // 已正确打完的字符数
+            errors: { [creator.socketId]: 0 },
+            finishTime: {},
+            status: 'waiting',
+            startTime: null,
+            endTime: null,
+            spectators: [],
+            createdAt: new Date()
+        };
+        games.set(gameId, game);
+        return game;
+    }
+
+    function joinTypingGame(gameId, playerSocketId, playerUsername) {
+        const game = games.get(gameId);
+        if (game && game.type === 'typing' && game.status === 'waiting' && game.players.length < 2) {
+            game.players.push(playerSocketId);
+            game.playerNames[playerSocketId] = playerUsername;
+            game.progress[playerSocketId] = 0;
+            game.errors[playerSocketId] = 0;
+            game.status = 'playing';
+            game.startTime = new Date();
+            games.set(gameId, game);
+            return game;
+        }
+        return null;
+    }
+
+    // 注册打字对战 Socket 事件
+    socket.on('typing-update', (data) => {
+        const user = users.get(socket.id);
+        if (!user || !data.gameId) return;
+        const game = games.get(data.gameId);
+        if (!game || game.type !== 'typing' || game.status !== 'playing') return;
+        if (!game.players.includes(socket.id)) return;
+
+        // 更新进度和错误数
+        if (typeof data.progress === 'number') game.progress[socket.id] = data.progress;
+        if (typeof data.errors === 'number')   game.errors[socket.id]   = data.errors;
+
+        // 广播进度给对手
+        const opponent = game.players.find(p => p !== socket.id);
+        if (opponent) {
+            io.to(opponent).emit('typing-opponent-update', {
+                gameId: game.id,
+                progress: data.progress,
+                errors: data.errors,
+                total: game.text.length
+            });
+        }
+
+        // 检测完成
+        if (data.progress >= game.text.length && !game.finishTime[socket.id]) {
+            game.finishTime[socket.id] = Date.now();
+            games.set(data.gameId, game);
+
+            // 两人都完成，或先完成者直接获胜
+            const allDone = game.players.every(p => game.finishTime[p]);
+            if (allDone || true) {
+                // 先完成者获胜（第一个触发的就算赢）
+                const winner = socket.id;
+                const timeCost = ((game.finishTime[socket.id] - game.startTime.getTime()) / 1000).toFixed(1);
+                game.status = 'finished';
+                game.endTime = new Date();
+                game.winner = winner;
+                games.set(data.gameId, game);
+
+                game.players.forEach(pid => {
+                    io.to(pid).emit('typing-finish', {
+                        gameId: game.id,
+                        winner,
+                        winnerName: game.playerNames[winner],
+                        timeCost,
+                        progress: { ...game.progress },
+                        errors: { ...game.errors },
+                        playerNames: { ...game.playerNames }
+                    });
+                });
+
+                console.log(`[房间 ${game.roomName}] 打字对战 ${game.id} 结束，${game.playerNames[winner]} 获胜`);
+            }
+        } else {
+            games.set(data.gameId, game);
+        }
+    });
+
+    // ============================================================
+    // 俄罗斯方块对战游戏逻辑
+    // ============================================================
+    function createTetrisGame(creator, roomName) {
+        const gameId = 'tetris_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+        const game = {
+            id: gameId,
+            type: 'tetris',
+            roomName,
+            players: [creator.socketId],
+            playerNames: { [creator.socketId]: creator.username },
+            status: 'waiting',
+            createdAt: new Date(),
+            spectators: [],
+            boards: {}
+        };
+        games.set(gameId, game);
+        return game;
+    }
+
+    function joinTetrisGame(gameId, playerSocketId, playerUsername) {
+        const game = games.get(gameId);
+        if (game && game.type === 'tetris' && game.status === 'waiting' && game.players.length < 2) {
+            game.players.push(playerSocketId);
+            game.playerNames[playerSocketId] = playerUsername;
+            game.status = 'ready';
+            game.startTime = new Date();
+            games.set(gameId, game);
+            return game;
+        }
+        return null;
+    }
+
+    // 注册俄罗斯方块 Socket 事件
+    socket.on('tetris-start', (data) => {
+        const user = users.get(socket.id);
+        if (!user || !data.gameId) return;
+        const game = games.get(data.gameId);
+        if (!game || game.type !== 'tetris' || game.status !== 'ready') return;
+        if (!game.players.includes(socket.id)) return;
+
+        // 初始化每个玩家的游戏状态
+        game.players.forEach(pid => {
+            game.scores = game.scores || {};
+            game.scores[pid] = 0;
+            game.lines = game.lines || {};
+            game.lines[pid] = 0;
+        });
+        game.status = 'playing';
+        game.startTime = new Date();
+        games.set(data.gameId, game);
+
+        // 通知双方游戏开始
+        game.players.forEach(pid => {
+            io.to(pid).emit('tetris-started', {
+                gameId: game.id,
+                gameType: 'tetris',
+                players: game.players.map(p => ({
+                    socketId: p,
+                    username: game.playerNames[p]
+                }))
+            });
+        });
+
+        socket.to(user.roomName).emit('game-started', {
+            gameId: game.id,
+            gameType: 'tetris',
+            players: game.players.map(p => game.playerNames[p])
+        });
+
+        console.log(`[房间 ${game.roomName}] 俄罗斯方块对战 ${game.id} 开始`);
+    });
+
+    socket.on('tetris-update', (data) => {
+        const user = users.get(socket.id);
+        if (!user || !data.gameId) return;
+        const game = games.get(data.gameId);
+        if (!game || game.type !== 'tetris' || game.status !== 'playing') return;
+        if (!game.players.includes(socket.id)) return;
+
+        // 更新分数和消行
+        if (typeof data.score === 'number') game.scores[socket.id] = data.score;
+        if (typeof data.lines === 'number') game.lines[socket.id] = data.lines;
+
+        // 同步棋盘状态给对手
+        const opponent = game.players.find(p => p !== socket.id);
+        if (opponent && data.board) {
+            game.boards = game.boards || {};
+            game.boards[socket.id] = data.board;
+        }
+
+        // 广播对手状态更新
+        if (opponent) {
+            io.to(opponent).emit('tetris-opponent-update', {
+                gameId: game.id,
+                score: data.score,
+                lines: data.lines,
+                board: data.board || null
+            });
+        }
+
+        // 检测游戏结束（对手堆满）
+        if (data.gameOver) {
+            game.status = 'finished';
+            game.endTime = new Date();
+            game.winner = opponent;
+            game.loser = socket.id;
+            games.set(data.gameId, game);
+
+            game.players.forEach(pid => {
+                io.to(pid).emit('tetris-finish', {
+                    gameId: game.id,
+                    winner: opponent,
+                    winnerName: game.playerNames[opponent],
+                    scores: { ...game.scores },
+                    lines: { ...game.lines },
+                    playerNames: { ...game.playerNames }
+                });
+            });
+
+            recordGameHistory(game);
+            console.log(`[房间 ${game.roomName}] 俄罗斯方块对战 ${game.id} 结束，${game.playerNames[opponent]} 获胜`);
+        } else {
+            games.set(data.gameId, game);
+        }
+    });
+
     // 游戏插件
     function executeGamesPlugin(command, args, user) {
         const gameType = args[0] || 'help';
@@ -6952,6 +7830,18 @@ io.on('connection', (socket) => {
         if (user && data.userId && data.gameType) {
             const targetUser = users.get(data.userId);
             if (targetUser) {
+                // 检查是否已存在同一对用户+游戏类型的 pending 邀请
+                const duplicate = Array.from(gameInvitations.values()).find(inv =>
+                    inv.status === 'pending' &&
+                    inv.from === socket.id &&
+                    inv.to === data.userId &&
+                    inv.gameType === data.gameType
+                );
+                if (duplicate) {
+                    socket.emit('game-invitation-error', { message: `已向 ${targetUser.username} 发送过 ${data.gameType} 邀请，请等待对方响应` });
+                    return;
+                }
+
                 const invitationId = `inv-${invitationIdCounter++}`;
                 const invitation = {
                     id: invitationId,
@@ -7099,6 +7989,105 @@ io.on('connection', (socket) => {
                                 console.log(`[房间 ${invitation.roomName}] 你画我猜游戏 ${updatedGame.id} 开始`);
                             }
                         }
+                    } else if (invitation.gameType === 'rps') {
+                        game = createRPSGame({ username: invitation.fromUsername, socketId: invitation.from }, invitation.roomName);
+                        if (game) {
+                            const updatedGame = joinRPSGame(game.id, socket.id, user.username);
+                            if (updatedGame) {
+                                [invitation.from, socket.id].forEach(pid => {
+                                    io.to(pid).emit('rps-start', {
+                                        gameId: updatedGame.id,
+                                        gameType: 'rps',
+                                        players: updatedGame.players.map(p => ({ socketId: p, username: updatedGame.playerNames[p] })),
+                                        wins: { ...updatedGame.wins },
+                                        maxWins: updatedGame.maxWins,
+                                        round: updatedGame.round
+                                    });
+                                });
+                                socket.to(invitation.roomName).emit('game-started', {
+                                    gameId: updatedGame.id,
+                                    gameType: 'rps',
+                                    players: updatedGame.players.map(p => updatedGame.playerNames[p])
+                                });
+                                console.log(`[房间 ${invitation.roomName}] 剪刀石头布游戏 ${updatedGame.id} 开始`);
+                            }
+                        }
+                    } else if (invitation.gameType === 'bomb') {
+                        game = createBombGame({ username: invitation.fromUsername, socketId: invitation.from }, invitation.roomName);
+                        if (game) {
+                            const updatedGame = joinBombGame(game.id, socket.id, user.username);
+                            if (updatedGame) {
+                                [invitation.from, socket.id].forEach(pid => {
+                                    io.to(pid).emit('bomb-start', {
+                                        gameId: updatedGame.id,
+                                        gameType: 'bomb',
+                                        players: updatedGame.players.map(p => ({ socketId: p, username: updatedGame.playerNames[p] })),
+                                        maxStep: updatedGame.maxStep,
+                                        current: 0,
+                                        currentPlayer: updatedGame.players[0]
+                                        // 注意：bombNumber 不下发，保持神秘
+                                    });
+                                });
+                                socket.to(invitation.roomName).emit('game-started', {
+                                    gameId: updatedGame.id,
+                                    gameType: 'bomb',
+                                    players: updatedGame.players.map(p => updatedGame.playerNames[p])
+                                });
+                                console.log(`[房间 ${invitation.roomName}] 数字炸弹游戏 ${updatedGame.id} 开始`);
+                            }
+                        }
+                    } else if (invitation.gameType === 'typing') {
+                        game = createTypingGame({ username: invitation.fromUsername, socketId: invitation.from }, invitation.roomName);
+                        if (game) {
+                            const updatedGame = joinTypingGame(game.id, socket.id, user.username);
+                            if (updatedGame) {
+                                [invitation.from, socket.id].forEach(pid => {
+                                    io.to(pid).emit('typing-start', {
+                                        gameId: updatedGame.id,
+                                        gameType: 'typing',
+                                        players: updatedGame.players.map(p => ({
+                                            socketId: p,
+                                            username: updatedGame.playerNames[p]
+                                        })),
+                                        text: updatedGame.text
+                                    });
+                                });
+                                socket.to(invitation.roomName).emit('game-started', {
+                                    gameId: updatedGame.id,
+                                    gameType: 'typing',
+                                    players: updatedGame.players.map(p => updatedGame.playerNames[p])
+                                });
+                                console.log(`[房间 ${invitation.roomName}] 打字对战 ${updatedGame.id} 开始`);
+                            }
+                        }
+                    } else if (invitation.gameType === 'tetris') {
+                        game = createTetrisGame({ username: invitation.fromUsername, socketId: invitation.from }, invitation.roomName);
+                        if (game) {
+                            const updatedGame = joinTetrisGame(game.id, socket.id, user.username);
+                            if (updatedGame) {
+                                // 初始化分数
+                                updatedGame.scores = {};
+                                updatedGame.lines = {};
+                                updatedGame.players.forEach(pid => {
+                                    updatedGame.scores[pid] = 0;
+                                    updatedGame.lines[pid] = 0;
+                                });
+                                games.set(updatedGame.id, updatedGame);
+
+                                // 通知双方游戏就绪
+                                [invitation.from, socket.id].forEach(pid => {
+                                    io.to(pid).emit('tetris-ready', {
+                                        gameId: updatedGame.id,
+                                        gameType: 'tetris',
+                                        players: updatedGame.players.map(p => ({
+                                            socketId: p,
+                                            username: updatedGame.playerNames[p]
+                                        }))
+                                    });
+                                });
+                                console.log(`[房间 ${invitation.roomName}] 俄罗斯方块对战 ${updatedGame.id} 等待双方确认开始`);
+                            }
+                        }
                     }
 
                     console.log(`[房间 ${invitation.roomName}] ${user.username} 接受了 ${invitation.fromUsername} 的 ${invitation.gameType} 邀请`);
@@ -7109,7 +8098,94 @@ io.on('connection', (socket) => {
         }
     });
 
+    // ---- 剪刀石头布：出招 ----
+    socket.on('rps-move', (data) => {
+        const user = users.get(socket.id);
+        if (!user || !data.gameId || !data.choice) return;
+        const validChoices = ['rock', 'paper', 'scissors'];
+        if (!validChoices.includes(data.choice)) return;
+
+        const updatedGame = makeRPSMove(data.gameId, socket.id, data.choice);
+        if (!updatedGame) return;
+
+        // 如果双方都出招了（roundResult 存在），推送结果
+        if (updatedGame.roundResult) {
+            updatedGame.players.forEach(pid => {
+                io.to(pid).emit('rps-update', {
+                    gameId: updatedGame.id,
+                    roundResult: updatedGame.roundResult,
+                    wins: { ...updatedGame.wins },
+                    round: updatedGame.round,
+                    status: updatedGame.status,
+                    champion: updatedGame.champion || null
+                });
+            });
+            // 游戏结束，记录历史
+            if (updatedGame.status === 'finished') {
+                updatedGame.endTime = new Date().toISOString();
+                recordGameHistory(updatedGame);
+            }
+        } else {
+            // 只有一方出招，告知对方等待
+            updatedGame.players.forEach(pid => {
+                // 找出对方（另一个玩家）
+                const opponent = updatedGame.players.find(p => p !== pid);
+                const opponentChoice = opponent ? updatedGame.choices[opponent] : null;
+                io.to(pid).emit('rps-waiting', {
+                    gameId: updatedGame.id,
+                    waitingFor: updatedGame.players.filter(p => !updatedGame.choices[p])
+                        .map(p => updatedGame.playerNames[p]),
+                    // dev: 对方的出招（若对方已出）— 仅供开发者控制台
+                    devOpponentChoice: opponentChoice || null
+                });
+            });
+        }
+    });
+
+    // ---- 开发者：获取猜数字秘密数字 ----
+    socket.on('dev-get-secret', (data) => {
+        if (!data || !data.gameId) return;
+        const game = games.get(data.gameId);
+        if (!game || game.type !== 'guess-number') return;
+        // 只向请求者本人下发，不广播
+        socket.emit('dev-secret-reveal', {
+            gameId: game.id,
+            secret: game.secret,
+            status: game.status
+        });
+    });
+
+    // ---- 数字炸弹：报数 ----
+    socket.on('bomb-move', (data) => {
+        const user = users.get(socket.id);
+        if (!user || !data.gameId || !data.count) return;
+        const count = parseInt(data.count);
+        if (isNaN(count)) return;
+
+        const updatedGame = makeBombMove(data.gameId, socket.id, count);
+        if (!updatedGame) return;
+
+        updatedGame.players.forEach(pid => {
+            io.to(pid).emit('bomb-update', {
+                gameId: updatedGame.id,
+                current: updatedGame.current,
+                lastMove: updatedGame.history[updatedGame.history.length - 1],
+                currentPlayer: updatedGame.status === 'playing' ? updatedGame.players[updatedGame.currentPlayerIdx] : null,
+                status: updatedGame.status,
+                loser: updatedGame.loser || null,
+                loserName: updatedGame.loser ? updatedGame.playerNames[updatedGame.loser] : null,
+                bombNumber: updatedGame.status === 'finished' ? updatedGame.bombNumber : null
+            });
+        });
+        // 游戏结束，记录历史
+        if (updatedGame.status === 'finished') {
+            updatedGame.endTime = new Date().toISOString();
+            recordGameHistory(updatedGame);
+        }
+    });
+
     // 获取游戏邀请列表
+
     socket.on('get-game-invitations', () => {
         const user = users.get(socket.id);
         if (user) {
@@ -7130,17 +8206,18 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 获取当前房间活跃游戏列表
+    // 获取所有房间活跃游戏列表
     socket.on('get-active-games', () => {
         const user = users.get(socket.id);
         if (user) {
             const activeGames = Array.from(games.values())
-                .filter(g => g.roomName === user.roomName && g.status !== 'ended')
+                .filter(g => g.status !== 'ended' && g.status !== 'finished')
                 .map(g => ({
                     id: g.id,
                     type: g.type,
                     status: g.status,
                     creator: g.creator,
+                    roomName: g.roomName,
                     players: g.players.map(pid => ({
                         socketId: pid,
                         username: users.get(pid)?.username || '未知'
@@ -7152,23 +8229,224 @@ io.on('connection', (socket) => {
         }
     });
 
+    // 通过游戏ID加入游戏（跨房间）
+    socket.on('join-game-by-id', (data) => {
+        const user = users.get(socket.id);
+        if (!user || !data.gameId) return;
+
+        const game = games.get(data.gameId);
+        if (!game) {
+            socket.emit('join-game-by-id-result', { success: false, message: '找不到该游戏，请检查游戏ID是否正确' });
+            return;
+        }
+        if (game.status === 'ended' || game.status === 'finished') {
+            socket.emit('join-game-by-id-result', { success: false, message: '该游戏已结束' });
+            return;
+        }
+
+        // 若在不同房间，先切换房间
+        if (user.roomName !== game.roomName) {
+            const oldRoom = user.roomName;
+            socket.leave(oldRoom);
+            socket.join(game.roomName);
+            user.roomName = game.roomName;
+            users.set(socket.id, user);
+            io.to(oldRoom).emit('user-left', { username: user.username, socketId: socket.id });
+            io.to(game.roomName).emit('user-joined', { username: user.username, socketId: socket.id, color: user.color });
+        }
+
+        const canJoinAsPlayer = game.status === 'waiting'
+            && game.players.length < 2
+            && !game.players.includes(socket.id);
+
+        if (canJoinAsPlayer) {
+            // ── 内联 game-join 逻辑，按游戏类型分别处理 ──────────────
+            if (game.type === 'gomoku') {
+                const ug = joinGomokuGame(game.id, socket.id, user.username);
+                if (ug) {
+                    ug.players.forEach(pid => io.to(pid).emit('game-start', {
+                        gameId: ug.id, gameType: 'gomoku',
+                        players: ug.players.map(p => ({ socketId: p, username: users.get(p)?.username || '未知' })),
+                        board: ug.board, currentPlayer: ug.currentPlayer
+                    }));
+                    socket.to(user.roomName).emit('game-started', { gameId: ug.id, gameType: 'gomoku', players: ug.players.map(p => users.get(p)?.username || '未知') });
+                }
+            } else if (game.type === 'pictionary') {
+                const ug = joinPictionaryGame(game.id, socket.id, user.username);
+                if (ug) {
+                    ug.players.forEach(pid => {
+                        const isDrawer = pid === ug.currentDrawer;
+                        io.to(pid).emit('game-start', {
+                            gameId: ug.id, gameType: 'pictionary',
+                            players: ug.players.map(p => ({ socketId: p, username: users.get(p)?.username || '未知' })),
+                            currentDrawer: ug.currentDrawer, currentDrawerName: users.get(ug.currentDrawer)?.username || '未知',
+                            currentWord: isDrawer ? ug.currentWord : null, wordHint: ug.currentWord ? (ug.currentWord.length + '个字') : '',
+                            scores: Object.fromEntries(ug.scores), currentRound: ug.currentRound, maxRounds: ug.maxRounds, status: ug.status
+                        });
+                    });
+                    socket.to(user.roomName).emit('game-started', { gameId: ug.id, gameType: 'pictionary', players: ug.players.map(p => users.get(p)?.username || '未知') });
+                }
+            } else if (game.type === 'guess-number') {
+                const ug = joinGuessNumberGame(game.id, socket.id);
+                if (ug) {
+                    [ug.players[0], socket.id].forEach(pid => io.to(pid).emit('guess-number-start', {
+                        gameId: ug.id, gameType: 'guess-number',
+                        players: ug.players.map(p => ({ socketId: p, username: users.get(p)?.username || game.playerNames?.[p] || '未知' })),
+                        currentGuesser: ug.currentGuesser, status: ug.status
+                    }));
+                    socket.to(user.roomName).emit('game-started', { gameId: ug.id, gameType: 'guess-number', players: ug.players.map(p => users.get(p)?.username || '未知') });
+                }
+            } else if (game.type === 'rps') {
+                const ug = joinRPSGame(game.id, socket.id, user.username);
+                if (ug) {
+                    ug.players.forEach(pid => io.to(pid).emit('rps-start', {
+                        gameId: ug.id, gameType: 'rps',
+                        players: ug.players.map(p => ({ socketId: p, username: ug.playerNames[p] })),
+                        wins: { ...ug.wins }, maxWins: ug.maxWins, round: ug.round
+                    }));
+                    socket.to(user.roomName).emit('game-started', { gameId: ug.id, gameType: 'rps', players: ug.players.map(p => ug.playerNames[p]) });
+                }
+            } else if (game.type === 'bomb') {
+                const ug = joinBombGame(game.id, socket.id, user.username);
+                if (ug) {
+                    ug.players.forEach(pid => io.to(pid).emit('bomb-start', {
+                        gameId: ug.id, gameType: 'bomb',
+                        players: ug.players.map(p => ({ socketId: p, username: ug.playerNames[p] })),
+                        maxStep: ug.maxStep, current: 0, currentPlayer: ug.players[0]
+                    }));
+                    socket.to(user.roomName).emit('game-started', { gameId: ug.id, gameType: 'bomb', players: ug.players.map(p => ug.playerNames[p]) });
+                }
+            } else if (game.type === 'tetris') {
+                const ug = joinTetrisGame(game.id, socket.id, user.username);
+                if (ug) {
+                    ug.scores = {};
+                    ug.lines = {};
+                    ug.players.forEach(pid => {
+                        ug.scores[pid] = 0;
+                        ug.lines[pid] = 0;
+                    });
+                    ug.players.forEach(pid => io.to(pid).emit('tetris-ready', {
+                        gameId: ug.id, gameType: 'tetris',
+                        players: ug.players.map(p => ({ socketId: p, username: ug.playerNames[p] }))
+                    }));
+                }
+            }
+            socket.emit('join-game-by-id-result', { success: true, action: 'join', gameId: game.id, gameType: game.type, message: '已加入游戏，正在启动…' });
+
+        } else if (game.players.includes(socket.id)) {
+            socket.emit('join-game-by-id-result', { success: false, message: '你已经在该游戏中' });
+
+        } else {
+            // ── 内联 game-spectate 逻辑 ──────────────────────────────
+            if (!game.spectators.includes(socket.id)) {
+                game.spectators.push(socket.id);
+            }
+            if (game.type === 'gomoku') {
+                socket.emit('game-spectate-success', {
+                    gameId: game.id, gameType: 'gomoku', board: game.board,
+                    currentPlayer: game.currentPlayer, status: game.status,
+                    players: game.players.map(pid => ({ socketId: pid, username: users.get(pid)?.username || '未知' })),
+                    winner: game.winner
+                });
+            } else if (game.type === 'pictionary') {
+                socket.emit('game-spectate-success', {
+                    gameId: game.id, gameType: 'pictionary',
+                    players: game.players.map(pid => ({ socketId: pid, username: users.get(pid)?.username || '未知' })),
+                    currentDrawer: game.currentDrawer, currentDrawerName: users.get(game.currentDrawer)?.username || '未知',
+                    scores: Object.fromEntries(game.scores), currentRound: game.currentRound, maxRounds: game.maxRounds,
+                    guesses: (Array.isArray(game.guesses) ? game.guesses : []).map(g => ({ ...g, username: users.get(g.playerSocketId)?.username || '未知' })),
+                    status: game.status, winner: game.winner
+                });
+            } else if (game.type === 'guess-number') {
+                socket.emit('game-spectate-success', {
+                    gameId: game.id, gameType: 'guess-number',
+                    players: game.players.map(pid => ({ socketId: pid, username: users.get(pid)?.username || game.playerNames?.[pid] || '未知' })),
+                    currentGuesser: game.currentGuesser, status: game.status, winner: game.winner
+                });
+            } else if (game.type === 'rps') {
+                socket.emit('game-spectate-success', {
+                    gameId: game.id, gameType: 'rps',
+                    players: game.players.map(p => ({ socketId: p, username: game.playerNames[p] })),
+                    wins: { ...game.wins }, maxWins: game.maxWins, round: game.round,
+                    status: game.status, champion: game.champion || null
+                });
+            } else if (game.type === 'bomb') {
+                socket.emit('game-spectate-success', {
+                    gameId: game.id, gameType: 'bomb',
+                    players: game.players.map(p => ({ socketId: p, username: game.playerNames[p] })),
+                    maxStep: game.maxStep, current: game.current, currentPlayer: game.players[game.currentPlayerIdx] || null,
+                    history: game.history || [], status: game.status, loser: game.loser || null
+                });
+            }
+            socket.emit('join-game-by-id-result', { success: true, action: 'spectate', gameId: game.id, gameType: game.type, message: '已进入观战模式' });
+        }
+    });
+
     // 游戏结束时记录历史
     function recordGameHistory(game) {
-        if (game.status === 'ended') {
+        if (game.status === 'ended' || game.status === 'finished') {
+            // 兼容不同游戏类型的胜者字段
+            let winner = game.winner || null;
+            if (!winner && game.champion) winner = game.champion; // rps
+            if (!winner && game.loser && game.players.length === 2) {
+                winner = game.players.find(p => p !== game.loser) || null; // bomb
+            }
+            const now = game.endTime || new Date().toISOString();
             const history = {
                 gameId: game.id,
                 gameType: game.type,
+                type: game.type, // 兼容前端 game.type 字段
                 players: game.players,
-                playerNames: game.players.map(pid => users.get(pid)?.username || '未知'),
-                winner: game.winner,
-                winnerName: users.get(game.winner)?.username || '未知',
-                startTime: game.startTime,
-                endTime: game.endTime,
+                playerNames: game.players.map(pid => users.get(pid)?.username || game.playerNames?.[pid] || '未知'),
+                winner: winner,
+                winnerName: winner ? (users.get(winner)?.username || game.playerNames?.[winner] || '未知') : '平局',
+                startTime: game.startTime || now,
+                endTime: now,
                 roomName: game.roomName
             };
             gameHistory.set(game.id, history);
+
+            // 游戏结束后清除这批玩家之间的所有 pending 邀请，允许再次邀请
+            const playerSet = new Set(game.players);
+            for (const [invId, inv] of gameInvitations.entries()) {
+                if (inv.status === 'pending' && playerSet.has(inv.from) && playerSet.has(inv.to)) {
+                    gameInvitations.delete(invId);
+                }
+            }
         }
     }
+
+    // 玩家主动退出游戏
+    socket.on('quit-game', (data) => {
+        const user = users.get(socket.id);
+        if (!user || !data.gameId) return;
+
+        const game = games.get(data.gameId);
+        if (!game) return;
+
+        // 检查是否是游戏中的玩家
+        if (game.players && game.players.includes(socket.id)) {
+            // 从游戏中移除该玩家
+            game.players = game.players.filter(p => p !== socket.id);
+
+            // 通知仍在游戏中的玩家
+            game.players.forEach(pid => {
+                io.to(pid).emit('opponent-left', {
+                    gameId: data.gameId,
+                    gameType: game.type
+                });
+            });
+
+            // 如果所有玩家都离开了，删除游戏
+            if (game.players.length === 0) {
+                games.delete(data.gameId);
+                console.log(`[游戏清理] 玩家 ${user.username} 退出，游戏 ${data.gameId} 已删除`);
+            } else {
+                games.set(data.gameId, game);
+                console.log(`[游戏清理] 玩家 ${user.username} 退出游戏 ${data.gameId}，剩余玩家: ${game.players.length}`);
+            }
+        }
+    });
 
     // 监听游戏结束事件，记录历史
     socket.on('game-ended', (data) => {
@@ -7234,6 +8512,12 @@ io.on('connection', (socket) => {
     });
 
     socket.on('add-friend', (targetSocketId) => {
+        // 速率限制
+        if (checkSocketEventRate(socket.id, 'friend-request', userIP)) {
+            socket.emit('friend-error', { message: '好友申请过于频繁，请稍后再试' });
+            return;
+        }
+
         const user = users.get(socket.id);
         const targetUser = users.get(targetSocketId);
         
@@ -7603,6 +8887,12 @@ io.on('connection', (socket) => {
     
     // 发送私聊消息
     socket.on('private-message', (data) => {
+        // 速率限制
+        if (checkSocketEventRate(socket.id, 'private-message', userIP)) {
+            socket.emit('private-message-error', { message: '私聊消息过于频繁，请稍后再试' });
+            return;
+        }
+
         const user = users.get(socket.id);
         const targetUser = users.get(data.targetSocketId);
         
