@@ -1813,21 +1813,32 @@ const io = new Server(server, {
     cors: {
         origin: ['*'],
         methods: ["GET", "POST"],
-        credentials: true
+        credentials: true,
+        allowedHeaders: ["Content-Type", "Authorization"]
     },
+    
+    // 传输方式配置
+    transports: ['websocket', 'polling'],
+    allowUpgrades: true,
+    
+    // 连接配置
     maxHttpBufferSize: 1e8,
     pingTimeout: 60000,
     pingInterval: 25000,
-    transports: ['websocket', 'polling'],
+    connectTimeout: 45000,
+    
+    // 向下兼容
+    allowEIO3: true,
+    
     // 启用数据压缩
     perMessageDeflate: {
         zlibDeflateOptions: {
-            level: 5 // 压缩级别 0-9，6 是平衡性能和压缩率的选择
+            level: 5
         },
         zlibInflateOptions: {
             chunkSize: 1024
         },
-        threshold: 1024, // 当消息大小超过 1KB 时启用压缩
+        threshold: 1024,
         concatenateFlush: true
     }
 });
@@ -2604,6 +2615,17 @@ rooms.set('main', {
 io.on('connection', (socket) => {
     // 获取用户IP
     const userIP = socket.handshake.address;
+    
+    // 添加调试日志
+    console.log(`[连接] 用户连接: ${socket.id}`);
+    console.log(`[连接] 客户端IP: ${userIP}`);
+    console.log(`[连接] 传输方式: ${socket.conn.transport.name}`);
+    console.log(`[连接] User-Agent: ${socket.handshake.headers['user-agent']}`);
+    
+    // 监听传输方式升级
+    socket.conn.on('upgrade', () => {
+        console.log(`[升级] ${socket.id} 传输方式从 polling 升级为 ${socket.conn.transport.name}`);
+    });
     
     // 检查IP是否被封禁
     if (bannedIPs.has(userIP)) {
