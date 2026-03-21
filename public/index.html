@@ -1079,6 +1079,77 @@
             color: white;
         }
         
+        /* 添加好友按钮样式 */
+        .btn-add-friend {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-add-friend:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+        
+        .btn-add-friend:active {
+            transform: translateY(0);
+        }
+        
+        .btn-add-friend::before {
+            content: '👤+';
+            font-size: 16px;
+        }
+        
+        /* 强制添加好友按钮样式 */
+        .btn-force-add-friend {
+            background: linear-gradient(135deg, #e67e22 0%, #d35400 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(230, 126, 34, 0.4);
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .btn-force-add-friend:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(230, 126, 34, 0.6);
+        }
+        
+        .btn-force-add-friend:active {
+            transform: translateY(0);
+        }
+        
+        .btn-force-add-friend::before {
+            content: '⚡';
+            font-size: 16px;
+        }
+        
+        /* 按钮容器 */
+        .friend-action-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 15px;
+        }
+        
         .private-chat-messages {
             max-height: 400px;
             overflow-y: auto;
@@ -1584,8 +1655,8 @@
             background: white;
             border-radius: 10px;
             box-shadow: 0 5px 20px rgba(0, 0, 0, 0.3);
-            width: 320px;
-            max-height: 300px;
+            width: 380px;
+            max-height: 450px;
             display: flex;
             flex-direction: column;
             z-index: 1000;
@@ -1648,6 +1719,283 @@
         .emoji-message {
             font-size: 24px;
             margin: 0;
+        }
+        
+        /* 表情包系统样式 */
+        .sticker-panel {
+            display: none;
+            flex-direction: column;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            max-height: 400px;
+            overflow: hidden;
+        }
+        
+        .sticker-panel.active {
+            display: flex;
+        }
+        
+        .sticker-tabs {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .sticker-tab {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            font-size: 13px;
+            color: #666;
+            transition: all 0.2s;
+        }
+        
+        .sticker-tab:hover {
+            background: #e9ecef;
+        }
+        
+        .sticker-tab.active {
+            background: white;
+            color: #007bff;
+            font-weight: 600;
+            border-bottom: 2px solid #007bff;
+        }
+        
+        .sticker-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            min-height: 250px;
+            max-height: 350px;
+        }
+        
+        .sticker-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+        }
+        
+        .sticker-item {
+            aspect-ratio: 1;
+            background: #f8f9fa;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        
+        .sticker-item:hover {
+            background: #e9ecef;
+            transform: scale(1.05);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .sticker-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            padding: 5px;
+        }
+        
+        .sticker-item .sticker-label {
+            position: absolute;
+            bottom: 2px;
+            left: 0;
+            right: 0;
+            font-size: 10px;
+            color: #666;
+            text-align: center;
+            background: rgba(255,255,255,0.9);
+            padding: 2px;
+        }
+        
+        .sticker-upload-area {
+            border: 2px dashed #dee2e6;
+            border-radius: 8px;
+            padding: 30px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-bottom: 10px;
+        }
+        
+        .sticker-upload-area:hover {
+            border-color: #007bff;
+            background: #f8f9fa;
+        }
+        
+        .sticker-upload-area input {
+            display: none;
+        }
+        
+        .sticker-upload-icon {
+            font-size: 40px;
+            color: #adb5bd;
+            margin-bottom: 10px;
+        }
+        
+        .sticker-upload-text {
+            color: #666;
+            font-size: 13px;
+        }
+        
+        .sticker-upload-formats {
+            color: #adb5bd;
+            font-size: 11px;
+            margin-top: 5px;
+        }
+        
+        .sticker-category {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .sticker-category:hover {
+            background: #e9ecef;
+        }
+        
+        .sticker-category-icon {
+            font-size: 24px;
+            margin-right: 10px;
+        }
+        
+        .sticker-category-info {
+            flex: 1;
+        }
+        
+        .sticker-category-name {
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+        
+        .sticker-category-count {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .sticker-category-delete {
+            color: #dc3545;
+            font-size: 18px;
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        
+        .sticker-category-delete:hover {
+            background: #f8d7da;
+        }
+        
+        /* 表情包消息样式 */
+        .sticker-message {
+            display: inline-block;
+            max-width: 200px;
+            max-height: 200px;
+            border-radius: 8px;
+            overflow: hidden;
+            animation: stickerPop 0.3s ease;
+        }
+        
+        .sticker-message img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        
+        @keyframes stickerPop {
+            0% { transform: scale(0.5); opacity: 0; }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        
+        .message-sticker {
+            display: inline-block;
+            max-width: 150px;
+            max-height: 150px;
+            margin: 5px 0;
+        }
+        
+        .message-sticker img {
+            width: 100%;
+            height: auto;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .message-sticker img:hover {
+            transform: scale(1.05);
+        }
+        
+        .emoji-tabs {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .emoji-tab {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            font-size: 13px;
+            color: #666;
+            transition: all 0.2s;
+        }
+        
+        .emoji-tab:hover {
+            background: #e9ecef;
+        }
+        
+        .emoji-tab.active {
+            background: white;
+            color: #007bff;
+            font-weight: 600;
+        }
+        
+        .sticker-panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 12px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .sticker-panel-title {
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+        }
+        
+        .sticker-upload-btn {
+            padding: 5px 12px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .sticker-upload-btn:hover {
+            background: #0056b3;
         }
         
         /* 投票消息样式 */
@@ -2561,7 +2909,13 @@
         
         <!-- 表情选择面板 -->
         <div class="emoji-panel" id="emojiPanel" style="display: none;">
-            <div class="emoji-categories">
+            <div class="emoji-tabs">
+                <button class="emoji-tab active" data-tab="emoji" id="emojiTab">😊 表情</button>
+                <button class="emoji-tab" data-tab="sticker" id="stickerTab">🎁 表情包</button>
+            </div>
+            
+            <!-- 表情内容 -->
+            <div class="emoji-categories" id="emojiCategories">
                 <button class="emoji-category active" data-category="smileys">😊</button>
                 <button class="emoji-category" data-category="animals">🐶</button>
                 <button class="emoji-category" data-category="food">🍎</button>
@@ -2572,6 +2926,34 @@
             </div>
             <div class="emoji-grid" id="emojiGrid">
                 <!-- 表情将通过JavaScript动态加载 -->
+            </div>
+            
+            <!-- 表情包内容 -->
+            <div class="sticker-panel" id="stickerPanel" style="display: none;">
+                <div class="sticker-tabs">
+                    <button class="sticker-tab active" data-sticker-tab="preset">🎨 预设</button>
+                    <button class="sticker-tab" data-sticker-tab="custom">📁 我的</button>
+                </div>
+                
+                <!-- 预设表情包 -->
+                <div class="sticker-content" id="stickerPresetContent">
+                    <div class="sticker-grid" id="stickerGrid">
+                        <!-- 预设表情包将通过JavaScript动态加载 -->
+                    </div>
+                </div>
+                
+                <!-- 自定义表情包 -->
+                <div class="sticker-content" id="stickerCustomContent" style="display: none;">
+                    <div class="sticker-upload-area" id="stickerUploadArea">
+                        <input type="file" id="stickerUploadInput" accept="image/*,.gif" multiple>
+                        <div class="sticker-upload-icon">📤</div>
+                        <div class="sticker-upload-text">点击上传自定义表情</div>
+                        <div class="sticker-upload-formats">支持 GIF、PNG、JPG 格式</div>
+                    </div>
+                    <div class="sticker-grid" id="customStickerGrid">
+                        <!-- 自定义表情将通过JavaScript动态加载 -->
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -13349,8 +13731,120 @@ io.on('connection', (socket) => {
             flags: ['🇨🇳', '🇺🇸', '🇬🇧', '🇯🇵', '🇰🇷', '🇫🇷', '🇩🇪', '🇪🇸', '🇷🇺', '🇮🇳', '🇧🇷', '🇨🇦', '🇦🇺', '🇮🇹', '🇳🇱', '🇧🇪', '🇧🇹', '🇧🇬', '🇨🇿', '🇨🇭', '🇩🇰', '🇫🇮', '🇬🇷', '🇭🇺', '🇮🇸', '🇮🇪', '🇱🇹', '🇱🇺', '🇱🇻', '🇲🇹', '🇳🇴', '🇵🇱', '🇵🇹', '🇷🇴', '🇸🇪', '🇸🇮', '🇸🇰', '🇹🇷', '🇦🇹', '🇬🇷', '🇮🇱', '🇸🇦', '🇦🇪', '🇧🇭', '🇰🇼', '🇴🇲', '🇶🇦', '🇸🇬', '🇹🇭', '🇻🇳', '🇲🇾', '🇮🇩', '🇵🇭', '🇳🇿', '🇿🇦', '🇪🇬', '🇲🇦', '🇦🇷', '🇨🇱', '🇨🇴', '🇲🇽', '🇵🇪', '🇦🇺', '🇳🇿', '🇹🇷', '🇸🇾', '🇮🇷', '🇮🇷', '🇲🇦', '🇲🇱', '🇹🇬', '🇳🇬', '🇿🇲', '🇿🇼', '🇿🇦', '🇧🇼', '🇳🇦', '🇲🇸', '🇧🇹', '🇳🇵', '🇲🇳', '🇲🇴', '🇭🇰', '🇲🇹', '🇸🇲', '🇻🇦', '🇨🇰', '🇬🇮', '🇯🇪', '🇬🇬', '🇮🇲', '🇲🇨', '🇸🇧', '🇻🇺', '🇫🇲', '🇹🇴', '🇵🇼', '🇰🇮', '🇰🇲', '🇹🇰', '🇫🇰', '🇳🇺', '🇫🇴', '🇸🇹', '🇻🇨', '🇬🇩', '🇲🇸', '🇦🇬', '🇧🇧', '🇧🇸', '🇧🇿', '🇨🇱', '🇨🇴', '🇨🇷', '🇩🇴', '🇪🇨', '🇸🇻', '🇬🇹', '🇭🇳', '🇲🇽', '🇳🇮', '🇵🇦', '🇵🇾', '🇵🇪', '🇹🇹', '🇻🇪', '🇦🇷', '🇧🇴', '🇧🇷', '🇨🇱', '🇨🇴', '🇪🇨', '🇫🇮', '🇬🇫', '🇬🇶', '🇬🇾', '🇭🇹', '🇱🇨', '🇲🇶', '🇲🇷', '🇲🇺', '🇵🇲', '🇷🇪', '🇷🇺', '🇸🇷', '🇹🇹', '🇺🇾', '🇻🇨', '🇻🇮', '🇻🇪']
         };
 
-        // 表情系统相关变量
+        // 表情包预设数据
+        // Giphy API 配置
+        const GIPHY_API_KEY = 'RTwOgE3gn6UdFVlYHPwQXLHZjirs1jky';
+        const GIPHY_BASE_URL = 'https://api.giphy.com/v1';
+        
+        // 缓存 Giphy 数据避免重复请求
+        const giphyCache = {
+            cute: null,
+            reaction: null,
+            memes: null,
+            nature: null,
+            trending: null
+        };
+        
+        // 分类搜索关键词映射
+        const categoryKeywords = {
+            cute: 'cute cat puppy',
+            reaction: 'reaction thumbs up clap',
+            memes: 'meme funny trending',
+            nature: 'nature flower sunset'
+        };
+        
+        // 调用 Giphy API 搜索 Stickers
+        async function fetchGiphyStickers(keyword, limit = 8) {
+            try {
+                const response = await fetch(
+                    `${GIPHY_BASE_URL}/stickers/search?api_key=${GIPHY_API_KEY}&q=${encodeURIComponent(keyword)}&limit=${limit}&rating=g&lang=zh`
+                );
+                const data = await response.json();
+                return data.data.map(item => ({
+                    url: item.images.fixed_height.url,
+                    name: item.title || '表情包',
+                    id: item.id,
+                    originalUrl: item.images.original.url
+                }));
+            } catch (error) {
+                console.error('Giphy API 错误:', error);
+                return [];
+            }
+        }
+        
+        // 获取热门 Stickers
+        async function fetchGiphyTrending(limit = 8) {
+            try {
+                const response = await fetch(
+                    `${GIPHY_BASE_URL}/stickers/trending?api_key=${GIPHY_API_KEY}&limit=${limit}&rating=g`
+                );
+                const data = await response.json();
+                return data.data.map(item => ({
+                    url: item.images.fixed_height.url,
+                    name: item.title || '热门表情',
+                    id: item.id,
+                    originalUrl: item.images.original.url
+                }));
+            } catch (error) {
+                console.error('Giphy API 错误:', error);
+                return [];
+            }
+        }
+        
+        // 搜索 Giphy
+        async function searchGiphy(query, limit = 16) {
+            try {
+                const response = await fetch(
+                    `${GIPHY_BASE_URL}/stickers/search?api_key=${GIPHY_API_KEY}&q=${encodeURIComponent(query)}&limit=${limit}&rating=g&lang=zh`
+                );
+                const data = await response.json();
+                return data.data.map(item => ({
+                    url: item.images.fixed_height.url,
+                    name: item.title || '表情包',
+                    id: item.id,
+                    originalUrl: item.images.original.url
+                }));
+            } catch (error) {
+                console.error('Giphy 搜索错误:', error);
+                return [];
+            }
+        }
+        
+        // 备用本地数据（API 失败时使用）
+        const fallbackStickerData = {
+            cute: [
+                { url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=cat&backgroundColor=b6e3f4', name: '😺 可爱猫' },
+                { url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=heart&backgroundColor=ffdfbf', name: '❤️ 爱心' },
+                { url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=dance&backgroundColor=d1d4f9', name: '💃 跳舞' },
+                { url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=happy&backgroundColor=c0aede', name: '🎉 欢呼' }
+            ],
+            reaction: [
+                { url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=thumbs&backgroundColor=ffdfbf', name: '👍 点赞' },
+                { url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=clap&backgroundColor=d1d4f9', name: '👏 鼓掌' },
+                { url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=love&backgroundColor=ffd5dc', name: '🫰 比心' },
+                { url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=666&backgroundColor=c0aede', name: '🔥 666' }
+            ],
+            memes: [
+                { url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=pat&backgroundColor=ffd5dc', name: '🫳 摸头' },
+                { url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=go&backgroundColor=b6e3f4', name: '💪 加油' },
+                { url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=angry&backgroundColor=ffdfbf', name: '😠 生气' },
+                { url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=cry&backgroundColor=c0aede', name: '😭 哭泣' }
+            ],
+            nature: [
+                { url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=firework&backgroundColor=c0aede', name: '🎆 烟花' },
+                { url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=star&backgroundColor=ffdfbf', name: '⭐ 星星' },
+                { url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=rainbow&backgroundColor=d1d4f9', name: '🌈 彩虹' },
+                { url: 'https://api.dicebear.com/7.x/fun-emoji/svg?seed=sunset&backgroundColor=b6e3f4', name: '🌅 日落' }
+            ]
+        };
+        
+        // 当前选中的表情包分类
+        let currentStickerCategory = 'cute';
+        
+        // 表情包系统相关变量
         let currentEmojiCategory = 'smileys';
+        let currentStickerTab = 'preset';
+        let customStickers = [];
 
         // 初始化表情系统
         function initEmojiSystem() {
@@ -13371,12 +13865,380 @@ io.on('connection', (socket) => {
                 });
             });
             
+            // 表情/表情包标签切换
+            const emojiTab = document.getElementById('emojiTab');
+            const stickerTab = document.getElementById('stickerTab');
+            
+            if (emojiTab && stickerTab) {
+                emojiTab.addEventListener('click', () => switchToEmojiTab());
+                stickerTab.addEventListener('click', () => switchToStickerTab());
+            }
+            
+            // 表情包预设分类标签
+            const stickerTabs = document.querySelectorAll('.sticker-tab');
+            stickerTabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const tabName = tab.dataset.stickerTab;
+                    switchStickerTab(tabName, stickerTabs);
+                });
+            });
+            
+            // 加载预设表情包
+            loadPresetStickers(currentStickerCategory);
+            
+            // 加载自定义表情包
+            loadCustomStickers();
+            
+            // 表情包上传功能
+            setupStickerUpload();
+            
             // 点击外部关闭表情面板
             document.addEventListener('click', (e) => {
                 if (!emojiPanel.contains(e.target) && e.target !== emojiBtn) {
                     hideEmojiPanel();
                 }
             });
+        }
+        
+        // 切换到表情标签
+        function switchToEmojiTab() {
+            const emojiCategories = document.getElementById('emojiCategories');
+            const emojiGrid = document.getElementById('emojiGrid');
+            const stickerPanel = document.getElementById('stickerPanel');
+            const emojiTab = document.getElementById('emojiTab');
+            const stickerTab = document.getElementById('stickerTab');
+            
+            if (emojiCategories) emojiCategories.style.display = 'flex';
+            if (emojiGrid) emojiGrid.style.display = 'grid';
+            if (stickerPanel) stickerPanel.style.display = 'none';
+            if (emojiTab) emojiTab.classList.add('active');
+            if (stickerTab) stickerTab.classList.remove('active');
+        }
+        
+        // 切换到表情包标签
+        function switchToStickerTab() {
+            const emojiCategories = document.getElementById('emojiCategories');
+            const emojiGrid = document.getElementById('emojiGrid');
+            const stickerPanel = document.getElementById('stickerPanel');
+            const emojiTab = document.getElementById('emojiTab');
+            const stickerTab = document.getElementById('stickerTab');
+            
+            if (emojiCategories) emojiCategories.style.display = 'none';
+            if (emojiGrid) emojiGrid.style.display = 'none';
+            if (stickerPanel) {
+                stickerPanel.style.display = 'flex';
+                stickerPanel.classList.add('active');
+            }
+            if (emojiTab) emojiTab.classList.remove('active');
+            if (stickerTab) stickerTab.classList.add('active');
+        }
+        
+        // 切换表情包子标签
+        function switchStickerTab(tabName, tabs) {
+            const presetContent = document.getElementById('stickerPresetContent');
+            const customContent = document.getElementById('stickerCustomContent');
+            currentStickerTab = tabName;
+            
+            tabs.forEach(tab => tab.classList.remove('active'));
+            document.querySelector(`[data-sticker-tab="${tabName}"]`).classList.add('active');
+            
+            if (tabName === 'preset') {
+                if (presetContent) presetContent.style.display = 'block';
+                if (customContent) customContent.style.display = 'none';
+            } else {
+                if (presetContent) presetContent.style.display = 'none';
+                if (customContent) customContent.style.display = 'block';
+            }
+        }
+        
+        // 加载预设表情包（使用 Giphy API）
+        async function loadPresetStickers(category) {
+            const stickerGrid = document.getElementById('stickerGrid');
+            if (!stickerGrid) return;
+            
+            // 使用容器包装，避免破坏grid布局
+            stickerGrid.innerHTML = '';
+            stickerGrid.style.display = 'block';
+            
+            // 创建主容器
+            const mainContainer = document.createElement('div');
+            mainContainer.style.cssText = 'padding: 10px;';
+            
+            // 添加分类导航
+            const categoryNav = document.createElement('div');
+            categoryNav.className = 'sticker-category-nav';
+            categoryNav.style.cssText = 'display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap;';
+            
+            const categories = [
+                { key: 'cute', icon: '🐱', name: '可爱' },
+                { key: 'reaction', icon: '👍', name: '反应' },
+                { key: 'memes', icon: '😂', name: '表情包' },
+                { key: 'nature', icon: '🌟', name: '自然' }
+            ];
+            
+            categories.forEach(cat => {
+                const btn = document.createElement('button');
+                btn.className = `emoji-category ${cat.key === category ? 'active' : ''}`;
+                btn.dataset.stickerCategory = cat.key;
+                btn.innerHTML = `${cat.icon} ${cat.name}`;
+                btn.style.cssText = 'font-size: 12px; padding: 5px 10px; border: none; border-radius: 15px; cursor: pointer; background: #f0f0f0;';
+                if (cat.key === category) {
+                    btn.style.background = '#667eea';
+                    btn.style.color = 'white';
+                }
+                btn.onclick = () => {
+                    currentStickerCategory = cat.key;
+                    loadPresetStickers(cat.key);
+                };
+                categoryNav.appendChild(btn);
+            });
+            
+            mainContainer.appendChild(categoryNav);
+            
+            // 添加搜索框
+            const searchContainer = document.createElement('div');
+            searchContainer.style.cssText = 'margin-bottom: 10px; display: flex; gap: 6px;';
+            searchContainer.innerHTML = `
+                <input type="text" id="stickerSearchInput" placeholder="搜索表情包..." 
+                    style="flex: 1; padding: 5px 10px; border: 1px solid #ddd; border-radius: 15px; font-size: 12px; height: 28px;">
+                <button id="stickerSearchBtn" style="padding: 5px 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 15px; cursor: pointer; font-size: 12px; height: 28px;">🔍</button>
+            `;
+            mainContainer.appendChild(searchContainer);
+            
+            // 搜索结果/表情包容器
+            const resultContainer = document.createElement('div');
+            resultContainer.id = 'stickerResultContainer';
+            mainContainer.appendChild(resultContainer);
+            
+            stickerGrid.appendChild(mainContainer);
+            
+            // 搜索功能
+            const searchInput = document.getElementById('stickerSearchInput');
+            const searchBtn = document.getElementById('stickerSearchBtn');
+            
+            const performSearch = async () => {
+                const query = searchInput.value.trim();
+                if (!query) return;
+                
+                resultContainer.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">搜索中...</p>';
+                
+                const stickers = await searchGiphy(query, 16);
+                
+                if (stickers.length === 0) {
+                    resultContainer.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">未找到相关表情包</p>';
+                    return;
+                }
+                
+                // 添加结果网格
+                const resultGrid = document.createElement('div');
+                resultGrid.style.cssText = 'display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;';
+                
+                stickers.forEach(sticker => {
+                    const stickerItem = document.createElement('div');
+                    stickerItem.className = 'sticker-item';
+                    stickerItem.style.cssText = 'cursor: pointer; border-radius: 8px; overflow: hidden; transition: transform 0.2s; aspect-ratio: 1; background: #f8f9fa; display: flex; align-items: center; justify-content: center;';
+                    stickerItem.innerHTML = `<img src="${sticker.url}" alt="${sticker.name}" loading="lazy" style="width: 100%; height: 100%; object-fit: contain; padding: 5px;" onerror="this.style.display='none'">`;
+                    stickerItem.title = sticker.name;
+                    stickerItem.onclick = () => sendSticker(sticker.originalUrl, sticker.name);
+                    resultGrid.appendChild(stickerItem);
+                });
+                
+                resultContainer.innerHTML = '';
+                resultContainer.appendChild(resultGrid);
+            };
+            
+            searchBtn.onclick = performSearch;
+            searchInput.onkeypress = (e) => {
+                if (e.key === 'Enter') performSearch();
+            };
+            
+            // 显示加载中
+            resultContainer.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">加载中...</p>';
+            
+            // 获取表情包数据
+            let stickers = [];
+            
+            // 检查缓存
+            if (giphyCache[category]) {
+                stickers = giphyCache[category];
+            } else {
+                // 从 Giphy API 获取
+                stickers = await fetchGiphyStickers(categoryKeywords[category], 8);
+                // 缓存结果
+                if (stickers.length > 0) {
+                    giphyCache[category] = stickers;
+                } else {
+                    // API 失败时使用备用数据
+                    stickers = fallbackStickerData[category] || [];
+                }
+            }
+            
+            // 添加表情包网格
+            const stickersContainer = document.createElement('div');
+            stickersContainer.style.cssText = 'display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;';
+            
+            stickers.forEach(sticker => {
+                const stickerItem = document.createElement('div');
+                stickerItem.className = 'sticker-item';
+                stickerItem.style.cssText = 'cursor: pointer; border-radius: 8px; overflow: hidden; transition: transform 0.2s; aspect-ratio: 1; background: #f8f9fa; display: flex; align-items: center; justify-content: center;';
+                stickerItem.innerHTML = `<img src="${sticker.url}" alt="${sticker.name}" loading="lazy" style="width: 100%; height: 100%; object-fit: contain; padding: 5px;" onerror="this.style.display='none'">`;
+                stickerItem.title = sticker.name;
+                stickerItem.onclick = () => sendSticker(sticker.originalUrl, sticker.name);
+                stickersContainer.appendChild(stickerItem);
+            });
+            
+            resultContainer.innerHTML = '';
+            resultContainer.appendChild(stickersContainer);
+            
+            // 添加 Powered by Giphy 标识
+            const attribution = document.createElement('div');
+            attribution.style.cssText = 'text-align: center; margin-top: 10px; padding: 5px; font-size: 11px; color: #999;';
+            attribution.innerHTML = 'Powered by <a href="https://giphy.com" target="_blank" style="color: #667eea; text-decoration: none;">GIPHY</a>';
+            mainContainer.appendChild(attribution);
+        }
+        
+        // 加载自定义表情包
+        function loadCustomStickers() {
+            const customStickerGrid = document.getElementById('customStickerGrid');
+            if (!customStickerGrid) return;
+            
+            // 从localStorage加载
+            try {
+                const saved = localStorage.getItem('customStickers_' + username);
+                customStickers = saved ? JSON.parse(saved) : [];
+            } catch (e) {
+                customStickers = [];
+            }
+            
+            customStickerGrid.innerHTML = '';
+            
+            if (customStickers.length === 0) {
+                customStickerGrid.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">还没有自定义表情，点击上方按钮上传</p>';
+                return;
+            }
+            
+            customStickers.forEach((sticker, index) => {
+                const stickerItem = document.createElement('div');
+                stickerItem.className = 'sticker-item';
+                stickerItem.innerHTML = `<img src="${sticker.url}" alt="${sticker.name}" loading="lazy">`;
+                stickerItem.title = sticker.name;
+                stickerItem.onclick = () => sendSticker(sticker.url, sticker.name);
+                
+                // 右键删除
+                stickerItem.oncontextmenu = (e) => {
+                    e.preventDefault();
+                    if (confirm('确定删除这个表情包?')) {
+                        deleteCustomSticker(index);
+                    }
+                };
+                
+                customStickerGrid.appendChild(stickerItem);
+            });
+        }
+        
+        // 设置表情包上传
+        function setupStickerUpload() {
+            const uploadArea = document.getElementById('stickerUploadArea');
+            const uploadInput = document.getElementById('stickerUploadInput');
+            
+            if (!uploadArea || !uploadInput) return;
+            
+            uploadArea.onclick = () => uploadInput.click();
+            
+            uploadInput.onchange = (e) => {
+                const files = e.target.files;
+                if (files.length > 0) {
+                    Array.from(files).forEach(file => uploadSticker(file));
+                }
+                uploadInput.value = '';
+            };
+        }
+        
+        // 上传表情包
+        async function uploadSticker(file) {
+            // 验证文件类型
+            const validTypes = ['image/gif', 'image/png', 'image/jpeg', 'image/webp'];
+            if (!validTypes.includes(file.type)) {
+                showNotification('只支持 GIF、PNG、JPG 格式', 'error');
+                return;
+            }
+            
+            // 验证文件大小 (最大2MB)
+            if (file.size > 2 * 1024 * 1024) {
+                showNotification('表情包不能超过 2MB', 'error');
+                return;
+            }
+            
+            try {
+                // 转换为base64
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const base64 = e.target.result;
+                    const sticker = {
+                        url: base64,
+                        name: file.name.replace(/\.[^/.]+$/, ''),
+                        timestamp: Date.now()
+                    };
+                    
+                    customStickers.push(sticker);
+                    localStorage.setItem('customStickers_' + username, JSON.stringify(customStickers));
+                    loadCustomStickers();
+                    showNotification('表情包上传成功', 'success');
+                };
+                reader.readAsDataURL(file);
+            } catch (error) {
+                showNotification('上传失败: ' + error.message, 'error');
+            }
+        }
+        
+        // 删除自定义表情包
+        function deleteCustomSticker(index) {
+            if (index >= 0 && index < customStickers.length) {
+                customStickers.splice(index, 1);
+                localStorage.setItem('customStickers_' + username, JSON.stringify(customStickers));
+                loadCustomStickers();
+                showNotification('表情包已删除', 'success');
+            }
+        }
+        
+        // 发送表情包
+        function sendSticker(url, name) {
+            if (!currentRoom) {
+                showNotification('请先加入一个房间', 'error');
+                return;
+            }
+            
+            // 生成消息ID
+            const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            
+            // 获取当前用户的颜色
+            const currentUser = allUsers.find(user => user.username === username);
+            const userColor = currentUser ? currentUser.color : '#667eea';
+            
+            // 立即在本地显示表情包消息
+            addMessage({
+                id: messageId,
+                username: username,
+                color: userColor,
+                message: '',
+                type: 'sticker',
+                stickerUrl: url,
+                stickerName: name,
+                timestamp: new Date().toLocaleTimeString(),
+                senderSocketId: socket.id,
+                readBy: [socket.id],
+                pinned: false
+            });
+            
+            if (typeof socket !== 'undefined' && socket && socket.connected) {
+                socket.emit('sendMessage', {
+                    type: 'sticker',
+                    stickerUrl: url,
+                    stickerName: name
+                });
+            }
+            
+            hideEmojiPanel();
         }
 
         // 切换表情面板显示
@@ -17515,8 +18377,8 @@ io.on('connection', (socket) => {
                             <strong>${escapeHtml(data.fromUsername)}</strong> 请求添加你为好友
                         </div>
                         <div style="display: flex; gap: 10px; justify-content: center;">
-                            <button class="btn btn-confirm" onclick="socket.emit('accept-friend', '${data.fromSocketId}'); this.parentElement.parentElement.remove();">接受</button>
-                            <button class="btn btn-cancel" onclick="socket.emit('reject-friend', '${data.fromSocketId}'); this.parentElement.parentElement.remove();">拒绝</button>
+                            <button class="btn-add-friend" style="padding: 8px 16px; font-size: 13px;" onclick="socket.emit('accept-friend', '${data.fromSocketId}'); this.parentElement.parentElement.remove();">✓ 接受</button>
+                            <button class="friend-btn danger" style="padding: 8px 16px; font-size: 13px;" onclick="socket.emit('reject-friend', '${data.fromSocketId}'); this.parentElement.parentElement.remove();">✗ 拒绝</button>
                         </div>
                     `;
                     messagesDiv.appendChild(notificationDiv);
@@ -18035,6 +18897,16 @@ io.on('connection', (socket) => {
                             纬度: ${latitude.toFixed(4)}, 经度: ${longitude.toFixed(4)}
                         </div>
                         ${viewButton}
+                    </div>
+                `;
+            } else if (data.type === 'sticker') {
+                // 处理表情包消息
+                contentHtml = `
+                    <div class="sticker-message">
+                        <img src="${data.stickerUrl}" alt="${data.stickerName || '表情包'}" title="${data.stickerName || '表情包'}" 
+                             style="max-width: 150px; max-height: 150px; border-radius: 8px; cursor: pointer; transition: transform 0.2s;"
+                             onclick="openMediaPreview('${data.stickerUrl}', 'image', '${data.stickerName || 'sticker'}')"
+                             onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
                     </div>
                 `;
             } else {
@@ -19144,9 +20016,9 @@ io.on('connection', (socket) => {
                         </div>
                     </div>
                     <div id="userDetailPermResult" style="margin-bottom: 10px; padding: 10px; border-radius: 8px; font-size: 13px; display: none;"></div>
-                    <div style="text-align: center;">
-                        <button class="btn btn-confirm" onclick="addFriend('${socketId}'); closeUserDetailModal();">添加好友</button>
-                        ${isAdmin && socketId !== socket.id ? '<button class="btn btn-warning" onclick="forceAddFriend(\'' + socketId + '\'); closeUserDetailModal();" style="margin-left: 10px; background: #e67e22; border-color: #e67e22;">强制添加好友</button>' : ''}
+                    <div class="friend-action-buttons">
+                        <button class="btn-add-friend" onclick="addFriend('${socketId}'); closeUserDetailModal();">添加好友</button>
+                        ${isAdmin ? `<button class="btn-force-add-friend" onclick="forceAddFriend('${socketId}'); closeUserDetailModal();" ${socketId === (typeof socket !== 'undefined' && socket ? socket.id : null) ? 'style="display:none;"' : ''}>强制添加好友</button>` : ''}
                     </div>
                 </div>
             `;
