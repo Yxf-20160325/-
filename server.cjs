@@ -3472,6 +3472,168 @@ io.on('connection', (socket) => {
         }
     });
 
+    // 处理 sendMessage 事件（表情包、投票等特殊消息）
+    socket.on('sendMessage', async (data, callback) => {
+        const user = users.get(socket.id);
+        if (!user) {
+            if (callback) callback({ error: '用户未登录' });
+            return;
+        }
+
+        // 消息速率限制检查
+        const now = Date.now();
+        let rateLimitData = messageRateLimits.get(socket.id);
+        
+        if (!rateLimitData) {
+            rateLimitData = {
+                messages: [],
+                lastCleanup: now
+            };
+            messageRateLimits.set(socket.id, rateLimitData);
+        }
+        
+        // 定期清理过期消息
+        if (now - rateLimitData.lastCleanup > 30000) {
+            rateLimitData.messages = rateLimitData.messages.filter(time => now - time < RATE_LIMIT_WINDOW);
+            rateLimitData.lastCleanup = now;
+        }
+        
+        // 检查是否超过速率限制
+        if (rateLimitData.messages.length >= MAX_MESSAGES_PER_MINUTE) {
+            socket.emit('rate-limit-error', { 
+                message: `您发送消息过于频繁，请稍后再试。每分钟最多允许发送 ${MAX_MESSAGES_PER_MINUTE} 条消息。` 
+            });
+            if (callback) callback({ error: '发送消息过于频繁' });
+            return;
+        }
+        
+        // 记录消息发送时间
+        rateLimitData.messages.push(now);
+
+        // 确保用户权限对象存在
+        if (!user.permissions) {
+            user.permissions = {
+                allowAudio: true,
+                allowImage: true,
+                allowFile: true,
+                allowSendMessages: true,
+                allowViewMessages: true,
+                allowCall: true,
+                allowAddFriends: true,
+                allowViewUsers: true,
+                allowPrivateChat: true,
+                allowOpenFriendsPage: true,
+                allowRecallMessage: true,
+                allowAIChat: defaultPermissions.allowAIChat
+            };
+        }
+
+        // 权限检查
+        if (!user.permissions.allowSendMessages) {
+            socket.emit('permission-denied', { message: '您没有发送消息的权限' });
+            if (callback) callback({ error: '您没有发送消息的权限' });
+            return;
+        }
+
+        // 禁言检查
+        const currentTime = Date.now();
+        const mutedData = mutedUsers.get(socket.id);
+        if (mutedData) {
+            if (mutedData.endTime === -1 || mutedData.endTime > currentTime) {
+                const remainingTime = mutedData.endTime === -1 ? '永久' : Math.ceil((mutedData.endTime - currentTime) / (60 * 1000)) + '分钟';
+                socket.emit('muted-error', {
+                    message: `您已被禁言，剩余时长：${remainingTime}，原因：${mutedData.reason}`
+                });
+                if (callback) callback({ error: '您已被禁言' });
+                return;
+            } else {
+                mutedUsers.delete(socket.id);
+            }
+        }
+
+        // 处理表情包消息
+        if (data.type === 'sticker') {
+            // 验证表情包URL（防止XSS攻击）
+            if (!data.stickerUrl || typeof data.stickerUrl !== 'string') {
+                if (callback) callback({ error: '无效的表情包数据' });
+                return;
+            }
+
+            // 如果是base64图片，验证格式
+            if (data.stickerUrl.startsWith('data:')) {
+                const validTypes = ['data:image/gif', 'data:image/png', 'data:image/jpeg', 'data:image/webp'];
+                if (!validTypes.some(type => data.stickerUrl.startsWith(type))) {
+                    if (callback) callback({ error: '不支持的图片格式' });
+                    return;
+                }
+            }
+
+            const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            const messageData = {
+                id: messageId,
+                username: user.username,
+                color: user.color,
+                message: '', // 表情包消息的文本为空
+                type: 'sticker',
+                timestamp: new Date().toLocaleTimeString(),
+                senderSocketId: socket.id,
+                readBy: [socket.id],
+                pinned: false,
+                pinnedBy: null,
+                pinnedAt: null,
+                stickerUrl: data.stickerUrl,
+                stickerName: data.stickerName || '表情包'
+            };
+
+            // 获取用户所在的房间
+            const room = rooms.get(user.roomName);
+            if (room) {
+                // 添加新消息
+                room.messages.push(messageData);
+                if (room.messages.length > 100) {
+                    room.messages.shift();
+                }
+
+                // 更新用户统计数据
+                user.stats.messagesSent++;
+                user.experience += 1;
+
+                // 检查是否升级
+                const oldLevel = user.level;
+                const newLevel = Math.floor(user.experience / 100) + 1;
+                if (newLevel > oldLevel) {
+                    user.level = newLevel;
+                    socket.emit('level-up', { oldLevel, newLevel, experience: user.experience });
+                    console.log(`${user.username} 升级到 ${newLevel} 级`);
+                }
+
+                console.log(`[房间 ${user.roomName}] ${user.username}: 发送表情包 [${data.stickerName}]`);
+
+                // 广播消息给房间内所有用户
+                room.users.forEach(userId => {
+                    const roomUser = users.get(userId);
+                    if (roomUser && roomUser.permissions.allowViewMessages) {
+                        sendBatchMessage(userId, messageData);
+                    }
+                });
+
+                // 发送给管理员
+                if (adminSocketId) {
+                    sendBatchMessage(adminSocketId, messageData);
+                }
+
+                if (callback) callback({ success: true, messageId: messageId });
+            } else {
+                if (callback) callback({ error: '未加入任何房间' });
+            }
+            return;
+        }
+
+        // 处理其他类型的特殊消息（如投票等）
+        // 如果不是已知类型，使用默认处理
+        if (callback) callback({ error: '不支持的消息类型' });
+    });
+
     // 消息置顶事件
     socket.on('pin-message', (data) => {
         const user = users.get(socket.id);
