@@ -6,8 +6,72 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 
-// 导入病毒扫描器
-const virusScanner = require('./utils/virus-scanner.js');
+// ── 配置常量 ────────────────────────────────────────────────
+const CONFIG = {
+    // 文件大小限制
+    FILE_SIZE_LIMITS: {
+        MAX_UPLOAD_SIZE: 30 * 1024 * 1024,  // 30MB
+        MAX_IMAGE_SIZE: 5 * 1024 * 1024,    // 5MB
+        MAX_AUDIO_SIZE: 10 * 1024 * 1024    // 10MB
+    },
+    // 输入长度限制
+    INPUT_LIMITS: {
+        USERNAME: 50,
+        ROOM_NAME: 100,
+        PASSWORD: 128,
+        MESSAGE: 5000,
+        FILENAME: 255,
+        PATH: 255,
+        EMAIL: 255,
+        BIO: 500,
+        WEBSITE: 255
+    },
+    // 病毒文件清理周期（天）
+    VIRUS_FILE_RETENTION_DAYS: 7,
+    // 病毒文件清理间隔（毫秒）
+    VIRUS_CLEANUP_INTERVAL: 24 * 60 * 60 * 1000  // 每天一次
+};
+
+// ── 日志配置 ────────────────────────────────────────────────
+const LOG_LEVELS = {
+    ERROR: 0,
+    WARN: 1,
+    INFO: 2,
+    DEBUG: 3
+};
+
+// 根据环境设置日志级别
+const currentLogLevel = process.env.NODE_ENV === 'production'
+    ? LOG_LEVELS.INFO
+    : LOG_LEVELS.DEBUG;
+
+function log(level, message, data) {
+    if (level <= currentLogLevel) {
+        const timestamp = new Date().toISOString();
+        const prefix = {
+            [LOG_LEVELS.ERROR]: '[ERROR]',
+            [LOG_LEVELS.WARN]: '[WARN]',
+            [LOG_LEVELS.INFO]: '[INFO]',
+            [LOG_LEVELS.DEBUG]: '[DEBUG]'
+        }[level];
+
+        console.log(`${timestamp} ${prefix}`, message, data || '');
+    }
+}
+
+// 导出日志函数供全局使用
+global.log = log;
+global.LOG_LEVELS = LOG_LEVELS;
+
+// 导入病毒扫描器（添加错误处理）
+let virusScanner = null;
+try {
+    virusScanner = require('./utils/virus-scanner.js');
+    console.log('[病毒扫描器] 模块加载成功');
+} catch (error) {
+    console.warn('[病毒扫描器] 模块加载失败,病毒检测功能已禁用:', error.message);
+    virusScanEnabled = false;
+}
 
 // 全局变量
 const rooms = new Map();
@@ -46,20 +110,40 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '300mb' }), asyn
             return res.status(400).json({ error: '缺少Content-Type请求头' });
         }
         
-        // 验证相对路径
+        // 验证相对路径（改进的安全检查）
         let relativePath = req.headers['x-path'] || '';
         if (relativePath) {
-            // 解码路径
-            relativePath = decodeURIComponent(relativePath);
-            // 检查路径中是否包含危险字符
-            if (relativePath.includes('..') || relativePath.includes('\\') || relativePath.startsWith('/')) {
-                return res.status(403).json({ error: '不允许使用相对路径或绝对路径' });
+            // 先检查原始路径类型和长度
+            if (typeof relativePath !== 'string') {
+                return res.status(400).json({ error: '路径格式错误' });
             }
+            if (relativePath.length > 255) {
+                return res.status(400).json({ error: '路径过长' });
+            }
+
+            // 解码路径
+            try {
+                relativePath = decodeURIComponent(relativePath);
+            } catch (error) {
+                return res.status(400).json({ error: '路径编码错误' });
+            }
+
+            // 检查危险字符（包括 null 字节）
+            const dangerousChars = ['..', '\\', '/', '\0', '\n', '\r', '\t'];
+            for (const char of dangerousChars) {
+                if (relativePath.includes(char)) {
+                    return res.status(403).json({ error: '路径包含非法字符' });
+                }
+            }
+
             // 规范化路径
             relativePath = path.normalize(relativePath);
-            // 再次检查路径安全性
-            if (relativePath.includes('..')) {
-                return res.status(403).json({ error: '路径包含非法字符' });
+
+            // 最终安全检查
+            if (relativePath !== '.' && relativePath !== '') {
+                if (relativePath.startsWith('.') || relativePath.startsWith('/') || relativePath.startsWith('\\')) {
+                    return res.status(403).json({ error: '路径包含非法字符' });
+                }
             }
         }
         
@@ -69,8 +153,8 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '300mb' }), asyn
             // 解码文件名，处理中文等非ASCII字符
             filename = decodeURIComponent(filename);
             // 检查文件名长度
-            if (filename.length > 255) {
-                return res.status(400).json({ error: '文件名过长' });
+            if (filename.length > CONFIG.INPUT_LIMITS.FILENAME) {
+                return res.status(400).json({ error: `文件名过长,最大${CONFIG.INPUT_LIMITS.FILENAME}个字符` });
             }
             // 检查文件名中是否包含危险字符
             if (filename.includes('..') || filename.includes('\\') || filename.includes('/') || filename.includes(':')) {
@@ -91,41 +175,43 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '300mb' }), asyn
         }
         
         // 检查文件大小
-        if (req.body.length > 30 * 1024 * 1024) { // 30MB限制
-            return res.status(413).json({ error: '文件大小超过限制（最大30MB）' });
+        if (req.body.length > CONFIG.FILE_SIZE_LIMITS.MAX_UPLOAD_SIZE) {
+            return res.status(413).json({
+                error: `文件大小超过限制（最大${CONFIG.FILE_SIZE_LIMITS.MAX_UPLOAD_SIZE / 1024 / 1024}MB）`
+            });
         }
         
         // 构建文件路径
         const uploadsDir = path.join(__dirname, 'uploads');
         const filePath = path.join(uploadsDir, relativePath, filename);
-        
+
         // 验证文件路径是否在uploads目录内
         const normalizedFilePath = path.normalize(filePath);
         const normalizedUploadsDir = path.normalize(uploadsDir);
         if (!normalizedFilePath.startsWith(normalizedUploadsDir)) {
             return res.status(403).json({ error: '无权访问该路径' });
         }
-        
+
         // 确保目录存在
         const dirPath = path.dirname(filePath);
         if (!fs.existsSync(dirPath)) {
             fs.mkdirSync(dirPath, { recursive: true });
         }
-        
+
         // 病毒扫描
         let scanResult = { safe: true, scanned: false, message: '病毒检测已禁用' };
-        
-        if (virusScanEnabled) {
+
+        if (virusScanEnabled && virusScanner) {
             console.log('开始病毒扫描:', filename);
             scanResult = await virusScanner.scanBuffer(req.body, filename);
-            
+
             if (!scanResult.safe) {
                 console.log('文件被检测到病毒:', filename);
-                
+
                 // 将病毒文件保存到隔离区
                 const virusPath = path.join(virusesDir, filename);
                 fs.writeFileSync(virusPath, req.body);
-                
+
                 // 记录病毒文件信息
                 const virusFile = {
                     id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
@@ -135,10 +221,11 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '300mb' }), asyn
                     uploadTime: new Date().toISOString(),
                     scanResult: scanResult
                 };
-                
-                virusFiles.push(virusFile);
-                
-                return res.status(403).json({ 
+
+                // 使用 Map 存储而不是数组
+                virusFiles.set(virusFile.id, virusFile);
+
+                return res.status(403).json({
                     error: '不允许上传病毒',
                     viruses: scanResult.viruses,
                     virusId: virusFile.id
@@ -212,8 +299,37 @@ if (!fs.existsSync(virusesDir)) {
     fs.mkdirSync(virusesDir, { recursive: true });
 }
 
-// 病毒文件记录
-let virusFiles = [];
+// 病毒文件记录（使用 Map 以便管理）
+let virusFiles = new Map();
+
+// 定期清理旧病毒文件记录（保留最近 7 天的记录）
+setInterval(() => {
+    const now = Date.now();
+    const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+
+    let cleanedCount = 0;
+    for (const [id, virusFile] of virusFiles.entries()) {
+        const uploadTime = new Date(virusFile.uploadTime).getTime();
+        if (uploadTime < sevenDaysAgo) {
+            virusFiles.delete(id);
+
+            // 删除隔离文件
+            const virusPath = path.join(virusesDir, virusFile.filename);
+            try {
+                if (fs.existsSync(virusPath)) {
+                    fs.unlinkSync(virusPath);
+                }
+                cleanedCount++;
+            } catch (error) {
+                console.warn('删除病毒文件失败:', error.message);
+            }
+        }
+    }
+
+    if (cleanedCount > 0) {
+        console.log(`[病毒扫描器] 已清理 ${cleanedCount} 条旧记录,当前记录数: ${virusFiles.size}`);
+    }
+}, 24 * 60 * 60 * 1000); // 每天清理一次
 
 // 病毒检测配置
 let virusScanEnabled = true;
@@ -1109,45 +1225,45 @@ app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), async (re
         
         // 生成安全的文件名
         const filename = Date.now() + '-' + Math.round(Math.random() * 1E9) + extension;
-        
+
         // 检查是否为危险文件类型
         const dangerousExtensions = ['.php', '.php3', '.php4', '.php5', '.phtml', '.jsp', '.asp', '.aspx', '.shtml', '.cgi', '.pl', '.sh', '.js', '.vbs'];
         const fileExtension = path.extname(filename).toLowerCase();
         if (dangerousExtensions.includes(fileExtension)) {
             return res.status(403).json({ error: '不允许上传该类型的文件' });
         }
-        
+
         // 构建文件路径
         const uploadsDir = path.join(__dirname, 'uploads');
         const filePath = path.join(uploadsDir, filename);
-        
+
         // 验证文件路径是否在uploads目录内
         const normalizedFilePath = path.normalize(filePath);
         const normalizedUploadsDir = path.normalize(uploadsDir);
         if (!normalizedFilePath.startsWith(normalizedUploadsDir)) {
             return res.status(403).json({ error: '无权访问该路径' });
         }
-        
+
         // 确保目录存在
         const dirPath = path.dirname(filePath);
         if (!fs.existsSync(dirPath)) {
             fs.mkdirSync(dirPath, { recursive: true });
         }
-        
+
         // 病毒扫描
         let scanResult = { safe: true, scanned: false, message: '病毒检测已禁用' };
-        
-        if (virusScanEnabled) {
+
+        if (virusScanEnabled && virusScanner) {
             console.log('开始病毒扫描:', filename);
             scanResult = await virusScanner.scanBuffer(req.body, filename);
-            
+
             if (!scanResult.safe) {
                 console.log('文件被检测到病毒:', filename);
-                
+
                 // 将病毒文件保存到隔离区
                 const virusPath = path.join(virusesDir, filename);
                 fs.writeFileSync(virusPath, req.body);
-                
+
                 // 记录病毒文件信息
                 const virusFile = {
                     id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
@@ -1157,10 +1273,11 @@ app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), async (re
                     uploadTime: new Date().toISOString(),
                     scanResult: scanResult
                 };
-                
-                virusFiles.push(virusFile);
-                
-                return res.status(403).json({ 
+
+                // 使用 Map 存储而不是数组
+                virusFiles.set(virusFile.id, virusFile);
+
+                return res.status(403).json({
                     error: '不允许上传病毒',
                     viruses: scanResult.viruses,
                     virusId: virusFile.id
@@ -1983,8 +2100,8 @@ function cleanExpiredCache() {
     });
 }
 
-// 定期清理过期缓存
-setInterval(cleanExpiredCache, 60 * 60 * 1000); // 每小时清理一次
+// 定期清理过期缓存（优化：从1小时改为15分钟）
+setInterval(cleanExpiredCache, 15 * 60 * 1000);
 
 // 天气API配置
 const WEATHER_API_URL = 'https://api-proxy-juhe.jenius.cn/simpleWeather/query';
@@ -2100,6 +2217,7 @@ const deletedMessages = new Map();
 
 // 好友系统数据结构
 const friendships = new Map(); // 存储好友关系: Map<socketId, Set<friendSocketId>>
+const adminForcedFriendships = new Map(); // 存储管理员强制添加的好友关系（不可被用户删除）: Map<userSocketId, Set<forcedFriendSocketId>>
 const privateMessages = new Map(); // 存储私聊消息: Map<chatId, Array<message>>
 
 // 白板系统数据结构
@@ -2260,15 +2378,20 @@ app.get('/api/csrf-token', (req, res) => {
     res.json({ csrfToken: token, expires });
 });
 
-// 定期清理过期的CSRF令牌
+// 定期清理过期的CSRF令牌（优化：从默认改为10分钟）
 setInterval(() => {
     const now = Date.now();
+    let cleanedCount = 0;
     csrfTokens.forEach((tokenData, ip) => {
         if (now > tokenData.expires) {
             csrfTokens.delete(ip);
+            cleanedCount++;
         }
     });
-}, 60 * 60 * 1000); // 每小时清理一次
+    if (cleanedCount > 0) {
+        console.log(`[CSRF清理] 已清理 ${cleanedCount} 个过期令牌`);
+    }
+}, 10 * 60 * 1000); // 每10分钟清理一次
 
 // 统一错误处理中间件
 function errorHandlerMiddleware(err, req, res, next) {
@@ -2373,16 +2496,43 @@ function apiRateLimitMiddleware(req, res, next) {
     next();
 }
 
-// 定期清理过期的速率限制记录
+// 主动触发清理函数（消息发送后调用）
+function cleanupRateLimit(socketId) {
+    const now = Date.now();
+    const rateLimitData = messageRateLimits.get(socketId);
+    if (rateLimitData && rateLimitData.messages) {
+        rateLimitData.messages = rateLimitData.messages.filter(timestamp => now - timestamp < RATE_LIMIT_WINDOW);
+        if (rateLimitData.messages.length === 0) {
+            messageRateLimits.delete(socketId);
+        }
+    }
+}
+
+// 主动触发清理函数（API请求后调用）
+function cleanupApiRateLimit(ip) {
+    const now = Date.now();
+    const times = apiRateLimits.get(ip);
+    if (Array.isArray(times)) {
+        const filteredTimes = times.filter(timestamp => now - timestamp < RATE_LIMIT_WINDOW);
+        if (filteredTimes.length === 0) {
+            apiRateLimits.delete(ip);
+        } else {
+            apiRateLimits.set(ip, filteredTimes);
+        }
+    }
+}
+
+// 定期清理过期的速率限制记录（优化：从30秒改为10秒）
 setInterval(() => {
     const now = Date.now();
-    
+    let msgCleaned = 0, apiCleaned = 0;
+
     // 清理消息速率限制
     messageRateLimits.forEach((rateLimitData, socketId) => {
-        // 确保rateLimitData是正确的对象结构
         if (rateLimitData && typeof rateLimitData === 'object' && Array.isArray(rateLimitData.messages)) {
-            // 清理过期的消息记录
+            const beforeCount = rateLimitData.messages.length;
             const filteredMessages = rateLimitData.messages.filter(timestamp => now - timestamp < RATE_LIMIT_WINDOW);
+            msgCleaned += beforeCount - filteredMessages.length;
             if (filteredMessages.length === 0) {
                 messageRateLimits.delete(socketId);
             } else {
@@ -2391,27 +2541,30 @@ setInterval(() => {
                 messageRateLimits.set(socketId, rateLimitData);
             }
         } else {
-            // 如果数据结构不正确，删除该记录
             messageRateLimits.delete(socketId);
         }
     });
-    
+
     // 清理API速率限制
     apiRateLimits.forEach((times, ip) => {
-        // 确保times是数组
         if (Array.isArray(times)) {
+            const beforeCount = times.length;
             const filteredTimes = times.filter(timestamp => now - timestamp < RATE_LIMIT_WINDOW);
+            apiCleaned += beforeCount - filteredTimes.length;
             if (filteredTimes.length === 0) {
                 apiRateLimits.delete(ip);
             } else {
                 apiRateLimits.set(ip, filteredTimes);
             }
         } else {
-            // 如果数据结构不正确，删除该记录
             apiRateLimits.delete(ip);
         }
     });
-}, 30000); // 每30秒清理一次
+
+    if (msgCleaned > 0 || apiCleaned > 0) {
+        console.log(`[速率限制清理] 消息: ${msgCleaned}, API: ${apiCleaned}, 当前: 消息${messageRateLimits.size}, API${apiRateLimits.size}`);
+    }
+}, 10000); // 每10秒清理一次
 
 // ── 威胁日志系统 ──────────────────────────────────────────────
 const threatLog = []; // 存储威胁事件: Array<{ time, ip, type, detail }>
@@ -3267,39 +3420,42 @@ io.on('connection', (socket) => {
                     }
                 } else {
                     // 对于其他消息，添加新消息
-                room.messages.push(messageData);
-                if (room.messages.length > 100) {
-                    room.messages.shift();
+                    room.messages.push(messageData);
+                    if (room.messages.length > 100) {
+                        room.messages.shift();
+                    }
+
+                    // 更新用户统计数据
+                    user.stats.messagesSent++;
+
+                    // 增加经验值
+                    user.experience += 1;
+
+                    // 检查是否升级
+                    const oldLevel = user.level;
+                    const newLevel = Math.floor(user.experience / 100) + 1;
+                    if (newLevel > oldLevel) {
+                        user.level = newLevel;
+                        socket.emit('level-up', { oldLevel, newLevel, experience: user.experience });
+                        console.log(`${user.username} 升级到 ${newLevel} 级`);
+                    }
+
+                    console.log(`[房间 ${user.roomName}] ${user.username}: ${data.type === 'text' ? data.message : data.type}`);
                 }
-                
-                // 更新用户统计数据
-                user.stats.messagesSent++;
-                
-                // 增加经验值
-                user.experience += 1;
-                
-                // 检查是否升级
-                const oldLevel = user.level;
-                const newLevel = Math.floor(user.experience / 100) + 1;
-                if (newLevel > oldLevel) {
-                    user.level = newLevel;
-                    socket.emit('level-up', { oldLevel, newLevel, experience: user.experience });
-                    console.log(`${user.username} 升级到 ${newLevel} 级`);
-                }
-                
-                console.log(`[房间 ${user.roomName}] ${user.username}: ${data.type === 'text' ? data.message : data.type}`);
-                }
-                
-                // 只发送给房间内有权限查看消息的用户
+
+                // 只发送给房间内有权限查看消息的用户（包括实时位置消息）
                 room.users.forEach(userId => {
                     const roomUser = users.get(userId);
                     if (roomUser && roomUser.permissions.allowViewMessages) {
                         // 使用批量发送消息
                         sendBatchMessage(userId, messageData);
-                        
+
                         // 检查用户是否在线，如果离线则发送推送通知
                         if (roomUser.status === 'offline') {
-                            sendPushNotification(userId, `来自 ${user.username} 的消息`, messageData.message.substring(0, 50) + (messageData.message.length > 50 ? '...' : ''), {
+                            const pushMessage = data.type === 'location'
+                                ? '位置共享更新'
+                                : messageData.message.substring(0, 50) + (messageData.message.length > 50 ? '...' : '');
+                            sendPushNotification(userId, `来自 ${user.username} 的消息`, pushMessage, {
                                 type: 'message',
                                 roomName: room.roomName,
                                 messageId: messageData.id
@@ -3307,7 +3463,7 @@ io.on('connection', (socket) => {
                         }
                     }
                 });
-                
+
                 // 发送给管理员
                 if (adminSocketId) {
                     sendBatchMessage(adminSocketId, messageData);
@@ -4764,6 +4920,7 @@ io.on('connection', (socket) => {
             // 清理用户数据
             users.delete(socket.id);
             friendships.delete(socket.id);
+            adminForcedFriendships.delete(socket.id);
             swearWordCount.delete(socket.id);
             mutedUsers.delete(socket.id);
             userMaxFriends.delete(socket.id);
@@ -5152,8 +5309,8 @@ io.on('connection', (socket) => {
 
     socket.on('admin-delete-friendship', (data) => {
         // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
+        const adminUser = users.get(socket.id);
+        if (socket.id === adminSocketId || (adminUser && adminUser.role === 'superadmin')) {
             const { userSocketId, friendSocketId } = data;
             
             const user = users.get(userSocketId);
@@ -5165,6 +5322,14 @@ io.on('connection', (socket) => {
             }
             if (friendships.has(friendSocketId)) {
                 friendships.get(friendSocketId).delete(userSocketId);
+            }
+            
+            // 同时清理强制好友记录
+            if (adminForcedFriendships.has(userSocketId)) {
+                adminForcedFriendships.get(userSocketId).delete(friendSocketId);
+            }
+            if (adminForcedFriendships.has(friendSocketId)) {
+                adminForcedFriendships.get(friendSocketId).delete(userSocketId);
             }
             
             console.log(`管理员删除了好友关系: ${userSocketId} <-> ${friendSocketId}`);
@@ -5186,8 +5351,8 @@ io.on('connection', (socket) => {
 
     socket.on('admin-add-friendship', (data) => {
         // 允许管理员和超级管理员执行操作
-        const user = users.get(socket.id);
-        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
+        const adminUser = users.get(socket.id);
+        if (socket.id === adminSocketId || (adminUser && adminUser.role === 'superadmin')) {
             const { userSocketId, friendSocketId } = data;
             
             const user = users.get(userSocketId);
@@ -5216,18 +5381,30 @@ io.on('connection', (socket) => {
             friendships.get(userSocketId).add(friendSocketId);
             friendships.get(friendSocketId).add(userSocketId);
             
-            console.log(`管理员添加了好友关系: ${user.username} <-> ${friend.username}`);
+            // 记录管理员强制添加的好友关系（双方都无法删除）
+            if (!adminForcedFriendships.has(userSocketId)) {
+                adminForcedFriendships.set(userSocketId, new Set());
+            }
+            if (!adminForcedFriendships.has(friendSocketId)) {
+                adminForcedFriendships.set(friendSocketId, new Set());
+            }
+            adminForcedFriendships.get(userSocketId).add(friendSocketId);
+            adminForcedFriendships.get(friendSocketId).add(userSocketId);
             
-            // 通知双方用户
+            console.log(`管理员强制添加了好友关系: ${user.username} <-> ${friend.username}`);
+            
+            // 通知双方用户（标记为管理员强制添加）
             io.to(userSocketId).emit('friend-added', {
                 friendSocketId: friendSocketId,
                 friendUsername: friend.username,
-                friendColor: friend.color
+                friendColor: friend.color,
+                forcedByAdmin: true
             });
             io.to(friendSocketId).emit('friend-added', {
                 friendSocketId: userSocketId,
                 friendUsername: user.username,
-                friendColor: user.color
+                friendColor: user.color,
+                forcedByAdmin: true
             });
             
             // 重新发送好友列表
@@ -8758,12 +8935,26 @@ io.on('connection', (socket) => {
             return;
         }
         
+        // 检查是否是管理员强制添加的好友关系（不允许删除）
+        if (adminForcedFriendships.has(socket.id) && adminForcedFriendships.get(socket.id).has(friendSocketId)) {
+            socket.emit('friend-error', { message: '该好友由管理员强制添加，无法删除' });
+            return;
+        }
+        
         // 移除好友关系
         if (friendships.has(socket.id)) {
             friendships.get(socket.id).delete(friendSocketId);
         }
         if (friendships.has(friendSocketId)) {
             friendships.get(friendSocketId).delete(socket.id);
+        }
+        
+        // 同时清理可能存在的强制好友记录
+        if (adminForcedFriendships.has(socket.id)) {
+            adminForcedFriendships.get(socket.id).delete(friendSocketId);
+        }
+        if (adminForcedFriendships.has(friendSocketId)) {
+            adminForcedFriendships.get(friendSocketId).delete(socket.id);
         }
         
         // 通知双方
@@ -8888,6 +9079,7 @@ io.on('connection', (socket) => {
         }
         
         const friendSocketIds = friendships.get(socket.id) || new Set();
+        const forcedFriendIds = adminForcedFriendships.get(socket.id) || new Set();
         const friends = [];
         
         friendSocketIds.forEach(friendSocketId => {
@@ -8898,7 +9090,8 @@ io.on('connection', (socket) => {
                     username: friendUser.username,
                     color: friendUser.color,
                     permissions: friendUser.permissions,
-                    online: true
+                    online: true,
+                    forcedByAdmin: forcedFriendIds.has(friendSocketId)
                 });
             }
         });
