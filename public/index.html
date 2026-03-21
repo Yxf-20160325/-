@@ -76,6 +76,84 @@
             transform: scale(1.1);
         }
         
+        /* 调试菜单样式 */
+        #debugMenuModal .modal-content {
+            max-width: 700px;
+        }
+        
+        .debug-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        
+        .debug-section h4 {
+            margin-bottom: 10px;
+            color: #667eea;
+            font-size: 16px;
+        }
+        
+        .debug-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+            margin-bottom: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+        
+        .debug-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .debug-item label {
+            font-size: 14px;
+            color: #333;
+        }
+        
+        .debug-btn {
+            padding: 6px 12px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        
+        .debug-btn:hover {
+            background: #5a6fd6;
+            transform: translateY(-1px);
+        }
+        
+        .debug-btn.danger {
+            background: #dc3545;
+        }
+        
+        .debug-btn.danger:hover {
+            background: #c82333;
+        }
+        
+        #adminPasswordInput {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+        
+        .password-error {
+            color: #dc3545;
+            font-size: 14px;
+            margin-bottom: 15px;
+            display: none;
+        }
+        
         .chat-container {
             flex: 1;
             display: flex;
@@ -550,7 +628,7 @@
         }
         
         #userDetailModal .modal-content {
-            max-width: 400px;
+            max-width: 600px;
         }
         
         #userDetailContent {
@@ -841,7 +919,9 @@
             background: rgba(0, 0, 0, 0.5);
             display: none;
             justify-content: center;
-            align-items: center;
+            align-items: flex-start;
+            padding: 20px;
+            overflow-y: auto;
             z-index: 9999;
         }
         
@@ -1335,6 +1415,62 @@
             #gameModal #gamePlayers > div {
                 padding: 3px 8px !important;
                 font-size: 12px !important;
+            }
+
+            /* ====== 插件编辑器移动端优化 ====== */
+            .plugin-form label {
+                display: block;
+                margin-top: 8px;
+                font-weight: 500;
+            }
+
+            .plugin-form input,
+            .plugin-form textarea {
+                appearance: none;
+                -webkit-tap-highlight-color: transparent;
+                touch-action: manipulation;
+            }
+
+            .plugin-form input:focus,
+            .plugin-form textarea:focus {
+                outline: none;
+                border-color: #667eea;
+                box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            }
+
+            .plugin-buttons {
+                width: 100%;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .plugin-buttons button {
+                width: 100%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                min-height: 44px; /* 移动端推荐的最小触摸目标 */
+            }
+
+            /* 插件代码编辑器滚动条优化 */
+            #newPluginCode::-webkit-scrollbar {
+                width: 8px;
+                height: 8px;
+            }
+
+            #newPluginCode::-webkit-scrollbar-track {
+                background: #f1f1f1;
+                border-radius: 4px;
+            }
+
+            #newPluginCode::-webkit-scrollbar-thumb {
+                background: #888;
+                border-radius: 4px;
+            }
+
+            #newPluginCode::-webkit-scrollbar-thumb:hover {
+                background: #555;
             }
 
             /* 隐藏右侧信息面板，让棋盘占满宽度 */
@@ -2157,6 +2293,160 @@
             line-height: 1.6;
             margin-top: 6px;
         }
+
+        /* ====== 插件编辑器移动端适配 ====== */
+        @media (max-width: 768px) {
+            /* 插件管理选项卡 */
+            .admin-tab-content {
+                padding: 15px;
+            }
+
+            /* 插件列表 */
+            #pluginList {
+                max-height: 250px;
+                font-size: 13px;
+            }
+
+            /* 插件卡片 */
+            #pluginList > div[style*="background: #f8f9fa"] {
+                flex-direction: column;
+                align-items: flex-start;
+                padding: 12px;
+            }
+
+            /* 插件操作按钮 */
+            #pluginList button[onclick^="editPlugin"],
+            #pluginList button[onclick^="deletePlugin"] {
+                width: 100%;
+                padding: 8px 12px;
+                font-size: 13px;
+                margin-top: 8px;
+            }
+
+            /* 插件表单 */
+            #newPluginName,
+            #newPluginDescription {
+                padding: 12px;
+                font-size: 16px; /* 防止iOS自动缩放 */
+                -webkit-appearance: none;
+            }
+
+            /* 插件代码编辑器 */
+            #newPluginCode {
+                padding: 12px;
+                font-size: 14px;
+                line-height: 1.5;
+                min-height: 300px;
+                font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            }
+
+            /* 插件操作按钮容器 */
+            #createPluginBtn,
+            #reloadPluginsBtn {
+                width: 100%;
+                padding: 12px 20px;
+                font-size: 14px;
+                -webkit-tap-highlight-color: transparent;
+            }
+
+            /* 插件操作结果 */
+            #pluginResult {
+                font-size: 13px;
+                padding: 12px;
+            }
+
+            /* 设置模态框 */
+            #settingsModal {
+                width: 100%;
+                height: 100%;
+                max-height: 100%;
+                border-radius: 0;
+            }
+
+            #settingsModal .modal-content {
+                max-width: 100%;
+                height: 100%;
+                max-height: 100%;
+                border-radius: 0;
+                display: flex;
+                flex-direction: column;
+            }
+
+            /* 选项卡导航 */
+            .admin-tabs {
+                display: flex;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                padding-bottom: 10px;
+            }
+
+            .admin-tab {
+                white-space: nowrap;
+                padding: 10px 15px;
+                font-size: 14px;
+            }
+
+            /* 模态框按钮 */
+            .modal-buttons {
+                padding: 15px;
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+
+            .modal-buttons button {
+                flex: 1;
+                min-width: 45%;
+                padding: 12px 20px;
+                font-size: 14px;
+            }
+        }
+
+        /* 小屏手机适配 */
+        @media (max-width: 480px) {
+            /* 插件列表 */
+            #pluginList {
+                max-height: 200px;
+            }
+
+            /* 插件代码编辑器 */
+            #newPluginCode {
+                font-size: 12px;
+                min-height: 250px;
+                padding: 10px;
+            }
+
+            /* 插件表单 */
+            #newPluginName,
+            #newPluginDescription {
+                font-size: 15px;
+            }
+
+            /* 插件操作按钮 */
+            #createPluginBtn,
+            #reloadPluginsBtn {
+                padding: 10px 15px;
+                font-size: 13px;
+            }
+
+            /* 选项卡 */
+            .admin-tab {
+                padding: 8px 12px;
+                font-size: 13px;
+            }
+        }
+
+        /* 超小屏手机适配 */
+        @media (max-width: 360px) {
+            #newPluginCode {
+                font-size: 11px;
+                min-height: 200px;
+            }
+
+            .admin-tab {
+                padding: 6px 10px;
+                font-size: 12px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -2171,6 +2461,7 @@
                 <button class="header-btn" onclick="openWhiteboardModal()" title="共享白板">🖍️</button>
                 <button class="header-btn" onclick="openDocumentModal()" title="文档编辑">📄</button>
                 <button class="header-btn" id="settingsBtn" title="设置">⚙️</button>
+                <button class="header-btn" id="debugMenuBtn" title="调试菜单" onclick="openDebugMenuModal()">🔧</button>
                 <button class="header-btn" id="locationShareStatus" onclick="stopRealTimeLocationSharing()" title="停止位置共享" style="display: none; background: #dc3545; color: white; animation: pulse 1s infinite;">
                     📍
                 </button>
@@ -2915,40 +3206,48 @@
                         <!-- 创建新插件 -->
                         <div style="margin-bottom: 20px;">
                             <h5 style="margin-bottom: 10px;">创建新插件</h5>
-                            <div style="display: flex; flex-direction: column; gap: 10px;">
-                                <input type="text" id="newPluginName" placeholder="插件名称" style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 5px; font-size: 14px;">
-                                <input type="text" id="newPluginDescription" placeholder="插件描述" style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 5px; font-size: 14px;">
-                                <textarea id="newPluginCode" placeholder="插件代码 (JavaScript)" style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 5px; font-size: 14px; resize: vertical; min-height: 200px;">// 插件示例：欢迎新用户
-io.on('user-joined', (data) => {
-    const { username, roomName } = data;
-    io.to(roomName).emit('message', {
-        id: 'welcome_' + Date.now(),
-        username: '系统',
-        message: `欢迎 ${username} 加入聊天室！`,
-        type: 'text',
-        color: '#667eea',
-        timestamp: new Date().toISOString(),
-        isSystem: true
-    });
-});
+                            <div style="display: flex; flex-direction: column; gap: 10px;" class="plugin-form">
+                                <label for="newPluginName" style="font-size: 13px; color: #495057; margin-bottom: 4px;">插件名称</label>
+                                <input type="text" id="newPluginName" placeholder="输入插件名称（英文字母、数字、下划线、连字符）" style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 5px; font-size: 14px;" autocomplete="off">
 
-// 添加命令处理
-io.on('message', (data) => {
-    const { message, roomName } = data;
-    if (message.startsWith('/hello')) {
+                                <label for="newPluginDescription" style="font-size: 13px; color: #495057; margin-bottom: 4px;">插件描述</label>
+                                <input type="text" id="newPluginDescription" placeholder="简短描述插件的功能" style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 5px; font-size: 14px;" autocomplete="off">
+
+                                <label for="newPluginCode" style="font-size: 13px; color: #495057; margin-bottom: 4px;">插件代码 <span style="color: #6c757d; font-size: 11px;">(JavaScript)</span></label>
+                                <textarea id="newPluginCode" placeholder="在此输入插件代码..." style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 5px; font-size: 14px; resize: vertical; min-height: 200px; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; line-height: 1.5;" spellcheck="false">
+io.on('connection', (socket) => {
+    // 监听用户加入事件
+    socket.on('user-joined', (data) => {
+        const { username, roomName } = data;
         io.to(roomName).emit('message', {
-            id: 'hello_' + Date.now(),
-            username: '插件',
-            message: '你好！我是一个测试插件。',
+            id: 'welcome_' + Date.now(),
+            username: '系统',
+            message: `欢迎 ${username} 加入聊天室！`,
             type: 'text',
-            color: '#4CAF50',
-            timestamp: new Date().toISOString()
+            color: '#667eea',
+            timestamp: new Date().toISOString(),
+            isSystem: true
         });
-    }
+    });
+
+    // 添加命令处理
+    socket.on('message', (data) => {
+        const { message, roomName } = data;
+        if (message.startsWith('/hello')) {
+            io.to(roomName).emit('message', {
+                id: 'hello_' + Date.now(),
+                username: '插件',
+                message: '你好！我是一个测试插件。',
+                type: 'text',
+                color: '#4CAF50',
+                timestamp: new Date().toISOString()
+            });
+        }
+    });
 });</textarea>
-                                <div style="display: flex; gap: 10px;">
-                                    <button type="button" id="createPluginBtn" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px;">创建插件</button>
-                                    <button type="button" id="reloadPluginsBtn" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px;">重新加载插件</button>
+                                <div style="display: flex; gap: 10px; margin-top: 15px;" class="plugin-buttons">
+                                    <button type="button" id="createPluginBtn" style="padding: 12px 24px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: 500; -webkit-tap-highlight-color: transparent;">创建插件</button>
+                                    <button type="button" id="reloadPluginsBtn" style="padding: 12px 24px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: 500; -webkit-tap-highlight-color: transparent;">重新加载插件</button>
                                 </div>
                             </div>
                         </div>
@@ -3430,7 +3729,9 @@ io.on('message', (data) => {
     <div class="modal" id="interactiveCenterModal">
         <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
             <h3>互动中心</h3>
-            <div style="margin-bottom: 20px;">
+            
+            <!-- 游戏标签页内容 -->
+            <div id="interactiveTabGames" style="margin-bottom: 20px;">
                 <h4>在线用户</h4>
                 <div id="onlineUsersList" style="margin-bottom: 20px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
                     <p style="text-align: center; color: #6c757d;">加载中...</p>
@@ -3463,6 +3764,7 @@ io.on('message', (data) => {
                     <button onclick="openTetrisGame()" style="padding: 10px 18px; background: linear-gradient(135deg,#ff6b6b,#feca57); color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: bold; box-shadow: 0 3px 8px rgba(0,0,0,0.15); transition: transform 0.15s;">🧱 俄罗斯方块</button>
                 </div>
             </div>
+            
             <div class="modal-buttons">
                 <button type="button" class="friend-btn" onclick="closeInteractiveCenterModal()">关闭</button>
             </div>
@@ -3706,12 +4008,412 @@ io.on('message', (data) => {
         </div>
     </div>
 
+    <!-- 调试菜单模态框 -->
+    <div class="modal" id="debugMenuModal">
+        <div class="modal-content">
+            <h3>🔧 调试菜单</h3>
+            
+            <!-- 密码验证区域 -->
+            <div id="adminPasswordSection">
+                <p style="margin-bottom: 15px; color: #6c757d;">请输入管理员密码以访问调试功能</p>
+                <input type="password" id="adminPasswordInput" placeholder="输入管理员密码...">
+                <div id="adminPasswordError" class="password-error">密码错误，请重试</div>
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeDebugMenuModal()">取消</button>
+                    <button type="button" class="btn btn-confirm" onclick="checkAdminPassword()">验证</button>
+                </div>
+            </div>
+            
+            <!-- 调试功能区域（验证通过后显示） -->
+            <div id="debugContentSection" style="display: none;">
+                <!-- 系统信息 -->
+                <div class="debug-section">
+                    <h4>系统信息</h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px;">
+                        <div>Socket ID: <span id="debugSocketId" style="color: #667eea;">-</span></div>
+                        <div>当前房间: <span id="debugRoomName" style="color: #667eea;">-</span></div>
+                        <div>在线用户: <span id="debugUserCount" style="color: #667eea;">-</span></div>
+                        <div>连接状态: <span id="debugConnectionStatus" style="color: #28a745;">已连接</span></div>
+                    </div>
+                </div>
+                
+                <!-- 调试操作 -->
+                <div class="debug-section">
+                    <h4>调试操作</h4>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                        <button class="debug-btn" onclick="debugTestConnection()">测试连接</button>
+                        <button class="debug-btn" onclick="debugReconnect()">重新连接</button>
+                        <button class="debug-btn" onclick="debugClearCache()">清除缓存</button>
+                        <button class="debug-btn" onclick="debugExportLogs()">导出日志</button>
+                        <button class="debug-btn danger" onclick="debugForceRefresh()">强制刷新</button>
+                    </div>
+                </div>
+                
+                <!-- 模拟功能 -->
+                <div class="debug-section">
+                    <h4>模拟功能</h4>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                        <button class="debug-btn" onclick="debugSimulateMessage()">模拟消息</button>
+                        <button class="debug-btn" onclick="debugSimulateUserJoin()">模拟用户加入</button>
+                        <button class="debug-btn" onclick="debugSimulateUserLeave()">模拟用户离开</button>
+                        <button class="debug-btn" onclick="debugSimulateError()">模拟错误</button>
+                    </div>
+                </div>
+                
+                <!-- 开发工具 -->
+                <div class="debug-section">
+                    <h4>开发工具</h4>
+                    <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                        <button class="debug-btn" onclick="debugOpenConsole()">打开控制台</button>
+                        <button class="debug-btn" onclick="debugCheckStorage()">检查存储</button>
+                        <button class="debug-btn" onclick="debugShowPerformance()">性能监控</button>
+                        <button class="debug-btn danger" onclick="debugResetSettings()">重置设置</button>
+                    </div>
+                </div>
+                
+                <!-- 信息显示区域 -->
+                <div id="debugInfoDisplay" class="debug-section" style="display: none; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; margin-top: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h4 id="debugInfoTitle" style="margin: 0; color: #495057;">信息</h4>
+                        <button onclick="document.getElementById('debugInfoDisplay').style.display='none'" style="background: none; border: none; color: #6c757d; cursor: pointer; font-size: 18px;">×</button>
+                    </div>
+                    <pre id="debugInfoContent" style="margin: 0; font-size: 13px; color: #212529; white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow-y: auto;"></pre>
+                </div>
+                
+                <div class="modal-buttons">
+                    <button type="button" class="btn btn-cancel" onclick="closeDebugMenuModal()">关闭</button>
+                    <button type="button" class="btn btn-confirm" onclick="adminLogout()">退出管理</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="/socket.io/socket.io.js"></script>
     <script>
         // 用户详情定时器变量 - 移到最顶部确保在任何函数调用前已初始化
         var userDetailUpdateInterval = null;
         var currentDetailSocketId = null;
         
+        // 调试菜单相关变量
+        let isAdminAuthenticated = false;
+        const ADMIN_PASSWORD = 'admin123'; // 管理员密码，可修改
+
+        // 打开调试菜单
+        function openDebugMenuModal() {
+            const modal = document.getElementById('debugMenuModal');
+            const passwordSection = document.getElementById('adminPasswordSection');
+            const debugContent = document.getElementById('debugContentSection');
+            const passwordError = document.getElementById('adminPasswordError');
+            const passwordInput = document.getElementById('adminPasswordInput');
+
+            if (modal) {
+                modal.classList.add('active');
+                // 重置密码输入框
+                if (passwordInput) passwordInput.value = '';
+                if (passwordError) passwordError.style.display = 'none';
+
+                // 根据认证状态显示对应区域
+                if (isAdminAuthenticated) {
+                    passwordSection.style.display = 'none';
+                    debugContent.style.display = 'block';
+                    // 更新调试信息
+                    updateDebugInfo();
+                } else {
+                    passwordSection.style.display = 'block';
+                    debugContent.style.display = 'none';
+                }
+            }
+        }
+
+        // 关闭调试菜单
+        function closeDebugMenuModal() {
+            const modal = document.getElementById('debugMenuModal');
+            if (modal) {
+                modal.classList.remove('active');
+            }
+        }
+
+        // 验证管理员密码
+        function checkAdminPassword() {
+            const passwordInput = document.getElementById('adminPasswordInput');
+            const passwordError = document.getElementById('adminPasswordError');
+            const passwordSection = document.getElementById('adminPasswordSection');
+            const debugContent = document.getElementById('debugContentSection');
+
+            if (!passwordInput) return;
+
+            const enteredPassword = passwordInput.value;
+
+            if (enteredPassword === ADMIN_PASSWORD) {
+                // 密码正确
+                isAdminAuthenticated = true;
+                passwordError.style.display = 'none';
+                passwordSection.style.display = 'none';
+                debugContent.style.display = 'block';
+                // 更新调试信息
+                updateDebugInfo();
+                showNotification('验证成功，欢迎使用调试菜单', 'success');
+                
+                // 通知服务器管理员登录，以便获得权限修改能力
+                if (typeof socket !== 'undefined' && socket) {
+                    socket.emit('admin-login', { password: enteredPassword });
+                }
+            } else {
+                // 密码错误
+                passwordError.style.display = 'block';
+                passwordInput.value = '';
+                passwordInput.focus();
+            }
+        }
+
+        // 退出管理员登录
+        function adminLogout() {
+            isAdminAuthenticated = false;
+            const passwordSection = document.getElementById('adminPasswordSection');
+            const debugContent = document.getElementById('debugContentSection');
+            const passwordInput = document.getElementById('adminPasswordInput');
+            const passwordError = document.getElementById('adminPasswordError');
+
+            if (passwordInput) passwordInput.value = '';
+            if (passwordError) passwordError.style.display = 'none';
+            if (passwordSection) passwordSection.style.display = 'block';
+            if (debugContent) debugContent.style.display = 'none';
+
+            showNotification('已退出管理员模式', 'info');
+        }
+
+        // 更新调试信息
+        function updateDebugInfo() {
+            const socketIdEl = document.getElementById('debugSocketId');
+            const roomNameEl = document.getElementById('debugRoomName');
+            const userCountEl = document.getElementById('debugUserCount');
+            const connectionStatusEl = document.getElementById('debugConnectionStatus');
+
+            if (socketIdEl && typeof socket !== 'undefined' && socket) {
+                socketIdEl.textContent = socket.id || '-';
+            }
+            if (roomNameEl) {
+                roomNameEl.textContent = currentRoom || '-';
+            }
+            if (userCountEl) {
+                userCountEl.textContent = document.getElementById('userCount')?.textContent || '0';
+            }
+            if (connectionStatusEl && typeof socket !== 'undefined' && socket) {
+                connectionStatusEl.textContent = socket.connected ? '已连接' : '未连接';
+                connectionStatusEl.style.color = socket.connected ? '#28a745' : '#dc3545';
+            }
+        }
+
+        // 调试菜单功能函数
+        function debugOpenConsole() {
+            console.log('===== 调试信息 =====');
+            console.log('Socket ID:', socket?.id);
+            console.log('当前房间:', currentRoom);
+            console.log('用户名:', username);
+            console.log('用户权限:', userPermissions);
+            console.log('CSRF Token:', csrfToken);
+            showNotification('控制台信息已输出', 'info');
+        }
+
+        function debugCheckStorage() {
+            const storageInfo = {
+                localStorage: {},
+                sessionStorage: {}
+            };
+
+            try {
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    const value = localStorage.getItem(key);
+                    storageInfo.localStorage[key] = value.length > 100 ? value.substring(0, 100) + '...' : value;
+                }
+            } catch (e) {}
+
+            try {
+                for (let i = 0; i < sessionStorage.length; i++) {
+                    const key = sessionStorage.key(i);
+                    const value = sessionStorage.getItem(key);
+                    storageInfo.sessionStorage[key] = value.length > 100 ? value.substring(0, 100) + '...' : value;
+                }
+            } catch (e) {}
+
+            // 显示在页面上
+            const display = document.getElementById('debugInfoDisplay');
+            const title = document.getElementById('debugInfoTitle');
+            const content = document.getElementById('debugInfoContent');
+            
+            if (display && title && content) {
+                title.textContent = '存储监控';
+                content.textContent = JSON.stringify(storageInfo, null, 2);
+                display.style.display = 'block';
+                display.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+            
+            showNotification('存储信息已显示', 'success');
+        }
+
+        function debugShowPerformance() {
+            const timing = performance.timing;
+            const navigation = performance.navigation;
+            
+            const perfData = {
+                '页面加载时间': timing.loadEventEnd - timing.navigationStart + 'ms',
+                'DNS查询': timing.domainLookupEnd - timing.domainLookupStart + 'ms',
+                'TCP连接': timing.connectEnd - timing.connectStart + 'ms',
+                '请求响应': timing.responseEnd - timing.requestStart + 'ms',
+                'DOM解析': timing.domComplete - timing.domLoading + 'ms',
+                '资源数量': performance.getEntriesByType('resource').length,
+                '重定向次数': navigation.redirectCount,
+                '加载类型': navigation.type === 0 ? '正常导航' : navigation.type === 1 ? '刷新' : '后退/前进'
+            };
+            
+            // 显示在页面上
+            const display = document.getElementById('debugInfoDisplay');
+            const title = document.getElementById('debugInfoTitle');
+            const content = document.getElementById('debugInfoContent');
+            
+            if (display && title && content) {
+                title.textContent = '性能监控';
+                content.textContent = JSON.stringify(perfData, null, 2);
+                display.style.display = 'block';
+                display.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+            
+            showNotification('性能信息已显示', 'success');
+        }
+
+        function debugResetSettings() {
+            if (confirm('确定要重置所有设置吗？这将清除所有本地存储数据。')) {
+                try {
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    showNotification('设置已重置，请刷新页面', 'success');
+                } catch (e) {
+                    showNotification('重置失败: ' + e.message, 'error');
+                }
+            }
+        }
+
+        // 测试连接
+        function debugTestConnection() {
+            if (typeof socket === 'undefined' || !socket) {
+                showNotification('Socket 未初始化', 'error');
+                return;
+            }
+            try {
+                updateDebugInfo();
+                if (socket.connected) {
+                    showNotification('连接正常 - Socket ID: ' + socket.id, 'success');
+                } else {
+                    showNotification('连接异常 - Socket 未连接', 'error');
+                }
+            } catch (e) {
+                showNotification('连接测试失败: ' + e.message, 'error');
+            }
+        }
+
+        // 重新连接
+        function debugReconnect() {
+            if (typeof socket === 'undefined' || !socket) {
+                showNotification('Socket 未初始化', 'error');
+                return;
+            }
+            try {
+                showNotification('正在尝试重新连接...', 'info');
+                socket.disconnect();
+                socket.connect();
+            } catch (e) {
+                showNotification('重新连接失败: ' + e.message, 'error');
+            }
+        }
+
+        // 清除缓存
+        function debugClearCache() {
+            try {
+                const storageInfo = [];
+                if (localStorage.length > 0) {
+                    for (let i = 0; i < localStorage.length; i++) {
+                        storageInfo.push(localStorage.key(i));
+                    }
+                    localStorage.clear();
+                }
+                sessionStorage.clear();
+                showNotification('缓存已清除' + (storageInfo.length > 0 ? '（共 ' + storageInfo.length + ' 项）' : ''), 'success');
+                updateDebugInfo();
+            } catch (e) {
+                showNotification('清除缓存失败: ' + e.message, 'error');
+            }
+        }
+
+        // 模拟功能函数
+        function debugSimulateMessage() {
+            const testMessage = {
+                id: 'test_' + Date.now(),
+                username: '测试用户',
+                content: '这是一条模拟消息 - ' + new Date().toLocaleTimeString(),
+                timestamp: new Date().toISOString(),
+                type: 'text'
+            };
+            addMessageToChat(testMessage);
+            showNotification('已模拟一条消息', 'success');
+        }
+
+        function debugSimulateUserJoin() {
+            const testUser = {
+                socketId: 'test_' + Date.now(),
+                username: '模拟用户' + Math.floor(Math.random() * 1000),
+                joinTime: new Date().toISOString()
+            };
+            addSystemMessage(testUser.username + ' 加入了聊天室（模拟）');
+            showNotification('已模拟用户加入', 'success');
+        }
+
+        function debugSimulateUserLeave() {
+            addSystemMessage('模拟用户离开了聊天室');
+            showNotification('已模拟用户离开', 'success');
+        }
+
+        function debugSimulateError() {
+            console.error('模拟错误:', new Error('这是一个测试错误'));
+            showNotification('已模拟错误（请查看控制台）', 'error');
+        }
+
+        function debugExportLogs() {
+            const logs = {
+                timestamp: new Date().toISOString(),
+                userAgent: navigator.userAgent,
+                url: window.location.href,
+                localStorage: { ...localStorage },
+                consoleLogs: '请手动复制控制台日志'
+            };
+            const blob = new Blob([JSON.stringify(logs, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'debug-logs-' + Date.now() + '.json';
+            a.click();
+            URL.revokeObjectURL(url);
+            showNotification('日志已导出', 'success');
+        }
+
+        function debugForceRefresh() {
+            if (confirm('确定要强制刷新页面吗？未保存的数据将丢失。')) {
+                window.location.reload(true);
+            }
+        }
+
+        // 密码输入框回车事件
+        document.addEventListener('DOMContentLoaded', function() {
+            const passwordInput = document.getElementById('adminPasswordInput');
+            if (passwordInput) {
+                passwordInput.addEventListener('keydown', function(event) {
+                    if (event.key === 'Enter') {
+                        checkAdminPassword();
+                    }
+                });
+            }
+        });
+
 
         let username = '';
         let currentRoom = '';
@@ -3784,6 +4486,7 @@ io.on('message', (data) => {
             }
         }
         
+        // 切换互动中心标签页
         // 语音录制相关变量
         let mediaRecorder = null;
         let audioChunks = [];
@@ -4472,52 +5175,6 @@ io.on('message', (data) => {
                 console.error('Socket重连失败');
                 // 显示重连失败通知
                 showNotification('连接失败', '无法重新连接到服务器，请检查网络连接后刷新页面', '❌');
-            });
-
-            socket.on('connect_error', (error) => {
-                console.error('Socket连接错误:', error);
-                if (!connectionErrorShown) {
-                    connectionErrorShown = true;
-                    // 显示连接错误提示
-                    const modal = document.createElement('div');
-                    modal.className = 'modal active';
-                    modal.style.cssText = `
-                        position: fixed;
-                        top: 0;
-                        left: 0;
-                        width: 100%;
-                        height: 100%;
-                        background: rgba(0, 0, 0, 0.5);
-                        display: flex;
-                        justify-content: center;
-                        align-items: center;
-                        z-index: 9999;
-                    `;
-                    
-                    const modalContent = document.createElement('div');
-                    modalContent.className = 'modal-content';
-                    modalContent.style.cssText = `
-                        background: white;
-                        padding: 30px;
-                        border-radius: 10px;
-                        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-                        max-width: 500px;
-                        width: 90%;
-                        text-align: center;
-                    `;
-                    
-                    modalContent.innerHTML = `
-                        <h3 style="margin-top: 0; margin-bottom: 20px; color: #dc3545;">网络连接错误</h3>
-                        <p style="margin-bottom: 20px; font-size: 16px;">无法连接到聊天服务器，请检查网络连接后刷新页面重试。</p>
-                        <div style="display: flex; gap: 10px; justify-content: center;">
-                            <button onclick="location.reload()" style="padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px;">刷新页面</button>
-                            <button onclick="this.parentElement.parentElement.parentElement.remove()" style="padding: 10px 20px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px;">关闭</button>
-                        </div>
-                    `;
-                    
-                    modal.appendChild(modalContent);
-                    document.body.appendChild(modal);
-                }
             });
         }
 
@@ -8714,19 +9371,56 @@ io.on('message', (data) => {
         function initPluginManagement() {
             // 加载插件列表
             loadPluginsList();
-            
+
             // 绑定创建插件按钮事件
             const createPluginBtn = document.getElementById('createPluginBtn');
             if (createPluginBtn) {
                 createPluginBtn.addEventListener('click', createPlugin);
             }
-            
+
             // 绑定重新加载插件按钮事件
             const reloadPluginsBtn = document.getElementById('reloadPluginsBtn');
             if (reloadPluginsBtn) {
                 reloadPluginsBtn.addEventListener('click', reloadPlugins);
             }
+
+            // 移动端优化：调整插件代码编辑器高度
+            optimizePluginCodeEditorForMobile();
         }
+
+        // 移动端插件代码编辑器优化
+        function optimizePluginCodeEditorForMobile() {
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+            const isSmallScreen = window.innerWidth <= 768;
+
+            if (isMobile || isSmallScreen) {
+                const pluginCodeTextarea = document.getElementById('newPluginCode');
+                if (pluginCodeTextarea) {
+                    // 调整最小高度
+                    pluginCodeTextarea.style.minHeight = '250px';
+
+                    // 禁用自动滚动，避免输入法遮挡
+                    pluginCodeTextarea.addEventListener('focus', function() {
+                        setTimeout(() => {
+                            this.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }, 300);
+                    });
+
+                    // 添加触摸事件优化
+                    pluginCodeTextarea.style.touchAction = 'pan-y';
+                }
+
+                // 优化按钮布局
+                const pluginButtons = document.querySelector('.plugin-buttons');
+                if (pluginButtons) {
+                    pluginButtons.style.flexDirection = 'column';
+                    pluginButtons.style.width = '100%';
+                }
+            }
+        }
+
+        // 监听窗口大小变化，动态调整编辑器高度
+        window.addEventListener('resize', optimizePluginCodeEditorForMobile);
         
         // 加载插件列表
         async function loadPluginsList() {
@@ -16757,6 +17451,18 @@ io.on('message', (data) => {
             }
             socket.emit('add-friend', targetSocketId);
         }
+        
+        // 管理员强制添加好友（对方无法拒绝和删除）
+        function forceAddFriend(targetSocketId) {
+            if (targetSocketId === socket.id) {
+                alert('不能添加自己为好友');
+                return;
+            }
+            if (!confirm('确定要强制将该用户设为好友吗？该用户将无法删除此好友关系。')) {
+                return;
+            }
+            socket.emit('admin-add-friendship', { userSocketId: socket.id, friendSocketId: targetSocketId });
+        }
 
         // 快速添加5个好友（测试功能）
         function quickAddFriends() {
@@ -16830,7 +17536,11 @@ io.on('message', (data) => {
                 
                 // 好友被添加
                 socket.on('friend-added', (data) => {
-                    alert(`${data.friendUsername} 已添加你为好友`);
+                    if (data.forcedByAdmin) {
+                        alert(`管理员已强制将你与 ${data.friendUsername} 设为好友（无法删除）`);
+                    } else {
+                        alert(`${data.friendUsername} 已添加你为好友`);
+                    }
                     socket.emit('get-friends');
                 });
                 
@@ -16907,15 +17617,20 @@ io.on('message', (data) => {
                     this.classList.toggle('expanded');
                 };
                 
+                const forcedByAdmin = friend.forcedByAdmin;
+                const deleteBtnHtml = forcedByAdmin
+                    ? '<button class="friend-btn danger" onclick="event.stopPropagation(); alert(\'该好友由管理员强制添加，无法删除\')" style="opacity: 0.5; cursor: not-allowed;" title="管理员强制添加，无法删除">🗑️</button>'
+                    : '<button class="friend-btn danger" onclick="event.stopPropagation(); removeFriend(\'' + friend.socketId + '\')">🗑️</button>';
+                
                 friendDiv.innerHTML = `
                     <div class="friend-color" style="background: ${friend.color}"></div>
                     <div class="friend-info">
-                        <div class="friend-name">${escapeHtml(friend.username)}</div>
+                        <div class="friend-name">${escapeHtml(friend.username)}${forcedByAdmin ? ' <span style="font-size: 11px; color: #dc3545; font-weight: normal;">[管理员添加]</span>' : ''}</div>
                         <div class="friend-status">${friend.online ? '在线' : '离线'}</div>
                     </div>
                     <div class="friend-actions">
                         <button class="friend-btn" onclick="event.stopPropagation(); openPrivateChat('${friend.socketId}', '${friend.username}')">💬</button>
-                        <button class="friend-btn danger" onclick="event.stopPropagation(); removeFriend('${friend.socketId}')">🗑️</button>
+                        ${deleteBtnHtml}
                     </div>
                 `;
                 
@@ -17230,11 +17945,6 @@ io.on('message', (data) => {
         // 注册房间相关事件监听器
         function registerRoomEventListeners() {
             if (socket) {
-                // 房间加入失败
-                socket.on('join-error', (data) => {
-                    alert(data.message);
-                });
-                
                 // 房间变更通知
                 socket.on('room-changed', (data) => {
                     currentRoom = data.roomName;
@@ -18275,6 +18985,149 @@ io.on('message', (data) => {
             
             usersModal.classList.remove('active');
             userDetailTitle.textContent = '用户详情';
+            
+            const isAdmin = isAdminAuthenticated;
+            
+            let permissionsHtml = '';
+            if (isAdmin) {
+                // 管理员模式：显示可编辑的复选框
+                permissionsHtml = `
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="user-detail-perm" data-perm="allowAudio" ${parsedPermissions.allowAudio ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                                <span>发送语音</span>
+                            </label>
+                        </div>
+                        <div>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="user-detail-perm" data-perm="allowImage" ${parsedPermissions.allowImage ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                                <span>发送图片</span>
+                            </label>
+                        </div>
+                        <div>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="user-detail-perm" data-perm="allowFile" ${parsedPermissions.allowFile ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                                <span>发送文件</span>
+                            </label>
+                        </div>
+                        <div>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="user-detail-perm" data-perm="allowSendMessages" ${parsedPermissions.allowSendMessages ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                                <span>发送消息</span>
+                            </label>
+                        </div>
+                        <div>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="user-detail-perm" data-perm="allowViewMessages" ${parsedPermissions.allowViewMessages ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                                <span>查看消息</span>
+                            </label>
+                        </div>
+                        <div>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="user-detail-perm" data-perm="allowCall" ${parsedPermissions.allowCall ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                                <span>通话</span>
+                            </label>
+                        </div>
+                        <div>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="user-detail-perm" data-perm="allowAddFriends" ${parsedPermissions.allowAddFriends ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                                <span>添加好友</span>
+                            </label>
+                        </div>
+                        <div>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="user-detail-perm" data-perm="allowViewUsers" ${parsedPermissions.allowViewUsers ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                                <span>查看用户列表</span>
+                            </label>
+                        </div>
+                        <div>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="user-detail-perm" data-perm="allowPrivateChat" ${parsedPermissions.allowPrivateChat ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                                <span>允许私聊</span>
+                            </label>
+                        </div>
+                        <div>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="user-detail-perm" data-perm="allowOpenFriendsPage" ${parsedPermissions.allowOpenFriendsPage ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                                <span>允许打开好友页面</span>
+                            </label>
+                        </div>
+                        <div>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="user-detail-perm" data-perm="allowRecallMessage" ${parsedPermissions.allowRecallMessage ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                                <span>允许撤回消息</span>
+                            </label>
+                        </div>
+                        <div>
+                            <label style="display: flex; align-items: center; cursor: pointer;">
+                                <input type="checkbox" class="user-detail-perm" data-perm="allowAIChat" ${parsedPermissions.allowAIChat ? 'checked' : ''} style="margin-right: 8px; cursor: pointer;">
+                                <span>AI聊天</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #dee2e6; display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button onclick="applyUserDetailPermissions('${socketId}')" style="flex: 1; min-width: 100px; padding: 10px 20px; background: #28a745; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; font-weight: bold;">应用权限</button>
+                        <button onclick="selectAllUserDetailPerms()" style="padding: 10px 15px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;">全选</button>
+                        <button onclick="deselectAllUserDetailPerms()" style="padding: 10px 15px; background: #6c757d; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 13px;">全不选</button>
+                    </div>
+                `;
+            } else {
+                // 普通用户模式：只读显示
+                permissionsHtml = `
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div>
+                            <span>发送语音:</span>
+                            <span style="margin-left: 10px; color: ${parsedPermissions.allowAudio ? '#28a745' : '#dc3545'}">${parsedPermissions.allowAudio ? '允许' : '禁止'}</span>
+                        </div>
+                        <div>
+                            <span>发送图片:</span>
+                            <span style="margin-left: 10px; color: ${parsedPermissions.allowImage ? '#28a745' : '#dc3545'}">${parsedPermissions.allowImage ? '允许' : '禁止'}</span>
+                        </div>
+                        <div>
+                            <span>发送文件:</span>
+                            <span style="margin-left: 10px; color: ${parsedPermissions.allowFile ? '#28a745' : '#dc3545'}">${parsedPermissions.allowFile ? '允许' : '禁止'}</span>
+                        </div>
+                        <div>
+                            <span>发送消息:</span>
+                            <span style="margin-left: 10px; color: ${parsedPermissions.allowSendMessages ? '#28a745' : '#dc3545'}">${parsedPermissions.allowSendMessages ? '允许' : '禁止'}</span>
+                        </div>
+                        <div>
+                            <span>查看消息:</span>
+                            <span style="margin-left: 10px; color: ${parsedPermissions.allowViewMessages ? '#28a745' : '#dc3545'}">${parsedPermissions.allowViewMessages ? '允许' : '禁止'}</span>
+                        </div>
+                        <div>
+                            <span>通话:</span>
+                            <span style="margin-left: 10px; color: ${parsedPermissions.allowCall ? '#28a745' : '#dc3545'}">${parsedPermissions.allowCall ? '允许' : '禁止'}</span>
+                        </div>
+                        <div>
+                            <span>添加好友:</span>
+                            <span style="margin-left: 10px; color: ${parsedPermissions.allowAddFriends ? '#28a745' : '#dc3545'}">${parsedPermissions.allowAddFriends ? '允许' : '禁止'}</span>
+                        </div>
+                        <div>
+                            <span>查看用户列表:</span>
+                            <span style="margin-left: 10px; color: ${parsedPermissions.allowViewUsers ? '#28a745' : '#dc3545'}">${parsedPermissions.allowViewUsers ? '允许' : '禁止'}</span>
+                        </div>
+                        <div>
+                            <span>允许私聊:</span>
+                            <span style="margin-left: 10px; color: ${parsedPermissions.allowPrivateChat ? '#28a745' : '#dc3545'}">${parsedPermissions.allowPrivateChat ? '允许' : '禁止'}</span>
+                        </div>
+                        <div>
+                            <span>允许打开好友页面:</span>
+                            <span style="margin-left: 10px; color: ${parsedPermissions.allowOpenFriendsPage ? '#28a745' : '#dc3545'}">${parsedPermissions.allowOpenFriendsPage ? '允许' : '禁止'}</span>
+                        </div>
+                        <div>
+                            <span>允许撤回消息:</span>
+                            <span style="margin-left: 10px; color: ${parsedPermissions.allowRecallMessage ? '#28a745' : '#dc3545'}">${parsedPermissions.allowRecallMessage ? '允许' : '禁止'}</span>
+                        </div>
+                        <div>
+                            <span>AI聊天:</span>
+                            <span style="margin-left: 10px; color: ${parsedPermissions.allowAIChat ? '#28a745' : '#dc3545'}">${parsedPermissions.allowAIChat ? '允许' : '禁止'}</span>
+                        </div>
+                    </div>
+                `;
+            }
+            
             userDetailContent.innerHTML = `
                 <div style="margin-bottom: 15px;">
                     <div style="display: flex; align-items: center; margin-bottom: 10px;">
@@ -18285,134 +19138,129 @@ io.on('message', (data) => {
                         </div>
                     </div>
                     <div style="margin-bottom: 15px;">
-                        <div style="font-weight: bold; margin-bottom: 5px;">权限</div>
-                        <div class="permissions-container">
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                                <div>
-                                    <span>发送语音:</span>
-                                    <span style="margin-left: 10px; color: ${parsedPermissions.allowAudio ? '#28a745' : '#dc3545'}">${parsedPermissions.allowAudio ? '允许' : '禁止'}</span>
-                                </div>
-                                <div>
-                                    <span>发送图片:</span>
-                                    <span style="margin-left: 10px; color: ${parsedPermissions.allowImage ? '#28a745' : '#dc3545'}">${parsedPermissions.allowImage ? '允许' : '禁止'}</span>
-                                </div>
-                                <div>
-                                    <span>发送文件:</span>
-                                    <span style="margin-left: 10px; color: ${parsedPermissions.allowFile ? '#28a745' : '#dc3545'}">${parsedPermissions.allowFile ? '允许' : '禁止'}</span>
-                                </div>
-                                <div>
-                                    <span>发送消息:</span>
-                                    <span style="margin-left: 10px; color: ${parsedPermissions.allowSendMessages ? '#28a745' : '#dc3545'}">${parsedPermissions.allowSendMessages ? '允许' : '禁止'}</span>
-                                </div>
-                                <div>
-                                    <span>查看消息:</span>
-                                    <span style="margin-left: 10px; color: ${parsedPermissions.allowViewMessages ? '#28a745' : '#dc3545'}">${parsedPermissions.allowViewMessages ? '允许' : '禁止'}</span>
-                                </div>
-                                <div>
-                                    <span>通话:</span>
-                                    <span style="margin-left: 10px; color: ${parsedPermissions.allowCall ? '#28a745' : '#dc3545'}">${parsedPermissions.allowCall ? '允许' : '禁止'}</span>
-                                </div>
-                                <div>
-                                    <span>添加好友:</span>
-                                    <span style="margin-left: 10px; color: ${parsedPermissions.allowAddFriends ? '#28a745' : '#dc3545'}">${parsedPermissions.allowAddFriends ? '允许' : '禁止'}</span>
-                                </div>
-                                <div>
-                                    <span>查看用户列表:</span>
-                                    <span style="margin-left: 10px; color: ${parsedPermissions.allowViewUsers ? '#28a745' : '#dc3545'}">${parsedPermissions.allowViewUsers ? '允许' : '禁止'}</span>
-                                </div>
-                                <div>
-                                    <span>允许私聊:</span>
-                                    <span style="margin-left: 10px; color: ${parsedPermissions.allowPrivateChat ? '#28a745' : '#dc3545'}">${parsedPermissions.allowPrivateChat ? '允许' : '禁止'}</span>
-                                </div>
-                                <div>
-                                    <span>允许打开好友页面:</span>
-                                    <span style="margin-left: 10px; color: ${parsedPermissions.allowOpenFriendsPage ? '#28a745' : '#dc3545'}">${parsedPermissions.allowOpenFriendsPage ? '允许' : '禁止'}</span>
-                                </div>
-                                <div>
-                                    <span>允许撤回消息:</span>
-                                    <span style="margin-left: 10px; color: ${parsedPermissions.allowRecallMessage ? '#28a745' : '#dc3545'}">${parsedPermissions.allowRecallMessage ? '允许' : '禁止'}</span>
-                                </div>
-                                <div>
-                                    <span>AI聊天:</span>
-                                    <span style="margin-left: 10px; color: ${parsedPermissions.allowAIChat ? '#28a745' : '#dc3545'}">${parsedPermissions.allowAIChat ? '允许' : '禁止'}</span>
-                                </div>
-                            </div>
+                        <div style="font-weight: bold; margin-bottom: 5px;">权限 ${isAdmin ? '<span style="font-size:12px;color:#667eea;font-weight:normal;">（管理员可编辑）</span>' : ''}</div>
+                        <div class="permissions-container" id="userDetailPermsContainer">
+                            ${permissionsHtml}
                         </div>
                     </div>
+                    <div id="userDetailPermResult" style="margin-bottom: 10px; padding: 10px; border-radius: 8px; font-size: 13px; display: none;"></div>
                     <div style="text-align: center;">
                         <button class="btn btn-confirm" onclick="addFriend('${socketId}'); closeUserDetailModal();">添加好友</button>
+                        ${isAdmin && socketId !== socket.id ? '<button class="btn btn-warning" onclick="forceAddFriend(\'' + socketId + '\'); closeUserDetailModal();" style="margin-left: 10px; background: #e67e22; border-color: #e67e22;">强制添加好友</button>' : ''}
                     </div>
                 </div>
             `;
             
             userDetailModal.classList.add('active');
             
-            // 定义更新权限显示的函数
-            function updatePermissionsDisplay() {
-                // 从allUsers数组中获取最新的用户数据
-                const latestUser = allUsers.find(user => user.socketId === socketId);
-                if (latestUser) {
-                    const permissionsContainer = userDetailContent.querySelector('.permissions-container');
-                    if (permissionsContainer) {
-                        // 更新权限显示
-                        permissionsContainer.innerHTML = `
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                                <div>
-                                    <span>发送语音:</span>
-                                    <span style="margin-left: 10px; color: ${latestUser.permissions.allowAudio ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowAudio ? '允许' : '禁止'}</span>
+            // 管理员模式下不需要定时器（已改为复选框直接编辑）
+            // 普通用户模式下保持定时器更新
+            if (!isAdmin) {
+                function updatePermissionsDisplay() {
+                    const latestUser = allUsers.find(user => user.socketId === socketId);
+                    if (latestUser) {
+                        const permissionsContainer = userDetailContent.querySelector('.permissions-container');
+                        if (permissionsContainer) {
+                            permissionsContainer.innerHTML = `
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                    <div>
+                                        <span>发送语音:</span>
+                                        <span style="margin-left: 10px; color: ${latestUser.permissions.allowAudio ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowAudio ? '允许' : '禁止'}</span>
+                                    </div>
+                                    <div>
+                                        <span>发送图片:</span>
+                                        <span style="margin-left: 10px; color: ${latestUser.permissions.allowImage ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowImage ? '允许' : '禁止'}</span>
+                                    </div>
+                                    <div>
+                                        <span>发送文件:</span>
+                                        <span style="margin-left: 10px; color: ${latestUser.permissions.allowFile ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowFile ? '允许' : '禁止'}</span>
+                                    </div>
+                                    <div>
+                                        <span>发送消息:</span>
+                                        <span style="margin-left: 10px; color: ${latestUser.permissions.allowSendMessages ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowSendMessages ? '允许' : '禁止'}</span>
+                                    </div>
+                                    <div>
+                                        <span>查看消息:</span>
+                                        <span style="margin-left: 10px; color: ${latestUser.permissions.allowViewMessages ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowViewMessages ? '允许' : '禁止'}</span>
+                                    </div>
+                                    <div>
+                                        <span>通话:</span>
+                                        <span style="margin-left: 10px; color: ${latestUser.permissions.allowCall ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowCall ? '允许' : '禁止'}</span>
+                                    </div>
+                                    <div>
+                                        <span>添加好友:</span>
+                                        <span style="margin-left: 10px; color: ${latestUser.permissions.allowAddFriends ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowAddFriends ? '允许' : '禁止'}</span>
+                                    </div>
+                                    <div>
+                                        <span>查看用户列表:</span>
+                                        <span style="margin-left: 10px; color: ${latestUser.permissions.allowViewUsers ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowViewUsers ? '允许' : '禁止'}</span>
+                                    </div>
+                                    <div>
+                                        <span>允许私聊:</span>
+                                        <span style="margin-left: 10px; color: ${latestUser.permissions.allowPrivateChat ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowPrivateChat ? '允许' : '禁止'}</span>
+                                    </div>
+                                    <div>
+                                        <span>允许打开好友页面:</span>
+                                        <span style="margin-left: 10px; color: ${latestUser.permissions.allowOpenFriendsPage ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowOpenFriendsPage ? '允许' : '禁止'}</span>
+                                    </div>
+                                    <div>
+                                        <span>允许撤回消息:</span>
+                                        <span style="margin-left: 10px; color: ${latestUser.permissions.allowRecallMessage ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowRecallMessage ? '允许' : '禁止'}</span>
+                                    </div>
+                                    <div>
+                                        <span>AI聊天:</span>
+                                        <span style="margin-left: 10px; color: ${latestUser.permissions.allowAIChat ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowAIChat ? '允许' : '禁止'}</span>
+                                    </div>
                                 </div>
-                                <div>
-                                    <span>发送图片:</span>
-                                    <span style="margin-left: 10px; color: ${latestUser.permissions.allowImage ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowImage ? '允许' : '禁止'}</span>
-                                </div>
-                                <div>
-                                    <span>发送文件:</span>
-                                    <span style="margin-left: 10px; color: ${latestUser.permissions.allowFile ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowFile ? '允许' : '禁止'}</span>
-                                </div>
-                                <div>
-                                    <span>发送消息:</span>
-                                    <span style="margin-left: 10px; color: ${latestUser.permissions.allowSendMessages ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowSendMessages ? '允许' : '禁止'}</span>
-                                </div>
-                                <div>
-                                    <span>查看消息:</span>
-                                    <span style="margin-left: 10px; color: ${latestUser.permissions.allowViewMessages ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowViewMessages ? '允许' : '禁止'}</span>
-                                </div>
-                                <div>
-                                    <span>通话:</span>
-                                    <span style="margin-left: 10px; color: ${latestUser.permissions.allowCall ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowCall ? '允许' : '禁止'}</span>
-                                </div>
-                                <div>
-                                    <span>添加好友:</span>
-                                    <span style="margin-left: 10px; color: ${latestUser.permissions.allowAddFriends ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowAddFriends ? '允许' : '禁止'}</span>
-                                </div>
-                                <div>
-                                    <span>查看用户列表:</span>
-                                    <span style="margin-left: 10px; color: ${latestUser.permissions.allowViewUsers ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowViewUsers ? '允许' : '禁止'}</span>
-                                </div>
-                                <div>
-                                    <span>允许私聊:</span>
-                                    <span style="margin-left: 10px; color: ${latestUser.permissions.allowPrivateChat ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowPrivateChat ? '允许' : '禁止'}</span>
-                                </div>
-                                <div>
-                                    <span>允许打开好友页面:</span>
-                                    <span style="margin-left: 10px; color: ${latestUser.permissions.allowOpenFriendsPage ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowOpenFriendsPage ? '允许' : '禁止'}</span>
-                                </div>
-                                <div>
-                                    <span>允许撤回消息:</span>
-                                    <span style="margin-left: 10px; color: ${latestUser.permissions.allowRecallMessage ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowRecallMessage ? '允许' : '禁止'}</span>
-                                </div>
-                                <div>
-                                    <span>AI聊天:</span>
-                                    <span style="margin-left: 10px; color: ${latestUser.permissions.allowAIChat ? '#28a745' : '#dc3545'}">${latestUser.permissions.allowAIChat ? '允许' : '禁止'}</span>
-                                </div>
-                            </div>
-                        `;
+                            `;
+                        }
                     }
                 }
+                
+                userDetailUpdateInterval = setInterval(updatePermissionsDisplay, 2000);
+            }
+        }
+        
+        // 用户详情弹窗 - 应用权限修改
+        function applyUserDetailPermissions(targetSocketId) {
+            if (typeof socket === 'undefined' || !socket) {
+                showNotification('Socket 未连接', 'error');
+                return;
             }
             
-            // 启动每2秒更新权限的定时器
-            userDetailUpdateInterval = setInterval(updatePermissionsDisplay, 2000);
+            const checkboxes = document.querySelectorAll('.user-detail-perm');
+            const newPermissions = {};
+            checkboxes.forEach(cb => {
+                newPermissions[cb.dataset.perm] = cb.checked;
+            });
+            
+            const resultEl = document.getElementById('userDetailPermResult');
+            resultEl.style.display = 'block';
+            resultEl.style.background = '#fff3cd';
+            resultEl.style.color = '#856404';
+            resultEl.textContent = '正在应用权限...';
+            
+            socket.emit('admin-set-permissions', {
+                socketId: targetSocketId,
+                permissions: newPermissions
+            });
+            
+            resultEl.style.background = '#d4edda';
+            resultEl.style.color = '#155724';
+            resultEl.textContent = '权限已更新';
+            showNotification('用户权限已更新', 'success');
+            
+            setTimeout(() => { resultEl.style.display = 'none'; }, 3000);
+        }
+        
+        // 用户详情弹窗 - 全选权限
+        function selectAllUserDetailPerms() {
+            document.querySelectorAll('.user-detail-perm').forEach(cb => { cb.checked = true; });
+        }
+        
+        // 用户详情弹窗 - 全不选权限
+        function deselectAllUserDetailPerms() {
+            document.querySelectorAll('.user-detail-perm').forEach(cb => { cb.checked = false; });
         }
         
         // 关闭用户详情模态框
@@ -19550,10 +20398,16 @@ io.on('message', (data) => {
                 for (let x = 0; x < bs; x++) {
                     for (let y = 0; y < bs; y++) {
                         if (cellMark(board, x, y) !== 0) continue;
+                        // 检查每个方向,看是否能形成5连
                         for (const [dx, dy] of dirs) {
-                            const cnt = 1 + countDir(board, bs, x, y, dx, dy, mark)
-                                          + countDir(board, bs, x, y, -dx, -dy, mark);
-                            if (cnt >= 5) return { x, y };
+                            // 计算在正方向和负方向上的连续棋子数
+                            const posCount = countDir(board, bs, x, y, dx, dy, mark);
+                            const negCount = countDir(board, bs, x, y, -dx, -dy, mark);
+                            const total = 1 + posCount + negCount; // 1是当前位置
+                            // 只有在单一方向上达到5连才是必胜
+                            if (total >= 5) {
+                                return { x, y };
+                            }
                         }
                     }
                 }
