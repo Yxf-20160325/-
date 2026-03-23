@@ -669,14 +669,51 @@ if (!fs.existsSync(pluginDir)) {
 function loadPlugins() {
     try {
         const pluginFiles = fs.readdirSync(pluginDir).filter(file => file.endsWith('.js'));
-        
+
         pluginFiles.forEach(file => {
             try {
                 const pluginPath = path.join(pluginDir, file);
+
+                // 清除 Node.js require 缓存，确保每次都能加载最新文件内容
+                // （不清除缓存时，修改/新建插件后 require 会返回旧的缓存模块）
+                if (require.cache[require.resolve(pluginPath)]) {
+                    delete require.cache[require.resolve(pluginPath)];
+                }
+
                 const plugin = require(pluginPath);
-                
+
                 if (plugin.name && plugin.init) {
+                    // 创建一个模拟的 socket 对象,让插件能够注册消息处理函数
+                    const mockSocket = {
+                        on: (event, handler) => {
+                            if (event === 'message') {
+                                // 将消息处理函数保存到插件对象中
+                                plugin.messageHandler = handler;
+                                console.log(`插件 ${plugin.name} 注册了消息处理函数`);
+                            }
+                        },
+                        emit: (event, data) => {
+                            // 模拟 socket.emit,让插件可以发送消息
+                            console.log(`插件 ${plugin.name} 尝试发送事件: ${event}`, data);
+                        }
+                    };
+
+                    // 将 io 对象修改,让插件的 io.on('connection') 能够注册消息监听器
+                    const originalIoOn = io.on;
+                    io.on = (event, handler) => {
+                        if (event === 'connection') {
+                            // 模拟一个连接事件,让插件能够注册 socket 监听器
+                            handler(mockSocket);
+                        }
+                        return originalIoOn.call(io, event, handler);
+                    };
+
+                    // 调用插件的 init 函数
                     plugin.init(app, io, { users, rooms, messages });
+
+                    // 恢复原始的 io.on
+                    io.on = originalIoOn;
+
                     plugins.set(plugin.name, plugin);
                     console.log(`插件加载成功: ${plugin.name}`);
                 }
@@ -684,7 +721,7 @@ function loadPlugins() {
                 console.error(`加载插件 ${file} 失败:`, error);
             }
         });
-        
+
         console.log(`共加载 ${plugins.size} 个插件`);
     } catch (error) {
         console.error('加载插件失败:', error);
@@ -777,16 +814,15 @@ app.post('/api/plugins', express.json(), (req, res) => {
         }
         
         // 生成插件文件内容
+        // 注意：用户代码本身应包含 const { users, rooms, messages } = context; 这行，不在模板里重复注入
+        const indentedCode = code.split('\n').map(line => line ? '        ' + line : '').join('\n');
         const pluginContent = `// ${description || '用户自定义插件'}
 module.exports = {
     name: "${validName}",
     description: "${description || ''}",
     version: "1.0.0",
     init: function(app, io, context) {
-        const { users, rooms, messages } = context;
-        
-        // 插件初始化代码
-        ${code}
+${indentedCode}
     },
     destroy: function() {
         // 插件销毁代码
@@ -869,6 +905,165 @@ app.get('/api/plugins/:name/code', (req, res) => {
     } catch (error) {
         console.error('获取插件代码失败:', error);
         res.status(500).json({ error: '获取插件代码失败' });
+    }
+});
+
+// 导出插件API
+app.get('/api/plugins/:name/export', (req, res) => {
+    try {
+        const { name } = req.params;
+
+        // 自带插件不允许导出（可选：按需去掉此限制）
+        const builtinPlugins = ['weather'];
+        if (builtinPlugins.includes(name)) {
+            return res.status(403).json({ error: '自带插件不支持导出' });
+        }
+
+        const pluginPath = path.join(pluginDir, `${name}.js`);
+        if (!fs.existsSync(pluginPath)) {
+            return res.status(404).json({ error: '插件不存在' });
+        }
+
+        const code = fs.readFileSync(pluginPath, 'utf8');
+
+        // 提取用户代码段（init 内容）
+        // 用括号计数法精确找到 init 函数体，避免正则终止符对缩进的敏感性
+        let pluginCode = '';
+        const initStart = code.indexOf('init: function(app, io, context) {');
+        if (initStart !== -1) {
+            let braceCount = 0;
+            let bodyStart = -1;
+            let bodyEnd = -1;
+            for (let i = initStart; i < code.length; i++) {
+                if (code[i] === '{') {
+                    if (braceCount === 0) bodyStart = i + 1;
+                    braceCount++;
+                } else if (code[i] === '}') {
+                    braceCount--;
+                    if (braceCount === 0) {
+                        bodyEnd = i;
+                        break;
+                    }
+                }
+            }
+            if (bodyStart !== -1 && bodyEnd !== -1) {
+                let rawBody = code.slice(bodyStart, bodyEnd);
+                // 去掉模板自动生成的第一行（context 解构）和注释行
+                rawBody = rawBody
+                    .replace(/^\s*\n/, '')                          // 去掉开头空行
+                    .replace(/^[ \t]*const \{ users, rooms, messages \} = context;\s*\n/, '') // 去掉模板解构行
+                    .replace(/^[ \t]*\/\/ 插件初始化代码\s*\n/, '') // 去掉模板注释行
+                    .trimEnd();
+                // 统一去除最多8个空格的公共缩进
+                const lines = rawBody.split('\n');
+                const indent = lines
+                    .filter(l => l.trim())
+                    .reduce((min, l) => Math.min(min, l.match(/^(\s*)/)[1].length), 8);
+                pluginCode = lines.map(l => l.slice(indent)).join('\n').trim();
+            }
+        }
+
+        // 提取描述
+        const descMatch = code.match(/description: "([^"]*)"/);
+        const description = descMatch ? descMatch[1] : '';
+
+        // 提取版本
+        const verMatch = code.match(/version: "([^"]*)"/);
+        const version = verMatch ? verMatch[1] : '1.0.0';
+
+        const exportData = {
+            name,
+            description,
+            version,
+            code: pluginCode,
+            exportedAt: new Date().toISOString(),
+            exportedBy: 'chatroom-plugin-system'
+        };
+
+        res.setHeader('Content-Disposition', `attachment; filename="${name}.plugin.json"`);
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.json(exportData);
+    } catch (error) {
+        console.error('导出插件失败:', error);
+        res.status(500).json({ error: '导出插件失败' });
+    }
+});
+
+// 导入插件API
+app.post('/api/plugins/import', express.json(), (req, res) => {
+    try {
+        const { name, description, code } = req.body;
+
+        if (!name || !code) {
+            return res.status(400).json({ error: '缺少必要参数' });
+        }
+
+        // 验证插件名称
+        const validName = name.replace(/[^a-zA-Z0-9_-]/g, '');
+        if (!validName) {
+            return res.status(400).json({ error: '无效的插件名称' });
+        }
+
+        // 自带插件名称保护
+        const builtinPlugins = ['weather'];
+        if (builtinPlugins.includes(validName)) {
+            return res.status(403).json({ error: '不能使用内置插件名称' });
+        }
+
+        // 安全检查（与创建插件相同）
+        const unsafePatterns = [
+            'require("child_process")',
+            'require("fs")',
+            'require("net")',
+            'exec(',
+            'spawn(',
+            'fork(',
+            'fs.readFile',
+            'fs.writeFile',
+            'fs.unlink',
+            'process.exit'
+        ];
+
+        for (const pattern of unsafePatterns) {
+            if (code.includes(pattern)) {
+                return res.status(400).json({ error: '插件代码包含不安全的操作' });
+            }
+        }
+
+        // 缩进用户代码（每行加8个空格），保持文件格式整洁
+        const indentedCode = code.split('\n').map(line => line ? '        ' + line : '').join('\n');
+
+        // 生成插件文件内容（不再重复注入 context 解构，避免 "already declared" 错误）
+        const pluginContent = `// ${description || '导入的用户自定义插件'}
+module.exports = {
+    name: "${validName}",
+    description: "${description || ''}",
+    version: "1.0.0",
+    init: function(app, io, context) {
+        const { users, rooms, messages } = context;
+${indentedCode}
+    },
+    destroy: function() {
+        // 插件销毁代码
+    }
+};
+`;
+
+        const pluginPath = path.join(pluginDir, `${validName}.js`);
+        const isOverwrite = fs.existsSync(pluginPath);
+
+        fs.writeFileSync(pluginPath, pluginContent);
+        loadPlugins();
+
+        res.json({
+            success: true,
+            message: isOverwrite ? `插件 ${validName} 已覆盖导入` : `插件 ${validName} 导入成功`,
+            pluginName: validName,
+            overwritten: isOverwrite
+        });
+    } catch (error) {
+        console.error('导入插件失败:', error);
+        res.status(500).json({ error: '导入插件失败' });
     }
 });
 
@@ -3441,6 +3636,23 @@ io.on('connection', (socket) => {
                     }
 
                     console.log(`[房间 ${user.roomName}] ${user.username}: ${data.type === 'text' ? data.message : data.type}`);
+
+                    // 触发插件处理消息
+                    plugins.forEach((plugin, pluginName) => {
+                        try {
+                            // 如果插件注册了消息处理函数,调用它
+                            if (plugin.messageHandler) {
+                                plugin.messageHandler({
+                                    message: data.message,
+                                    roomName: user.roomName,
+                                    type: data.type,
+                                    ...data
+                                });
+                            }
+                        } catch (pluginError) {
+                            console.error(`[插件错误] 插件 ${pluginName} 处理消息时出错:`, pluginError);
+                        }
+                    });
                 }
 
                 // 只发送给房间内有权限查看消息的用户（包括实时位置消息）
