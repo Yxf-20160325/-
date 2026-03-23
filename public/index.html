@@ -5,9 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
     <meta http-equiv="X-XSS-Protection" content="1; mode=block">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://restapi.amap.com; media-src 'self' blob:; connect-src 'self' ws: wss: https://libretranslate.de https://api.mymemory.translated.net https://open.bigmodel.cn https://api.deepseek.com https://api.freegpt.one https://api.siliconflow.cn https://nominatim.openstreetmap.org; font-src 'self' data:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data: blob: https://restapi.amap.com; media-src 'self' blob:; connect-src 'self' ws: wss: https://libretranslate.de https://api.mymemory.translated.net https://open.bigmodel.cn https://api.deepseek.com https://api.freegpt.one https://api.siliconflow.cn https://nominatim.openstreetmap.org; font-src 'self' data:;">
     <meta name="referrer" content="strict-origin-when-cross-origin">
     <title>聊天室</title>
+    <!-- CodeMirror 编辑器（代码补全 + Tab缩进） -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/javascript-hint.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -17,7 +24,7 @@
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #f5f5f5;
             height: 100vh;
             display: flex;
             justify-content: center;
@@ -942,6 +949,46 @@
             display: flex;
             justify-content: space-between;
             margin-top: 20px;
+            gap: 10px;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            flex: 1;
+            min-width: 80px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        }
+        
+        .btn:active {
+            transform: translateY(0);
+        }
+        
+        .btn-cancel {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-cancel:hover {
+            background: #5a6268;
+        }
+        
+        .btn-confirm {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-confirm:hover {
+            background: linear-gradient(135deg, #5568d3 0%, #6a3d92 100%);
         }
         
         .modal h3 {
@@ -950,8 +997,9 @@
         }
         
         #deviceSelectContent {
-            max-height: 300px;
+            max-height: calc(100vh - 400px);
             overflow-y: auto;
+            min-height: 100px;
         }
         
         #deviceSelectContent h4 {
@@ -2795,6 +2843,83 @@
                 font-size: 12px;
             }
         }
+
+        /* CodeMirror 编辑器样式修复 */
+        #pluginEditorWrapper .CodeMirror {
+            border: none;
+            height: 300px;
+            position: relative;
+        }
+
+        #pluginEditorWrapper .CodeMirror-scroll {
+            overflow: auto;
+            min-height: 300px;
+        }
+
+        #pluginEditorWrapper .CodeMirror-gutters {
+            border-right: 1px solid #ddd;
+            padding-right: 4px;
+            background-color: #f7f7f7;
+            min-width: 45px;
+            width: 45px;
+            display: flex;
+        }
+
+        #pluginEditorWrapper .CodeMirror-linenumber {
+            padding: 0 8px 0 5px;
+            min-width: 30px;
+            text-align: right;
+            color: #999;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        #pluginEditorWrapper .CodeMirror-lines {
+            padding: 0;
+        }
+
+        #pluginEditorWrapper .CodeMirror-line {
+            padding-left: 8px;
+        }
+
+        #pluginEditorWrapper .CodeMirror-gutter-wrapper {
+            min-width: 45px;
+        }
+
+        /* 补全提示框样式 - 确保显示在编辑器上方 */
+        .CodeMirror-hints {
+            position: absolute;
+            z-index: 1000;
+            overflow: hidden;
+            list-style: none;
+            margin: 0;
+            padding: 2px;
+            -webkit-box-shadow: 2px 3px 5px rgba(0,0,0,.2);
+            -moz-box-shadow: 2px 3px 5px rgba(0,0,0,.2);
+            box-shadow: 2px 3px 5px rgba(0,0,0,.2);
+            border-radius: 3px;
+            border: 1px solid silver;
+            background: white;
+            font-size: 90%;
+            font-family: monospace;
+            max-height: 20em;
+            overflow-y: auto;
+        }
+
+        .CodeMirror-hint {
+            margin: 0;
+            padding: 0 4px;
+            max-width: 19em;
+            overflow: hidden;
+            white-space: pre;
+            color: black;
+            cursor: pointer;
+        }
+
+        .CodeMirror-hint-active {
+            background: #08f;
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -2846,7 +2971,18 @@
                             <option value="yesterday">昨天</option>
                             <option value="week">本周</option>
                             <option value="month">本月</option>
+                            <option value="custom">自定义范围</option>
                         </select>
+                    </div>
+                    <div id="customDateRange" style="flex: 1; min-width: 220px; display: none; display: flex; gap: 5px; align-items: flex-end;">
+                        <div style="flex: 1;">
+                            <label style="display: block; font-size: 12px; font-weight: bold; margin-bottom: 3px;">开始日期</label>
+                            <input type="date" id="startDate" style="width: 100%; padding: 6px; border: 1px solid #dee2e6; border-radius: 5px; font-size: 12px;">
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="display: block; font-size: 12px; font-weight: bold; margin-bottom: 3px;">结束日期</label>
+                            <input type="date" id="endDate" style="width: 100%; padding: 6px; border: 1px solid #dee2e6; border-radius: 5px; font-size: 12px;">
+                        </div>
                     </div>
                     <div style="display: flex; align-items: flex-end;">
                         <button id="searchBtn" style="padding: 6px 12px; background: #667eea; color: white; border: none; border-radius: 5px; font-size: 12px; cursor: pointer;">搜索</button>
@@ -3595,42 +3731,18 @@
                                 <label for="newPluginDescription" style="font-size: 13px; color: #495057; margin-bottom: 4px;">插件描述</label>
                                 <input type="text" id="newPluginDescription" placeholder="简短描述插件的功能" style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 5px; font-size: 14px;" autocomplete="off">
 
-                                <label for="newPluginCode" style="font-size: 13px; color: #495057; margin-bottom: 4px;">插件代码 <span style="color: #6c757d; font-size: 11px;">(JavaScript)</span></label>
-                                <textarea id="newPluginCode" placeholder="在此输入插件代码..." style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 5px; font-size: 14px; resize: vertical; min-height: 200px; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; line-height: 1.5;" spellcheck="false">
-io.on('connection', (socket) => {
-    // 监听用户加入事件
-    socket.on('user-joined', (data) => {
-        const { username, roomName } = data;
-        io.to(roomName).emit('message', {
-            id: 'welcome_' + Date.now(),
-            username: '系统',
-            message: `欢迎 ${username} 加入聊天室！`,
-            type: 'text',
-            color: '#667eea',
-            timestamp: new Date().toISOString(),
-            isSystem: true
-        });
-    });
-
-    // 添加命令处理
-    socket.on('message', (data) => {
-        const { message, roomName } = data;
-        if (message.startsWith('/hello')) {
-            io.to(roomName).emit('message', {
-                id: 'hello_' + Date.now(),
-                username: '插件',
-                message: '你好！我是一个测试插件。',
-                type: 'text',
-                color: '#4CAF50',
-                timestamp: new Date().toISOString()
-            });
-        }
-    });
-});</textarea>
+                                <label style="font-size: 13px; color: #495057; margin-bottom: 4px;">插件代码 <span style="color: #6c757d; font-size: 11px;">(JavaScript · 输入时自动显示补全)</span></label>
+                                <!-- CodeMirror 编辑器容器 -->
+                                <div id="pluginEditorWrapper" style="border: 1px solid #dee2e6; border-radius: 5px; overflow: hidden; min-height: 300px;"></div>
+                                <!-- 原始 textarea，隐藏，仅用于存储表单值 -->
+                                <textarea id="newPluginCode" style="display:none;"></textarea>
                                 <div style="display: flex; gap: 10px; margin-top: 15px;" class="plugin-buttons">
                                     <button type="button" id="createPluginBtn" style="padding: 12px 24px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: 500; -webkit-tap-highlight-color: transparent;">创建插件</button>
+                                    <button type="button" id="importPluginBtn" style="padding: 12px 24px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: 500; -webkit-tap-highlight-color: transparent;">导入插件</button>
                                     <button type="button" id="reloadPluginsBtn" style="padding: 12px 24px; background: #6c757d; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: 500; -webkit-tap-highlight-color: transparent;">重新加载插件</button>
                                 </div>
+                                <!-- 隐藏的文件输入，用于导入插件 -->
+                                <input type="file" id="importPluginFile" accept=".json,.plugin.json" style="display: none;">
                             </div>
                         </div>
                         
@@ -3651,8 +3763,8 @@ io.on('connection', (socket) => {
             <h3>选择设备</h3>
             <div id="deviceSelectContent"></div>
             <div class="modal-buttons">
-                <button type="button" class="btn btn-cancel" onclick="closeDeviceSelectModal()">取消</button>
-                <button type="button" class="btn btn-confirm" onclick="confirmDeviceSelect()">确定</button>
+                <button type="button" class="btn btn-cancel" onclick="closeDeviceSelectModal()" style="background: #6c757d; color: white; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: 500; border: none; flex: 1; min-width: 80px; transition: all 0.3s ease;">取消</button>
+                <button type="button" class="btn btn-confirm" onclick="confirmDeviceSelect()" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-size: 14px; font-weight: 500; border: none; flex: 1; min-width: 80px; transition: all 0.3s ease;">确定</button>
             </div>
         </div>
     </div>
@@ -9766,8 +9878,184 @@ io.on('connection', (socket) => {
                 reloadPluginsBtn.addEventListener('click', reloadPlugins);
             }
 
+            // 绑定导入插件按钮事件
+            const importPluginBtn = document.getElementById('importPluginBtn');
+            if (importPluginBtn) {
+                importPluginBtn.addEventListener('click', triggerImportPlugin);
+            }
+
+            // 绑定文件选择事件
+            const importPluginFile = document.getElementById('importPluginFile');
+            if (importPluginFile) {
+                importPluginFile.addEventListener('change', (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        handleImportPluginFile(file);
+                        e.target.value = ''; // 重置，允许重复导入同名文件
+                    }
+                });
+            }
+
             // 移动端优化：调整插件代码编辑器高度
             optimizePluginCodeEditorForMobile();
+
+            // 初始化 CodeMirror 代码编辑器
+            initPluginEditor();
+        }
+
+        // 默认插件代码模板
+        const DEFAULT_PLUGIN_CODE = `const { users, rooms, messages } = context;
+
+io.on('connection', (socket) => {
+    // 监听用户加入事件
+    socket.on('user-joined', (data) => {
+        const { username, roomName } = data;
+        io.to(roomName).emit('message', {
+            id: 'welcome_' + Date.now(),
+            username: '系统',
+            message: \`欢迎 \${username} 加入聊天室！\`,
+            type: 'text',
+            color: '#667eea',
+            timestamp: new Date().toISOString(),
+            isSystem: true
+        });
+    });
+
+    // 监听消息
+    socket.on('message', (data) => {
+        const { message, roomName } = data;
+        if (message.startsWith('/hello')) {
+            io.to(roomName).emit('message', {
+                id: 'hello_' + Date.now(),
+                username: '插件',
+                message: '你好！我是一个测试插件。',
+                type: 'text',
+                color: '#4CAF50',
+                timestamp: new Date().toISOString()
+            });
+        }
+    });
+});`;
+
+        // CodeMirror 编辑器实例
+        let pluginCodeMirror = null;
+
+        // 初始化 CodeMirror 编辑器
+        function initPluginEditor() {
+            const wrapper = document.getElementById('pluginEditorWrapper');
+            if (!wrapper) return;
+
+            // 每次重新初始化（防止重复）
+            if (pluginCodeMirror) {
+                pluginCodeMirror.toTextArea();
+                pluginCodeMirror = null;
+            }
+
+            // 聊天室插件 API 的自定义补全词表
+            const chatroomHint = function(cm) {
+                return {
+                    list: [
+                        { text: 'const { users, rooms, messages } = context;', displayText: 'const { users, rooms, messages } = context;' },
+                        { text: 'io.on(\'connection\', (socket) => {', displayText: 'io.on(\'connection\', (socket) => { ... })' },
+                        { text: 'socket.on(\'user-joined\', (data) => {', displayText: 'socket.on(\'user-joined\', (data) => { ... })' },
+                        { text: 'socket.on(\'message\', (data) => {', displayText: 'socket.on(\'message\', (data) => { ... })' },
+                        { text: 'io.to(roomName).emit(\'message\', {', displayText: 'io.to(roomName).emit(\'message\', { ... })' },
+                        { text: 'io.emit(\'message\', {', displayText: 'io.emit(\'message\', { ... })' },
+                        { text: 'socket.emit(\'message\', {', displayText: 'socket.emit(\'message\', { ... })' },
+                        { text: 'socket.to(roomName).emit(', displayText: 'socket.to(roomName).emit(...)' },
+                        { text: 'users.get(socket.id)', displayText: 'users.get(socket.id)' },
+                        { text: 'rooms.get(roomName)', displayText: 'rooms.get(roomName)' },
+                        { text: 'Date.now()', displayText: 'Date.now()' },
+                        { text: 'new Date().toISOString()', displayText: 'new Date().toISOString()' },
+                        { text: 'crypto.randomUUID()', displayText: 'crypto.randomUUID()' },
+                        { text: 'if (message.startsWith(\'/\')', displayText: 'if (message.startsWith(\'/\'))' },
+                        { text: 'message.trim()', displayText: 'message.trim()' },
+                        { text: 'message.slice(1)', displayText: 'message.slice(1)' },
+                    ]
+                };
+            };
+
+            pluginCodeMirror = CodeMirror(wrapper, {
+                value: DEFAULT_PLUGIN_CODE,
+                mode: 'javascript',
+                lineNumbers: true,
+                lineWrapping: true,
+                indentUnit: 4,          // Tab = 4空格
+                tabSize: 4,
+                indentWithTabs: false,  // 插入空格而非 Tab 字符
+                extraKeys: {
+                    // Tab 键插入 4 空格
+                    'Tab': function(cm) {
+                        var spaces = Array(cm.getOption('indentUnit') + 1).join(' ');
+                        cm.replaceSelection(spaces);
+                    },
+                },
+                hintOptions: {
+                    hint: chatroomHint,
+                    completeSingle: false,
+                },
+                theme: 'default',
+                gutters: ['CodeMirror-linenumbers'],
+                styleActiveLine: true,
+                matchBrackets: true,
+                autoCloseBrackets: true,
+            });
+
+            // 强制刷新编辑器以确保行号正确显示
+            setTimeout(function() {
+                pluginCodeMirror.refresh();
+            }, 100);
+
+            // 自动显示补全提示(无需快捷键)
+            pluginCodeMirror.on('inputRead', function(cm, change) {
+                if (change.origin !== '+input') return;
+                // 等待一小段时间后显示补全提示
+                setTimeout(function() {
+                    if (cm.showHint) {
+                        cm.showHint({
+                            hint: chatroomHint,
+                            completeSingle: false,
+                            completeOnSingleClick: true,
+                            alignWithWord: true,
+                        });
+                    }
+                }, 100);
+            });
+
+            // 编辑器内容变化时同步到隐藏的 textarea（供表单提交使用）
+            pluginCodeMirror.on('change', function() {
+                const textarea = document.getElementById('newPluginCode');
+                if (textarea) textarea.value = pluginCodeMirror.getValue();
+            });
+
+            // 同步初始值
+            const textarea = document.getElementById('newPluginCode');
+            if (textarea) textarea.value = pluginCodeMirror.getValue();
+
+            // 调整编辑器高度
+            pluginCodeMirror.setSize('100%', '300px');
+        }
+
+        // 获取当前编辑器内容（兼容写法）
+        function getPluginEditorValue() {
+            if (pluginCodeMirror) return pluginCodeMirror.getValue();
+            const t = document.getElementById('newPluginCode');
+            return t ? t.value : '';
+        }
+
+        // 设置编辑器内容
+        function setPluginEditorValue(code) {
+            if (pluginCodeMirror) {
+                pluginCodeMirror.setValue(code);
+            } else {
+                const t = document.getElementById('newPluginCode');
+                if (t) t.value = code;
+            }
+        }
+
+        // 清空编辑器
+        function clearPluginEditor() {
+            setPluginEditorValue(DEFAULT_PLUGIN_CODE);
         }
 
         // 移动端插件代码编辑器优化
@@ -9776,20 +10064,18 @@ io.on('connection', (socket) => {
             const isSmallScreen = window.innerWidth <= 768;
 
             if (isMobile || isSmallScreen) {
-                const pluginCodeTextarea = document.getElementById('newPluginCode');
-                if (pluginCodeTextarea) {
-                    // 调整最小高度
-                    pluginCodeTextarea.style.minHeight = '250px';
-
-                    // 禁用自动滚动，避免输入法遮挡
-                    pluginCodeTextarea.addEventListener('focus', function() {
+                // 调整 CodeMirror 编辑器高度
+                if (pluginCodeMirror) {
+                    pluginCodeMirror.setSize('100%', '250px');
+                }
+                // 编辑器获得焦点时滚动到可视区
+                const wrapper = document.getElementById('pluginEditorWrapper');
+                if (wrapper) {
+                    wrapper.addEventListener('focus', function() {
                         setTimeout(() => {
                             this.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         }, 300);
-                    });
-
-                    // 添加触摸事件优化
-                    pluginCodeTextarea.style.touchAction = 'pan-y';
+                    }, true);
                 }
 
                 // 优化按钮布局
@@ -9825,6 +10111,7 @@ io.on('connection', (socket) => {
                                 </div>
                                 <div style="display: flex; gap: 5px;">
                                     <button onclick="editPlugin('${plugin.name}')" ${plugin.isBuiltin ? 'disabled style="padding: 5px 10px; background: #667eea; color: white; border: none; border-radius: 3px; cursor: not-allowed; font-size: 12px; opacity: 0.6;"' : 'style="padding: 5px 10px; background: #667eea; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;"'}>编辑</button>
+                                    ${plugin.isBuiltin ? '' : `<button onclick="exportPlugin('${plugin.name}')" style="padding: 5px 10px; background: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">导出</button>`}
                                     <button onclick="deletePlugin('${plugin.name}')" ${plugin.isBuiltin ? 'disabled style="padding: 5px 10px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: not-allowed; font-size: 12px; opacity: 0.6;"' : 'style="padding: 5px 10px; background: #dc3545; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;"'}>删除</button>
                                 </div>
                             </div>
@@ -9847,7 +10134,7 @@ io.on('connection', (socket) => {
             try {
                 const name = document.getElementById('newPluginName').value.trim();
                 const description = document.getElementById('newPluginDescription').value.trim();
-                const code = document.getElementById('newPluginCode').value.trim();
+                const code = getPluginEditorValue().trim();
                 
                 if (!name || !code) {
                     showPluginResult('请填写插件名称和代码', 'error');
@@ -9874,7 +10161,7 @@ io.on('connection', (socket) => {
                     // 清空表单
                     document.getElementById('newPluginName').value = '';
                     document.getElementById('newPluginDescription').value = '';
-                    document.getElementById('newPluginCode').value = '';
+                    clearPluginEditor();
                     // 重新加载插件列表
                     loadPluginsList();
                 } else {
@@ -9907,7 +10194,7 @@ io.on('connection', (socket) => {
                     // 对API密钥进行打码处理
                     let code = data.code;
                     code = code.replace(/'cb9fc22848b739befe3f0b3d5e4e9248'/g, "'cb9fc**********5e4e9248' // 已打码");
-                    document.getElementById('newPluginCode').value = code;
+                    setPluginEditorValue(code);
                     showPluginResult('编辑插件: ' + data.name, 'info');
                 } else {
                     showPluginResult('获取插件代码失败: ' + (data.error || '未知错误'), 'error');
@@ -10006,6 +10293,86 @@ io.on('connection', (socket) => {
                 setTimeout(() => {
                     resultDiv.style.display = 'none';
                 }, 3000);
+            }
+        }
+        
+        // 导出插件（下载为 .plugin.json 文件）
+        async function exportPlugin(pluginName) {
+            try {
+                if (!csrfToken) {
+                    await getCsrfToken();
+                }
+                const response = await fetch(`/api/plugins/${pluginName}/export`, {
+                    headers: { 'X-CSRF-Token': csrfToken }
+                });
+                if (!response.ok) {
+                    const err = await response.json();
+                    showPluginResult('导出失败: ' + (err.error || '未知错误'), 'error');
+                    return;
+                }
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${pluginName}.plugin.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                showPluginResult(`插件 ${pluginName} 已导出`, 'success');
+            } catch (error) {
+                console.error('导出插件失败:', error);
+                showPluginResult('导出插件失败: ' + error.message, 'error');
+            }
+        }
+        
+        // 触发导入文件选择
+        function triggerImportPlugin() {
+            const fileInput = document.getElementById('importPluginFile');
+            if (fileInput) fileInput.click();
+        }
+        
+        // 读取并导入插件文件
+        async function handleImportPluginFile(file) {
+            try {
+                const text = await file.text();
+                let pluginData;
+                try {
+                    pluginData = JSON.parse(text);
+                } catch (e) {
+                    showPluginResult('文件格式错误，请选择有效的 .plugin.json 文件', 'error');
+                    return;
+                }
+                
+                const { name, description, code } = pluginData;
+                if (!name || !code) {
+                    showPluginResult('插件文件缺少必要字段（name / code）', 'error');
+                    return;
+                }
+                
+                if (!csrfToken) {
+                    await getCsrfToken();
+                }
+                
+                const response = await fetch('/api/plugins/import', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': csrfToken
+                    },
+                    body: JSON.stringify({ name, description, code })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    showPluginResult(data.message, 'success');
+                    loadPluginsList();
+                } else {
+                    showPluginResult('导入失败: ' + (data.error || '未知错误'), 'error');
+                }
+            } catch (error) {
+                console.error('导入插件失败:', error);
+                showPluginResult('导入插件失败: ' + error.message, 'error');
             }
         }
         
@@ -14489,6 +14856,10 @@ io.on('connection', (socket) => {
             }
             
             openCreatePollModal() {
+                if (!userPermissions.allowSendMessages) {
+                    alert('您没有发送消息的权限，无法创建投票');
+                    return;
+                }
                 const modal = document.getElementById('createPollModal');
                 if (modal) {
                     modal.classList.add('active');
@@ -14558,6 +14929,11 @@ io.on('connection', (socket) => {
             }
             
             createPoll() {
+                if (!userPermissions.allowSendMessages) {
+                    alert('您没有发送消息的权限，无法创建投票');
+                    this.closeCreatePollModal();
+                    return;
+                }
                 const pollQuestion = document.getElementById('pollQuestion');
                 const pollOptionsContainer = document.getElementById('pollOptionsContainer');
                 const pollDuration = document.getElementById('pollDuration');
@@ -16255,14 +16631,20 @@ io.on('connection', (socket) => {
                 width: 90%;
             `;
             
+            // 检测是否为 HTTP 非安全环境（localhost 除外）
+            const isInsecure = location.protocol === 'http:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1';
+            const disabledStyle = isInsecure ? 'opacity:0.45; cursor:not-allowed; pointer-events:none;' : '';
+            const httpsHint = isInsecure ? `<div style="margin-bottom:14px; padding:10px 12px; background:#fff3cd; border:1px solid #ffc107; border-radius:6px; font-size:13px; color:#856404;">⚠️ 当前为 HTTP 环境，地理定位不可用，请升级至 HTTPS 后使用</div>` : '';
+
             modalContent.innerHTML = `
                 <h3 style="margin-top: 0; margin-bottom: 20px;">位置共享</h3>
+                ${httpsHint}
                 <div style="display: flex; flex-direction: column; gap: 15px;">
-                    <button class="friend-btn" onclick="sendCurrentLocation(); closeLocationOptionsModal();" style="padding: 15px; font-size: 16px; display: flex; align-items: center; gap: 10px;">
+                    <button class="friend-btn" onclick="sendCurrentLocation(); closeLocationOptionsModal();" style="padding: 15px; font-size: 16px; display: flex; align-items: center; gap: 10px; ${disabledStyle}">
                         <span>📍</span>
                         <span>发送当前位置</span>
                     </button>
-                    <button class="friend-btn" onclick="shareRealTimeLocation(); closeLocationOptionsModal();" style="padding: 15px; font-size: 16px; display: flex; align-items: center; gap: 10px;">
+                    <button class="friend-btn" onclick="shareRealTimeLocation(); closeLocationOptionsModal();" style="padding: 15px; font-size: 16px; display: flex; align-items: center; gap: 10px; ${disabledStyle}">
                         <span>🔄</span>
                         <span>共享实时位置</span>
                     </button>
@@ -16595,11 +16977,7 @@ io.on('connection', (socket) => {
             // 生成实时位置消息ID
             realTimeLocationMessageId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
             
-            alert('开始共享实时位置，每30秒更新一次');
-            
             console.log('位置共享状态指示器已显示');
-
-            
             console.log('共享实时位置函数被调用，isSharingRealTimeLocation:', isSharingRealTimeLocation);
             
             // 优化定位参数，减少多次定位
@@ -16615,6 +16993,7 @@ io.on('connection', (socket) => {
             navigator.geolocation.getCurrentPosition(
                 (position) => {
                     console.log('获取实时位置成功，精度:', position.coords.accuracy, '米');
+                    alert('开始共享实时位置，每30秒更新一次');
                     
                     // 立即发送一次当前位置
                     const latitude = position.coords.latitude;
@@ -16650,8 +17029,20 @@ io.on('connection', (socket) => {
                 },
                 (error) => {
                     console.error('获取实时位置失败:', error);
+                    // 重置共享状态，并确保顶部按钮隐藏
                     isSharingRealTimeLocation = false;
-                    alert('获取实时位置失败，请检查位置权限设置');
+                    realTimeLocationMessageId = null;
+                    document.getElementById('locationShareStatus').style.display = 'none';
+                    // 根据具体错误给出更明确的提示
+                    if (error.code === 1) {
+                        alert('位置权限已被拒绝，请在浏览器地址栏左侧点击锁图标，手动开启位置权限后重试');
+                    } else if (error.code === 2) {
+                        alert('无法获取位置信息，请检查设备定位是否已开启');
+                    } else if (error.code === 3) {
+                        alert('获取位置超时，请检查网络或设备定位后重试');
+                    } else {
+                        alert('获取实时位置失败，请检查位置权限设置');
+                    }
                 },
                 options
             );
@@ -19580,6 +19971,11 @@ io.on('connection', (socket) => {
         isRecording = false;
         let isDeviceSelectModalOpen = false;
         let isVideoCall = false;
+        let pendingCallAction = null;  // 挂起的通话操作（设备选择前的通话信息）
+        let selectedVideoDeviceId = null;  // 选中的摄像头设备ID
+        let selectedAudioDeviceId = null;  // 选中的音频设备ID
+        let availableVideoDevices = [];    // 可用的摄像头设备列表
+        let availableAudioDevices = [];    // 可用的音频设备列表
         
         // 媒体源和缓冲区
         let mediaSource = null;
@@ -19636,12 +20032,42 @@ io.on('connection', (socket) => {
                     throw new Error('未检测到麦克风设备');
                 }
                 
-                // 如果有多个设备，显示设备选择界面
+                // 检查是否有保存的偏好设备
+                const prefVideo = localStorage.getItem('preferredVideoDeviceId');
+                const prefAudio = localStorage.getItem('preferredAudioDeviceId');
+                
+                // 验证保存的偏好设备是否仍然可用
+                const hasValidPrefVideo = prefVideo && videoDevices.find(d => d.deviceId === prefVideo);
+                const hasValidPrefAudio = prefAudio && audioDevices.find(d => d.deviceId === prefAudio);
+                
+                // 如果都有有效的偏好设备，直接使用，无需显示模态框
+                if (hasValidPrefVideo && hasValidPrefAudio) {
+                    selectedVideoDeviceId = prefVideo;
+                    selectedAudioDeviceId = prefAudio;
+                    // 直接跳过模态框，使用已保存的设备发起通话
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            deviceId: { exact: selectedAudioDeviceId }
+                        },
+                        video: {
+                            width: { ideal: 640 },
+                            height: { ideal: 480 },
+                            facingMode: 'user',
+                            deviceId: { exact: selectedVideoDeviceId }
+                        }
+                    });
+                    await callSystem.initiateCall(targetSocketId, 'video', targetUsername, stream);
+                    return;
+                }
+                
+                // 如果没有有效的偏好设备，或有多个设备，显示设备选择界面
                 if (videoDevices.length > 1 || audioDevices.length > 1) {
                     availableVideoDevices = videoDevices;
                     availableAudioDevices = audioDevices;
-                    selectedVideoDeviceId = videoDevices[0].deviceId;
-                    selectedAudioDeviceId = audioDevices[0].deviceId;
+                    selectedVideoDeviceId = hasValidPrefVideo ? prefVideo : videoDevices[0].deviceId;
+                    selectedAudioDeviceId = hasValidPrefAudio ? prefAudio : audioDevices[0].deviceId;
                     pendingCallAction = { type: 'video', targetSocketId, targetUsername };
                     showDeviceSelectModal();
                     return;
@@ -19720,7 +20146,31 @@ io.on('connection', (socket) => {
                     throw new Error('未检测到麦克风设备');
                 }
                 
-                // 如果有多个设备，显示设备选择界面
+                // 检查是否有保存的偏好音频设备
+                const prefAudio = localStorage.getItem('preferredAudioDeviceId');
+                const hasValidPrefAudio = prefAudio && audioDevices.find(d => d.deviceId === prefAudio);
+                
+                // 如果有有效的偏好音频设备，直接使用，无需显示模态框
+                if (hasValidPrefAudio) {
+                    selectedAudioDeviceId = prefAudio;
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            deviceId: { exact: selectedAudioDeviceId }
+                        }
+                    });
+                    localStream = stream;
+                    socket.emit('call-request', {
+                        targetSocketId: targetSocketId,
+                        callId: currentCallId,
+                        type: 'audio',
+                        fromUsername: username
+                    });
+                    return;
+                }
+                
+                // 如果没有有效的偏好设备，或有多个设备，显示设备选择界面
                 if (audioDevices.length > 1) {
                     availableVideoDevices = [];
                     availableAudioDevices = audioDevices;
@@ -20586,9 +21036,13 @@ io.on('connection', (socket) => {
                 window.availableVideoDevices = videoDevices;
                 window.availableAudioDevices = audioDevices;
                 
-                // 初始化选中的设备ID
-                window.selectedVideoDeviceId = videoDevices.length > 0 ? videoDevices[0].deviceId : null;
-                window.selectedAudioDeviceId = audioDevices.length > 0 ? audioDevices[0].deviceId : null;
+                // 初始化选中的设备ID（优先使用用户保存的偏好）
+                const prefVideo = localStorage.getItem('preferredVideoDeviceId');
+                const prefAudio = localStorage.getItem('preferredAudioDeviceId');
+                window.selectedVideoDeviceId = (prefVideo && videoDevices.find(d => d.deviceId === prefVideo))
+                    ? prefVideo : (videoDevices.length > 0 ? videoDevices[0].deviceId : null);
+                window.selectedAudioDeviceId = (prefAudio && audioDevices.find(d => d.deviceId === prefAudio))
+                    ? prefAudio : (audioDevices.length > 0 ? audioDevices[0].deviceId : null);
                 
                 // 清空内容并重新开始构建UI
                 deviceSelectContent.innerHTML = '';
@@ -20718,6 +21172,14 @@ io.on('connection', (socket) => {
         // 确认设备选择
         function confirmDeviceSelect() {
             if (pendingCallAction) {
+                // 保存用户选择的设备到localStorage，下次默认使用这些设备
+                if (selectedVideoDeviceId) {
+                    localStorage.setItem('preferredVideoDeviceId', selectedVideoDeviceId);
+                }
+                if (selectedAudioDeviceId) {
+                    localStorage.setItem('preferredAudioDeviceId', selectedAudioDeviceId);
+                }
+                
                 deviceSelectModal.classList.remove('active');
                 isDeviceSelectModalOpen = false;
                 
@@ -20737,6 +21199,21 @@ io.on('connection', (socket) => {
                         startAudioCallWithDevice(pendingCallAction.targetSocketId, pendingCallAction.targetUsername, selectedAudioDeviceId);
                     }
                 }
+            } else {
+                // 从设置页面打开：保存默认设备偏好并关闭
+                try {
+                    if (selectedVideoDeviceId) {
+                        localStorage.setItem('preferredVideoDeviceId', selectedVideoDeviceId);
+                    }
+                    if (selectedAudioDeviceId) {
+                        localStorage.setItem('preferredAudioDeviceId', selectedAudioDeviceId);
+                    }
+                } catch (e) {
+                    console.warn('保存设备偏好失败:', e);
+                }
+                deviceSelectModal.classList.remove('active');
+                isDeviceSelectModalOpen = false;
+                alert('设备偏好已保存，下次通话将优先使用所选设备');
             }
         }
         
