@@ -2181,8 +2181,6 @@ function processMessageBatch(socketId) {
 function sendBatchMessage(socketId, message) {
     if (!messageBatches.has(socketId)) {
         messageBatches.set(socketId, []);
-        // 设置定时处理批次
-        setTimeout(() => processMessageBatch(socketId), BATCH_INTERVAL);
     }
     
     const batch = messageBatches.get(socketId);
@@ -2191,6 +2189,9 @@ function sendBatchMessage(socketId, message) {
     // 如果批次大小达到上限，立即处理
     if (batch.length >= MAX_BATCH_SIZE) {
         processMessageBatch(socketId);
+    } else if (batch.length === 1) {
+        // 只有当批次为空时才设置定时器，确保每次有新消息时都会处理
+        setTimeout(() => processMessageBatch(socketId), BATCH_INTERVAL);
     }
 }
 
@@ -7380,6 +7381,7 @@ io.on('connection', (socket) => {
     // 猜数字游戏逻辑（1-100，双方轮流猜同一个数，猜对者赢）
     function createGuessNumberGame(creator, roomName) {
         const gameId = `guess-number-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const secret = Math.floor(Math.random() * 100) + 1; // 服务端随机生成的唯一秘密数字，双方轮流猜它
         const game = {
             id: gameId,
             type: 'guess-number',
@@ -7389,7 +7391,7 @@ io.on('connection', (socket) => {
             players: [creator.socketId],
             spectators: [],
             status: 'waiting',       // waiting → playing → ended
-            secret: null,            // 服务端随机生成的唯一秘密数字，双方轮流猜它
+            secret: secret,
             guesses: {},             // Map<socketId, [{guess, result, timestamp}]>
             guessCounts: {},         // Map<socketId, number>
             currentGuesser: null,    // 当前该谁猜
@@ -7398,6 +7400,7 @@ io.on('connection', (socket) => {
             winner: null
         };
         games.set(gameId, game);
+        console.log(`[猜数字游戏] 游戏 ${gameId} 创建，秘密数字：${secret}`);
         return game;
     }
 
@@ -7406,8 +7409,7 @@ io.on('connection', (socket) => {
         if (!game || game.status !== 'waiting' || game.players.length >= 2) return null;
 
         game.players.push(playerSocketId);
-        // 生成唯一秘密数字，双方轮流猜它
-        game.secret = Math.floor(Math.random() * 100) + 1;
+        // 秘密数字已经在创建游戏时生成
         game.players.forEach(pid => {
             game.guesses[pid] = [];
             game.guessCounts[pid] = 0;
@@ -8718,8 +8720,21 @@ io.on('connection', (socket) => {
     // ---- 开发者：获取猜数字秘密数字 ----
     socket.on('dev-get-secret', (data) => {
         if (!data || !data.gameId) return;
-        const game = games.get(data.gameId);
+        // 尝试通过 gameId 获取游戏
+        let game = games.get(data.gameId);
+        
+        // 如果没找到，尝试遍历所有游戏查找
+        if (!game || game.type !== 'guess-number') {
+            for (const [id, g] of games.entries()) {
+                if (g.type === 'guess-number' && (g.id === data.gameId || g.gameId === data.gameId)) {
+                    game = g;
+                    break;
+                }
+            }
+        }
+        
         if (!game || game.type !== 'guess-number') return;
+        
         // 只向请求者本人下发，不广播
         socket.emit('dev-secret-reveal', {
             gameId: game.id,
