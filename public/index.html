@@ -45,9 +45,10 @@
 
         .header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            color: #fff;
             padding: 20px;
             text-align: center;
+            border-bottom: 1px solid #e9ecef;
         }
 
         .header h1 {
@@ -57,7 +58,7 @@
 
         .header .online-count {
             font-size: 14px;
-            opacity: 0.9;
+            color: #888;
         }
         
         .header-actions {
@@ -68,7 +69,7 @@
         }
         
         .header-btn {
-            background: rgba(255, 255, 255, 0.2);
+            background: #f0f0f0;
             border: none;
             border-radius: 50%;
             width: 40px;
@@ -79,7 +80,7 @@
         }
         
         .header-btn:hover {
-            background: rgba(255, 255, 255, 0.3);
+            background: #e0e0e0;
             transform: scale(1.1);
         }
         
@@ -9001,6 +9002,14 @@
             socket.on('rps-waiting', (data) => {
                 if (!rpsGame || rpsGame.gameId !== data.gameId) return;
                 // 只是对方没出招，保持等待
+                // 开发者模式：获取对方的出招
+                if (data.devOpponentChoice) {
+                    window._devRpsOpponentChoice = data.devOpponentChoice;
+                    // 刷新开发者控制台
+                    if (devUnlocked) {
+                        refreshDevPanel('rps');
+                    }
+                }
             });
 
             socket.on('rps-update', (data) => {
@@ -21607,10 +21616,46 @@ io.on('connection', (socket) => {
                         每次有人猜测后，重新打开控制台可获得最新范围。
                     </p>
                     <hr class="dev-separator">
+                    <h4>💡 开发者功能</h4>
+                    <div id="devGnSecretNumber" class="dev-info-row" style="flex-wrap:wrap;">
+                        <span class="dev-info-label">秘密数字</span>
+                        <span class="dev-info-value">获取中...</span>
+                    </div>
+                    <hr class="dev-separator">
                     <h4>⚡ 快速操作</h4>
                     <button class="dev-action-btn success" onclick="devGnGuessRange()">猜范围中间值</button>
+                    <button class="dev-action-btn" onclick="devGnGetSecret()">🔍 获取秘密数字</button>
                     <button class="dev-action-btn" onclick="devGnRefresh()">🔄 刷新</button>
                 `;
+
+                // 不要自动获取秘密数字，避免重复请求
+                // 只有在用户点击按钮时才获取
+            }
+
+            // 猜数字：获取秘密数字
+            window.devGnGetSecret = function() {
+                if (typeof gnGame === 'undefined' || !gnGame) return;
+                if (typeof socket === 'undefined') return;
+                
+                const secretEl = document.getElementById('devGnSecretNumber');
+                if (secretEl) {
+                    secretEl.innerHTML = `<span class="dev-info-label">秘密数字</span>
+                        <span class="dev-info-value">获取中...</span>`;
+                }
+
+                socket.emit('dev-get-secret', { gameId: gnGame.gameId });
+            };
+
+            // 监听秘密数字获取结果
+            if (typeof socket !== 'undefined') {
+                socket.on('dev-secret-reveal', (data) => {
+                    const secretEl = document.getElementById('devGnSecretNumber');
+                    if (secretEl) {
+                        // 直接更新秘密数字，不做游戏ID比较
+                        secretEl.innerHTML = `<span class="dev-info-label">秘密数字</span>
+                            <span class="dev-info-value highlight">${data.secret}</span> ← 就是这个！`;
+                    }
+                });
             }
 
             // 猜数字：自动猜范围中间值
