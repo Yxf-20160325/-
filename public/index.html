@@ -3167,6 +3167,42 @@
             }
         }
 
+        /* ====== 手机端通话界面适配 ====== */
+        @media (max-width: 768px) {
+            /* 手机端隐藏噪音监测面板 */
+            .noise-indicator {
+                display: none !important;
+            }
+            
+            /* 手机端视频控制按钮布局优化 */
+            .video-controls {
+                flex-wrap: wrap;
+                justify-content: center;
+                max-width: 100%;
+                padding: 0 10px;
+                gap: 8px;
+            }
+            
+            .video-control-btn {
+                width: 44px;
+                height: 44px;
+                font-size: 18px;
+            }
+        }
+        
+        /* 小屏手机进一步优化 */
+        @media (max-width: 480px) {
+            .video-controls {
+                gap: 6px;
+            }
+            
+            .video-control-btn {
+                width: 40px;
+                height: 40px;
+                font-size: 16px;
+            }
+        }
+
         /* 超小屏手机适配 */
         @media (max-width: 360px) {
             #newPluginCode {
@@ -17823,8 +17859,9 @@ io.on('connection', (socket) => {
                         callSystem.updateNoiseReductionButton();
                         callSystem.updateAudioProcessing();
                         
-                        // 同时更新噪声监测指示器的显示
-                        if (newState && !document.getElementById('noiseIndicator').classList.contains('active')) {
+                        // 同时更新噪声监测指示器的显示（手机端不自动显示）
+                        const isMobile = window.innerWidth <= 768;
+                        if (newState && !isMobile && !document.getElementById('noiseIndicator').classList.contains('active')) {
                             document.getElementById('noiseIndicator').classList.add('active');
                         }
                     }
