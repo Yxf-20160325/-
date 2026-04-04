@@ -119,8 +119,8 @@ app.use((req, res, next) => {
     res.setHeader('X-Frame-Options', 'DENY');
     // 【安全】不向第三方泄露完整 Referer URL
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    // 【安全】限制浏览器功能（摄像头/麦克风仅限同源）
-    res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()');
+    // 【安全】限制浏览器功能（摄像头/麦克风仅限同源，地理位置允许同源使用）
+    res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self)');
     // 【安全】启用旧版 XSS Filter（部分老浏览器）
     res.setHeader('X-XSS-Protection', '1; mode=block');
     next();
