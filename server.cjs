@@ -6266,6 +6266,16 @@ io.on('connection', (socket) => {
         }
     });
     
+    socket.on('whiteboard-redo', (data) => {
+        const user = users.get(socket.id);
+        if (user) {
+            // 广播重做事件给房间内所有用户
+            socket.to(user.roomName).emit('whiteboard-redo', {
+                username: user.username
+            });
+        }
+    });
+    
     socket.on('whiteboard-save', (data) => {
         const user = users.get(socket.id);
         if (user) {
@@ -8294,41 +8304,56 @@ io.on('connection', (socket) => {
 
     socket.on('message-recall', (messageId) => {
         const user = users.get(socket.id);
-        if (user) {
-            // 检查撤回消息权限
-            if (!user.permissions.allowRecallMessage) {
-                socket.emit('permission-denied', { message: '您没有撤回消息的权限' });
-                return;
-            }
-            
-            const room = rooms.get(user.roomName);
-            if (room) {
-                // 查找要撤回的消息
-                const messageIndex = room.messages.findIndex(msg => msg.id === messageId);
-                if (messageIndex !== -1) {
-                    const message = room.messages[messageIndex];
-                    if (message.senderSocketId === socket.id) {
-                        // 从房间消息数组中完全删除消息
-                        room.messages.splice(messageIndex, 1);
-                        
-                        // 从全局消息Map中删除消息
-                        messages.delete(messageId);
-                        
-                        // 发送撤回通知给房间内所有用户
-                        room.users.forEach(userId => {
-                            io.to(userId).emit('message-recalled', messageId);
-                        });
-                        
-                        // 发送给管理员
-                        if (adminSocketId) {
-                            io.to(adminSocketId).emit('message-recalled', messageId);
-                        }
-                        
-                        console.log(`[房间 ${user.roomName}] ${message.username} 撤回了一条消息（已从历史中删除）`);
-                    }
-                }
-            }
+        if (!user) {
+            socket.emit('recall-failed', { message: '用户未登录，无法撤回消息' });
+            return;
         }
+        
+        // 检查撤回消息权限
+        if (!user.permissions.allowRecallMessage) {
+            socket.emit('permission-denied', { message: '您没有撤回消息的权限' });
+            return;
+        }
+        
+        const room = rooms.get(user.roomName);
+        if (!room) {
+            socket.emit('recall-failed', { message: '房间不存在' });
+            return;
+        }
+        
+        // 查找要撤回的消息
+        const messageIndex = room.messages.findIndex(msg => msg.id === messageId);
+        if (messageIndex === -1) {
+            socket.emit('recall-failed', { message: '消息不存在或已被删除' });
+            return;
+        }
+        
+        const message = room.messages[messageIndex];
+        if (message.senderSocketId !== socket.id) {
+            socket.emit('recall-failed', { message: '只能撤回自己发送的消息' });
+            return;
+        }
+        
+        // 从房间消息数组中完全删除消息
+        room.messages.splice(messageIndex, 1);
+        
+        // 从全局消息Map中删除消息
+        messages.delete(messageId);
+        
+        // 发送撤回通知给房间内所有用户
+        room.users.forEach(userId => {
+            io.to(userId).emit('message-recalled', messageId);
+        });
+        
+        // 发送给管理员
+        if (adminSocketId) {
+            io.to(adminSocketId).emit('message-recalled', messageId);
+        }
+        
+        // 通知发送者撤回成功
+        socket.emit('recall-success', { messageId });
+        
+        console.log(`[房间 ${user.roomName}] ${message.username} 撤回了一条消息（已从历史中删除）`);
     });
 
     // 消息反应功能

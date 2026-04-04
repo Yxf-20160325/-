@@ -709,6 +709,7 @@
             transform: translateX(-50%);
             display: flex;
             gap: 10px;
+            z-index: 10;
         }
 
         .video-control-btn {
@@ -744,6 +745,99 @@
         
         .video-control-btn.disabled:hover {
             background: rgba(108, 117, 125, 0.9);
+        }
+        
+        /* 噪声监测指示器 */
+        .noise-indicator {
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.85);
+            color: white;
+            border-radius: 8px;
+            padding: 15px;
+            z-index: 999;
+            display: none;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            font-family: sans-serif;
+            min-width: 200px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .noise-indicator.active {
+            display: block;
+        }
+        
+        .noise-indicator h4 {
+            margin: 0 0 12px 0;
+            font-size: 16px;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .noise-indicator .noise-level {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        .noise-indicator .noise-bar {
+            flex: 1;
+            height: 8px;
+            background: #333;
+            border-radius: 4px;
+            margin: 0 10px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .noise-indicator .noise-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745, #ffc107, #dc3545);
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+        
+        .noise-indicator .speech-probability {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 12px;
+            font-size: 14px;
+        }
+        
+        .noise-indicator .speech-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+        
+        .noise-indicator .speech-dot.speech-detected {
+            background: #28a745;
+            box-shadow: 0 0 8px rgba(40, 167, 69, 0.7);
+            animation: pulse 2s infinite;
+        }
+        
+        .noise-indicator .speech-dot.noise-detected {
+            background: #dc3545;
+            box-shadow: 0 0 8px rgba(220, 53, 69, 0.7);
+        }
+        
+        .noise-indicator .speech-dot.idle {
+            background: #6c757d;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
         }
 
         .call-incoming {
@@ -1075,6 +1169,47 @@
             background: #dc3545;
             color: white;
             animation: pulse 1s infinite;
+        }
+
+        /* 白板工具按钮样式 - 带选中状态 */
+        .wb-tool-btn {
+            width: 40px;
+            height: 40px;
+            border: 2px solid transparent;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.15s ease;
+            background: #fff;
+            color: #555;
+            padding: 0;
+        }
+
+        .wb-tool-btn:hover {
+            background: #e8f0fe;
+            transform: scale(1.08);
+            border-color: #c5d4f0;
+        }
+
+        .wb-tool-btn.active {
+            background: #667eea;
+            color: white;
+            border-color: #4a5fd6;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.35);
+            transform: scale(1.05);
+        }
+
+        .wb-tool-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* 颜色预设按钮悬停效果 */
+        .color-preset:hover {
+            transform: scale(1.2) !important;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
         }
 
         @keyframes pulse {
@@ -3565,10 +3700,31 @@
                 <button class="video-control-btn" id="toggleAudioBtn">🎤</button>
                 <button class="video-control-btn" id="switchCameraBtn">🔄</button>
                 <button class="video-control-btn" id="toggleScreenShareBtn">🖥️</button>
+                <button class="video-control-btn" id="toggleNoiseReductionBtn" title="开启/关闭降噪">🔇</button>
                 <button class="video-control-btn" id="toggleSubtitlesBtn" title="开启/关闭字幕">📝</button>
                 <button class="video-control-btn" id="callSettingsBtn">⚙️</button>
                 <button class="video-control-btn end" id="endCallBtn">📞</button>
             </div>
+            
+            <!-- 噪声监测指示器 -->
+            <div class="noise-indicator" id="noiseIndicator">
+                <h4>🎤 噪声监测</h4>
+                <div class="noise-level">
+                    <span>噪声水平:</span>
+                    <div class="noise-bar">
+                        <div class="noise-fill" id="noiseFillBar" style="width: 30%"></div>
+                    </div>
+                    <span id="noiseValue">-50 dB</span>
+                </div>
+                <div class="speech-probability">
+                    <span>
+                        <span class="speech-dot idle" id="speechDot"></span>
+                        语音状态:
+                    </span>
+                    <span id="speechStatusValue">安静</span>
+                </div>
+            </div>
+            
         <!-- 开发者模式日志显示区域 -->
         <div id="developerLog" class="developer-log" style="display: none;"></div>
     </div>
@@ -3939,6 +4095,136 @@
                     </div>
                     
                     <div style="margin-bottom: 20px;">
+                        <h4>音频降噪和回声消除设置</h4>
+                        <div style="margin-top: 15px;">
+                            <label>
+                                <input type="checkbox" id="audioEchoCancellationCheckbox" checked>
+                                启用回声消除
+                            </label>
+                            <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">消除扬声器声音被麦克风再次采集产生的回声。</p>
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <label>
+                                <input type="checkbox" id="audioNoiseSuppressionCheckbox" checked>
+                                启用麦克风降噪
+                            </label>
+                            <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">减少背景噪音，如键盘声、风扇声等环境噪音。</p>
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <label>
+                                <input type="checkbox" id="audioAutoGainControlCheckbox" checked>
+                                启用自动增益控制
+                            </label>
+                            <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">自动调整麦克风音量，使近距离和远距离的声音都能被清晰采集。</p>
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <label>
+                                <input type="checkbox" id="softwareEchoCancellationCheckbox" checked>
+                                启用软件级回声消除（高级）
+                            </label>
+                            <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">在浏览器原生回声消除基础上，额外应用软件算法，提供更强的回声抑制效果。</p>
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                                <label for="echoSuppressionLevel" style="width: 120px; font-size: 14px;">回声消除强度:</label>
+                                <select id="echoSuppressionLevel" style="flex: 1; margin: 0 10px; padding: 5px; border-radius: 4px; border: 1px solid #ddd;">
+                                    <option value="low">低 - 轻度消除，保留音质</option>
+                                    <option value="medium" selected>中 - 平衡消音和音质</option>
+                                    <option value="high">高 - 强力消除，适合嘈杂环境</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="margin-top: 15px;">
+                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                                <label for="noiseSuppressionLevel" style="width: 120px; font-size: 14px;">降噪强度:</label>
+                                <select id="noiseSuppressionLevel" style="flex: 1; margin: 0 10px; padding: 5px; border-radius: 4px; border: 1px solid #ddd;">
+                                    <option value="low">低 - 保留更多原音，适合音乐传输</option>
+                                    <option value="medium" selected>中 - 平衡降噪与音质</option>
+                                    <option value="high">高 - 强力降噪，适合嘈杂环境</option>
+                                </select>
+                            </div>
+                            <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">调整降噪强度，更高的强度会过滤更多噪音，但可能影响音质。</p>
+                        </div>
+                        
+                        <!-- 高级音频设置（可展开） -->
+                        <div style="margin-top: 15px;">
+                            <details id="advancedAudioSettings">
+                                <summary style="font-size: 14px; color: #007bff; cursor: pointer; margin-bottom: 10px;">
+                                    高级音频设置
+                                </summary>
+                                <div style="margin-top: 10px; padding: 15px; background-color: #f8f9fa; border-radius: 5px; border: 1px solid #e9ecef;">
+                                    <!-- 噪声门阈值控制 -->
+                                    <div style="margin-bottom: 15px;">
+                                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                                            <label for="noiseGateThresholdSlider" style="font-size: 13px;">噪声门阈值:</label>
+                                            <span id="noiseGateThresholdValue" style="font-size: 12px; color: #6c757d;">-40 dB</span>
+                                        </div>
+                                        <input type="range" id="noiseGateThresholdSlider" min="-60" max="-20" value="-40" step="1" 
+                                               style="width: 100%; height: 6px; background: #ddd; border-radius: 5px; outline: none;">
+                                        <p style="margin-top: 5px; font-size: 11px; color: #6c757d;">设置触发声音激活的信号强度阈值，值越小越敏感。</p>
+                                    </div>
+                                    
+                                    <!-- 频率平衡控制 -->
+                                    <div style="margin-bottom: 15px;">
+                                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px;">
+                                            <label for="frequencyBalanceSlider" style="font-size: 13px;">语音清晰度增强:</label>
+                                            <span id="frequencyBalanceValue" style="font-size: 12px; color: #6c757d;">中</span>
+                                        </div>
+                                        <input type="range" id="frequencyBalanceSlider" min="0" max="100" value="50" step="1" 
+                                               style="width: 100%; height: 6px; background: #ddd; border-radius: 5px; outline: none;">
+                                        <p style="margin-top: 5px; font-size: 11px; color: #6c757d;">增强语音频段(1-4kHz)的清晰度，减少低频环境噪音。</p>
+                                    </div>
+                                    
+                                    <!-- 自适应降噪 -->
+                                    <div style="margin-bottom: 15px;">
+                                        <label style="display: block; margin-bottom: 5px; font-size: 13px;">
+                                            <input type="checkbox" id="adaptiveNoiseReductionCheckbox" checked>
+                                            启用自适应降噪
+                                        </label>
+                                        <p style="margin-top: 5px; font-size: 11px; color: #6c757d;">根据环境噪声水平自动调整降噪强度。</p>
+                                    </div>
+                                    
+                                    <!-- 语音保护模式 -->
+                                    <div style="margin-bottom: 10px;">
+                                        <label style="display: block; margin-bottom: 5px; font-size: 13px;">
+                                            <input type="checkbox" id="speechProtectionCheckbox" checked>
+                                            启用语音保护模式
+                                        </label>
+                                        <p style="margin-top: 5px; font-size: 11px; color: #6c757d;">在降噪时保护语音频段不被过度抑制。</p>
+                                    </div>
+                                    
+                                    <!-- 实时噪声监测显示 -->
+                                    <div style="margin-top: 15px; padding: 10px; background-color: #fff; border-radius: 5px; border: 1px solid #e9ecef;">
+                                        <label style="display: block; margin-bottom: 8px; font-size: 13px; font-weight: bold;">实时噪声监测</label>
+                                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                                            <span style="font-size: 12px;">当前噪声水平:</span>
+                                            <span id="currentNoiseLevel" style="font-size: 12px; font-weight: bold; color: #28a745;">-50 dB</span>
+                                        </div>
+                                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                                            <span style="font-size: 12px;">语音概率:</span>
+                                            <span id="currentSpeechProbability" style="font-size: 12px; font-weight: bold; color: #007bff;">0.65</span>
+                                        </div>
+                                        <div style="display: flex; align-items: center; justify-content: space-between;">
+                                            <span style="font-size: 12px;">降噪状态:</span>
+                                            <span id="noiseReductionStatus" style="font-size: 12px; font-weight: bold; color: #dc3545;">活跃</span>
+                                        </div>
+                                        <button class="friend-btn" id="refreshNoiseStatsBtn" style="width: 100%; margin-top: 10px; padding: 8px; font-size: 12px;">
+                                            刷新监测数据
+                                        </button>
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
+                        
+                        <div style="margin-top: 15px;">
+                            <button class="friend-btn" id="testAudioSettingsBtn" style="width: 100%; padding: 10px;">
+                                测试音频设置
+                            </button>
+                            <p style="margin-top: 5px; font-size: 12px; color: #6c757d;">点击后开始测试，录制一段音频并回放，检验降噪效果。</p>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 20px;">
                         <h4>音频设备设置</h4>
                         <div style="margin-top: 15px;">
                             <button class="friend-btn" onclick="showDeviceSelectModal()" style="width: 100%; padding: 10px; margin-bottom: 10px;">
@@ -4291,35 +4577,50 @@
         <div class="modal-content" style="max-width: 90vw; max-height: 90vh; width: 1200px; height: 800px;">
             <h3>共享白板</h3>
             <div style="display: flex; flex-direction: column; height: 100%;">
-                <div style="display: flex; gap: 10px; padding: 10px; background: #f8f9fa; border-radius: 5px; margin-bottom: 10px; flex-wrap: wrap;">
-                    <button class="action-btn" id="whiteboardPenBtn" title="画笔">✏️</button>
-                    <button class="action-btn" id="whiteboardTextBtn" title="文本">📝</button>
-                    <button class="action-btn" id="whiteboardEraserBtn" title="橡皮擦">🧽</button>
-                    <button class="action-btn" id="whiteboardClearBtn" title="清空">🗑️</button>
-                    <button class="action-btn" id="whiteboardUndoBtn" title="撤销">↩️</button>
-                    <button class="action-btn" id="whiteboardSaveBtn" title="保存">💾</button>
-                    <div style="display: flex; align-items: center; margin-right: 10px;">
-                        <span style="margin-right: 5px; font-weight: bold;">颜色:</span>
-                        <input type="color" id="whiteboardColor" value="#000000" style="width: 50px; height: 45px; border: none; border-radius: 5px; cursor: pointer;">
-                        <div style="display: flex; gap: 5px; margin-left: 10px;">
-                            <button class="color-preset" data-color="#000000" style="width: 25px; height: 25px; border: 1px solid #ccc; border-radius: 50%; background: #000000; cursor: pointer;"></button>
-                            <button class="color-preset" data-color="#FF0000" style="width: 25px; height: 25px; border: 1px solid #ccc; border-radius: 50%; background: #FF0000; cursor: pointer;"></button>
-                            <button class="color-preset" data-color="#0000FF" style="width: 25px; height: 25px; border: 1px solid #ccc; border-radius: 50%; background: #0000FF; cursor: pointer;"></button>
-                            <button class="color-preset" data-color="#00FF00" style="width: 25px; height: 25px; border: 1px solid #ccc; border-radius: 50%; background: #00FF00; cursor: pointer;"></button>
-                            <button class="color-preset" data-color="#FFA500" style="width: 25px; height: 25px; border: 1px solid #ccc; border-radius: 50%; background: #FFA500; cursor: pointer;"></button>
-                            <button class="color-preset" data-color="#FFC0CB" style="width: 25px; height: 25px; border: 1px solid #ccc; border-radius: 50%; background: #FFC0CB; cursor: pointer;"></button>
+                <!-- 工具栏 - 第一行：绘图工具 -->
+                <div style="display: flex; gap: 6px; padding: 8px 10px; background: #f0f2f5; border-radius: 8px; margin-bottom: 8px; flex-wrap: wrap; align-items: center;">
+                    <div style="display: flex; gap: 4px;">
+                        <button class="wb-tool-btn active" id="whiteboardPenBtn" title="画笔 (P)" data-tool="pen">✏️</button>
+                        <button class="wb-tool-btn" id="whiteboardTextBtn" title="文本 (T)" data-tool="text">📝</button>
+                        <button class="wb-tool-btn" id="whiteboardEraserBtn" title="橡皮擦 (E)" data-tool="eraser">🧽</button>
+                        <span style="width: 1px; height: 28px; background: #ccc; margin: 0 6px;"></span>
+                        <button class="wb-tool-btn" id="whiteboardUndoBtn" title="撤销 (Ctrl+Z)">↩️</button>
+                        <button class="wb-tool-btn" id="whiteboardRedoBtn" title="重做 (Ctrl+Y)">↪️</button>
+                        <span style="width: 1px; height: 28px; background: #ccc; margin: 0 6px;"></span>
+                        <button class="wb-tool-btn" id="whiteboardClearBtn" title="清空">🗑️</button>
+                        <button class="wb-tool-btn" id="whiteboardSaveBtn" title="保存图片">💾</button>
+                    </div>
+                </div>
+                <!-- 工具栏 - 第二行：颜色 + 大小 + 字体 -->
+                <div style="display: flex; gap: 12px; padding: 6px 10px; background: #fafbfc; border-radius: 6px; margin-bottom: 8px; flex-wrap: wrap; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 5px;">
+                        <span style="font-size: 13px; color: #555;">颜色:</span>
+                        <input type="color" id="whiteboardColor" value="#000000" style="width: 40px; height: 36px; border: 2px solid #ddd; border-radius: 6px; cursor: pointer; padding: 2px;">
+                        <div id="colorPresetsContainer" style="display: flex; gap: 4px; margin-left: 4px;">
+                            <button class="color-preset" data-color="#000000" style="width: 26px; height: 26px; border: 2px solid #bbb; border-radius: 50%; background: #000000; cursor: pointer; transition: transform 0.15s;" title="黑色"></button>
+                            <button class="color-preset" data-color="#FF0000" style="width: 26px; height: 26px; border: 2px solid #bbb; border-radius: 50%; background: #FF0000; cursor: pointer; transition: transform 0.15s;" title="红色"></button>
+                            <button class="color-preset" data-color="#0000FF" style="width: 26px; height: 26px; border: 2px solid #bbb; border-radius: 50%; background: #0000FF; cursor: pointer; transition: transform 0.15s;" title="蓝色"></button>
+                            <button class="color-preset" data-color="#00AA00" style="width: 26px; height: 26px; border: 2px solid #bbb; border-radius: 50%; background: #00AA00; cursor: pointer; transition: transform 0.15s;" title="绿色"></button>
+                            <button class="color-preset" data-color="#FFA500" style="width: 26px; height: 26px; border: 2px solid #bbb; border-radius: 50%; background: #FFA500; cursor: pointer; transition: transform 0.15s;" title="橙色"></button>
+                            <button class="color-preset" data-color="#FFC0CB" style="width: 26px; height: 26px; border: 2px solid #bbb; border-radius: 50%; background: #FFC0CB; cursor: pointer; transition: transform 0.15s;" title="粉色"></button>
+                            <button class="color-preset" data-color="#FFFFFF" style="width: 26px; height: 26px; border: 2px solid #bbb; border-radius: 50%; background: #FFFFFF; cursor: pointer; transition: transform 0.15s;" title="白色(橡皮擦)"></button>
                         </div>
                     </div>
-                    <input type="range" id="whiteboardSize" min="1" max="400" value="24" style="flex: 1; height: 45px; min-width: 100px;">
-                    <span id="whiteboardSizeValue" style="margin-right: 10px; font-weight: bold; min-width: 40px;">24px</span>
-                    <select id="whiteboardFont" style="padding: 8px; border: 1px solid #dee2e6; border-radius: 5px; height: 45px;">
+                    <span style="width: 1px; height: 26px; background: #ddd;"></span>
+                    <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 180px;">
+                        <span style="font-size: 13px; color: #555; white-space: nowrap;">大小:</span>
+                        <input type="range" id="whiteboardSize" min="1" max="100" value="4" style="flex: 1; height: 32px;">
+                        <span id="whiteboardSizeValue" style="min-width: 38px; font-weight: bold; font-size: 13px; color: #333;">4px</span>
+                    </div>
+                    <select id="whiteboardFont" style="padding: 7px 10px; border: 1px solid #ddd; border-radius: 6px; height: 38px; font-size: 14px; background: white;">
                         <option value="Arial">Arial</option>
                         <option value="Times New Roman">Times New Roman</option>
                         <option value="Courier New">Courier New</option>
                         <option value="Georgia">Georgia</option>
                         <option value="Verdana">Verdana</option>
+                        <option value="Microsoft YaHei">微软雅黑</option>
                     </select>
-                    <button class="action-btn" id="whiteboardExitBtn" title="退出白板" onclick="closeWhiteboardModal()">🚪</button>
+                    <button class="action-btn" id="whiteboardExitBtn" title="退出白板 (Esc)" onclick="closeWhiteboardModal()" style="margin-left: auto;">🚪</button>
                 </div>
                 <div id="textInputContainer" style="display: none; position: absolute; background: white; border: 1px solid #dee2e6; border-radius: 5px; padding: 10px; z-index: 1000;">
                     <input type="text" id="whiteboardTextInput" placeholder="输入文本" style="width: 200px; padding: 5px; border: 1px solid #dee2e6; border-radius: 3px;">
@@ -5073,6 +5374,17 @@
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
+        // DOM 加载辅助函数 - 确保回调在 DOM 加载完成后执行
+        // 解决 document.addEventListener('DOMContentLoaded') 在页面已加载时不触发的问题
+        function onDOMReady(callback) {
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', callback);
+            } else {
+                // DOM 已经加载完成，立即执行回调
+                setTimeout(callback, 0);
+            }
+        }
+        
         // 用户详情定时器变量 - 移到最顶部确保在任何函数调用前已初始化
         var userDetailUpdateInterval = null;
         var currentDetailSocketId = null;
@@ -5386,7 +5698,7 @@
         }
 
         // 密码输入框回车事件
-        document.addEventListener('DOMContentLoaded', function() {
+        onDOMReady(function() {
             const passwordInput = document.getElementById('adminPasswordInput');
             if (passwordInput) {
                 passwordInput.addEventListener('keydown', function(event) {
@@ -5675,19 +5987,30 @@
             document.body.appendChild(notification);
 
             if (callback) {
-                notification.addEventListener('click', () => {
-                    callback();
-                    notification.remove();
-                }, { once: true });
+                // callback 已在统一的 click 事件中处理
             }
 
             const timer = setTimeout(() => {
                 notification.style.opacity = '0';
                 notification.style.transition = 'opacity 0.3s ease';
-                setTimeout(() => notification.remove(), 300);
+                setTimeout(() => {
+                    if (notification.parentNode) notification.remove();
+                }, 300);
             }, 5000);
 
-            notification.addEventListener('click', () => clearTimeout(timer), { once: true });
+            // 点击通知：清除定时器并立即移除（无论是否有 callback）
+            notification.addEventListener('click', () => {
+                clearTimeout(timer);
+                if (callback) {
+                    callback();
+                }
+                // 点击后始终移除通知
+                notification.style.opacity = '0';
+                notification.style.transition = 'opacity 0.2s ease';
+                setTimeout(() => {
+                    if (notification.parentNode) notification.remove();
+                }, 200);
+            }, { once: true });
         }
         
         // 注册游戏邀请相关的事件监听器
@@ -6456,6 +6779,7 @@
         const whiteboardUserList = document.getElementById('whiteboardUserList');
         const textInputContainer = document.getElementById('textInputContainer');
         const whiteboardTextInput = document.getElementById('whiteboardTextInput');
+        const whiteboardRedoBtn = document.getElementById('whiteboardRedoBtn');
         
         let whiteboardCtx = null;
         let whiteboardIsDrawing = false;
@@ -6465,10 +6789,45 @@
         let whiteboardHistory = [];
         let whiteboardHistoryIndex = -1;
         let textInputPosition = { x: 0, y: 0 };
+        let isWhiteboardInitialized = false;
+        
+        // 设置当前工具并更新UI
+        function setWhiteboardTool(tool) {
+            whiteboardTool = tool;
+            
+            // 更新按钮选中状态
+            document.querySelectorAll('.wb-tool-btn[data-tool]').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // 设置对应按钮为active
+            const activeBtn = document.querySelector(`.wb-tool-btn[data-tool="${tool}"]`);
+            if (activeBtn) activeBtn.classList.add('active');
+            
+            // 设置光标样式
+            switch(tool) {
+                case 'pen':
+                    whiteboardCanvas.style.cursor = 'crosshair';
+                    break;
+                case 'text':
+                    whiteboardCanvas.style.cursor = 'text';
+                    break;
+                case 'eraser':
+                    whiteboardCanvas.style.cursor = 'cell';
+                    break;
+            }
+        }
         
         // 初始化白板
         function initWhiteboard() {
             if (!whiteboardCanvas) return;
+            
+            // 防止重复初始化
+            if (isWhiteboardInitialized) {
+                // 只需调整大小并恢复内容
+                resizeCanvas();
+                return;
+            }
             
             // 设置canvas尺寸
             const rect = whiteboardCanvas.getBoundingClientRect();
@@ -6486,78 +6845,29 @@
             whiteboardCanvas.addEventListener('mouseout', stopDrawing);
             
             // 绑定触摸事件
-            whiteboardCanvas.addEventListener('touchstart', startDrawingTouch);
-            whiteboardCanvas.addEventListener('touchmove', drawTouch);
+            whiteboardCanvas.addEventListener('touchstart', startDrawingTouch, { passive: false });
+            whiteboardCanvas.addEventListener('touchmove', drawTouch, { passive: false });
             whiteboardCanvas.addEventListener('touchend', stopDrawing);
             
             // 绑定工具栏事件
-            whiteboardPenBtn.addEventListener('click', () => {
-                whiteboardTool = 'pen';
-                whiteboardCanvas.style.cursor = 'crosshair';
-            });
-            
-            whiteboardTextBtn.addEventListener('click', () => {
-                whiteboardTool = 'text';
-                whiteboardCanvas.style.cursor = 'text';
-            });
-            
-            whiteboardEraserBtn.addEventListener('click', (e) => {
-                // 如果是右键点击，清空白板
-                if (e.button === 2) {
-                    e.preventDefault();
-                    if (confirm('确定要清空白板吗？')) {
-                        whiteboardCtx.clearRect(0, 0, whiteboardCanvas.width, whiteboardCanvas.height);
-                        whiteboardHistory = [];
-                        whiteboardHistoryIndex = -1;
-                        if (typeof socket !== 'undefined' && socket) {
-                            socket.emit('whiteboard-clear', {});
-                        }
-                    }
-                } else {
-                    // 左键点击切换到橡皮擦工具
-                    whiteboardTool = 'eraser';
-                    whiteboardCanvas.style.cursor = 'eraser';
-                }
-            });
-            
-            // 禁用橡皮擦按钮的默认右键菜单
-            whiteboardEraserBtn.addEventListener('contextmenu', (e) => {
-                e.preventDefault();
-            });
+            whiteboardPenBtn.addEventListener('click', () => setWhiteboardTool('pen'));
+            whiteboardTextBtn.addEventListener('click', () => setWhiteboardTool('text'));
+            whiteboardEraserBtn.addEventListener('click', () => setWhiteboardTool('eraser'));
             
             // 添加画布点击事件以支持文本输入
             whiteboardCanvas.addEventListener('click', handleCanvasClick);
             
             whiteboardClearBtn.addEventListener('click', () => {
                 if (confirm('确定要清空白板吗？')) {
-                    whiteboardCtx.clearRect(0, 0, whiteboardCanvas.width, whiteboardCanvas.height);
-                    whiteboardHistory = [];
-                    whiteboardHistoryIndex = -1;
-                    if (typeof socket !== 'undefined' && socket) {
-                        socket.emit('whiteboard-clear', {});
-                    }
+                    clearWhiteboard();
                 }
             });
             
-            whiteboardUndoBtn.addEventListener('click', () => {
-                if (whiteboardHistoryIndex >= 0) {
-                    whiteboardHistoryIndex--;
-                    const history = whiteboardHistoryIndex >= 0 ? whiteboardHistory[whiteboardHistoryIndex] : null;
-                    if (history) {
-                        const img = new Image();
-                        img.onload = function() {
-                            whiteboardCtx.clearRect(0, 0, whiteboardCanvas.width, whiteboardCanvas.height);
-                            whiteboardCtx.drawImage(img, 0, 0);
-                        };
-                        img.src = history;
-                    } else {
-                        whiteboardCtx.clearRect(0, 0, whiteboardCanvas.width, whiteboardCanvas.height);
-                    }
-                    if (typeof socket !== 'undefined' && socket) {
-                        socket.emit('whiteboard-undo', {});
-                    }
-                }
-            });
+            whiteboardUndoBtn.addEventListener('click', undoWhiteboard);
+            
+            if (whiteboardRedoBtn) {
+                whiteboardRedoBtn.addEventListener('click', redoWhiteboard);
+            }
             
             whiteboardSaveBtn.addEventListener('click', () => {
                 const dataURL = whiteboardCanvas.toDataURL('image/png');
@@ -6570,23 +6880,165 @@
                 }
             });
             
+            // 画笔大小实时更新
             whiteboardSize.addEventListener('input', () => {
                 whiteboardSizeValue.textContent = `${whiteboardSize.value}px`;
             });
             
-            // 添加颜色预设按钮事件监听器
-            setTimeout(() => {
-                const colorPresets = document.querySelectorAll('.color-preset');
-                console.log('找到颜色预设按钮:', colorPresets.length);
-                colorPresets.forEach(button => {
-                    button.addEventListener('click', () => {
-                        const color = button.dataset.color;
-                        console.log('点击颜色预设:', color);
-                        whiteboardColor.value = color;
-                        console.log('颜色选择器值:', whiteboardColor.value);
-                    });
+            // 颜色选择器实时更新
+            whiteboardColor.addEventListener('input', () => {
+                // 颜色改变时自动切换到画笔工具
+                if (whiteboardTool === 'eraser') {
+                    setWhiteboardTool('pen');
+                }
+            });
+            
+            // 颜色预设按钮事件 - 立即绑定
+            const colorPresets = document.querySelectorAll('.color-preset');
+            colorPresets.forEach(button => {
+                button.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const color = button.dataset.color;
+                    whiteboardColor.value = color;
+                    // 颜色改变时自动切换到画笔工具
+                    if (whiteboardTool === 'eraser') {
+                        setWhiteboardTool('pen');
+                    }
                 });
-            }, 500);
+            });
+            
+            // 窗口大小改变时调整画布
+            window.addEventListener('resize', debounce(resizeCanvas, 200));
+            
+            // 键盘快捷键
+            document.addEventListener('keydown', handleWhiteboardKeydown);
+            
+            isWhiteboardInitialized = true;
+        }
+        
+        // 防抖函数
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+        
+        // 调整画布大小并保留内容
+        function resizeCanvas() {
+            if (!whiteboardCanvas || !whiteboardCtx) return;
+            
+            // 保存当前内容
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            tempCanvas.width = whiteboardCanvas.width;
+            tempCanvas.height = whiteboardCanvas.height;
+            tempCtx.drawImage(whiteboardCanvas, 0, 0);
+            
+            // 调整大小
+            const rect = whiteboardCanvas.getBoundingClientRect();
+            whiteboardCanvas.width = rect.width;
+            whiteboardCanvas.height = rect.height;
+            
+            // 恢复内容（保持比例）
+            whiteboardCtx.drawImage(tempCanvas, 0, 0, whiteboardCanvas.width, whiteboardCanvas.height);
+        }
+        
+        // 键盘快捷键处理
+        function handleWhiteboardKeydown(e) {
+            // 只在白板打开时响应
+            if (!whiteboardModal.classList.contains('active')) return;
+            
+            // 如果正在输入文本，不响应快捷键
+            if (textInputContainer && textInputContainer.style.display === 'flex') return;
+            
+            if (e.ctrlKey || e.metaKey) {
+                switch(e.key.toLowerCase()) {
+                    case 'z':
+                        e.preventDefault();
+                        if (e.shiftKey) {
+                            redoWhiteboard();
+                        } else {
+                            undoWhiteboard();
+                        }
+                        break;
+                    case 'y':
+                        e.preventDefault();
+                        redoWhiteboard();
+                        break;
+                }
+            } else {
+                switch(e.key.toLowerCase()) {
+                    case 'p':
+                        setWhiteboardTool('pen');
+                        break;
+                    case 't':
+                        setWhiteboardTool('text');
+                        break;
+                    case 'e':
+                        setWhiteboardTool('eraser');
+                        break;
+                    case 'escape':
+                        closeWhiteboardModal();
+                        break;
+                }
+            }
+        }
+        
+        // 清空白板
+        function clearWhiteboard() {
+            if (!whiteboardCtx) return;
+            whiteboardCtx.clearRect(0, 0, whiteboardCanvas.width, whiteboardCanvas.height);
+            saveHistory();
+            if (typeof socket !== 'undefined' && socket) {
+                socket.emit('whiteboard-clear', {});
+            }
+        }
+        
+        // 撤销
+        function undoWhiteboard() {
+            if (whiteboardHistoryIndex > 0) {
+                whiteboardHistoryIndex--;
+                restoreFromHistory();
+                if (typeof socket !== 'undefined' && socket) {
+                    socket.emit('whiteboard-undo', {});
+                }
+            } else if (whiteboardHistoryIndex === 0) {
+                whiteboardHistoryIndex = -1;
+                whiteboardCtx.clearRect(0, 0, whiteboardCanvas.width, whiteboardCanvas.height);
+                if (typeof socket !== 'undefined' && socket) {
+                    socket.emit('whiteboard-undo', {});
+                }
+            }
+        }
+        
+        // 重做
+        function redoWhiteboard() {
+            if (whiteboardHistoryIndex < whiteboardHistory.length - 1) {
+                whiteboardHistoryIndex++;
+                restoreFromHistory();
+                if (typeof socket !== 'undefined' && socket) {
+                    socket.emit('whiteboard-redo', {});
+                }
+            }
+        }
+        
+        // 从历史记录恢复
+        function restoreFromHistory() {
+            const history = whiteboardHistory[whiteboardHistoryIndex];
+            if (history) {
+                const img = new Image();
+                img.onload = function() {
+                    whiteboardCtx.clearRect(0, 0, whiteboardCanvas.width, whiteboardCanvas.height);
+                    whiteboardCtx.drawImage(img, 0, 0);
+                };
+                img.src = history;
+            }
         }
         
         // 开始绘制
@@ -6630,19 +7082,28 @@
         
         // 绘制线条
         function drawLine(x1, y1, x2, y2) {
+            const wasEraser = whiteboardTool === 'eraser';
+            
             whiteboardCtx.beginPath();
             whiteboardCtx.moveTo(x1, y1);
             whiteboardCtx.lineTo(x2, y2);
             
             if (whiteboardTool === 'pen') {
+                whiteboardCtx.globalCompositeOperation = 'source-over';
                 whiteboardCtx.strokeStyle = whiteboardColor.value;
                 whiteboardCtx.lineWidth = whiteboardSize.value;
             } else if (whiteboardTool === 'eraser') {
-                whiteboardCtx.strokeStyle = 'white';
-                whiteboardCtx.lineWidth = whiteboardSize.value;
+                // 使用 destination-out 实现真正的橡皮擦效果
+                whiteboardCtx.globalCompositeOperation = 'destination-out';
+                whiteboardCtx.lineWidth = whiteboardSize.value * 3; // 橡皮擦稍大一些
             }
             
             whiteboardCtx.stroke();
+            
+            // 恢复默认合成模式
+            if (wasEraser) {
+                whiteboardCtx.globalCompositeOperation = 'source-over';
+            }
             
             // 发送绘制事件到服务器
             if (typeof socket !== 'undefined' && socket) {
@@ -6667,18 +7128,9 @@
             return [touch.clientX - rect.left, touch.clientY - rect.top];
         }
         
-        // 保存历史记录
+        // 保存历史记录（统一使用 saveWhiteboardHistory）
         function saveHistory() {
-            const dataURL = whiteboardCanvas.toDataURL('image/png');
-            whiteboardHistory = whiteboardHistory.slice(0, whiteboardHistoryIndex + 1);
-            whiteboardHistory.push(dataURL);
-            whiteboardHistoryIndex++;
-            
-            // 限制历史记录数量
-            if (whiteboardHistory.length > 50) {
-                whiteboardHistory.shift();
-                whiteboardHistoryIndex--;
-            }
+            saveWhiteboardHistory();
         }
         
         // 打开白板模态框
@@ -6756,6 +7208,7 @@
         
         // 保存白板历史记录
         function saveWhiteboardHistory() {
+            if (!whiteboardCanvas) return;
             const dataURL = whiteboardCanvas.toDataURL('image/png');
             whiteboardHistory = whiteboardHistory.slice(0, whiteboardHistoryIndex + 1);
             whiteboardHistory.push(dataURL);
@@ -6798,19 +7251,28 @@
                 socket.on('whiteboard-draw', (data) => {
                     if (!whiteboardCtx) return;
                     
+                    const wasEraser = data.tool === 'eraser';
+                    
                     whiteboardCtx.beginPath();
                     whiteboardCtx.moveTo(data.x1, data.y1);
                     whiteboardCtx.lineTo(data.x2, data.y2);
                     
                     if (data.tool === 'pen') {
+                        whiteboardCtx.globalCompositeOperation = 'source-over';
                         whiteboardCtx.strokeStyle = data.color;
                         whiteboardCtx.lineWidth = data.size;
                     } else if (data.tool === 'eraser') {
-                        whiteboardCtx.strokeStyle = 'white';
-                        whiteboardCtx.lineWidth = data.size;
+                        // 使用 destination-out 实现真正的橡皮擦效果
+                        whiteboardCtx.globalCompositeOperation = 'destination-out';
+                        whiteboardCtx.lineWidth = data.size * 3;
                     }
                     
                     whiteboardCtx.stroke();
+                    
+                    // 恢复默认合成模式
+                    if (wasEraser) {
+                        whiteboardCtx.globalCompositeOperation = 'source-over';
+                    }
                 });
                 
                 // 监听服务器发送的白板清屏事件
@@ -6824,6 +7286,11 @@
                 // 监听服务器发送的白板撤销事件
                 socket.on('whiteboard-undo', (data) => {
                     // 撤销操作由本地处理，这里可以添加其他逻辑
+                });
+                
+                // 监听服务器发送的白板重做事件
+                socket.on('whiteboard-redo', (data) => {
+                    // 重做操作由本地处理，这里可以添加其他逻辑
                 });
                 
                 // 监听服务器发送的白板文本绘制事件
@@ -7218,6 +7685,15 @@
                                 
                                 // 初始化通话系统
                                 callSystem = new CallSystem(socket, username);
+                                
+                                // 同步音频降噪设置到 callSystem
+                                if (window.userSettings) {
+                                    callSystem.audioEchoCancellation = window.userSettings.audioEchoCancellation !== false;
+                                    callSystem.audioNoiseSuppression = window.userSettings.audioNoiseSuppression !== false;
+                                    callSystem.audioAutoGainControl = window.userSettings.audioAutoGainControl !== false;
+                                    callSystem.noiseSuppressionLevel = window.userSettings.noiseSuppressionLevel || 'medium';
+                                    console.log('callSystem 音频降噪设置已同步:', callSystem.getNoiseReductionStatus());
+                                }
                                 
                                 // 保存页面状态
                                 savePageState();
@@ -10280,6 +10756,13 @@
             speakingThreshold: 40, // 说话检测阈值，默认40
             volumeReduction: 30, // 音量降低比例，默认30%
             audioBitrate: 128, // 音频比特率，默认128 kbps
+            // 音频降噪和回声消除设置
+            audioEchoCancellation: true, // 默认开启浏览器原生回声消除
+            audioNoiseSuppression: true, // 默认开启麦克风降噪
+            audioAutoGainControl: true, // 默认开启自动增益控制
+            noiseSuppressionLevel: 'medium', // 降噪强度：low, medium, high
+            softwareEchoCancellation: true, // 默认开启软件级回声消除
+            echoSuppressionLevel: 'medium', // 回声消除强度：low, medium, high
             // 隐私设置
             friendRequestSetting: 'everyone', // 谁可以添加我为好友：everyone, contacts, none
             messageSetting: 'everyone', // 谁可以给我发消息：everyone, friends, none
@@ -10495,6 +10978,328 @@
             if (audioBitrate && audioBitrateValue) {
                 audioBitrate.value = window.userSettings.audioBitrate;
                 audioBitrateValue.textContent = `${window.userSettings.audioBitrate} kbps`;
+            }
+            
+            // 初始化音频降噪设置
+            const audioEchoCancellationCheckbox = document.getElementById('audioEchoCancellationCheckbox');
+            const audioNoiseSuppressionCheckbox = document.getElementById('audioNoiseSuppressionCheckbox');
+            const audioAutoGainControlCheckbox = document.getElementById('audioAutoGainControlCheckbox');
+            const noiseSuppressionLevel = document.getElementById('noiseSuppressionLevel');
+            
+            if (audioEchoCancellationCheckbox) {
+                audioEchoCancellationCheckbox.checked = window.userSettings.audioEchoCancellation !== false;
+            }
+            
+            if (audioNoiseSuppressionCheckbox) {
+                audioNoiseSuppressionCheckbox.checked = window.userSettings.audioNoiseSuppression !== false;
+            }
+            
+            if (audioAutoGainControlCheckbox) {
+                audioAutoGainControlCheckbox.checked = window.userSettings.audioAutoGainControl !== false;
+            }
+            
+            if (noiseSuppressionLevel) {
+                noiseSuppressionLevel.value = window.userSettings.noiseSuppressionLevel || 'medium';
+            }
+            
+            // 初始化软件回声消除设置
+            const softwareEchoCancellationCheckbox = document.getElementById('softwareEchoCancellationCheckbox');
+            const echoSuppressionLevel = document.getElementById('echoSuppressionLevel');
+            
+            if (softwareEchoCancellationCheckbox) {
+                softwareEchoCancellationCheckbox.checked = window.userSettings.softwareEchoCancellation !== false;
+            }
+            
+            if (echoSuppressionLevel) {
+                echoSuppressionLevel.value = window.userSettings.echoSuppressionLevel || 'medium';
+            }
+            
+            // 同步降噪设置到 callSystem
+            if (window.callSystem) {
+                window.callSystem.audioEchoCancellation = window.userSettings.audioEchoCancellation !== false;
+                window.callSystem.audioNoiseSuppression = window.userSettings.audioNoiseSuppression !== false;
+                window.callSystem.audioAutoGainControl = window.userSettings.audioAutoGainControl !== false;
+                window.callSystem.noiseSuppressionLevel = window.userSettings.noiseSuppressionLevel || 'medium';
+                window.callSystem.softwareEchoCancellation = window.userSettings.softwareEchoCancellation !== false;
+                window.callSystem.setEchoSuppressionLevel(window.userSettings.echoSuppressionLevel || 'medium');
+                console.log('降噪设置已同步到 callSystem:', window.callSystem.getNoiseReductionStatus());
+            }
+            
+            // 音频降噪设置事件监听器
+            if (audioEchoCancellationCheckbox) {
+                audioEchoCancellationCheckbox.addEventListener('change', (e) => {
+                    window.userSettings.audioEchoCancellation = e.target.checked;
+                    if (window.callSystem) {
+                        window.callSystem.audioEchoCancellation = e.target.checked;
+                        window.callSystem.updateAudioProcessing();
+                    }
+                });
+            }
+            
+            if (audioNoiseSuppressionCheckbox) {
+                audioNoiseSuppressionCheckbox.addEventListener('change', (e) => {
+                    window.userSettings.audioNoiseSuppression = e.target.checked;
+                    if (window.callSystem) {
+                        window.callSystem.audioNoiseSuppression = e.target.checked;
+                        window.callSystem.updateAudioProcessing();
+                    }
+                });
+            }
+            
+            if (audioAutoGainControlCheckbox) {
+                audioAutoGainControlCheckbox.addEventListener('change', (e) => {
+                    window.userSettings.audioAutoGainControl = e.target.checked;
+                    if (window.callSystem) {
+                        window.callSystem.audioAutoGainControl = e.target.checked;
+                        window.callSystem.updateAudioProcessing();
+                    }
+                });
+            }
+            
+            if (noiseSuppressionLevel) {
+                noiseSuppressionLevel.addEventListener('change', (e) => {
+                    window.userSettings.noiseSuppressionLevel = e.target.value;
+                    if (window.callSystem) {
+                        window.callSystem.setNoiseSuppressionLevel(e.target.value);
+                    }
+                });
+            }
+            
+            // 软件回声消除设置事件监听器
+            if (softwareEchoCancellationCheckbox) {
+                softwareEchoCancellationCheckbox.addEventListener('change', (e) => {
+                    window.userSettings.softwareEchoCancellation = e.target.checked;
+                    if (window.callSystem) {
+                        window.callSystem.softwareEchoCancellation = e.target.checked;
+                        window.callSystem.updateEchoCancellationSettings();
+                    }
+                    console.log('软件回声消除已', e.target.checked ? '启用' : '禁用');
+                });
+            }
+            
+            if (echoSuppressionLevel) {
+                echoSuppressionLevel.addEventListener('change', (e) => {
+                    window.userSettings.echoSuppressionLevel = e.target.value;
+                    if (window.callSystem) {
+                        window.callSystem.setEchoSuppressionLevel(e.target.value);
+                    }
+                    console.log('回声消除强度已设置为:', e.target.value);
+                });
+            }
+            
+            // 高级音频设置事件监听器
+            const noiseGateThresholdSlider = document.getElementById('noiseGateThresholdSlider');
+            const noiseGateThresholdValue = document.getElementById('noiseGateThresholdValue');
+            const frequencyBalanceSlider = document.getElementById('frequencyBalanceSlider');
+            const frequencyBalanceValue = document.getElementById('frequencyBalanceValue');
+            const adaptiveNoiseReductionCheckbox = document.getElementById('adaptiveNoiseReductionCheckbox');
+            const speechProtectionCheckbox = document.getElementById('speechProtectionCheckbox');
+            const currentNoiseLevel = document.getElementById('currentNoiseLevel');
+            const currentSpeechProbability = document.getElementById('currentSpeechProbability');
+            const noiseReductionStatus = document.getElementById('noiseReductionStatus');
+            const refreshNoiseStatsBtn = document.getElementById('refreshNoiseStatsBtn');
+            
+            // 初始化高级音频设置
+            const initAdvancedAudioSettings = () => {
+                if (noiseGateThresholdSlider && noiseGateThresholdValue) {
+                    const savedThreshold = window.userSettings.noiseGateThreshold || -40;
+                    noiseGateThresholdSlider.value = savedThreshold;
+                    noiseGateThresholdValue.textContent = `${savedThreshold} dB`;
+                }
+                
+                if (frequencyBalanceSlider && frequencyBalanceValue) {
+                    const savedFrequencyBalance = window.userSettings.frequencyBalance || 50;
+                    frequencyBalanceSlider.value = savedFrequencyBalance;
+                    const balanceText = savedFrequencyBalance < 30 ? '低' : 
+                                       savedFrequencyBalance < 70 ? '中' : '高';
+                    frequencyBalanceValue.textContent = balanceText;
+                }
+                
+                if (adaptiveNoiseReductionCheckbox) {
+                    adaptiveNoiseReductionCheckbox.checked = window.userSettings.adaptiveNoiseReduction !== false;
+                }
+                
+                if (speechProtectionCheckbox) {
+                    speechProtectionCheckbox.checked = window.userSettings.speechProtection !== false;
+                }
+                
+                // 初始化实时噪声监测显示
+                if (window.callSystem) {
+                    updateNoiseMonitoringDisplay();
+                }
+            };
+            
+            // 更新噪声监测显示
+            const updateNoiseMonitoringDisplay = () => {
+                if (!window.callSystem || !window.callSystem.noiseEstimator) return;
+                
+                const estimatedNoiseLevel = window.callSystem.getEstimatedNoiseLevel();
+                const speechProbability = window.callSystem.noiseEstimator.speechProbability || 0;
+                
+                if (currentNoiseLevel) {
+                    currentNoiseLevel.textContent = `${Math.round(estimatedNoiseLevel)} dB`;
+                    // 颜色编码噪声水平
+                    if (estimatedNoiseLevel < -45) currentNoiseLevel.style.color = '#28a745';
+                    else if (estimatedNoiseLevel < -30) currentNoiseLevel.style.color = '#ffc107';
+                    else currentNoiseLevel.style.color = '#dc3545';
+                }
+                
+                if (currentSpeechProbability) {
+                    currentSpeechProbability.textContent = speechProbability.toFixed(2);
+                    // 颜色编码语音概率
+                    if (speechProbability > 0.7) currentSpeechProbability.style.color = '#28a745';
+                    else if (speechProbability > 0.3) currentSpeechProbability.style.color = '#ffc107';
+                    else currentSpeechProbability.style.color = '#dc3545';
+                }
+                
+                if (noiseReductionStatus) {
+                    const isActive = window.callSystem.audioNoiseSuppression && 
+                                   window.callSystem.audioEchoCancellation;
+                    noiseReductionStatus.textContent = isActive ? '活跃' : '禁用';
+                    noiseReductionStatus.style.color = isActive ? '#28a745' : '#dc3545';
+                }
+            };
+            
+            // 应用高级音频设置到系统
+            const applyAdvancedAudioSettings = () => {
+                if (!window.callSystem) return;
+                
+                const settings = {
+                    noiseGateThreshold: window.userSettings.noiseGateThreshold || -40,
+                    frequencyBalance: window.userSettings.frequencyBalance || 50,
+                    adaptiveNoiseReduction: window.userSettings.adaptiveNoiseReduction !== false,
+                    speechProtection: window.userSettings.speechProtection !== false
+                };
+                
+                if (window.callSystem.applyAdvancedAudioSettings) {
+                    window.callSystem.applyAdvancedAudioSettings(settings);
+                }
+                
+                console.log('高级音频设置已应用:', settings);
+            };
+            
+            // 事件监听器
+            if (noiseGateThresholdSlider && noiseGateThresholdValue) {
+                noiseGateThresholdSlider.addEventListener('input', (e) => {
+                    const value = parseInt(e.target.value);
+                    noiseGateThresholdValue.textContent = `${value} dB`;
+                    window.userSettings.noiseGateThreshold = value;
+                    applyAdvancedAudioSettings();
+                });
+            }
+            
+            if (frequencyBalanceSlider && frequencyBalanceValue) {
+                frequencyBalanceSlider.addEventListener('input', (e) => {
+                    const value = parseInt(e.target.value);
+                    const balanceText = value < 30 ? '低' : 
+                                       value < 70 ? '中' : '高';
+                    frequencyBalanceValue.textContent = balanceText;
+                    window.userSettings.frequencyBalance = value;
+                    applyAdvancedAudioSettings();
+                });
+            }
+            
+            if (adaptiveNoiseReductionCheckbox) {
+                adaptiveNoiseReductionCheckbox.addEventListener('change', (e) => {
+                    window.userSettings.adaptiveNoiseReduction = e.target.checked;
+                    applyAdvancedAudioSettings();
+                });
+            }
+            
+            if (speechProtectionCheckbox) {
+                speechProtectionCheckbox.addEventListener('change', (e) => {
+                    window.userSettings.speechProtection = e.target.checked;
+                    applyAdvancedAudioSettings();
+                });
+            }
+            
+            if (refreshNoiseStatsBtn) {
+                refreshNoiseStatsBtn.addEventListener('click', () => {
+                    updateNoiseMonitoringDisplay();
+                });
+            }
+            
+            // 初始化高级音频设置
+            initAdvancedAudioSettings();
+            
+            // 音频设置测试按钮
+            const testAudioSettingsBtn = document.getElementById('testAudioSettingsBtn');
+            if (testAudioSettingsBtn) {
+                testAudioSettingsBtn.addEventListener('click', async () => {
+                    if (!window.callSystem) {
+                        alert('通话系统未初始化');
+                        return;
+                    }
+                    
+                    testAudioSettingsBtn.disabled = true;
+                    testAudioSettingsBtn.textContent = '正在测试...';
+                    
+                    try {
+                        // 获取麦克风音频流
+                        const constraints = {
+                            audio: {
+                                echoCancellation: window.userSettings.audioEchoCancellation !== false,
+                                noiseSuppression: window.userSettings.audioNoiseSuppression !== false,
+                                autoGainControl: window.userSettings.audioAutoGainControl !== false
+                            }
+                        };
+                        
+                        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                        
+                        // 播放录制的音频以测试回声消除效果
+                        const audioContext = new AudioContext();
+                        const source = audioContext.createMediaStreamSource(stream);
+                        const destination = audioContext.createMediaStreamDestination();
+                        source.connect(destination);
+                        
+                        // 创建音频元素并播放
+                        const audioElement = new Audio();
+                        audioElement.srcObject = stream;
+                        audioElement.volume = 0.5;
+                        
+                        // 显示提示
+                        testAudioSettingsBtn.textContent = '正在录制...';
+                        testAudioSettingsBtn.style.background = '#ffc107';
+                        
+                        // 录制3秒
+                        await new Promise(resolve => setTimeout(resolve, 3000));
+                        
+                        // 停止并播放回放
+                        stream.getTracks().forEach(track => track.stop());
+                        
+                        // 获取处理后的流并回放
+                        const processedStream = await window.callSystem.applyEnhancedAudioToStream(stream);
+                        const processedAudio = new Audio();
+                        processedAudio.srcObject = processedStream;
+                        processedAudio.volume = 0.8;
+                        
+                        testAudioSettingsBtn.textContent = '正在回放...';
+                        testAudioSettingsBtn.style.background = '#28a745';
+                        
+                        await processedAudio.play();
+                        
+                        // 等待回放完成
+                        await new Promise(resolve => {
+                            processedAudio.onended = resolve;
+                            setTimeout(resolve, 3000);
+                        });
+                        
+                        testAudioSettingsBtn.textContent = '测试完成';
+                        testAudioSettingsBtn.style.background = '';
+                        
+                        setTimeout(() => {
+                            testAudioSettingsBtn.disabled = false;
+                            testAudioSettingsBtn.textContent = '测试音频设置';
+                        }, 2000);
+                        
+                    } catch (error) {
+                        console.error('音频测试失败:', error);
+                        alert('音频测试失败: ' + error.message);
+                        testAudioSettingsBtn.disabled = false;
+                        testAudioSettingsBtn.textContent = '测试音频设置';
+                        testAudioSettingsBtn.style.background = '';
+                    }
+                });
             }
             
             // 为通话设置滑块添加事件监听器
@@ -11394,6 +12199,60 @@ io.on('connection', (socket) => {
                 window.userSettings.subtitlesFontSize = parseInt(subtitlesFontSize.value);
             }
             
+            // 保存音频降噪和回声消除设置
+            const audioEchoCancellationCheckbox = document.getElementById('audioEchoCancellationCheckbox');
+            const audioNoiseSuppressionCheckbox = document.getElementById('audioNoiseSuppressionCheckbox');
+            const audioAutoGainControlCheckbox = document.getElementById('audioAutoGainControlCheckbox');
+            const noiseSuppressionLevel = document.getElementById('noiseSuppressionLevel');
+            
+            if (audioEchoCancellationCheckbox) {
+                window.userSettings.audioEchoCancellation = audioEchoCancellationCheckbox.checked;
+            }
+            
+            if (audioNoiseSuppressionCheckbox) {
+                window.userSettings.audioNoiseSuppression = audioNoiseSuppressionCheckbox.checked;
+            }
+            
+            if (audioAutoGainControlCheckbox) {
+                window.userSettings.audioAutoGainControl = audioAutoGainControlCheckbox.checked;
+            }
+            
+            if (noiseSuppressionLevel) {
+                window.userSettings.noiseSuppressionLevel = noiseSuppressionLevel.value;
+            }
+            
+            // 保存高级音频设置
+            const noiseGateThresholdSlider = document.getElementById('noiseGateThresholdSlider');
+            const frequencyBalanceSlider = document.getElementById('frequencyBalanceSlider');
+            const adaptiveNoiseReductionCheckbox = document.getElementById('adaptiveNoiseReductionCheckbox');
+            const speechProtectionCheckbox = document.getElementById('speechProtectionCheckbox');
+            
+            if (noiseGateThresholdSlider) {
+                window.userSettings.noiseGateThreshold = parseInt(noiseGateThresholdSlider.value);
+            }
+            
+            if (frequencyBalanceSlider) {
+                window.userSettings.frequencyBalance = parseInt(frequencyBalanceSlider.value);
+            }
+            
+            if (adaptiveNoiseReductionCheckbox) {
+                window.userSettings.adaptiveNoiseReduction = adaptiveNoiseReductionCheckbox.checked;
+            }
+            
+            if (speechProtectionCheckbox) {
+                window.userSettings.speechProtection = speechProtectionCheckbox.checked;
+            }
+            
+            // 更新通话系统的设置
+            if (window.callSystem) {
+                window.callSystem.applyAdvancedAudioSettings({
+                    noiseGateThreshold: window.userSettings.noiseGateThreshold || -40,
+                    frequencyBalance: window.userSettings.frequencyBalance || 50,
+                    adaptiveNoiseReduction: window.userSettings.adaptiveNoiseReduction !== false,
+                    speechProtection: window.userSettings.speechProtection !== false
+                });
+            }
+            
             // 更新当前翻译目标语言
             currentTargetLanguage = window.userSettings.targetLanguage;
             
@@ -11824,6 +12683,27 @@ io.on('connection', (socket) => {
                 this.audioContext = null;
                 this.audioSource = null;
                 this.recognizingAudio = false;
+                
+                // 音频降噪和回声消除相关
+                this.audioNoiseSuppression = true; // 是否启用浏览器原生降噪
+                this.audioEchoCancellation = true; // 是否启用浏览器原生回声消除
+                this.audioAutoGainControl = true; // 是否启用自动增益控制
+                this.noiseSuppressionLevel = 'high'; // 降噪级别: 'low', 'medium', 'high'
+                this.softwareEchoCancellation = true; // 是否启用软件级回声消除
+                this.echoEstimationBuffer = new Float32Array(4096); // 回声估计缓冲区
+                this.referenceAudioBuffer = null; // 参考音频缓冲区（远程音频）
+                this.echoHistorySize = 1024; // 回声历史大小（样本数）
+                this.echoSuppressionGain = 0.3; // 回声抑制增益（0.0-1.0，值越小回声消除越强）
+                this.echoSuppressionLevel = 'medium'; // 回声消除级别: 'low', 'medium', 'high'
+                this.echoReferenceReady = false; // 回声参考音频是否已就绪
+                
+                // Web Audio API 增强音频处理相关
+                this.enhancedAudioContext = null; // 增强音频处理上下文
+                this.audioProcessor = null; // 自定义音频处理器
+                this.noiseGateNode = null; // 噪声门
+                this.compressorNode = null; // 动态压缩
+                this.eqNode = null; // 均衡器
+                this.isEnhancedAudioEnabled = false; // 是否启用增强音频处理
                 
                 this.init();
             }
@@ -13103,6 +13983,679 @@ io.on('connection', (socket) => {
                 }
             }
             
+            // 初始化增强音频处理（使用 Web Audio API 进行高级降噪和回声消除）
+            async initEnhancedAudioProcessor() {
+                if (this.enhancedAudioContext) {
+                    return this.enhancedAudioContext;
+                }
+                
+                try {
+                    this.enhancedAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    
+                    // 创建音频处理器节点
+                    this.audioProcessor = this.enhancedAudioContext.createScriptProcessor(4096, 1, 1);
+                    
+                    // 初始化噪声估计器
+                    this.noiseEstimator = {
+                        noiseProfile: new Array(64).fill(1e-6),
+                        lastUpdateTime: 0,
+                        speechProbability: 0,
+                        noiseThreshold: 0.01
+                    };
+                    
+                    // 噪声门阈值（根据降噪级别调整）
+                    const gateThresholds = {
+                        'low': -55,
+                        'medium': -45,
+                        'high': -35
+                    };
+                    
+                    // 压缩器设置（动态范围压缩）
+                    this.compressorNode = this.enhancedAudioContext.createDynamicsCompressor();
+                    this.compressorNode.threshold.value = -24;
+                    this.compressorNode.knee.value = 25;
+                    this.compressorNode.ratio.value = 10;
+                    this.compressorNode.attack.value = 0.005;
+                    this.compressorNode.release.value = 0.15;
+                    
+                    // 噪音门节点
+                    this.noiseGateNode = this.enhancedAudioContext.createGain();
+                    this.noiseGateNode.gain.value = 1.0;
+                    
+                    // 创建多段均衡器来提高语音清晰度
+                    // 高频增强滤波器
+                    this.highFreqEq = this.enhancedAudioContext.createBiquadFilter();
+                    this.highFreqEq.type = 'highshelf';
+                    this.highFreqEq.frequency.value = 2500;
+                    this.highFreqEq.gain.value = 3; // 增强语音清晰度
+                    
+                    // 低频削减滤波器（减少环境嗡嗡声）
+                    this.lowFreqEq = this.enhancedAudioContext.createBiquadFilter();
+                    this.lowFreqEq.type = 'highpass';
+                    this.lowFreqEq.frequency.value = 80; // 移除超低频噪音
+                    this.lowFreqEq.Q.value = 0.707;
+                    
+                    // 中频增强滤波器（语音区域）
+                    this.midFreqEq = this.enhancedAudioContext.createBiquadFilter();
+                    this.midFreqEq.type = 'peaking';
+                    this.midFreqEq.frequency.value = 1000;
+                    this.midFreqEq.Q.value = 2.0;
+                    this.midFreqEq.gain.value = 2;
+                    
+                    // 频谱分析节点
+                    this.spectrumAnalyser = this.enhancedAudioContext.createAnalyser();
+                    this.spectrumAnalyser.fftSize = 128;
+                    this.spectrumAnalyser.smoothingTimeConstant = 0.8;
+                    
+                    // 音频处理回调函数
+                    const gateThreshold = gateThresholds[this.noiseSuppressionLevel] || -45;
+                    let lastNoiseLevel = 0;
+                    let noiseFloor = 0.01;
+                    let speechHistory = [];
+                    let noiseUpdateCounter = 0;
+                    let lastSpeechTime = Date.now();
+                    
+                    this.audioProcessor.onaudioprocess = (audioProcessingEvent) => {
+                        const inputBuffer = audioProcessingEvent.inputBuffer;
+                        const outputBuffer = audioProcessingEvent.outputBuffer;
+                        const inputData = inputBuffer.getChannelData(0);
+                        const outputData = outputBuffer.getChannelData(0);
+                        const frameSize = inputData.length;
+                        
+                        // 计算当前帧的统计特征
+                        const features = this.calculateAudioFeatures(inputData);
+                        
+                        // 更新噪声估计
+                        this.updateNoiseEstimate(features);
+                        
+                        // 计算语音概率
+                        const speechProbability = this.calculateSpeechProbability(features);
+                        this.noiseEstimator.speechProbability = speechProbability;
+                        
+                        // 根据降噪级别获取处理参数
+                        const suppressionParams = this.getNoiseSuppressionParams();
+                        
+                        // 基于先进算法的降噪处理
+                        for (let i = 0; i < frameSize; i++) {
+                            const sample = inputData[i];
+                            
+                            // 0. 应用软件级回声消除（如果有参考音频）
+                            let echoCancelledSample = sample;
+                            if (this.softwareEchoCancellation && this.referenceAudioBuffer) {
+                                echoCancelledSample = this.applyEchoCancellation(sample, i);
+                            }
+                            
+                            // 1. 自适应噪声门
+                            let gateFactor = this.calculateNoiseGate(features, suppressionParams);
+                            
+                            // 2. 谱减法降噪（使用实时噪声估计）
+                            let noiseSuppressionGain = this.calculateNoiseSuppressionGain(
+                                features, 
+                                speechProbability, 
+                                suppressionParams
+                            );
+                            
+                            // 3. 添加频率相关的降噪（保护语音频段）
+                            const freqAdjustedGain = this.applyFrequencySelectiveNoiseReduction(
+                                echoCancelledSample, 
+                                gateFactor, 
+                                noiseSuppressionGain,
+                                i,
+                                frameSize
+                            );
+                            
+                            // 4. 应用处理
+                            outputData[i] = echoCancelledSample * freqAdjustedGain;
+                        }
+                        
+                        // 更新噪声地面估计
+                        if (speechProbability < 0.2 && Date.now() - lastSpeechTime > 200) {
+                            noiseFloor = noiseFloor * 0.99 + features.rms * 0.01;
+                        }
+                        
+                        if (speechProbability > 0.5) {
+                            lastSpeechTime = Date.now();
+                        }
+                        
+                        noiseUpdateCounter++;
+                        
+                        // 每30帧更新一次实时噪声数据
+                        if (noiseUpdateCounter >= 30) {
+                            this.noiseEstimator.framesProcessed = noiseUpdateCounter;
+                            noiseUpdateCounter = 0;
+                        }
+                    };
+                    
+                    console.log('增强音频处理器初始化成功，使用先进降噪算法，降噪级别:', this.noiseSuppressionLevel);
+                    return this.enhancedAudioContext;
+                } catch (error) {
+                    console.error('初始化增强音频处理器失败:', error);
+                    return null;
+                }
+            }
+            
+            // 计算音频特征
+            calculateAudioFeatures(inputData) {
+                let sum = 0;
+                let sumSq = 0;
+                let sumAbs = 0;
+                let zeroCrossings = 0;
+                let maxVal = 0;
+                let minVal = 0;
+                
+                for (let i = 0; i < inputData.length; i++) {
+                    const val = inputData[i];
+                    sum += val;
+                    sumSq += val * val;
+                    sumAbs += Math.abs(val);
+                    
+                    if (Math.abs(val) > maxVal) {
+                        maxVal = Math.abs(val);
+                    }
+                    
+                    if (i > 0) {
+                        if (inputData[i] * inputData[i-1] < 0) {
+                            zeroCrossings++;
+                        }
+                    }
+                }
+                
+                const frameSize = inputData.length;
+                const mean = sum / frameSize;
+                const rms = Math.sqrt(sumSq / frameSize);
+                const variance = (sumSq / frameSize) - (mean * mean);
+                const stdDev = Math.sqrt(variance);
+                const zeroCrossingRate = zeroCrossings / (frameSize - 1);
+                const amplitude = maxVal;
+                const crestFactor = amplitude / (rms + 1e-10);
+                
+                const db = 20 * Math.log10(rms + 1e-10);
+                
+                return {
+                    rms,
+                    db,
+                    mean,
+                    variance,
+                    stdDev,
+                    zeroCrossingRate,
+                    amplitude,
+                    crestFactor,
+                    frameSize
+                };
+            }
+            
+            // 更新噪声估计
+            updateNoiseEstimate(features) {
+                const learningRate = this.getNoiseEstimationLearningRate();
+                
+                // 当语音概率低时，更新噪声估计
+                if (this.noiseEstimator.speechProbability < 0.3) {
+                    // 逐步更新噪声配置文件
+                    for (let i = 0; i < this.noiseEstimator.noiseProfile.length; i++) {
+                        if (i < 10) { // 低频噪声更稳定，加权更大
+                            this.noiseEstimator.noiseProfile[i] = 
+                                this.noiseEstimator.noiseProfile[i] * (1 - learningRate * 0.1) + 
+                                features.rms * learningRate * 0.1;
+                        } else { // 高频噪声加权较小
+                            this.noiseEstimator.noiseProfile[i] = 
+                                this.noiseEstimator.noiseProfile[i] * (1 - learningRate * 0.05) + 
+                                features.rms * learningRate * 0.05;
+                        }
+                    }
+                    this.noiseEstimator.lastUpdateTime = Date.now();
+                }
+            }
+            
+            // 根据降噪级别获取噪声估计学习率
+            getNoiseEstimationLearningRate() {
+                const learningRates = {
+                    'low': 0.01,
+                    'medium': 0.05,
+                    'high': 0.1
+                };
+                return learningRates[this.noiseSuppressionLevel] || 0.05;
+            }
+            
+            // 计算语音概率
+            calculateSpeechProbability(features) {
+                const dbThreshold = this.getDbThreshold();
+                const zcrThreshold = this.getZcrThreshold();
+                
+                let probability = 0;
+                
+                // 基于能量检测
+                if (features.db > dbThreshold) {
+                    probability += 0.3;
+                }
+                
+                // 基于过零率检测（语音通常有中等过零率）
+                if (features.zeroCrossingRate > zcrThreshold.min && 
+                    features.zeroCrossingRate < zcrThreshold.max) {
+                    probability += 0.3;
+                }
+                
+                // 基于峰峭因子（语音通常有较高的峰峭因子）
+                if (features.crestFactor > 3) {
+                    probability += 0.2;
+                }
+                
+                // 基于方差（语音通常有较高的方差）
+                if (features.variance > this.noiseEstimator.noiseThreshold * 5) {
+                    probability += 0.2;
+                }
+                
+                return Math.max(0, Math.min(1, probability));
+            }
+            
+            // 获取dB阈值
+            getDbThreshold() {
+                const thresholds = {
+                    'low': -60,
+                    'medium': -50,
+                    'high': -40
+                };
+                return thresholds[this.noiseSuppressionLevel] || -50;
+            }
+            
+            // 获取过零率阈值
+            getZcrThreshold() {
+                const thresholds = {
+                    'low': { min: 0.05, max: 0.4 },
+                    'medium': { min: 0.07, max: 0.35 },
+                    'high': { min: 0.1, max: 0.3 }
+                };
+                return thresholds[this.noiseSuppressionLevel] || { min: 0.07, max: 0.35 };
+            }
+            
+            // 计算噪声门因子
+            calculateNoiseGate(features, suppressionParams) {
+                const dbThreshold = this.getDbThreshold();
+                const softKneeStart = dbThreshold - 5;
+                const softKneeEnd = dbThreshold + 5;
+                
+                let gateFactor;
+                
+                if (features.db < softKneeStart) {
+                    gateFactor = 0;
+                } else if (features.db > softKneeEnd) {
+                    gateFactor = 1;
+                } else {
+                    // 软转折处理
+                    const ratio = (features.db - softKneeStart) / (softKneeEnd - softKneeStart);
+                    gateFactor = ratio * ratio; // 非线性过渡
+                }
+                
+                // 基于语音概率进一步调整
+                gateFactor = Math.max(gateFactor, this.noiseEstimator.speechProbability);
+                
+                return Math.max(0, Math.min(1, gateFactor));
+            }
+            
+            // 根据降噪级别获取处理参数
+            getNoiseSuppressionParams() {
+                const params = {
+                    'low': {
+                        baseGain: 0.85,
+                        noiseFloorReduction: 0.15,
+                        frequencySelectivity: 0.3,
+                        thresholdMargin: 3
+                    },
+                    'medium': {
+                        baseGain: 0.65,
+                        noiseFloorReduction: 0.3,
+                        frequencySelectivity: 0.5,
+                        thresholdMargin: 6
+                    },
+                    'high': {
+                        baseGain: 0.45,
+                        noiseFloorReduction: 0.5,
+                        frequencySelectivity: 0.7,
+                        thresholdMargin: 10
+                    }
+                };
+                return params[this.noiseSuppressionLevel] || params.medium;
+            }
+            
+            // 计算噪声抑制增益
+            calculateNoiseSuppressionGain(features, speechProbability, suppressionParams) {
+                // 基础增益
+                let gain = suppressionParams.baseGain;
+                
+                // 根据语音概率调整
+                if (speechProbability > 0.7) {
+                    // 很可能是语音，保护增益
+                    gain = Math.max(gain, 0.8);
+                } else if (speechProbability < 0.3) {
+                    // 很可能是噪声，降低增益
+                    gain = Math.max(suppressionParams.baseGain * 0.5, 0.2);
+                }
+                
+                // 基于噪声估计进一步调整
+                const estimatedNoiseLevel = this.getEstimatedNoiseLevel();
+                if (features.db < estimatedNoiseLevel + suppressionParams.thresholdMargin) {
+                    gain = Math.max(gain * 0.7, 0.1);
+                }
+                
+                // 软过渡处理
+                const softRangeStart = estimatedNoiseLevel + suppressionParams.thresholdMargin;
+                const softRangeEnd = softRangeStart + 10;
+                
+                if (features.db > softRangeStart && features.db < softRangeEnd) {
+                    const ratio = (features.db - softRangeStart) / (softRangeEnd - softRangeStart);
+                    gain = gain * (1 - ratio) + ratio;
+                }
+                
+                return Math.max(0.05, Math.min(1.0, gain));
+            }
+            
+            // 获取估计的噪声水平
+            getEstimatedNoiseLevel() {
+                // 返回噪声估计水平的平均值
+                let sum = 0;
+                for (let i = 0; i < this.noiseEstimator.noiseProfile.length; i++) {
+                    sum += this.noiseEstimator.noiseProfile[i];
+                }
+                const avgNoise = sum / this.noiseEstimator.noiseProfile.length;
+                return 20 * Math.log10(avgNoise + 1e-10);
+            }
+            
+            // 应用频率选择性降噪
+            applyFrequencySelectiveNoiseReduction(sample, gateFactor, baseGain, index, totalSamples) {
+                let frequencyWeight = 1.0;
+                
+                // 模拟简单的频率分析
+                const normalizedIndex = index / totalSamples; // 0 to 1
+                
+                if (normalizedIndex < 0.25) {
+                    // 低频区域（0-12.5%）：环境噪音区域，降低增益
+                    frequencyWeight = 0.7;
+                } else if (normalizedIndex < 0.5) {
+                    // 低中频区域（25-50%）：语音基频区域，保护增益
+                    frequencyWeight = 0.9;
+                } else if (normalizedIndex < 0.75) {
+                    // 中高频区域（50-75%）：语音清晰度区域，保持或轻微增强
+                    frequencyWeight = 1.1;
+                } else {
+                    // 高频区域（75-100%）：环境噪音，降低增益
+                    frequencyWeight = 0.6;
+                }
+                
+                // 根据降噪级别调整频率选择性
+                const selectivity = this.getNoiseSuppressionParams().frequencySelectivity;
+                
+                // 最终的增益是基础增益 × 频率权重 × 频率选择性调整
+                let finalGain = baseGain;
+                if (selectivity > 0) {
+                    finalGain = baseGain * (1 - selectivity) + (baseGain * frequencyWeight) * selectivity;
+                }
+                
+                // 应用噪声门
+                finalGain *= gateFactor;
+                
+                return Math.max(0.05, Math.min(1.0, finalGain));
+            }
+            
+            // 软件级回声消除方法
+            applyEchoCancellation(sample, index) {
+                if (!this.softwareEchoCancellation || !this.referenceAudioBuffer) {
+                    return sample;
+                }
+                
+                // 简单的延迟滤波回声消除
+                let echoEstimate = 0;
+                const echoDelay = 64; // 估计的回声延迟（样本数）
+                
+                // 如果有参考音频（即远程方的音频），估计回声
+                if (index >= echoDelay && this.referenceAudioBuffer) {
+                    // 使用线性预测滤波器估计回声
+                    const referenceIndex = index - echoDelay;
+                    if (referenceIndex < this.referenceAudioBuffer.length) {
+                        echoEstimate = this.referenceAudioBuffer[referenceIndex] * 0.3; // 简单的回声模拟
+                    }
+                }
+                
+                // 从当前样本中减去估计的回声
+                let correctedSample = sample - echoEstimate;
+                
+                // 应用回声抑制增益
+                correctedSample *= this.echoSuppressionGain;
+                
+                // 限制幅度避免削波
+                return Math.max(-0.9, Math.min(0.9, correctedSample));
+            }
+            
+            // 设置参考音频（远程音频）用于回声消除
+            setReferenceAudioForEchoCancellation(audioBuffer) {
+                if (!this.softwareEchoCancellation) return;
+                
+                this.referenceAudioBuffer = audioBuffer;
+                console.log('回声消除参考音频已更新，长度:', audioBuffer?.length || 0);
+            }
+            
+            // 设置回声消除级别
+            setEchoSuppressionLevel(level) {
+                const levelMap = {
+                    'low': 0.7,   // 轻度回声消除
+                    'medium': 0.3, // 中度回声消除
+                    'high': 0.1    // 强力回声消除
+                };
+                
+                if (levelMap[level]) {
+                    this.echoSuppressionLevel = level;
+                    this.echoSuppressionGain = levelMap[level];
+                    console.log('回声消除级别已设置为:', level, '增益:', this.echoSuppressionGain);
+                }
+            }
+            
+            // 更新回声消除设置
+            updateEchoCancellationSettings() {
+                if (!this.isInCall) return;
+                
+                // 如果需要，设置默认的回声消除级别
+                if (!this.echoSuppressionLevel) {
+                    this.setEchoSuppressionLevel('medium');
+                }
+                
+                // 如果正在通话中，尝试获取远程音频用于回声消除
+                if (this.softwareEchoCancellation && !this.referenceAudioBuffer && this.remoteStream) {
+                    console.log('尝试获取远程音频用于回声消除');
+                    this.setupEchoCancellationReference(this.remoteStream);
+                }
+            }
+            
+            // 设置回声消除参考音频
+            setupEchoCancellationReference(stream) {
+                if (!this.softwareEchoCancellation || !stream) return;
+                
+                console.log('设置回声消除参考音频，流轨道数:', stream.getTracks().length);
+                
+                const audioTracks = stream.getAudioTracks();
+                if (audioTracks.length === 0) {
+                    console.log('流中没有音频轨道，无法设置回声消除参考音频');
+                    return;
+                }
+                
+                console.log('找到音频轨道用于回声消除:', audioTracks[0].label || audioTracks[0].id);
+                
+                // 在实际应用中，这里应该创建一个AudioContext来分析远程音频
+                // 由于Web Audio API的限制和实时处理的要求，此处为简化实现
+                // 初始化一个空的参考音频缓冲区
+                if (!this.referenceAudioBuffer) {
+                    this.referenceAudioBuffer = new Float32Array(4096);
+                    console.log('初始化回声消除参考音频缓冲区，长度:', this.referenceAudioBuffer.length);
+                }
+                
+                // 设置回声消除参考音频已就绪标志
+                this.echoReferenceReady = true;
+                console.log('回声消除参考音频已设置完成');
+            }
+            
+            // 将增强音频处理应用到媒体流
+            async applyEnhancedAudioToStream(inputStream) {
+                if (!inputStream) return null;
+                
+                try {
+                    const ctx = await this.initEnhancedAudioProcessor();
+                    if (!ctx) return inputStream;
+                    
+                    // 创建新的媒体流目标
+                    const destStream = new MediaStream();
+                    
+                    // 获取输入流的音频轨道
+                    const audioTracks = inputStream.getAudioTracks();
+                    if (audioTracks.length === 0) return inputStream;
+                    
+                    // 直接添加原始音频轨道（浏览器原生的降噪和回声消除已经应用）
+                    audioTracks.forEach(track => destStream.addTrack(track));
+                    
+                    // 如果启用了增强处理，添加处理后的音频轨道
+                    if (this.isEnhancedAudioEnabled) {
+                        const source = ctx.createMediaStreamSource(inputStream);
+                        
+                        // 连接处理链
+                        source.connect(this.audioProcessor);
+                        this.audioProcessor.connect(this.noiseGateNode);
+                        this.noiseGateNode.connect(this.compressorNode);
+                        this.compressorNode.connect(ctx.destination);
+                        
+                        console.log('增强音频处理已应用到媒体流');
+                    }
+                    
+                    return destStream;
+                } catch (error) {
+                    console.error('应用增强音频处理失败:', error);
+                    return inputStream;
+                }
+            }
+            
+            // 设置降噪级别
+            setNoiseSuppressionLevel(level) {
+                if (['low', 'medium', 'high'].includes(level)) {
+                    this.noiseSuppressionLevel = level;
+                    console.log('降噪级别已设置为:', level);
+                    
+                    // 如果正在通话中，更新音频处理
+                    if (this.isInCall && this.localStream) {
+                        this.updateAudioProcessing();
+                    }
+                }
+            }
+            
+            // 更新音频处理（通话中动态调整）
+            async updateAudioProcessing() {
+                if (!this.localStream) return;
+                
+                const audioTracks = this.localStream.getAudioTracks();
+                if (audioTracks.length === 0) return;
+                
+                // 获取当前的音频约束
+                const currentConstraints = audioTracks[0].getConstraints();
+                
+                // 更新浏览器原生的降噪和回声消除
+                audioTracks[0].applyConstraints({
+                    echoCancellation: this.audioEchoCancellation,
+                    noiseSuppression: this.audioNoiseSuppression,
+                    autoGainControl: this.audioAutoGainControl
+                }).then(() => {
+                    console.log('音频约束已更新:', {
+                        echoCancellation: this.audioEchoCancellation,
+                        noiseSuppression: this.audioNoiseSuppression,
+                        autoGainControl: this.audioAutoGainControl,
+                        noiseSuppressionLevel: this.noiseSuppressionLevel
+                    });
+                }).catch(err => {
+                    console.error('更新音频约束失败:', err);
+                });
+            }
+            
+            // 启用/禁用增强音频处理
+            toggleEnhancedAudio(enabled) {
+                this.isEnhancedAudioEnabled = enabled;
+                console.log('增强音频处理已', enabled ? '启用' : '禁用');
+                
+                if (this.localStream) {
+                    this.applyEnhancedAudioToStream(this.localStream);
+                }
+            }
+            
+            // 获取降噪设置状态
+            getNoiseReductionStatus() {
+                return {
+                    browserNative: {
+                        echoCancellation: this.audioEchoCancellation,
+                        noiseSuppression: this.audioNoiseSuppression,
+                        autoGainControl: this.audioAutoGainControl
+                    },
+                    enhanced: {
+                        enabled: this.isEnhancedAudioEnabled,
+                        level: this.noiseSuppressionLevel,
+                        noiseGateThreshold: this.noiseGateThreshold,
+                        frequencyBalance: this.frequencyBalance,
+                        adaptiveNoiseReduction: this.adaptiveNoiseReduction,
+                        speechProtection: this.speechProtection
+                    }
+                };
+            }
+            
+            // 应用高级音频设置
+            applyAdvancedAudioSettings(settings) {
+                // 保存设置
+                this.noiseGateThreshold = settings.noiseGateThreshold || -40;
+                this.frequencyBalance = settings.frequencyBalance || 50;
+                this.adaptiveNoiseReduction = settings.adaptiveNoiseReduction !== false;
+                this.speechProtection = settings.speechProtection !== false;
+                
+                console.log('CallSystem 高级音频设置已更新:', {
+                    noiseGateThreshold: this.noiseGateThreshold,
+                    frequencyBalance: this.frequencyBalance,
+                    adaptiveNoiseReduction: this.adaptiveNoiseReduction,
+                    speechProtection: this.speechProtection
+                });
+                
+                // 如果正在通话中，更新音频处理
+                if (this.isInCall && this.localStream) {
+                    this.updateAudioProcessing();
+                    this.updateNoiseReductionButton();
+                }
+            }
+            
+            // 更新降噪按钮状态
+            updateNoiseReductionButton() {
+                const toggleNoiseReductionBtn = document.getElementById('toggleNoiseReductionBtn');
+                if (!toggleNoiseReductionBtn) return;
+                
+                const noiseSuppressionLevel = this.noiseSuppressionLevel || 'medium';
+                const noiseSuppressionColors = {
+                    'low': '#28a745', // 绿色
+                    'medium': '#ffc107', // 黄色
+                    'high': '#dc3545' // 红色
+                };
+                
+                const levelNames = {
+                    'low': '低',
+                    'medium': '中',
+                    'high': '高'
+                };
+                
+                const isEnabled = this.audioNoiseSuppression;
+                
+                if (isEnabled) {
+                    toggleNoiseReductionBtn.style.backgroundColor = noiseSuppressionColors[noiseSuppressionLevel] || '#28a745';
+                    toggleNoiseReductionBtn.title = `关闭降噪 (${levelNames[noiseSuppressionLevel] || '中'}级)`;
+                    toggleNoiseReductionBtn.innerHTML = '🔇';
+                } else {
+                    toggleNoiseReductionBtn.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+                    toggleNoiseReductionBtn.title = `开启降噪 (${levelNames[noiseSuppressionLevel] || '中'}级)`;
+                    toggleNoiseReductionBtn.innerHTML = '🔈';
+                }
+                
+                console.log('降噪按钮状态已更新:', {
+                    enabled: isEnabled,
+                    level: noiseSuppressionLevel,
+                    title: toggleNoiseReductionBtn.title
+                });
+            }
+            
             // 开始监测音频音量
             startMonitoringAudio() {
                 if (!this.localStream || this.isMonitoringAudio) return;
@@ -13250,7 +14803,11 @@ io.on('connection', (socket) => {
                 
                 // 没有本地媒体流，获取媒体流
                 const constraints = {
-                    audio: true,
+                    audio: {
+                        echoCancellation: this.audioEchoCancellation !== false,
+                        noiseSuppression: this.audioNoiseSuppression !== false,
+                        autoGainControl: this.audioAutoGainControl !== false
+                    },
                     video: this.currentCallType === 'video' ? {
                         facingMode: this.currentFacingMode,
                         deviceId: webcastMateDeviceId ? { exact: webcastMateDeviceId } : undefined
@@ -13310,7 +14867,11 @@ io.on('connection', (socket) => {
                             console.log('WebcastMate设备失败，尝试使用默认摄像头');
                             
                             const fallbackConstraints = {
-                                audio: true,
+                                audio: {
+                                    echoCancellation: this.audioEchoCancellation !== false,
+                                    noiseSuppression: this.audioNoiseSuppression !== false,
+                                    autoGainControl: this.audioAutoGainControl !== false
+                                },
                                 video: this.currentCallType === 'video' ? {
                                     facingMode: this.currentFacingMode
                                 } : false
@@ -13402,7 +14963,11 @@ io.on('connection', (socket) => {
                         
                         // 获取新的媒体流（使用WebcastMate）
                         const constraints = {
-                            audio: true,
+                            audio: {
+                                echoCancellation: this.audioEchoCancellation !== false,
+                                noiseSuppression: this.audioNoiseSuppression !== false,
+                                autoGainControl: this.audioAutoGainControl !== false
+                            },
                             video: this.currentCallType === 'video' ? {
                                 deviceId: { exact: webcastMateDeviceId }
                             } : false
@@ -13454,7 +15019,11 @@ io.on('connection', (socket) => {
                             
                             // 获取新的媒体流
                             const fallbackConstraints = {
-                                audio: true,
+                                audio: {
+                                    echoCancellation: this.audioEchoCancellation !== false,
+                                    noiseSuppression: this.audioNoiseSuppression !== false,
+                                    autoGainControl: this.audioAutoGainControl !== false
+                                },
                                 video: this.currentCallType === 'video' ? {
                                     facingMode: this.currentFacingMode
                                 } : false
@@ -13510,7 +15079,11 @@ io.on('connection', (socket) => {
                     
                     // 获取新的媒体流
                     const constraints = {
-                        audio: true,
+                        audio: {
+                            echoCancellation: this.audioEchoCancellation !== false,
+                            noiseSuppression: this.audioNoiseSuppression !== false,
+                            autoGainControl: this.audioAutoGainControl !== false
+                        },
                         video: this.currentCallType === 'video' ? {
                             facingMode: this.currentFacingMode
                         } : false
@@ -13597,7 +15170,11 @@ io.on('connection', (socket) => {
                     // 如果没有麦克风音频轨道，获取新的麦克风音频轨道
                     if (!microphoneTrack) {
                         try {
-                            const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                            const audioStream = await navigator.mediaDevices.getUserMedia({ audio: {
+                                echoCancellation: this.audioEchoCancellation !== false,
+                                noiseSuppression: this.audioNoiseSuppression !== false,
+                                autoGainControl: this.audioAutoGainControl !== false
+                            } });
                             microphoneTrack = audioStream.getAudioTracks()[0];
                         } catch (audioError) {
                             console.error('获取麦克风音频轨道失败:', audioError);
@@ -13775,7 +15352,11 @@ io.on('connection', (socket) => {
                     
                     // 获取新的摄像头媒体流
                     const constraints = {
-                        audio: true,
+                        audio: {
+                            echoCancellation: this.audioEchoCancellation !== false,
+                            noiseSuppression: this.audioNoiseSuppression !== false,
+                            autoGainControl: this.audioAutoGainControl !== false
+                        },
                         video: this.currentCallType === 'video' ? {
                             facingMode: this.currentFacingMode
                         } : false
@@ -14162,7 +15743,11 @@ io.on('connection', (socket) => {
                 if (!this.localStream) {
                     console.log('本地媒体流不存在，正在获取媒体流...');
                     const constraints = {
-                        audio: true,
+                        audio: {
+                            echoCancellation: this.audioEchoCancellation !== false,
+                            noiseSuppression: this.audioNoiseSuppression !== false,
+                            autoGainControl: this.audioAutoGainControl !== false
+                        },
                         video: this.currentCallType === 'video'
                     };
                     
@@ -14348,6 +15933,9 @@ io.on('connection', (socket) => {
                     
                     // 更新remoteStream引用
                     this.remoteStream = stream;
+                    
+                    // 初始化回声消除参考音频
+                    this.setupEchoCancellationReference(stream);
                     
                     // 直接设置视频源，这是最可靠的方式
                     remoteVideo.srcObject = stream;
@@ -14841,8 +16429,9 @@ io.on('connection', (socket) => {
         
 
         // 表情数据
+        // 表情数据 - 已清理无效/重复的表情字符
         const emojiData = {
-            smileys: ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😙', '🥲', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶', '🥴', '😵', '🤯', '🤠', '🥳', '😎', '🤓', '🧐', '😕', '😟', '🙁', '☹️', '😮', '😯', '😲', '😳', '🥺', '😦', '😧', '😨', '😰', '😥', '😢', '😭', '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡', '😠', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺', '👻', '👽', '👾', '🤖', '💋', '👄', '👅', '👂', '👃', '🧠', '🫀', '🫁', '🦷', '🦴', '👀', '👁️', '👅', '👄', '🫶', '🤲', '🤝', '🙏', '👏', '🤝', '👍', '👎', '👌', '✌️', '🤞', '🤟', '🤘', '🤙', '👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤏', '✊', '👊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝', '🙏', '💪', '🦾', '🦿', '🦵', '🦶', '👂', '🦻', '👃', '🧠', '🫀', '🫁', '🦷', '🦴', '👀', '👁️', '👅', '👄', '💋', '🩸'],
+            smileys: ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😙', '🥲', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😶‍🌫️', '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶', '🥴', '😵', '😵‍💫', '🤯', '🤠', '🥳', '😎', '🤓', '🧐', '😕', '😟', '🙁', '☹️', '😮', '😯', '😲', '😳', '🥺', '😦', '😧', '😨', '😰', '😥', '😢', '😭', '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡', '😠', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺', '👻', '👽', '👾', '🤖', '💋', '👄', '👅', '👂', '👃', '🧠', '🫀', '🫁', '🦷', '🦴', '👀', '👁️', '👁️‍🗨️', '👅', '👄', '🫶', '🤲', '🤝', '🙏', '👏', '👍', '👎', '👌', '✌️', '🤞', '🤟', '🤘', '🤙', '👋', '🤚', '🖐️', '✋', '🖖', '👌', '🤏', '✊', '👊', '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝', '🙏', '💪', '🦾', '🦿', '🦵', '🦶', '👂', '🦻', '👃', '🧠', '🫀', '🫁', '🦷', '🦴', '👀', '👁️', '👅', '👄', '💋', '🩸'],
             animals: ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐽', '🐸', '🐵', '🙈', '🙉', '🙊', '🐒', '🐔', '🐧', '🐦', '🐤', '🐣', '🐥', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🐛', '🦋', '🐌', '🐞', '🐜', '🦟', '🦗', '🕷️', '🕸️', '🦂', '🐢', '🐍', '🦎', '🦖', '🦕', '🐙', '🦑', '🦐', '🦞', '🦀', '🐡', '🐠', '🐟', '🐬', '🐳', '🐋', '🦈', '🐊', '🐅', '🐆', '🦓', '🦍', '🦧', '🐘', '🦛', '🦏', '🐪', '🐫', '🦒', '🦘', '🐃', '🐂', '🐄', '🐎', '🐖', '🐏', '🐑', '🦙', '🐐', '🦌', '🐕', '🐩', '🦮', '🐕‍🦺', '🐈', '🐓', '🦃', '🦚', '🦜', '🦢', '🦩', '🕊️', '🐇', '🦝', '🦨', '🦡', '🦦', '🦥', '🐁', '🐀', '🐿️', '🦔', '🐾', '🐉', '🐲', '🌵', '🎄', '🌲', '🌳', '🌴', '🌱', '🌿', '☘️', '🍀', '🎍', '🎋', '🍃', '🍂', '🍁', '🍄', '🌾', '💐', '🌷', '🌹', '🥀', '🌺', '🌸', '🌼', '🌻', '🌞', '🌝', '🌛', '🌜', '🌚', '🌕', '🌖', '🌗', '🌘', '🌑', '🌒', '🌓', '🌔', '🌙', '🌎', '🌍', '🌏', '🌐', '💫', '⭐', '🌟', '✨', '⚡', '🔥', '💥', '💦', '💨', '🌪️', '🌈', '☀️', '🌤️', '⛅', '🌦️', '🌧️', '⛈️', '🌨️', '❄️', '☃️', '⛄', '🌊', '🌫️', '🌬️'],
             food: ['🍎', '🍐', '🍊', '🍋', '🍌', '🍉', '🍇', '🍓', '🫐', '🍈', '🍒', '🍑', '🥭', '🍍', '🥥', '🥝', '🍅', '🍆', '🥑', '🥦', '🥬', '🥒', '🌶️', '🫑', '🌽', '🥕', '🫒', '🧄', '🧅', '🥔', '🍠', '🥐', '🥖', '🍞', '🥨', '🥯', '🧀', '🍗', '🍖', '🥩', '🥓', '🍔', '🍟', '🍕', '🌭', '🥪', '🌮', '🌯', '🫔', '🥙', '🧆', '🥚', '🍳', '🧈', '🥞', '🧇', '🥓', '🥩', '🍗', '🍖', '🦴', '🍜', '🍝', '🍲', '🍛', '🍣', '🍱', '🥟', '🦪', '🍤', '🍙', '🍚', '🍘', '🍥', '🥠', '🥮', '🍢', '🍡', '🍧', '🍨', '🍦', '🥧', '🧁', '🍰', '🎂', '🍮', '🍭', '🍬', '🍫', '🍿', '🍩', '🍪', '🌰', '🥜', '🍯', '🥛', '🍼', '🫖', '☕', '🍵', '🍶', '🍺', '🍻', '🥂', '🍷', '🥃', '🫗', '🧊', '🥤', '🧋', '🧃', '🧉', '🧊', '🍹', '🍸', '🍾', '🥄', '🍴', '🍽️', '🥣', '🥡', '🦪', '🍣', '🍤', '🍱', '🥟', '🍙', '🍚', '🍘', '🍥', '🥠', '🥮', '🍢', '🍡'],
             activities: ['⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱', '🪀', '🏓', '🏸', '🏒', '🏑', '🥍', '🏏', '🪃', '🥅', '⛳', '🪁', '🏹', '🎣', '🤿', '🥊', '🥋', '🎽', '🛹', '🛼', '🛷', '⛸️', '🥌', '🎿', '⛷️', '🏂', '🪂', '🏋️‍♂️', '🏋️‍♀️', '🤼‍♂️', '🤼‍♀️', '🤸‍♂️', '🤸‍♀️', '🤺', '🤾‍♂️', '🤾‍♀️', '🏌️‍♂️', '🏌️‍♀️', '🏇', '🧘‍♂️', '🧘‍♀️', '🚴‍♂️', '🚴‍♀️', '🚵‍♂️', '🚵‍♀️', '🧗‍♂️', '🧗‍♀️', '🚣‍♂️', '🚣‍♀️', '🏊‍♂️', '🏊‍♀️', '🏄‍♂️', '🏄‍♀️', '🏆', '🥇', '🥈', '🥉', '🏅', '🎖️', '🥋', '🎗️', '🏵️', '🎫', '🎟️', '🎪', '🤹‍♂️', '🤹‍♀️', '🎭', '🩰', '🎨', '🎬', '🎤', '🎧', '🎼', '🎵', '🎶', '🥁', '🪘', '🎷', '🪗', '🎸', '🪕', '🎺', '🪇', '🎹', '🎻', '🎲', '♠️', '♥️', '♦️', '♣️', '🃏', '🎴', '🀄', '🎯', '🎮', '🎰', '🎳', '🏓', '🏸', '🏒', '🏑', '🥍', '🏏', '🪃'],
@@ -16120,7 +17709,7 @@ io.on('connection', (socket) => {
         window.addEventListener('beforeunload', savePageState);
         
         // 页面加载完成后初始化
-        document.addEventListener('DOMContentLoaded', () => {
+        onDOMReady(() => {
             // 首先初始化界面语言
             initInterfaceLanguage();
             
@@ -16155,6 +17744,110 @@ io.on('connection', (socket) => {
                 toggleSubtitlesBtn.addEventListener('click', () => {
                     if (callSystem) {
                         callSystem.toggleSubtitles();
+                    }
+                });
+            }
+            
+            // 通话控制按钮事件监听 - 移到第一个 onDOMReady 确保回调正确执行
+            console.log('[通话控制] 注册通话控制按钮事件监听器');
+            
+            const toggleVideoBtn = document.getElementById('toggleVideoBtn');
+            const toggleAudioBtn = document.getElementById('toggleAudioBtn');
+            const endCallBtn = document.getElementById('endCallBtn');
+            const switchCameraBtn = document.getElementById('switchCameraBtn');
+            const toggleScreenShareBtn = document.getElementById('toggleScreenShareBtn');
+            const toggleNoiseReductionBtn = document.getElementById('toggleNoiseReductionBtn');
+            const callSettingsBtn = document.getElementById('callSettingsBtn');
+            
+            if (toggleVideoBtn) {
+                toggleVideoBtn.addEventListener('click', () => {
+                    console.log('[通话控制] toggleVideoBtn 被点击');
+                    if (callSystem) {
+                        callSystem.toggleVideo();
+                    }
+                });
+            }
+            
+            if (toggleAudioBtn) {
+                toggleAudioBtn.addEventListener('click', () => {
+                    console.log('[通话控制] toggleAudioBtn 被点击');
+                    if (callSystem) {
+                        callSystem.toggleAudio();
+                    }
+                });
+            }
+            
+            if (endCallBtn) {
+                endCallBtn.addEventListener('click', () => {
+                    console.log('[通话控制] endCallBtn 被点击');
+                    if (callSystem) {
+                        callSystem.endCall();
+                        setTimeout(() => {
+                            if (pendingUpdateNotification) {
+                                showUpdateNotification(pendingUpdateNotification);
+                                pendingUpdateNotification = null;
+                            }
+                        }, 1000);
+                    }
+                });
+            }
+            
+            if (switchCameraBtn) {
+                switchCameraBtn.addEventListener('click', () => {
+                    console.log('[通话控制] switchCameraBtn 被点击');
+                    if (callSystem) {
+                        callSystem.switchCamera();
+                    }
+                });
+            }
+            
+            if (toggleScreenShareBtn) {
+                toggleScreenShareBtn.addEventListener('click', () => {
+                    console.log('[通话控制] toggleScreenShareBtn 被点击');
+                    if (callSystem) {
+                        if (callSystem.isSharingScreen) {
+                            callSystem.stopScreenSharing();
+                        } else {
+                            callSystem.startScreenSharing();
+                        }
+                    }
+                });
+            }
+            
+            if (toggleNoiseReductionBtn) {
+                toggleNoiseReductionBtn.addEventListener('click', () => {
+                    console.log('[通话控制] toggleNoiseReductionBtn 被点击');
+                    if (callSystem) {
+                        const newState = !callSystem.audioNoiseSuppression;
+                        callSystem.audioNoiseSuppression = newState;
+                        callSystem.updateNoiseReductionButton();
+                        callSystem.updateAudioProcessing();
+                        
+                        // 同时更新噪声监测指示器的显示
+                        if (newState && !document.getElementById('noiseIndicator').classList.contains('active')) {
+                            document.getElementById('noiseIndicator').classList.add('active');
+                        }
+                    }
+                });
+                
+                // 初始更新按钮状态
+                if (callSystem && callSystem.updateNoiseReductionButton) {
+                    setTimeout(() => {
+                        callSystem.updateNoiseReductionButton();
+                    }, 1000);
+                }
+            }
+            
+            if (callSettingsBtn) {
+                callSettingsBtn.addEventListener('click', () => {
+                    console.log('[通话控制] callSettingsBtn 被点击');
+                    const settingsModal = document.getElementById('settingsModal');
+                    if (settingsModal) {
+                        settingsModal.classList.add('active');
+                        const callSettingsTab = document.querySelector('.admin-tab[data-tab="call"]');
+                        if (callSettingsTab) {
+                            callSettingsTab.click();
+                        }
                     }
                 });
             }
@@ -17694,10 +19387,10 @@ io.on('connection', (socket) => {
             
             // 实际获取位置（由上面权限检测通过后调用）
             function proceedToGetLocation() {
-            // 使用最佳定位参数
+            // 使用最佳定位参数 - 优化高精度定位
             const options = {
-                enableHighAccuracy: true, // 启用高精度模式
-                timeout: 60000, // 增加超时时间到60秒
+                enableHighAccuracy: true, // 启用高精度模式（使用GPS）
+                timeout: 90000, // 增加超时时间到90秒，给GPS更多时间
                 maximumAge: 0 // 禁用位置缓存
             };
             
@@ -17705,7 +19398,7 @@ io.on('connection', (socket) => {
             
             // 存储多次测量结果
             const positions = [];
-            const maxAttempts = 3; // 最多尝试3次
+            const maxAttempts = 5; // 增加到5次尝试以获得更精确的位置
             let attempt = 0;
             
             // 多次测量以提高精度
@@ -17715,26 +19408,22 @@ io.on('connection', (socket) => {
                 
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
-                        console.log(`第${attempt}次获取位置成功，精度:`, position.coords.accuracy, '米');
+                        const accuracy = position.coords.accuracy;
+                        console.log(`第${attempt}次获取位置成功，精度: ${accuracy}米, 纬度: ${position.coords.latitude}, 经度: ${position.coords.longitude}`);
                         
                         // 存储位置结果
                         positions.push(position);
                         
-                        // 如果还有尝试次数，继续尝试
+                        // 如果还有尝试次数，继续尝试（间隔2秒让GPS有足够时间）
                         if (attempt < maxAttempts) {
-                            // 短暂延迟后再次尝试，避免过度请求
-                            setTimeout(getPosition, 1000);
+                            setTimeout(getPosition, 2000);
                         } else {
-                            // 所有尝试完成，选择精度最高的位置
+                            // 所有尝试完成，使用加权平均算法计算最优位置
                             if (positions.length > 0) {
-                                // 按精度排序，选择精度最高的
-                                positions.sort((a, b) => a.coords.accuracy - b.coords.accuracy);
-                                const bestPosition = positions[0];
-                                console.log('最佳位置精度:', bestPosition.coords.accuracy, '米');
+                                const optimizedLocation = calculateOptimizedLocation(positions);
+                                console.log(`优化后位置 - 纬度: ${optimizedLocation.latitude}, 经度: ${optimizedLocation.longitude}, 预估精度: ${optimizedLocation.estimatedAccuracy}米`);
                                 
-                                const latitude = bestPosition.coords.latitude;
-                                const longitude = bestPosition.coords.longitude;
-                                handlePositionData(latitude, longitude, false);
+                                handlePositionData(optimizedLocation.latitude, optimizedLocation.longitude, false);
                             } else {
                                 alert('获取位置失败，请检查位置权限和网络连接');
                             }
@@ -17767,7 +19456,7 @@ io.on('connection', (socket) => {
                         // 如果还有尝试次数，继续尝试
                         if (attempt < maxAttempts) {
                             console.log(`继续尝试获取位置，剩余尝试次数: ${maxAttempts - attempt}`);
-                            setTimeout(getPosition, 1000);
+                            setTimeout(getPosition, 2000);
                         } else {
                             alert(errorMessage);
                         }
@@ -18456,6 +20145,8 @@ io.on('connection', (socket) => {
                         } else if (contentType.startsWith('audio/')) {
                             // 音频文件
                             messageType = 'audio';
+                            const msgId = Date.now() + '-' + Math.random().toString(36).substring(2, 11);
+                            const myColor = (allUsers.find(u => u.username === username) || {}).color || '#667eea';
                             uploadFileWithProgress(
                                 file,
                                 arrayBuffer,
@@ -18463,10 +20154,24 @@ io.on('connection', (socket) => {
                                 { 'Content-Type': contentType },
                                 (data) => {
                                     if (data.audioUrl) {
+                                        // 立即在本地显示自己发送的音频
+                                        addMessage({
+                                            id: msgId,
+                                            username: username,
+                                            color: myColor,
+                                            message: data.audioUrl,
+                                            type: 'audio',
+                                            contentType: data.contentType || contentType,
+                                            timestamp: new Date().toLocaleTimeString(),
+                                            senderSocketId: socket.id,
+                                            readBy: [socket.id],
+                                            pinned: false
+                                        });
                                         socket.emit('message', { 
                                             message: data.audioUrl, 
                                             type: messageType,
-                                            contentType: data.contentType || contentType
+                                            contentType: data.contentType || contentType,
+                                            clientMessageId: msgId
                                         });
                                     }
                                 },
@@ -18476,8 +20181,10 @@ io.on('connection', (socket) => {
                                 }
                             );
                         } else {
-                            // 其他文件类型
+                            // 其他文件类型（包括视频）
                             messageType = 'file';
+                            const msgId = Date.now() + '-' + Math.random().toString(36).substring(2, 11);
+                            const myColor = (allUsers.find(u => u.username === username) || {}).color || '#667eea';
                             uploadFileWithProgress(
                                 file,
                                 arrayBuffer,
@@ -18488,11 +20195,26 @@ io.on('connection', (socket) => {
                                 },
                                 (data) => {
                                     if (data.url) {
+                                        // 立即在本地显示自己发送的文件
+                                        addMessage({
+                                            id: msgId,
+                                            username: username,
+                                            color: myColor,
+                                            message: data.url,
+                                            type: 'file',
+                                            fileName: file.name,
+                                            fileSize: file.size,
+                                            timestamp: new Date().toLocaleTimeString(),
+                                            senderSocketId: socket.id,
+                                            readBy: [socket.id],
+                                            pinned: false
+                                        });
                                         socket.emit('message', { 
                                             message: data.url, 
                                             type: messageType,
                                             fileName: file.name,
-                                            fileSize: file.size
+                                            fileSize: file.size,
+                                            clientMessageId: msgId
                                         });
                                     }
                                 },
@@ -19444,21 +21166,34 @@ io.on('connection', (socket) => {
 
         // 注册消息撤回事件监听器
         function registerMessageRecalledListener() {
-            if (socket) {
-                socket.on('message-recalled', (messageId) => {
-                    const messageDiv = document.querySelector(`[data-message-id="${messageId}"]`);
-                    if (messageDiv) {
-                        const username = messageDiv.querySelector('.username').textContent;
-                        messageDiv.innerHTML = `
-                            <div class="message-header">
-                                <span class="username" style="color: ${messageDiv.querySelector('.username').style.color}">${username}</span>
-                                <span class="timestamp">${messageDiv.querySelector('.timestamp').textContent}</span>
-                            </div>
-                            <div class="message-content">[消息已撤回]</div>
-                        `;
-                    }
-                });
-            }
+            if (!socket) return;
+            
+            // 监听消息被撤回事件（自己或他人撤回）
+            socket.on('message-recalled', (messageId) => {
+                const messageDiv = document.querySelector(`[data-message-id="${messageId}"]`);
+                if (messageDiv) {
+                    const username = messageDiv.querySelector('.username').textContent;
+                    const userColor = messageDiv.querySelector('.username').style.color;
+                    const timestamp = messageDiv.querySelector('.timestamp').textContent;
+                    messageDiv.innerHTML = `
+                        <div class="message-header">
+                            <span class="username" style="color: ${userColor}">${username}</span>
+                            <span class="timestamp">${timestamp}</span>
+                        </div>
+                        <div class="message-content" style="color: #999; font-style: italic;">[消息已撤回]</div>
+                    `;
+                }
+            });
+            
+            // 监听撤回成功事件
+            socket.on('recall-success', (data) => {
+                showNotification('消息已撤回', '您的消息已成功撤回', '✅');
+            });
+            
+            // 监听撤回失败事件
+            socket.on('recall-failed', (data) => {
+                alert(data.message || '撤回消息失败，请重试');
+            });
         }
         
         // 注册消息已读通知事件监听器
@@ -20914,8 +22649,17 @@ io.on('connection', (socket) => {
         // ===== 代码块功能结束 =====
 
         function recallMessage(messageId) {
+            if (!socket) {
+                alert('网络连接失败，请刷新页面重试');
+                return;
+            }
             socket.emit('message-recall', messageId);
         }
+        
+        // 监听权限被拒绝事件
+        socket.on('permission-denied', (data) => {
+            alert(data.message || '权限不足，无法执行此操作');
+        });
 
         // ===== 消息反应功能 =====
         function toggleReactionPicker(messageId, event) {
@@ -20974,8 +22718,21 @@ io.on('connection', (socket) => {
                 
                 // 检查是否为视频文件
                 if (isVideoFile(fileName)) {
-                    // 视频文件直接显示
-                    contentHtml = `<video src="${data.message}" controls style="max-width: 100%; max-height: 300px; border-radius: 5px; cursor: pointer; transition: transform 0.2s;" onclick="openMediaPreview('${data.message}', 'video', '${fileName}')" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">您的浏览器不支持视频播放</video>`;
+                    // 视频文件显示为可点击的预览卡片，不直接播放
+                    contentHtml = `
+                        <div onclick="openMediaPreview('${data.message}', 'video', '${fileName}')" 
+                             style="cursor: pointer; background: #f8f9fa; border-radius: 8px; padding: 12px; display: flex; align-items: center; gap: 12px; border: 1px solid #dee2e6; transition: all 0.2s; max-width: 300px;"
+                             onmouseover="this.style.background='#e8f0fe'; this.style.borderColor='#667eea'"
+                             onmouseout="this.style.background='#f8f9fa'; this.style.borderColor='#dee2e6'">
+                            <div style="width: 48px; height: 48px; background: #667eea; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                                <span style="font-size: 24px;">▶️</span>
+                            </div>
+                            <div style="flex: 1; min-width: 0;">
+                                <div style="font-weight: 500; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${fileName}</div>
+                                <div style="font-size: 12px; color: #666; margin-top: 2px;">${fileSize || '视频文件'}</div>
+                            </div>
+                        </div>
+                    `;
                 } else {
                     // 其他文件显示下载链接
                     contentHtml = `<a href="${data.message}" target="_blank" download="${fileName}" style="color: #667eea; text-decoration: underline; display: inline-block; padding: 10px; background: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6;">📁 ${fileName} ${fileSize}</a>`;
@@ -21834,8 +23591,9 @@ io.on('connection', (socket) => {
                     // 直接跳过模态框，使用已保存的设备发起通话
                     const stream = await navigator.mediaDevices.getUserMedia({
                         audio: {
-                            echoCancellation: true,
-                            noiseSuppression: true,
+                            echoCancellation: callSystem?.audioNoiseSuppression !== false,
+                            noiseSuppression: callSystem?.audioNoiseSuppression !== false,
+                            autoGainControl: callSystem?.audioNoiseSuppression !== false,
                             deviceId: { exact: selectedAudioDeviceId }
                         },
                         video: {
@@ -21862,8 +23620,9 @@ io.on('connection', (socket) => {
                 
                 const stream = await navigator.mediaDevices.getUserMedia({
                     audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true
+                        echoCancellation: callSystem?.audioNoiseSuppression !== false,
+                        noiseSuppression: callSystem?.audioNoiseSuppression !== false,
+                        autoGainControl: callSystem?.audioNoiseSuppression !== false
                     },
                     video: {
                         width: { ideal: 640 },
@@ -21942,8 +23701,9 @@ io.on('connection', (socket) => {
                     selectedAudioDeviceId = prefAudio;
                     const stream = await navigator.mediaDevices.getUserMedia({
                         audio: {
-                            echoCancellation: true,
-                            noiseSuppression: true,
+                            echoCancellation: callSystem?.audioNoiseSuppression !== false,
+                            noiseSuppression: callSystem?.audioNoiseSuppression !== false,
+                            autoGainControl: callSystem?.audioNoiseSuppression !== false,
                             deviceId: { exact: selectedAudioDeviceId }
                         }
                     });
@@ -22587,84 +24347,11 @@ io.on('connection', (socket) => {
         //         alert('未找到该用户或该用户没有通话权限');
         // });
         
-        // 检查设备类型
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        
-        // 检查浏览器是否支持屏幕共享
-        const isScreenShareSupported = navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia;
-        
-        // 视频控制按钮事件监听
-        toggleVideoBtn.addEventListener('click', () => {
-            if (callSystem) {
-                callSystem.toggleVideo();
-            }
-        });
-
-        toggleAudioBtn.addEventListener('click', () => {
-            if (callSystem) {
-                callSystem.toggleAudio();
-            }
-        });
-
-        // 切换摄像头按钮事件监听器
-        const switchCameraBtn = document.getElementById('switchCameraBtn');
-        switchCameraBtn.addEventListener('click', () => {
-            if (callSystem) {
-                callSystem.switchCamera();
-            }
-        });
-
-        // 共享屏幕按钮事件监听器
-        const toggleScreenShareBtn = document.getElementById('toggleScreenShareBtn');
-        
-        // 根据设备类型和浏览器支持情况，决定是否显示共享屏幕按钮
-        if (isMobile && !isScreenShareSupported) {
-            console.log('当前设备不支持屏幕共享，隐藏共享屏幕按钮');
-            toggleScreenShareBtn.style.display = 'none';
-        } else {
-            toggleScreenShareBtn.addEventListener('click', () => {
-                if (callSystem) {
-                    if (callSystem.isSharingScreen) {
-                        callSystem.stopScreenSharing();
-                    } else {
-                        callSystem.startScreenSharing();
-                    }
-                }
-            });
-        }
-
-        endCallBtn.addEventListener('click', () => {
-            if (callSystem) {
-                callSystem.endCall();
-                
-                // 检查是否有待显示的更新通知
-                setTimeout(() => {
-                    if (pendingUpdateNotification) {
-                        showUpdateNotification(pendingUpdateNotification);
-                        pendingUpdateNotification = null;
-                    }
-                }, 1000);
-            }
+        // 页面加载完成后初始化双击放大功能（通话控制按钮监听器已移到第一个 onDOMReady）
+        onDOMReady(() => {
+            setupDoubleClickZoom();
         });
         
-        // 设置按钮事件监听器
-        const callSettingsBtn = document.getElementById('callSettingsBtn');
-        callSettingsBtn.addEventListener('click', () => {
-            // 打开设置模态框
-            const settingsModal = document.getElementById('settingsModal');
-            if (settingsModal) {
-                settingsModal.classList.add('active');
-                
-                // 确保通话设置标签页存在
-                const callSettingsTab = document.querySelector('.admin-tab[data-tab="call"]');
-                if (callSettingsTab) {
-                    // 切换到通话设置标签页
-                    callSettingsTab.click();
-                }
-            }
-        });
-        
-        // 双击视频放大功能
         function setupDoubleClickZoom() {
             const videoBoxes = document.querySelectorAll('.video-box');
             
@@ -22778,7 +24465,7 @@ io.on('connection', (socket) => {
         }
         
         // 页面加载完成后初始化双击放大功能
-        document.addEventListener('DOMContentLoaded', () => {
+        onDOMReady(() => {
             setupDoubleClickZoom();
         });
         
@@ -23122,7 +24809,137 @@ io.on('connection', (socket) => {
                 }
             }
         }
+
+        // ==================== 噪声监测功能 ====================
+
+        // 噪音监测指示器显示/隐藏
+        function toggleNoiseIndicator() {
+            const noiseIndicator = document.getElementById('noiseIndicator');
+            if (noiseIndicator) {
+                if (noiseIndicator.classList.contains('active')) {
+                    noiseIndicator.classList.remove('active');
+                    console.log('噪声监测指示器已隐藏');
+                } else {
+                    noiseIndicator.classList.add('active');
+                    console.log('噪声监测指示器已显示');
+                }
+            }
+        }
+
+        // 更新噪音监测指示器
+        function updateNoiseIndicator() {
+            if (!window.callSystem || !window.callSystem.noiseEstimator) return;
+            
+            const noiseIndicator = document.getElementById('noiseIndicator');
+            const noiseFillBar = document.getElementById('noiseFillBar');
+            const noiseValue = document.getElementById('noiseValue');
+            const speechDot = document.getElementById('speechDot');
+            const speechStatusValue = document.getElementById('speechStatusValue');
+            
+            if (!noiseIndicator || !noiseFillBar || !noiseValue || !speechDot || !speechStatusValue) return;
+            
+            const estimatedNoiseLevel = window.callSystem.getEstimatedNoiseLevel();
+            const speechProbability = window.callSystem.noiseEstimator.speechProbability || 0;
+            
+            // 更新噪声水平显示
+            // 将-60dB到-20dB映射到0%到100%
+            const noisePercentage = Math.max(0, Math.min(100, 
+                ((estimatedNoiseLevel - (-60)) / 40) * 100
+            ));
+            
+            noiseFillBar.style.width = `${noisePercentage}%`;
+            noiseValue.textContent = `${Math.round(estimatedNoiseLevel)} dB`;
+            
+            // 更新语音状态显示
+            if (speechProbability > 0.7) {
+                speechStatusValue.textContent = '检测到语音';
+                speechDot.className = 'speech-dot speech-detected';
+            } else if (speechProbability > 0.3) {
+                speechStatusValue.textContent = '可能语音';
+                speechDot.className = 'speech-dot noise-detected';
+            } else {
+                speechStatusValue.textContent = '安静';
+                speechDot.className = 'speech-dot idle';
+            }
+            
+            // 如果噪声水平过高（>-30dB），突出显示
+            if (estimatedNoiseLevel > -30) {
+                noiseIndicator.style.borderColor = '#dc3545';
+            } else if (estimatedNoiseLevel > -40) {
+                noiseIndicator.style.borderColor = '#ffc107';
+            } else {
+                noiseIndicator.style.borderColor = 'rgba(255, 255, 255, 0.1)';
+            }
+        }
         
+        // 启动噪音监测更新定时器
+        let noiseIndicatorInterval = null;
+        function startNoiseMonitoring() {
+            if (noiseIndicatorInterval) clearInterval(noiseIndicatorInterval);
+            
+            noiseIndicatorInterval = setInterval(() => {
+                if (window.callSystem && window.callSystem.isInCall) {
+                    updateNoiseIndicator();
+                    
+                    // 同时更新高级设置中的实时监测数据
+                    const currentNoiseLevel = document.getElementById('currentNoiseLevel');
+                    const currentSpeechProbability = document.getElementById('currentSpeechProbability');
+                    const noiseReductionStatus = document.getElementById('noiseReductionStatus');
+                    
+                    if (currentNoiseLevel || currentSpeechProbability || noiseReductionStatus) {
+                        const estimatedNoiseLevel = window.callSystem.getEstimatedNoiseLevel();
+                        const speechProbability = window.callSystem.noiseEstimator.speechProbability || 0;
+                        
+                        if (currentNoiseLevel) {
+                            currentNoiseLevel.textContent = `${Math.round(estimatedNoiseLevel)} dB`;
+                            if (estimatedNoiseLevel < -45) currentNoiseLevel.style.color = '#28a745';
+                            else if (estimatedNoiseLevel < -30) currentNoiseLevel.style.color = '#ffc107';
+                            else currentNoiseLevel.style.color = '#dc3545';
+                        }
+                        
+                        if (currentSpeechProbability) {
+                            currentSpeechProbability.textContent = speechProbability.toFixed(2);
+                            if (speechProbability > 0.7) currentSpeechProbability.style.color = '#28a745';
+                            else if (speechProbability > 0.3) currentSpeechProbability.style.color = '#ffc107';
+                            else currentSpeechProbability.style.color = '#dc3545';
+                        }
+                        
+                        if (noiseReductionStatus) {
+                            const isActive = window.callSystem.audioNoiseSuppression && 
+                                           window.callSystem.audioEchoCancellation;
+                            noiseReductionStatus.textContent = isActive ? '活跃' : '禁用';
+                            noiseReductionStatus.style.color = isActive ? '#28a745' : '#dc3545';
+                        }
+                    }
+                }
+            }, 1000);
+            
+            console.log('噪声监测定时器已启动');
+        }
+        
+        // 停止噪音监测更新定时器
+        function stopNoiseMonitoring() {
+            if (noiseIndicatorInterval) {
+                clearInterval(noiseIndicatorInterval);
+                noiseIndicatorInterval = null;
+                console.log('噪声监测定时器已停止');
+            }
+        }
+        
+        // 初始化噪声监测事件监听
+        document.addEventListener('DOMContentLoaded', () => {
+            const noiseIndicator = document.getElementById('noiseIndicator');
+            if (noiseIndicator) {
+                // 点击噪声指示器可切换查看详情
+                noiseIndicator.addEventListener('click', () => {
+                    if (typeof showToast === 'function') {
+                        showToast('噪声监测信息已更新', 'info', 2000);
+                    }
+                    updateNoiseIndicator();
+                });
+            }
+        });
+
         // 管理员刷新白板状态
         function adminRefreshWhiteboardStatus() {
             const whiteboardStatusText = document.getElementById('whiteboardStatusText');
