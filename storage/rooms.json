@@ -1,0 +1,41 @@
+[
+  {
+    "roomName": "main",
+    "password": null,
+    "creator": "system(11)",
+    "createdAt": "2026-03-14T06:44:33.990Z",
+    "updatedAt": "2026-03-14T06:44:33.990Z",
+    "users": [],
+    "messages": [],
+    "announcements": [],
+    "theme": {
+      "background": "default",
+      "colorScheme": "light",
+      "customCSS": ""
+    },
+    "stats": {
+      "totalMessages": 0,
+      "totalUsers": 0,
+      "peakUsers": 0,
+      "createdAt": "2026-03-14T06:44:33.990Z",
+      "lastActivity": "2026-03-14T06:44:33.990Z"
+    },
+    "history": {
+      "messageHistory": [],
+      "userHistory": [],
+      "eventHistory": []
+    },
+    "settings": {
+      "maxUsers": 100,
+      "allowPublicAccess": true,
+      "allowMessages": true,
+      "allowFiles": true,
+      "allowAudio": true,
+      "allowVideo": true,
+      "allowCalls": true,
+      "allowWhiteboard": true,
+      "allowPolls": true,
+      "allowGames": true
+    }
+  }
+]
