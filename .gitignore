@@ -1,10 +1,20 @@
+# Dependencies
 node_modules/
-uploads/
-viruses/
-.data/
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
 .DS_Store
 Thumbs.db
-*.log
-npm-debug.log*
-.env
-.env.local
+
+# WorkBuddy
+.workbuddy/
+
+# Temp
+*.tmp
+*.temp

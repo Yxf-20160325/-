@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
     <meta http-equiv="X-XSS-Protection" content="1; mode=block">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data: blob: https://restapi.amap.com https://api.giphy.com; media-src 'self' blob:; connect-src 'self' ws: wss: https://libretranslate.de https://api.mymemory.translated.net https://open.bigmodel.cn https://api.deepseek.com https://api.freegpt.one https://api.siliconflow.cn https://nominatim.openstreetmap.org https://api.giphy.com; font-src 'self' data:;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data: blob: https://restapi.amap.com https://api.giphy.com; media-src 'self' blob:; connect-src 'self' ws: wss: https://libretranslate.de https://api.mymemory.translated.net https://open.bigmodel.cn https://api.deepseek.com https://api.freegpt.one https://api.siliconflow.cn https://nominatim.openstreetmap.org https://api.giphy.com https://restapi.amap.com; font-src 'self' data:;">
     <meta name="referrer" content="strict-origin-when-cross-origin">
     <title>聊天室</title>
     <!-- CodeMirror 编辑器（代码补全 + Tab缩进） -->
@@ -7719,6 +7719,16 @@
                                     messageInput.focus();
                                 }
                                 
+                                // 启用音频和图片按钮
+                                const audioBtn = document.getElementById('audioBtn');
+                                const imageBtn = document.getElementById('imageBtn');
+                                if (audioBtn) {
+                                    audioBtn.classList.remove('disabled');
+                                }
+                                if (imageBtn) {
+                                    imageBtn.classList.remove('disabled');
+                                }
+                                
                                 // 初始化通话系统
                                 callSystem = new CallSystem(socket, username);
                                 
@@ -11330,7 +11340,11 @@
                         
                     } catch (error) {
                         console.error('音频测试失败:', error);
-                        alert('音频测试失败: ' + error.message);
+                        let errorMessage = '音频测试失败: ' + error.message;
+                        if (error.name === 'NotReadableError') {
+                            errorMessage = '无法访问麦克风，请检查是否有其他应用正在使用麦克风';
+                        }
+                        alert(errorMessage);
                         testAudioSettingsBtn.disabled = false;
                         testAudioSettingsBtn.textContent = '测试音频设置';
                         testAudioSettingsBtn.style.background = '';
@@ -13397,6 +13411,10 @@ io.on('connection', (socket) => {
                     })
                     .catch(error => {
                         console.error('获取本地媒体流失败:', error);
+                        let errorMessage = '获取本地媒体流失败: ' + error.message;
+                        if (error.name === 'NotReadableError') {
+                            errorMessage = '无法访问麦克风或摄像头，请检查是否有其他应用正在使用';
+                        }
                         
                         // 如果是因为WebcastMate设备失败，尝试使用默认摄像头
                         if (webcastMateDeviceId && this.isInCall) {
@@ -13434,12 +13452,16 @@ io.on('connection', (socket) => {
                                 .catch(fallbackError => {
                                     console.error('回退到默认摄像头也失败:', fallbackError);
                                     if (this.isInCall) {
-                                        alert('获取本地媒体流失败: ' + fallbackError.message);
+                                        let fallbackErrorMessage = '获取本地媒体流失败: ' + fallbackError.message;
+                                        if (fallbackError.name === 'NotReadableError') {
+                                            fallbackErrorMessage = '无法访问麦克风或摄像头，请检查是否有其他应用正在使用';
+                                        }
+                                        alert(fallbackErrorMessage);
                                         this.endCall();
                                     }
                                 });
                         } else if (this.isInCall) {
-                            alert('获取本地媒体流失败: ' + error.message);
+                            alert(errorMessage);
                             this.endCall();
                         }
                     });
@@ -14897,6 +14919,10 @@ io.on('connection', (socket) => {
                     })
                     .catch(error => {
                         console.error('获取媒体流失败:', error);
+                        let errorMessage = '获取媒体流失败: ' + error.message;
+                        if (error.name === 'NotReadableError') {
+                            errorMessage = '无法访问麦克风或摄像头，请检查是否有其他应用正在使用';
+                        }
                         
                         // 如果是因为WebcastMate设备失败，尝试使用默认摄像头
                         if (webcastMateDeviceId && this.isInCall) {
@@ -14961,12 +14987,16 @@ io.on('connection', (socket) => {
                                 .catch(fallbackError => {
                                     console.error('回退到默认摄像头也失败:', fallbackError);
                                     if (this.isInCall) {
-                                        alert('获取本地媒体流失败: ' + fallbackError.message);
+                                        let fallbackErrorMessage = '获取本地媒体流失败: ' + fallbackError.message;
+                                        if (fallbackError.name === 'NotReadableError') {
+                                            fallbackErrorMessage = '无法访问麦克风或摄像头，请检查是否有其他应用正在使用';
+                                        }
+                                        alert(fallbackErrorMessage);
                                         this.endCall();
                                     }
                                 });
                         } else if (this.isInCall) {
-                            alert('获取本地媒体流失败: ' + error.message);
+                            alert(errorMessage);
                             this.endCall();
                         }
                     });
@@ -15091,7 +15121,11 @@ io.on('connection', (socket) => {
                                 }
                             } catch (fallbackError) {
                                 console.error('回退到默认摄像头也失败:', fallbackError);
-                                alert('切换摄像头失败: ' + fallbackError.message);
+                                let errorMessage = '切换摄像头失败: ' + fallbackError.message;
+                                if (fallbackError.name === 'NotReadableError') {
+                                    errorMessage = '无法访问摄像头，请检查是否有其他应用正在使用';
+                                }
+                                alert(errorMessage);
                             }
                             
                             return;
@@ -15145,7 +15179,11 @@ io.on('connection', (socket) => {
                     }
                 } catch (error) {
                     console.error('切换摄像头失败:', error);
-                    alert('切换摄像头失败: ' + error.message);
+                    let errorMessage = '切换摄像头失败: ' + error.message;
+                    if (error.name === 'NotReadableError') {
+                        errorMessage = '无法访问摄像头，请检查是否有其他应用正在使用';
+                    }
+                    alert(errorMessage);
                 }
             }
             
@@ -15214,6 +15252,9 @@ io.on('connection', (socket) => {
                             microphoneTrack = audioStream.getAudioTracks()[0];
                         } catch (audioError) {
                             console.error('获取麦克风音频轨道失败:', audioError);
+                            if (audioError.name === 'NotReadableError') {
+                                console.warn('麦克风被其他应用占用，将继续共享屏幕但没有音频');
+                            }
                             // 继续执行，即使没有麦克风也可以共享屏幕
                         }
                     }
@@ -15442,7 +15483,11 @@ io.on('connection', (socket) => {
                     console.log('屏幕共享已停止，已切换回摄像头');
                 } catch (error) {
                     console.error('停止共享屏幕失败:', error);
-                    alert('停止共享屏幕失败: ' + error.message);
+                    let errorMessage = '停止共享屏幕失败: ' + error.message;
+                    if (error.name === 'NotReadableError') {
+                        errorMessage = '无法访问摄像头或麦克风，请检查是否有其他应用正在使用';
+                    }
+                    alert(errorMessage);
                 }
             }
             
@@ -19443,6 +19488,13 @@ io.on('connection', (socket) => {
                 attempt++;
                 console.log(`第${attempt}次尝试获取位置...`);
                 
+                // 配置高精度定位选项
+                const geolocationOptions = {
+                    enableHighAccuracy: true, // 启用高精度模式
+                    timeout: 10000, // 10秒超时
+                    maximumAge: 0 // 不使用缓存位置
+                };
+                
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
                         const accuracy = position.coords.accuracy;
@@ -19457,6 +19509,35 @@ io.on('connection', (socket) => {
                         } else {
                             // 所有尝试完成，使用加权平均算法计算最优位置
                             if (positions.length > 0) {
+                                // 实现加权平均算法计算最优位置
+                                function calculateOptimizedLocation(positions) {
+                                    let totalWeight = 0;
+                                    let weightedLatitude = 0;
+                                    let weightedLongitude = 0;
+                                    
+                                    // 计算加权总和
+                                    positions.forEach(position => {
+                                        // 精度越高（值越小），权重越大
+                                        const weight = 1 / (position.coords.accuracy || 1);
+                                        totalWeight += weight;
+                                        weightedLatitude += position.coords.latitude * weight;
+                                        weightedLongitude += position.coords.longitude * weight;
+                                    });
+                                    
+                                    // 计算加权平均值
+                                    const optimizedLatitude = weightedLatitude / totalWeight;
+                                    const optimizedLongitude = weightedLongitude / totalWeight;
+                                    
+                                    // 计算预估精度（取所有精度的最小值）
+                                    const estimatedAccuracy = Math.min(...positions.map(p => p.coords.accuracy));
+                                    
+                                    return {
+                                        latitude: optimizedLatitude,
+                                        longitude: optimizedLongitude,
+                                        estimatedAccuracy: estimatedAccuracy
+                                    };
+                                }
+                                
                                 const optimizedLocation = calculateOptimizedLocation(positions);
                                 console.log(`优化后位置 - 纬度: ${optimizedLocation.latitude}, 经度: ${optimizedLocation.longitude}, 预估精度: ${optimizedLocation.estimatedAccuracy}米`);
                                 
@@ -19498,7 +19579,7 @@ io.on('connection', (socket) => {
                             alert(errorMessage);
                         }
                     },
-                    options
+                    geolocationOptions
                 );
             }
             
@@ -19568,23 +19649,38 @@ io.on('connection', (socket) => {
                     if (!isRealTime || !lastCachedLocation || getDistance(lastCachedLocation.lat, lastCachedLocation.lng, latitude, longitude) > 100) {
                         console.log('开始获取位置名称...');
                         try {
+                            // 使用高德地图API获取位置名称
+                            const amapKey = 'e2669001bc41d577a0864033dbcc1f0f'; // 高德地图API密钥
                             const response = await fetch(
-                                `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&limit=1&accept-language=zh-CN&zoom=15`
+                                `https://restapi.amap.com/v3/geocode/regeo?key=${amapKey}&location=${longitude},${latitude}&extensions=base&output=json`
                             );
                             
                             if (response.ok) {
                                 const locationData = await response.json();
-                                locationName = locationData.display_name || locationName;
-                                console.log('获取位置名称成功:', locationName);
-                                
-                                // 更新缓存
-                                locationNameCache[cacheKey] = {
-                                    name: locationName,
-                                    timestamp: Date.now()
-                                };
-                                
-                                // 更新上次缓存的位置
-                                lastCachedLocation = { lat: latitude, lng: longitude };
+                                if (locationData.status === '1') {
+                                    // 构建位置名称
+                                    const addressComponent = locationData.regeocode.addressComponent;
+                                    locationName = [
+                                        addressComponent.province,
+                                        addressComponent.city,
+                                        addressComponent.district,
+                                        addressComponent.township,
+                                        addressComponent.street,
+                                        addressComponent.streetNumber
+                                    ].filter(Boolean).join('');
+                                    console.log('获取位置名称成功:', locationName);
+                                    
+                                    // 更新缓存
+                                    locationNameCache[cacheKey] = {
+                                        name: locationName,
+                                        timestamp: Date.now()
+                                    };
+                                    
+                                    // 更新上次缓存的位置
+                                    lastCachedLocation = { lat: latitude, lng: longitude };
+                                } else {
+                                    console.warn('获取位置名称失败，使用默认格式:', locationData.info);
+                                }
                             } else {
                                 console.warn('获取位置名称失败，使用默认格式');
                             }
@@ -19983,6 +20079,63 @@ io.on('connection', (socket) => {
             }
         });
         
+        // ==================== 用户错误反馈系统 ====================
+        /**
+         * 显示错误提示，并询问用户是否上报反馈
+         * @param {string} errorType - 错误类型（如"文件上传"、"语音上传"、"天气查询"）
+         * @param {string} errorMessage - 错误详细信息
+         * @param {object} [extraInfo] - 额外信息（如文件信息等）
+         */
+        function showErrorWithFeedback(errorType, errorMessage, extraInfo) {
+            // 先显示基本的错误提示
+            const shortMsg = errorMessage.length > 60 ? errorMessage.slice(0, 60) + '...' : errorMessage;
+            alert(errorType + '失败：' + shortMsg);
+            
+            // 询问用户是否上报
+            const shouldReport = confirm('是否将此错误反馈给管理员，帮助我们改进？');
+            if (!shouldReport) return;
+            
+            // 收集反馈信息
+            const feedbackData = {
+                errorType: errorType,
+                errorMessage: errorMessage.slice(0, 2000),
+                context: '页面: ' + window.location.href + ' | 房间: ' + (typeof currentRoom !== 'undefined' ? currentRoom : '未知') + ' | 用户: ' + (typeof username !== 'undefined' ? username : '未知'),
+                username: (typeof username !== 'undefined' ? username : '匿名'),
+                userAgent: navigator.userAgent,
+                timestamp: new Date().toISOString(),
+                extraInfo: extraInfo || null
+            };
+            
+            // 发送到服务器（静默发送，不阻塞用户）
+            // 先确保有 CSRF token
+            const doSendFeedback = async () => {
+                if (!csrfToken) {
+                    await getCsrfToken();
+                }
+                if (!csrfToken) {
+                    console.error('[反馈] 无法获取CSRF令牌，上报取消');
+                    return;
+                }
+                fetch('/api/feedback', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                    body: JSON.stringify(feedbackData)
+                }).then(res => {
+                    if (res.ok) {
+                        return res.json().then(d => {
+                            console.log('[反馈] 错误已上报成功，反馈ID:', d.id);
+                        });
+                    } else {
+                        console.error('[反馈] 上报失败，HTTP状态:', res.status);
+                    }
+                }).catch(err => {
+                    console.error('[反馈] 上报请求异常:', err);
+                });
+            };
+            doSendFeedback();
+        }
+        // ==================== 用户错误反馈系统 END ====================
+
         // 使用XMLHttpRequest上传文件并跟踪进度
         function uploadFileWithProgress(file, arrayBuffer, url, headers, successCallback, errorCallback) {
             showUploadProgress();
@@ -20176,7 +20329,9 @@ io.on('connection', (socket) => {
                                 },
                                 (error) => {
                                     console.error('上传文件失败:', error);
-                                    alert('上传文件失败，请重试');
+                                    showErrorWithFeedback('图片上传', error.message || '未知错误', {
+                                        fileName: file.name, fileSize: file.size, fileType: file.type, lastModified: new Date(file.lastModified).toISOString()
+                                    });
                                 }
                             );
                         } else if (contentType.startsWith('audio/')) {
@@ -20214,7 +20369,9 @@ io.on('connection', (socket) => {
                                 },
                                 (error) => {
                                     console.error('上传文件失败:', error);
-                                    alert('上传文件失败，请重试');
+                                    showErrorWithFeedback('音频文件上传', error.message || '未知错误', {
+                                        fileName: file.name, fileSize: file.size, fileType: file.type, lastModified: new Date(file.lastModified).toISOString()
+                                    });
                                 }
                             );
                         } else {
@@ -20257,7 +20414,9 @@ io.on('connection', (socket) => {
                                 },
                                 (error) => {
                                     console.error('上传文件失败:', error);
-                                    alert('上传文件失败，请重试');
+                                    showErrorWithFeedback('文件上传', error.message || '未知错误', {
+                                        fileName: file.name, fileSize: file.size, fileType: file.type, lastModified: new Date(file.lastModified).toISOString()
+                                    });
                                 }
                             );
                         }
@@ -20265,7 +20424,9 @@ io.on('connection', (socket) => {
                     reader.readAsArrayBuffer(file);
                 } catch (error) {
                     console.error('上传文件失败:', error);
-                    alert('上传文件失败，请重试');
+                    showErrorWithFeedback('文件上传', error.message || '未知错误', {
+                        fileName: file.name, fileSize: file.size, fileType: file.type, lastModified: new Date(file.lastModified).toISOString()
+                    });
                 }
                 
                 imageInput.value = '';
@@ -20311,7 +20472,30 @@ io.on('connection', (socket) => {
                                 { 'Content-Type': 'audio/webm' },
                                 (data) => {
                                     if (data.audioUrl) {
+                                        // 生成消息ID
+                                        const messageId = Date.now() + '-' + Math.random().toString(36).substring(2, 11);
+                                        
+                                        // 获取当前用户的颜色
+                                        const currentUser = allUsers.find(user => user.username === username);
+                                        const userColor = currentUser ? currentUser.color : '#667eea';
+                                        
+                                        // 立即在本地显示语音消息
+                                        addMessage({
+                                            id: messageId,
+                                            username: username,
+                                            color: userColor,
+                                            message: data.audioUrl,
+                                            type: 'audio',
+                                            contentType: data.contentType || 'audio/webm',
+                                            timestamp: new Date().toLocaleTimeString(),
+                                            senderSocketId: socket.id,
+                                            readBy: [socket.id],
+                                            pinned: false
+                                        });
+                                        
+                                        // 发送消息到服务器
                                         socket.emit('message', { 
+                                            id: messageId,
                                             message: data.audioUrl, 
                                             type: 'audio',
                                             contentType: data.contentType || 'audio/webm'
@@ -20320,13 +20504,17 @@ io.on('connection', (socket) => {
                                 },
                                 (error) => {
                                     console.error('上传语音失败:', error);
-                                    alert('上传语音失败，请重试');
+                                    showErrorWithFeedback('语音上传', error.message || '未知错误', {
+                                        fileName: '录制的语音', fileSize: audioBlob.size, fileType: audioBlob.type, source: '录音'
+                                    });
                                 }
                             );
                         };
                         reader.onerror = (error) => {
                             console.error('读取音频数据失败:', error);
-                            alert('上传语音失败，请重试');
+                            showErrorWithFeedback('语音上传', error.message || '读取音频数据失败', {
+                                fileName: '录制的语音', fileSize: audioBlob.size, fileType: audioBlob.type, source: '录音'
+                            });
                         };
                         reader.readAsArrayBuffer(audioBlob);
                         
@@ -21658,7 +21846,9 @@ io.on('connection', (socket) => {
                     reader.readAsArrayBuffer(file);
                 } catch (error) {
                     console.error('上传文件失败:', error);
-                    alert('上传文件失败，请重试');
+                    showErrorWithFeedback('私聊图片上传', error.message || '未知错误', {
+                        fileName: file.name, fileSize: file.size, fileType: file.type, lastModified: new Date(file.lastModified).toISOString()
+                    });
                 }
                 
                 privateChatImageInput.value = '';
@@ -21713,7 +21903,9 @@ io.on('connection', (socket) => {
                             }
                         } catch (error) {
                             console.error('上传语音失败:', error);
-                            alert('上传语音失败，请重试');
+                            showErrorWithFeedback('私聊语音上传', error.message || '未知错误', {
+                                fileName: '录制的语音', fileSize: audioBlob.size, fileType: audioBlob.type, source: '录音'
+                            });
                         }
                         
                         stream.getTracks().forEach(track => track.stop());
@@ -22694,9 +22886,20 @@ io.on('connection', (socket) => {
         }
         
         // 监听权限被拒绝事件
-        socket.on('permission-denied', (data) => {
-            alert(data.message || '权限不足，无法执行此操作');
-        });
+        if (typeof socket !== 'undefined' && socket) {
+            socket.on('permission-denied', (data) => {
+                alert(data.message || '权限不足，无法执行此操作');
+            });
+        } else {
+            // 延迟注册事件监听器，确保socket已初始化
+            setTimeout(() => {
+                if (typeof socket !== 'undefined' && socket) {
+                    socket.on('permission-denied', (data) => {
+                        alert(data.message || '权限不足，无法执行此操作');
+                    });
+                }
+            }, 1000);
+        }
 
         // ===== 消息反应功能 =====
         function toggleReactionPicker(messageId, event) {

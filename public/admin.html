@@ -801,18 +801,33 @@
 
         .tabs {
             display: flex;
-            gap: 10px;
+            gap: 6px;
             margin-bottom: 20px;
             flex-shrink: 0;
+            overflow-x: auto;
+            scrollbar-width: thin;
+            scrollbar-color: #ccc transparent;
+            padding-bottom: 4px;
+            align-items: center;
+        }
+        .tabs::-webkit-scrollbar {
+            height: 4px;
+        }
+        .tabs::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .tabs::-webkit-scrollbar-thumb {
+            background: #ccc;
+            border-radius: 2px;
         }
 
         .tab {
-            padding: 10px 20px;
+            padding: 8px 14px;
             background: #f8f9fa;
             border: none;
             border-radius: 8px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 13px;
             transition: all 0.2s;
             flex-shrink: 0;
             white-space: nowrap;
@@ -821,6 +836,73 @@
         .tab.active {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
+        }
+
+        .tab-more-wrapper {
+            flex-shrink: 0;
+        }
+        .tab-more-btn {
+            padding: 8px 14px;
+            background: #f8f9fa;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #555;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .tab-more-btn:hover {
+            background: #e9ecef;
+        }
+        .tab-more-btn.active {
+            background: #e9ecef;
+            color: #333;
+        }
+        .tab-more-badge {
+            display: inline-block;
+            background: #ff4757;
+            color: #fff;
+            font-size: 10px;
+            padding: 0 5px;
+            border-radius: 8px;
+            min-width: 16px;
+            text-align: center;
+            line-height: 16px;
+        }
+        .tab-extra-row {
+            display: none;
+            flex-wrap: wrap;
+            gap: 6px;
+            padding: 8px 0 4px 0;
+            border-top: 1px solid #e9ecef;
+            margin-top: 8px;
+            animation: tabFadeIn 0.2s ease;
+        }
+        .tab-extra-row.show {
+            display: flex;
+        }
+        @keyframes tabFadeIn {
+            from { opacity: 0; transform: translateY(-6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .tab-extra-row .tab {
+            font-size: 13px;
+            padding: 6px 12px;
+        }
+        body.dark-mode .tab-more-btn {
+            background: #1e2d50;
+            color: #ccc;
+        }
+        body.dark-mode .tab-more-btn:hover,
+        body.dark-mode .tab-more-btn.active {
+            background: #2a3f6b;
+        }
+        body.dark-mode .tab-extra-row {
+            border-color: #2a3f6b;
         }
 
         .tab-content {
@@ -1044,6 +1126,188 @@
             background: #1a1a2e;
         }
         
+        /* 反馈标签页样式 */
+        #feedbackBadge {
+            display: inline-block;
+            background: #ff4757;
+            color: #fff;
+            font-size: 11px;
+            padding: 1px 6px;
+            border-radius: 10px;
+            margin-left: 4px;
+            min-width: 18px;
+            text-align: center;
+            vertical-align: middle;
+        }
+        #feedbackBadge:empty { display: none; }
+        
+        .feedback-item {
+            background: #fff;
+            border: 1px solid #e9ecef;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            transition: box-shadow 0.2s;
+        }
+        .feedback-item:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+        .feedback-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .feedback-type {
+            display: inline-block;
+            background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+            color: #fff;
+            padding: 3px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .feedback-time {
+            font-size: 12px;
+            color: #999;
+        }
+        .feedback-message {
+            background: #f8f9fa;
+            padding: 10px 14px;
+            border-radius: 8px;
+            font-size: 14px;
+            color: #333;
+            margin-bottom: 10px;
+            word-break: break-all;
+            line-height: 1.5;
+        }
+        .feedback-meta {
+            font-size: 12px;
+            color: #888;
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .feedback-meta span {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        body.dark-mode .feedback-item {
+            background: #16213e;
+            border-color: #1e2d50;
+        }
+        body.dark-mode .feedback-message {
+            background: #0f1b30;
+            color: #ddd;
+        }
+        body.dark-mode .feedback-meta {
+            color: #777;
+        }
+        .feedback-detail-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 12px;
+            color: #4a90d9;
+            cursor: pointer;
+            padding: 4px 10px;
+            border-radius: 6px;
+            border: 1px solid #4a90d9;
+            background: transparent;
+            transition: all 0.2s;
+            user-select: none;
+        }
+        .feedback-detail-toggle:hover {
+            background: #4a90d9;
+            color: #fff;
+        }
+        .feedback-detail-toggle .toggle-arrow {
+            display: inline-block;
+            transition: transform 0.2s;
+            font-size: 10px;
+        }
+        .feedback-detail-toggle.expanded .toggle-arrow {
+            transform: rotate(90deg);
+        }
+        .feedback-detail-panel {
+            display: none;
+            margin-top: 12px;
+            padding: 14px 16px;
+            background: #f1f3f5;
+            border-radius: 10px;
+            border: 1px solid #dee2e6;
+            font-size: 13px;
+            line-height: 1.8;
+        }
+        .feedback-detail-panel.show {
+            display: block;
+        }
+        .feedback-detail-row {
+            display: flex;
+            gap: 8px;
+            padding: 3px 0;
+            border-bottom: 1px dashed #e0e0e0;
+        }
+        .feedback-detail-row:last-child {
+            border-bottom: none;
+        }
+        .feedback-detail-label {
+            color: #666;
+            min-width: 90px;
+            flex-shrink: 0;
+            font-weight: 500;
+        }
+        .feedback-detail-value {
+            color: #333;
+            word-break: break-all;
+        }
+        .feedback-detail-value.text-mono {
+            font-family: 'Courier New', Consolas, monospace;
+            font-size: 12px;
+            background: #e9ecef;
+            padding: 2px 6px;
+            border-radius: 4px;
+        }
+        .feedback-file-info {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            background: #e8f4fd;
+            border-radius: 8px;
+            border: 1px solid #b3d9f2;
+            margin-top: 6px;
+        }
+        body.dark-mode .feedback-detail-toggle {
+            color: #6cb4ee;
+            border-color: #6cb4ee;
+        }
+        body.dark-mode .feedback-detail-toggle:hover {
+            background: #6cb4ee;
+            color: #111;
+        }
+        body.dark-mode .feedback-detail-panel {
+            background: #0d1520;
+            border-color: #1e2d50;
+        }
+        body.dark-mode .feedback-detail-row {
+            border-color: #1e2d50;
+        }
+        body.dark-mode .feedback-detail-label {
+            color: #999;
+        }
+        body.dark-mode .feedback-detail-value {
+            color: #ddd;
+        }
+        body.dark-mode .feedback-detail-value.text-mono {
+            background: #1a2540;
+        }
+        body.dark-mode .feedback-file-info {
+            background: #0f1b30;
+            border-color: #1e3a5f;
+        }
+        
         body.dark-mode .call-method-info {
             background: #16213e;
             border-left-color: #0f3460;
@@ -1131,29 +1395,37 @@
                 </div>
             </div>
 
-            <div class="tabs">
+            <div class="tabs" id="tabBar">
                 <button class="tab active" onclick="switchTab('users')">用户管理</button>
                 <button class="tab" onclick="switchTab('files')">文件管理</button>
                 <button class="tab" onclick="switchTab('messages')">消息管理</button>
                 <button class="tab" onclick="switchTab('rooms')">房间管理</button>
-                <button class="tab" onclick="switchTab('roomDetails')">房间详细</button>
                 <button class="tab" onclick="switchTab('friends')">好友管理</button>
-                <button class="tab" onclick="switchTab('requests')">申请管理</button>
                 <button class="tab" onclick="switchTab('mutedUsers')">禁言管理</button>
-                <button class="tab" onclick="switchTab('polls')">投票管理</button>
                 <button class="tab" onclick="switchTab('calls')">通话管理</button>
-                <button class="tab" onclick="switchTab('whiteboard')">白板管理</button>
-                <button class="tab" onclick="switchTab('settingsManagement')">用户设置管理</button>
-                <button class="tab" onclick="switchTab('analytics')">行为分析</button>
-                <button class="tab" onclick="switchTab('logs')">系统日志</button>
-                <button class="tab" onclick="switchTab('monitoring')">系统监控</button>
-                <button class="tab" onclick="switchTab('updates')">发布更新</button>
-                <button class="tab" onclick="switchTab('chatroomNotifications')">聊天室提示</button>
-                <button class="tab" onclick="switchTab('screenshots')">截屏监控</button>
                 <button class="tab" onclick="switchTab('systemManagement')">系统管理</button>
                 <button class="tab" onclick="switchTab('globalSettings')">全体设置</button>
-                <button class="tab" onclick="switchTab('viruses')">病毒管理</button>
-                <button class="tab" onclick="switchTab('console')">JavaScript控制台</button>
+                <button class="tab" onclick="switchTab('feedback')"><span id="feedbackBadge"></span>用户反馈</button>
+                <div class="tab-more-wrapper">
+                    <button class="tab-more-btn" id="tabMoreBtn" onclick="toggleTabMore()">
+                        <span id="tabMoreText">更多</span> <span id="tabMoreArrow" style="font-size:10px;">&#9662;</span>
+                    </button>
+                </div>
+                <div class="tab-extra-row" id="tabExtraRow">
+                    <button class="tab" onclick="switchTab('roomDetails')">房间详细</button>
+                    <button class="tab" onclick="switchTab('requests')">申请管理</button>
+                    <button class="tab" onclick="switchTab('polls')">投票管理</button>
+                    <button class="tab" onclick="switchTab('whiteboard')">白板管理</button>
+                    <button class="tab" onclick="switchTab('settingsManagement')">用户设置管理</button>
+                    <button class="tab" onclick="switchTab('analytics')">行为分析</button>
+                    <button class="tab" onclick="switchTab('logs')">系统日志</button>
+                    <button class="tab" onclick="switchTab('monitoring')">系统监控</button>
+                    <button class="tab" onclick="switchTab('updates')">发布更新</button>
+                    <button class="tab" onclick="switchTab('chatroomNotifications')">聊天室提示</button>
+                    <button class="tab" onclick="switchTab('screenshots')">截屏监控</button>
+                    <button class="tab" onclick="switchTab('viruses')">病毒管理</button>
+                    <button class="tab" onclick="switchTab('console')">JavaScript控制台</button>
+                </div>
             </div>
 
             <div class="tab-content active" id="usersTab">
@@ -2227,6 +2499,22 @@
                         <button type="submit" class="btn btn-confirm">发送提示</button>
                     </div>
                 </form>
+            </div>
+        </div>
+        
+        <!-- 用户反馈标签页 -->
+        <div class="tab-content" id="feedbackTab">
+            <div class="section">
+                <h2>用户错误反馈</h2>
+                <p style="margin-bottom: 15px; color: #666;">查看用户在使用过程中上报的错误反馈</p>
+                <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+                    <button class="btn btn-primary" onclick="loadFeedbackList()">刷新列表</button>
+                    <button class="btn btn-danger" onclick="clearAllFeedback()">清空全部</button>
+                </div>
+                <div id="feedbackStats" style="background: #f8f9fa; padding: 12px 18px; border-radius: 10px; margin-bottom: 15px; font-size: 14px; color: #555;">
+                    共 <span id="feedbackTotal">0</span> 条反馈
+                </div>
+                <div id="feedbackList"></div>
             </div>
         </div>
         
@@ -3328,69 +3616,7 @@
         // 为禁言列表添加自动刷新功能
         let mutedUsersRefreshInterval = null;
         
-        // 在切换到房间详细页时启动自动刷新
-        function switchTab(tabName) {
-            document.querySelectorAll('.tab').forEach(tab => {
-                if (tab.getAttribute('onclick') === `switchTab('${tabName}')`) {
-                    tab.classList.add('active');
-                } else {
-                    tab.classList.remove('active');
-                }
-            });
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            
-            document.getElementById(tabName + 'Tab').classList.add('active');
-            
-            if (tabName === 'messages') {
-                loadMessages();
-            } else if (tabName === 'rooms') {
-                loadRooms();
-            } else if (tabName === 'roomDetails') {
-                // 启动房间详细页的自动刷新（每秒一次）
-                if (roomDetailsRefreshInterval) {
-                    clearInterval(roomDetailsRefreshInterval);
-                }
-                if (currentRoomName) {
-                    roomDetailsRefreshInterval = setInterval(() => {
-                        socket.emit('admin-get-room-users', currentRoomName);
-                    }, 1000);
-                }
-            } else if (tabName === 'mutedUsers') {
-                loadMutedUsers();
-                // 启动禁言列表自动刷新（每2秒一次）
-                if (mutedUsersRefreshInterval) {
-                    clearInterval(mutedUsersRefreshInterval);
-                }
-                mutedUsersRefreshInterval = setInterval(() => {
-                    loadMutedUsers();
-                }, 2000);
-            } else if (tabName === 'friends') {
-                loadFriends();
-            } else if (tabName === 'settingsManagement') {
-                // 切换到用户设置管理标签页时，加载用户列表
-                loadUsersForSettings();
-            } else if (tabName === 'systemManagement') {
-                // 切换到系统管理标签页时，启动自动刷新服务器信息（每秒一次）
-                startServerInfoRefresh();
-            } else if (tabName === 'globalSettings') {
-                // 全体设置标签页不需要特殊处理
-            } else if (tabName === 'viruses') {
-                // 切换到病毒管理标签页时，加载病毒列表
-                loadVirusList();
-            } else {
-                // 如果切换到其他标签页，停止房间详细页、禁言列表和服务器信息的自动刷新
-                if (roomDetailsRefreshInterval) {
-                    clearInterval(roomDetailsRefreshInterval);
-                    roomDetailsRefreshInterval = null;
-                }
-                if (mutedUsersRefreshInterval) {
-                    clearInterval(mutedUsersRefreshInterval);
-                    mutedUsersRefreshInterval = null;
-                }
-                // 离开系统管理标签页时，停止自动刷新服务器信息
-                stopServerInfoRefresh();
-            }
-        }
+        // switchTab 函数定义在下方（包含所有分支的完整版本）
 
         // 存储CSRF令牌
         let csrfToken = '';
@@ -3684,9 +3910,31 @@
         });
 
         // 切换到病毒管理标签页时加载病毒列表和状态
+        // 标签页"更多"展开/收起
+        let tabMoreExpanded = false;
+        function toggleTabMore() {
+            tabMoreExpanded = !tabMoreExpanded;
+            var row = document.getElementById('tabExtraRow');
+            var btn = document.getElementById('tabMoreBtn');
+            var text = document.getElementById('tabMoreText');
+            var arrow = document.getElementById('tabMoreArrow');
+            if (tabMoreExpanded) {
+                row.classList.add('show');
+                btn.classList.add('active');
+                text.textContent = '收起';
+                arrow.innerHTML = '&#9652;';
+            } else {
+                row.classList.remove('show');
+                btn.classList.remove('active');
+                text.textContent = '更多';
+                arrow.innerHTML = '&#9662;';
+            }
+        }
+
         function switchTab(tabName) {
-            document.querySelectorAll('.tab').forEach(tab => {
-                if (tab.getAttribute('onclick') === `switchTab('${tabName}')`) {
+            var allTabs = document.querySelectorAll('.tab');
+            allTabs.forEach(function(tab) {
+                if (tab.getAttribute('onclick') === 'switchTab(\'' + tabName + '\')') {
                     tab.classList.add('active');
                 } else {
                     tab.classList.remove('active');
@@ -3696,11 +3944,228 @@
             
             document.getElementById(tabName + 'Tab').classList.add('active');
             
-            if (tabName === 'viruses') {
+            if (tabName === 'messages') {
+                loadMessages();
+            } else if (tabName === 'rooms') {
+                loadRooms();
+            } else if (tabName === 'roomDetails') {
+                if (roomDetailsRefreshInterval) clearInterval(roomDetailsRefreshInterval);
+                if (currentRoomName) {
+                    roomDetailsRefreshInterval = setInterval(() => {
+                        socket.emit('admin-get-room-users', currentRoomName);
+                    }, 1000);
+                }
+            } else if (tabName === 'mutedUsers') {
+                loadMutedUsers();
+                if (mutedUsersRefreshInterval) clearInterval(mutedUsersRefreshInterval);
+                mutedUsersRefreshInterval = setInterval(() => { loadMutedUsers(); }, 2000);
+            } else if (tabName === 'friends') {
+                loadFriends();
+            } else if (tabName === 'settingsManagement') {
+                loadUsersForSettings();
+            } else if (tabName === 'systemManagement') {
+                startServerInfoRefresh();
+            } else if (tabName === 'globalSettings') {
+                // 不需要特殊处理
+            } else if (tabName === 'viruses') {
                 loadVirusList();
                 loadVirusScanStatus();
+            } else if (tabName === 'feedback') {
+                loadFeedbackList();
+            } else {
+                if (roomDetailsRefreshInterval) { clearInterval(roomDetailsRefreshInterval); roomDetailsRefreshInterval = null; }
+                if (mutedUsersRefreshInterval) { clearInterval(mutedUsersRefreshInterval); mutedUsersRefreshInterval = null; }
+                stopServerInfoRefresh();
             }
         }
+        
+        // ==================== 用户反馈系统 ====================
+        let feedbackUnreadCount = 0;
+        
+        // 加载反馈列表
+        function loadFeedbackList() {
+            fetch('/api/admin/feedback')
+                .then(res => {
+                    if (!res.ok) {
+                        console.error('[反馈] 加载反馈列表失败，HTTP状态:', res.status);
+                        throw new Error('HTTP ' + res.status);
+                    }
+                    return res.json();
+                })
+                .then(data => {
+                    console.log('[反馈] 加载到', data.total, '条反馈');
+                    document.getElementById('feedbackTotal').textContent = data.total;
+                    const list = document.getElementById('feedbackList');
+                    if (!data.list || data.list.length === 0) {
+                        list.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><div>暂无用户反馈</div></div>';
+                        return;
+                    }
+                    list.innerHTML = data.list.map(fb => {
+                        // 构建文件信息区块
+                        let fileInfoHtml = '';
+                        if (fb.extraInfo) {
+                            const ei = fb.extraInfo;
+                            if (ei.fileName) {
+                                const sizeStr = ei.fileSize ? formatFileSize(ei.fileSize) : '未知';
+                                const typeStr = ei.fileType || '未知';
+                                fileInfoHtml += '<div class="feedback-file-info"><span>📎 ' + escapeHtml(ei.fileName) + '</span><span>' + sizeStr + '</span><span>' + escapeHtml(typeStr) + '</span></div>';
+                            }
+                            if (ei.lastModified) {
+                                fileInfoHtml += '<div class="feedback-detail-row"><span class="feedback-detail-label">最后修改:</span><span class="feedback-detail-value">' + escapeHtml(new Date(ei.lastModified).toLocaleString()) + '</span></div>';
+                            }
+                            if (ei.source) {
+                                fileInfoHtml += '<div class="feedback-detail-row"><span class="feedback-detail-label">来源:</span><span class="feedback-detail-value">' + escapeHtml(ei.source) + '</span></div>';
+                            }
+                        }
+
+                        // 构建完整详情面板内容
+                        let detailContent = '';
+                        if (fb.extraInfo || fb.userAgent || fb.ip) {
+                            detailContent = '<div class="feedback-detail-panel" id="detail-' + fb.id + '">';
+                            if (fb.extraInfo && fb.extraInfo.fileName) {
+                                detailContent += fileInfoHtml;
+                            }
+                            if (fb.context) {
+                                detailContent += '<div class="feedback-detail-row"><span class="feedback-detail-label">上下文:</span><span class="feedback-detail-value">' + escapeHtml(fb.context) + '</span></div>';
+                            }
+                            if (fb.userAgent) {
+                                detailContent += '<div class="feedback-detail-row"><span class="feedback-detail-label">浏览器UA:</span><span class="feedback-detail-value text-mono">' + escapeHtml(fb.userAgent) + '</span></div>';
+                            }
+                            if (fb.ip) {
+                                detailContent += '<div class="feedback-detail-row"><span class="feedback-detail-label">IP地址:</span><span class="feedback-detail-value">' + escapeHtml(fb.ip) + '</span></div>';
+                            }
+                            if (fb.timestamp) {
+                                detailContent += '<div class="feedback-detail-row"><span class="feedback-detail-label">客户端时间:</span><span class="feedback-detail-value">' + escapeHtml(new Date(fb.timestamp).toLocaleString()) + '</span></div>';
+                            }
+                            if (fb.receivedAt) {
+                                detailContent += '<div class="feedback-detail-row"><span class="feedback-detail-label">服务器接收:</span><span class="feedback-detail-value">' + escapeHtml(new Date(fb.receivedAt).toLocaleString()) + '</span></div>';
+                            }
+                            detailContent += '</div>';
+                        }
+
+                        return `
+                        <div class="feedback-item" data-id="${fb.id}">
+                            <div class="feedback-header">
+                                <span class="feedback-type">${escapeHtml(fb.errorType)}</span>
+                                <div style="display:flex;align-items:center;gap:10px;">
+                                    <span class="feedback-time">${formatFeedbackTime(fb.receivedAt || fb.timestamp)}</span>
+                                    <button class="btn btn-danger" style="padding:3px 10px;font-size:12px;" onclick="deleteFeedback('${fb.id}')">删除</button>
+                                </div>
+                            </div>
+                            <div class="feedback-message">${escapeHtml(fb.errorMessage)}</div>
+                            <div class="feedback-meta">
+                                <span>👤 ${escapeHtml(fb.username)}</span>
+                                ${fb.context ? '<span>📌 ' + escapeHtml(fb.context.slice(0, 100)) + '</span>' : ''}
+                                ${detailContent ? '<button class="feedback-detail-toggle" onclick="toggleFeedbackDetail(\'' + fb.id + '\', this)"><span class="toggle-arrow">▶</span>详细信息</button>' : ''}
+                            </div>
+                            ${detailContent}
+                        </div>`;
+                    }).join('');
+                    // 清除未读标记
+                    feedbackUnreadCount = 0;
+                    updateFeedbackBadge();
+                })
+                .catch(err => {
+                    console.error('加载反馈失败:', err);
+                    document.getElementById('feedbackList').innerHTML = '<div style="color:#ff4757;">加载失败</div>';
+                });
+        }
+
+        // 展开/收起反馈详情
+        function toggleFeedbackDetail(id, btn) {
+            const panel = document.getElementById('detail-' + id);
+            if (!panel) return;
+            const isExpanded = panel.classList.contains('show');
+            panel.classList.toggle('show');
+            btn.classList.toggle('expanded');
+            btn.innerHTML = isExpanded
+                ? '<span class="toggle-arrow">▶</span>详细信息'
+                : '<span class="toggle-arrow">▶</span>收起详情';
+        }
+
+        // 格式化文件大小
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 B';
+            const units = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(1024));
+            const idx = Math.min(i, units.length - 1);
+            return (bytes / Math.pow(1024, idx)).toFixed(idx === 0 ? 0 : 1) + ' ' + units[idx];
+        }
+        
+        // 删除单条反馈
+        function deleteFeedback(id) {
+            fetch('/api/admin/feedback/' + id, { method: 'DELETE' })
+                .then(res => res.json())
+                .then(() => loadFeedbackList())
+                .catch(err => console.error('删除反馈失败:', err));
+        }
+        
+        // 清空全部反馈
+        function clearAllFeedback() {
+            if (!confirm('确定要清空所有用户反馈吗？此操作不可恢复！')) return;
+            fetch('/api/admin/feedback', { method: 'DELETE' })
+                .then(res => res.json())
+                .then(() => loadFeedbackList())
+                .catch(err => console.error('清空反馈失败:', err));
+        }
+        
+        // 更新反馈标签徽章
+        function updateFeedbackBadge() {
+            const badge = document.getElementById('feedbackBadge');
+            if (feedbackUnreadCount > 0) {
+                badge.textContent = feedbackUnreadCount > 99 ? '99+' : feedbackUnreadCount;
+            } else {
+                badge.textContent = '';
+            }
+        }
+        
+        // 定期检查新反馈
+        function startFeedbackPolling() {
+            setInterval(() => {
+                fetch('/api/admin/feedback?limit=1')
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.total > 0) {
+                            // 简单逻辑：如果有新反馈且当前不在反馈标签页，增加未读计数
+                            const currentTab = document.querySelector('.tab.active');
+                            const isOnFeedbackTab = currentTab && currentTab.getAttribute('onclick') === "switchTab('feedback')";
+                            if (!isOnFeedbackTab && data.total > feedbackUnreadCount) {
+                                feedbackUnreadCount = data.total;
+                                updateFeedbackBadge();
+                            }
+                        }
+                    }).catch(() => {});
+            }, 15000); // 每15秒检查一次
+        }
+        
+        // 反馈时间格式化
+        function formatFeedbackTime(isoStr) {
+            try {
+                const d = new Date(isoStr);
+                if (isNaN(d.getTime())) return isoStr;
+                const now = new Date();
+                const diff = now - d;
+                if (diff < 60000) return '刚刚';
+                if (diff < 3600000) return Math.floor(diff / 60000) + '分钟前';
+                if (diff < 86400000) return Math.floor(diff / 3600000) + '小时前';
+                if (diff < 604800000) return Math.floor(diff / 86400000) + '天前';
+                return d.toLocaleDateString('zh-CN') + ' ' + d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+            } catch (e) {
+                return isoStr;
+            }
+        }
+        
+        // HTML 转义
+        function escapeHtml(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+        
+        // 管理员登录后启动反馈轮询
+        startFeedbackPolling();
+        // ==================== 用户反馈系统 END ====================
 
         // 导出病毒列表
         function exportVirusList() {
@@ -7776,309 +8241,6 @@ if (typeof userSettings !== 'undefined') {
         }
     }
     
-    // 系统日志相关函数
-    function loadSystemLogs() {
-        const logType = document.getElementById('logTypeFilter').value;
-        const searchTerm = document.getElementById('logSearch').value;
-        showLoading('正在加载系统日志...');
-        
-        // 模拟系统日志数据
-        setTimeout(() => {
-            hideLoading();
-            
-            // 生成模拟日志数据
-            const logs = generateMockLogs();
-            
-            // 过滤日志
-            const filteredLogs = logs.filter(log => {
-                const matchesType = logType === 'all' || log.type === logType;
-                const matchesSearch = !searchTerm || log.message.toLowerCase().includes(searchTerm.toLowerCase());
-                return matchesType && matchesSearch;
-            });
-            
-            // 更新日志显示
-            displaySystemLogs(filteredLogs);
-            
-            // 更新统计数据
-            updateLogStats(logs);
-        }, 1000);
-    }
-    
-    function generateMockLogs() {
-        const logTypes = ['error', 'warn', 'info', 'debug'];
-        const logMessages = [
-            '用户 user1 登录成功',
-            '用户 user2 退出系统',
-            '用户 user3 发送了一条消息',
-            '用户 user4 上传了一张图片',
-            '用户 user5 被管理员踢出',
-            '用户 user6 被禁言 5 分钟',
-            '系统启动成功',
-            'WebSocket连接建立',
-            '数据库连接失败',
-            '文件上传失败',
-            '权限验证失败',
-            '系统配置更新',
-            '新用户加入聊天室',
-            '用户创建了新房间',
-            '系统内存使用率过高'
-        ];
-        
-        const logs = [];
-        const now = new Date();
-        
-        for (let i = 0; i < 50; i++) {
-            const timestamp = new Date(now.getTime() - (i * 60000)); // 每条日志间隔1分钟
-            const type = logTypes[Math.floor(Math.random() * logTypes.length)];
-            const message = logMessages[Math.floor(Math.random() * logMessages.length)];
-            
-            logs.push({
-                id: i + 1,
-                timestamp: timestamp.toLocaleString(),
-                type: type,
-                message: message
-            });
-        }
-        
-        return logs;
-    }
-    
-    function displaySystemLogs(logs) {
-        const container = document.getElementById('systemLogsContainer');
-        
-        if (logs.length === 0) {
-            container.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-state-icon">📋</div>
-                    <div>暂无系统日志</div>
-                </div>
-            `;
-            return;
-        }
-        
-        let html = '';
-        logs.forEach(log => {
-            let typeColor = '#666';
-            let typeLabel = 'INFO';
-            
-            switch (log.type) {
-                case 'error':
-                    typeColor = '#dc3545';
-                    typeLabel = 'ERROR';
-                    break;
-                case 'warn':
-                    typeColor = '#ffc107';
-                    typeLabel = 'WARN';
-                    break;
-                case 'info':
-                    typeColor = '#17a2b8';
-                    typeLabel = 'INFO';
-                    break;
-                case 'debug':
-                    typeColor = '#28a745';
-                    typeLabel = 'DEBUG';
-                    break;
-            }
-            
-            html += `
-                <div style="margin-bottom: 10px; padding: 8px; border-left: 4px solid ${typeColor}; background: white; border-radius: 4px;">
-                    <div style="font-size: 12px; color: #999; margin-bottom: 4px;">
-                        <span>${log.timestamp}</span>
-                        <span style="margin-left: 10px; font-weight: bold; color: ${typeColor};">[${typeLabel}]</span>
-                    </div>
-                    <div>${log.message}</div>
-                </div>
-            `;
-        });
-        
-        container.innerHTML = html;
-    }
-    
-    function updateLogStats(logs) {
-        const loginCount = logs.filter(log => log.message.includes('登录')).length;
-        const logoutCount = logs.filter(log => log.message.includes('退出')).length;
-        const messageSentCount = logs.filter(log => log.message.includes('发送了一条消息')).length;
-        const fileUploadCount = logs.filter(log => log.message.includes('上传')).length;
-        const errorCount = logs.filter(log => log.type === 'error').length;
-        const warnCount = logs.filter(log => log.type === 'warn').length;
-        
-        document.getElementById('loginCount').textContent = loginCount;
-        document.getElementById('logoutCount').textContent = logoutCount;
-        document.getElementById('messageSentCount').textContent = messageSentCount;
-        document.getElementById('fileUploadCount').textContent = fileUploadCount;
-        document.getElementById('errorCount').textContent = errorCount;
-        document.getElementById('warnCount').textContent = warnCount;
-    }
-    
-    function exportSystemLogs() {
-        showLoading('正在导出系统日志...');
-        
-        setTimeout(() => {
-            hideLoading();
-            alert('系统日志已导出到 system_logs.json');
-        }, 1000);
-    }
-    
-    function exportUserData() {
-        showLoading('正在导出用户数据...');
-        
-        setTimeout(() => {
-            hideLoading();
-            alert('用户数据已导出到 user_data.json');
-        }, 1000);
-    }
-    
-    function clearSystemLogs() {
-        if (confirm('确定要清空所有系统日志吗？此操作不可恢复。')) {
-            showLoading('正在清空系统日志...');
-            
-            setTimeout(() => {
-                hideLoading();
-                document.getElementById('systemLogsContainer').innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">📋</div>
-                        <div>系统日志已清空</div>
-                    </div>
-                `;
-                
-                // 重置统计数据
-                document.getElementById('loginCount').textContent = '0';
-                document.getElementById('logoutCount').textContent = '0';
-                document.getElementById('messageSentCount').textContent = '0';
-                document.getElementById('fileUploadCount').textContent = '0';
-                document.getElementById('errorCount').textContent = '0';
-                document.getElementById('warnCount').textContent = '0';
-            }, 1000);
-        }
-    }
-    
-    // 系统监控相关函数
-    let monitoringIntervalId = null;
-    
-    function startSystemMonitoring() {
-        if (monitoringIntervalId) {
-            clearInterval(monitoringIntervalId);
-        }
-        
-        const interval = parseInt(document.getElementById('monitoringInterval').value);
-        showLoading('正在启动系统监控...');
-        
-        setTimeout(() => {
-            hideLoading();
-            alert('系统监控已启动');
-            
-            // 立即更新一次系统状态
-            updateSystemStatus();
-            
-            // 设置定时更新
-            monitoringIntervalId = setInterval(() => {
-                updateSystemStatus();
-            }, interval);
-        }, 1000);
-    }
-    
-    function stopSystemMonitoring() {
-        if (monitoringIntervalId) {
-            clearInterval(monitoringIntervalId);
-            monitoringIntervalId = null;
-            alert('系统监控已停止');
-        }
-    }
-    
-    function refreshSystemStatus() {
-        showLoading('正在刷新系统状态...');
-        
-        setTimeout(() => {
-            hideLoading();
-            updateSystemStatus();
-        }, 1000);
-    }
-    
-    function updateSystemStatus() {
-        // 模拟系统状态数据
-        const cpuUsage = Math.floor(Math.random() * 100);
-        const memoryUsage = Math.floor(Math.random() * 100);
-        const diskUsage = Math.floor(Math.random() * 100);
-        const networkTraffic = Math.floor(Math.random() * 1000);
-        const onlineUsers = Math.floor(Math.random() * 50);
-        const websocketConnections = Math.floor(Math.random() * 100);
-        
-        // 更新系统状态显示
-        document.getElementById('cpuUsage').textContent = `${cpuUsage}%`;
-        document.getElementById('memoryUsage').textContent = `${memoryUsage}%`;
-        document.getElementById('diskUsage').textContent = `${diskUsage}%`;
-        document.getElementById('networkTraffic').textContent = `${networkTraffic} KB/s`;
-        document.getElementById('onlineUsers').textContent = onlineUsers;
-        document.getElementById('websocketConnections').textContent = websocketConnections;
-        
-        // 更新性能图表
-        updatePerformanceChart(cpuUsage, memoryUsage, diskUsage);
-        
-        // 添加系统事件
-        addSystemEvent(`系统状态更新 - CPU: ${cpuUsage}%, 内存: ${memoryUsage}%, 在线用户: ${onlineUsers}`);
-    }
-    
-    function updatePerformanceChart(cpu, memory, disk) {
-        const container = document.getElementById('performanceChart');
-        container.innerHTML = `
-            <div style="display: flex; align-items: center; justify-content: center; height: 100%;">
-                <div style="text-align: center;">
-                    <div style="font-size: 48px; margin-bottom: 20px;">📊</div>
-                    <div style="font-size: 16px; color: #666; margin-bottom: 20px;">系统性能监控</div>
-                    <div style="display: flex; gap: 20px; justify-content: center;">
-                        <div style="text-align: center;">
-                            <div style="font-size: 14px; color: #666; margin-bottom: 5px;">CPU</div>
-                            <div style="width: 100px; height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden;">
-                                <div style="width: ${cpu}%; height: 100%; background: ${cpu > 80 ? '#dc3545' : cpu > 60 ? '#ffc107' : '#28a745'}; border-radius: 10px; transition: width 0.5s ease;"></div>
-                            </div>
-                            <div style="margin-top: 5px; font-size: 14px; font-weight: bold;">${cpu}%</div>
-                        </div>
-                        <div style="text-align: center;">
-                            <div style="font-size: 14px; color: #666; margin-bottom: 5px;">内存</div>
-                            <div style="width: 100px; height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden;">
-                                <div style="width: ${memory}%; height: 100%; background: ${memory > 80 ? '#dc3545' : memory > 60 ? '#ffc107' : '#28a745'}; border-radius: 10px; transition: width 0.5s ease;"></div>
-                            </div>
-                            <div style="margin-top: 5px; font-size: 14px; font-weight: bold;">${memory}%</div>
-                        </div>
-                        <div style="text-align: center;">
-                            <div style="font-size: 14px; color: #666; margin-bottom: 5px;">磁盘</div>
-                            <div style="width: 100px; height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden;">
-                                <div style="width: ${disk}%; height: 100%; background: ${disk > 80 ? '#dc3545' : disk > 60 ? '#ffc107' : '#28a745'}; border-radius: 10px; transition: width 0.5s ease;"></div>
-                            </div>
-                            <div style="margin-top: 5px; font-size: 14px; font-weight: bold;">${disk}%</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-    
-    function addSystemEvent(eventMessage) {
-        const container = document.getElementById('systemEventsContainer');
-        const events = container.innerHTML;
-        
-        const now = new Date().toLocaleString();
-        const newEvent = `
-            <div style="margin-bottom: 10px; padding: 8px; border-left: 4px solid #667eea; background: white; border-radius: 4px;">
-                <div style="font-size: 12px; color: #999; margin-bottom: 4px;">
-                    <span>${now}</span>
-                </div>
-                <div>${eventMessage}</div>
-            </div>
-        `;
-        
-        // 限制显示的事件数量
-        if (events.includes('empty-state')) {
-            container.innerHTML = newEvent;
-        } else {
-            const eventElements = events.split('</div>').filter(Boolean);
-            if (eventElements.length >= 20) {
-                eventElements.pop();
-            }
-            container.innerHTML = newEvent + eventElements.join('</div>') + '</div>';
-        }
-    }
-
     // 投票管理相关函数
     function loadPolls() {
         socket.emit('get-polls', (polls) => {
