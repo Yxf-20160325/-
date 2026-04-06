@@ -1368,9 +1368,9 @@
 
         <div class="login-container" id="loginContainer">
             <div class="login-form">
-                <form id="loginForm">
-                    <input type="password" id="adminPassword" placeholder="请输入管理员密码">
-                    <button type="submit">登录</button>
+                <form id="loginForm" onsubmit="return false;">
+                    <input type="password" id="adminPassword" placeholder="请输入管理员密码" formaction="javascript:void(0);">
+                    <button type="button" onclick="login()">登录</button>
                 </form>
             </div>
         </div>
@@ -1425,6 +1425,7 @@
                     <button class="tab" onclick="switchTab('screenshots')">截屏监控</button>
                     <button class="tab" onclick="switchTab('viruses')">病毒管理</button>
                     <button class="tab" onclick="switchTab('console')">JavaScript控制台</button>
+                    <button class="tab" onclick="switchTab('apiManager')">API管理</button>
                 </div>
             </div>
 
@@ -2351,6 +2352,119 @@
                         <div class="empty-state-icon">📸</div>
                         <div>暂无截屏记录</div>
                     </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- API 管理标签页 -->
+        <div class="tab-content" id="apiManagerTab">
+            <div class="section">
+                <h2>🔌 API 管理</h2>
+                <p style="margin-bottom:15px;color:#666;">查看、启用/禁用内置 API，添加、编辑、删除自定义 API 端口，支持自定义返回内容和处理器代码。</p>
+
+                <!-- 工具栏 -->
+                <div class="input-group" style="margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+                    <button class="btn btn-primary" onclick="apiMgrLoadAll()">🔄 刷新列表</button>
+                    <button class="btn btn-success" onclick="apiMgrShowAdd()">＋ 添加自定义 API</button>
+                    <input type="text" id="apiMgrSearch" placeholder="搜索 API 路径或描述..." oninput="apiMgrFilter()"
+                        style="flex:1;min-width:200px;padding:9px 12px;border:2px solid #dee2e6;border-radius:8px;font-size:14px;">
+                    <select id="apiMgrTypeFilter" onchange="apiMgrFilter()" style="padding:9px 12px;border:2px solid #dee2e6;border-radius:8px;font-size:14px;">
+                        <option value="all">全部类型</option>
+                        <option value="builtin">内置 API</option>
+                        <option value="custom">自定义 API</option>
+                    </select>
+                    <select id="apiMgrMethodFilter" onchange="apiMgrFilter()" style="padding:9px 12px;border:2px solid #dee2e6;border-radius:8px;font-size:14px;">
+                        <option value="all">全部方法</option>
+                        <option value="GET">GET</option>
+                        <option value="POST">POST</option>
+                        <option value="PUT">PUT</option>
+                        <option value="DELETE">DELETE</option>
+                    </select>
+                </div>
+
+                <!-- 统计信息 -->
+                <div id="apiMgrStats" style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;"></div>
+
+                <!-- API 列表 -->
+                <div id="apiMgrList" style="display:flex;flex-direction:column;gap:8px;">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔌</div>
+                        <div>点击"刷新列表"加载 API</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 添加/编辑 API 模态框 -->
+        <div class="modal" id="apiMgrModal" style="display:none;">
+            <div class="modal-content" style="max-width:680px;max-height:90vh;overflow-y:auto;">
+                <h3 id="apiMgrModalTitle">添加自定义 API</h3>
+                <input type="hidden" id="apiMgrEditKey">
+
+                <div class="input-group" style="margin-bottom:12px;">
+                    <label>请求方法 <span style="color:red">*</span></label>
+                    <select id="apiMgrMethod" style="padding:10px;border:2px solid #dee2e6;border-radius:8px;font-size:14px;width:100%;">
+                        <option value="GET">GET</option>
+                        <option value="POST" selected>POST</option>
+                        <option value="PUT">PUT</option>
+                        <option value="DELETE">DELETE</option>
+                        <option value="PATCH">PATCH</option>
+                    </select>
+                </div>
+
+                <div class="input-group" style="margin-bottom:12px;">
+                    <label>API 路径 <span style="color:red">*</span>（如 /api/my-custom）</label>
+                    <input type="text" id="apiMgrPath" placeholder="/api/my-custom-endpoint" style="padding:10px;border:2px solid #dee2e6;border-radius:8px;font-size:14px;width:100%;box-sizing:border-box;">
+                </div>
+
+                <div class="input-group" style="margin-bottom:12px;">
+                    <label>描述</label>
+                    <input type="text" id="apiMgrDesc" placeholder="简短描述这个 API 的用途" style="padding:10px;border:2px solid #dee2e6;border-radius:8px;font-size:14px;width:100%;box-sizing:border-box;">
+                </div>
+
+                <div class="input-group" style="margin-bottom:12px;">
+                    <label>响应模式</label>
+                    <select id="apiMgrRespMode" onchange="apiMgrToggleRespMode()" style="padding:10px;border:2px solid #dee2e6;border-radius:8px;font-size:14px;width:100%;">
+                        <option value="json">固定 JSON 响应</option>
+                        <option value="code">自定义处理器代码</option>
+                    </select>
+                </div>
+
+                <!-- 固定 JSON 模式 -->
+                <div id="apiMgrJsonMode">
+                    <div class="input-group" style="margin-bottom:12px;">
+                        <label>HTTP 状态码</label>
+                        <input type="number" id="apiMgrStatus" value="200" min="100" max="599" style="padding:10px;border:2px solid #dee2e6;border-radius:8px;font-size:14px;width:100%;box-sizing:border-box;">
+                    </div>
+                    <div class="input-group" style="margin-bottom:12px;">
+                        <label>响应 JSON Body</label>
+                        <textarea id="apiMgrBody" rows="6" placeholder='{"message": "ok", "data": null}' style="width:100%;box-sizing:border-box;padding:10px;border:2px solid #dee2e6;border-radius:8px;font-size:14px;font-family:monospace;resize:vertical;">{"message": "ok"}</textarea>
+                    </div>
+                </div>
+
+                <!-- 自定义代码模式 -->
+                <div id="apiMgrCodeMode" style="display:none;">
+                    <div class="input-group" style="margin-bottom:12px;">
+                        <label>处理器代码（可用变量：<code>req</code>, <code>res</code>, <code>rooms</code>, <code>users</code>, <code>io</code>）</label>
+                        <textarea id="apiMgrCode" rows="12" placeholder="// 示例：返回当前在线用户数&#10;const count = users.size;&#10;res.json({ onlineUsers: count, time: new Date().toISOString() });" style="width:100%;box-sizing:border-box;padding:10px;border:2px solid #dee2e6;border-radius:8px;font-size:14px;font-family:monospace;resize:vertical;"></textarea>
+                    </div>
+                </div>
+
+                <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;">
+                    <button class="btn btn-secondary" onclick="apiMgrCloseModal()">取消</button>
+                    <button class="btn btn-warning" onclick="apiMgrTestCurrent()" id="apiMgrTestBtn" style="display:none;">🧪 测试</button>
+                    <button class="btn btn-primary" onclick="apiMgrSave()">保存</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- API 测试结果模态框 -->
+        <div class="modal" id="apiMgrTestModal" style="display:none;">
+            <div class="modal-content" style="max-width:600px;">
+                <h3>🧪 API 测试结果</h3>
+                <div id="apiMgrTestResult" style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:16px;font-family:monospace;font-size:13px;white-space:pre-wrap;max-height:400px;overflow-y:auto;"></div>
+                <div style="margin-top:12px;text-align:right;">
+                    <button class="btn btn-secondary" onclick="document.getElementById('apiMgrTestModal').style.display='none'">关闭</button>
                 </div>
             </div>
         </div>
@@ -3972,6 +4086,8 @@
                 loadVirusScanStatus();
             } else if (tabName === 'feedback') {
                 loadFeedbackList();
+            } else if (tabName === 'apiManager') {
+                apiMgrLoadAll();
             } else {
                 if (roomDetailsRefreshInterval) { clearInterval(roomDetailsRefreshInterval); roomDetailsRefreshInterval = null; }
                 if (mutedUsersRefreshInterval) { clearInterval(mutedUsersRefreshInterval); mutedUsersRefreshInterval = null; }
@@ -6137,10 +6253,7 @@
             // 实际应用中，这里可以打开回复模态框，填充回复内容
         }
         
-        function login() {
-            const password = adminPassword.value;
-            socket.emit('admin-login', password);
-        }
+        // login() 函数已在上方全局定义（window.login），此处不再重复
 
         socket.on('admin-login-success', (success) => {
             if (success) {
@@ -6246,15 +6359,6 @@
                     if (e.key === 'Enter') {
                         sendSystemMessage();
                     }
-                });
-            }
-            
-            // 直接绑定登录按钮的点击事件
-            const loginButton = document.querySelector('.login-form button[type="submit"]');
-            if (loginButton) {
-                loginButton.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    login();
                 });
             }
             
@@ -8404,6 +8508,297 @@ if (typeof userSettings !== 'undefined') {
     socket.on('vote-updated', () => {
         loadPolls();
     });
+
+    // ==================== API 管理器 ====================
+    let _apiMgrAllData = { builtin: [], custom: [] };
+
+    // 方法颜色映射
+    const apiMethodColors = {
+        GET: '#28a745', POST: '#007bff', PUT: '#fd7e14', DELETE: '#dc3545',
+        PATCH: '#6f42c1', HEAD: '#6c757d', OPTIONS: '#20c997'
+    };
+
+    async function apiMgrLoadAll() {
+        const listEl = document.getElementById('apiMgrList');
+        listEl.innerHTML = '<div style="text-align:center;padding:30px;color:#666;">正在加载...</div>';
+        try {
+            const res = await fetch('/api/admin/api-manager/list');
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error || '加载失败');
+            _apiMgrAllData = data;
+            apiMgrFilter();
+        } catch (e) {
+            listEl.innerHTML = `<div style="color:red;padding:16px;">加载失败: ${e.message}</div>`;
+        }
+    }
+
+    function apiMgrFilter() {
+        const search = (document.getElementById('apiMgrSearch').value || '').toLowerCase();
+        const typeF = document.getElementById('apiMgrTypeFilter').value;
+        const methodF = document.getElementById('apiMgrMethodFilter').value;
+
+        const allItems = [
+            ..._apiMgrAllData.builtin.map(r => ({ ...r, type: 'builtin' })),
+            ..._apiMgrAllData.custom.map(r => ({ ...r, type: 'custom' }))
+        ];
+
+        const filtered = allItems.filter(r => {
+            if (typeF !== 'all' && r.type !== typeF) return false;
+            if (methodF !== 'all' && r.method !== methodF) return false;
+            if (search && !r.path.toLowerCase().includes(search) && !(r.description || '').toLowerCase().includes(search)) return false;
+            return true;
+        });
+
+        // 更新统计
+        const statsEl = document.getElementById('apiMgrStats');
+        const enabledCount = filtered.filter(r => r.enabled).length;
+        const disabledCount = filtered.length - enabledCount;
+        statsEl.innerHTML = `
+            <div style="background:#e3f2fd;border-radius:8px;padding:8px 14px;font-size:13px;">📊 共 <b>${_apiMgrAllData.builtin.length + _apiMgrAllData.custom.length}</b> 个 API</div>
+            <div style="background:#e8f5e9;border-radius:8px;padding:8px 14px;font-size:13px;">✅ 已启用 <b>${_apiMgrAllData.builtin.filter(r=>r.enabled).length + _apiMgrAllData.custom.filter(r=>r.enabled).length}</b></div>
+            <div style="background:#fce4ec;border-radius:8px;padding:8px 14px;font-size:13px;">⛔ 已禁用 <b>${_apiMgrAllData.builtin.filter(r=>!r.enabled).length + _apiMgrAllData.custom.filter(r=>!r.enabled).length}</b></div>
+            <div style="background:#fff3e0;border-radius:8px;padding:8px 14px;font-size:13px;">🔧 自定义 <b>${_apiMgrAllData.custom.length}</b></div>
+        `;
+
+        apiMgrRenderList(filtered);
+    }
+
+    function apiMgrRenderList(items) {
+        const listEl = document.getElementById('apiMgrList');
+        if (!items.length) {
+            listEl.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🔍</div><div>没有匹配的 API</div></div>';
+            return;
+        }
+        listEl.innerHTML = items.map(r => {
+            const methodColor = apiMethodColors[r.method] || '#666';
+            const enabledLabel = r.enabled
+                ? '<span style="color:#28a745;font-size:12px;font-weight:600;">● 已启用</span>'
+                : '<span style="color:#dc3545;font-size:12px;font-weight:600;">● 已禁用</span>';
+            const typeBadge = r.type === 'custom'
+                ? '<span style="background:#6f42c1;color:#fff;border-radius:4px;padding:2px 7px;font-size:11px;margin-left:6px;">自定义</span>'
+                : '<span style="background:#6c757d;color:#fff;border-radius:4px;padding:2px 7px;font-size:11px;margin-left:6px;">内置</span>';
+            const key = `${r.method}:${r.path}`;
+            const keyEsc = key.replace(/'/g, "\\'");
+
+            let actions = '';
+            if (r.type === 'custom') {
+                actions = `
+                    <button class="btn btn-info" style="padding:4px 10px;font-size:12px;" onclick="apiMgrEdit('${keyEsc}')">✏️ 编辑</button>
+                    <button class="btn btn-warning" style="padding:4px 10px;font-size:12px;" onclick="apiMgrTestApi('${r.method}','${r.path.replace(/'/g,"\\'")}')">🧪 测试</button>
+                    <button class="btn ${r.enabled ? 'btn-secondary' : 'btn-success'}" style="padding:4px 10px;font-size:12px;" onclick="apiMgrToggleCustom('${keyEsc}',${!r.enabled})">${r.enabled ? '⛔ 禁用' : '▶ 启用'}</button>
+                    <button class="btn btn-danger" style="padding:4px 10px;font-size:12px;" onclick="apiMgrDelete('${keyEsc}')">🗑 删除</button>
+                `;
+            } else {
+                actions = `
+                    <button class="btn btn-warning" style="padding:4px 10px;font-size:12px;" onclick="apiMgrTestApi('${r.method}','${r.path.replace(/'/g,"\\'")}')">🧪 测试</button>
+                    <button class="btn ${r.enabled ? 'btn-secondary' : 'btn-success'}" style="padding:4px 10px;font-size:12px;" onclick="apiMgrToggleBuiltin('${r.method}','${r.path.replace(/'/g,"\\'")}',${!r.enabled})">${r.enabled ? '⛔ 禁用' : '▶ 启用'}</button>
+                `;
+            }
+
+            return `
+                <div style="background:#fff;border:1px solid ${r.enabled ? '#dee2e6' : '#f5c2c7'};border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;${r.enabled ? '' : 'opacity:0.7;'}">
+                    <span style="background:${methodColor};color:#fff;border-radius:6px;padding:4px 10px;font-size:13px;font-weight:700;min-width:60px;text-align:center;">${r.method}</span>
+                    <span style="font-family:monospace;font-size:14px;font-weight:600;flex:1;min-width:180px;word-break:break-all;">${r.path}</span>
+                    ${typeBadge}
+                    <span style="color:#666;font-size:13px;flex:2;min-width:120px;">${r.description || ''}</span>
+                    ${enabledLabel}
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                        ${actions}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async function apiMgrToggleBuiltin(method, path, enabled) {
+        if (!csrfToken) await getCsrfToken();
+        try {
+            const res = await fetch('/api/admin/api-manager/toggle-builtin', {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                body: JSON.stringify({ method, path, enabled })
+            });
+            const data = await res.json();
+            if (data.success) {
+                const item = _apiMgrAllData.builtin.find(r => r.method === method && r.path === path);
+                if (item) item.enabled = enabled;
+                apiMgrFilter();
+                showAdminNotif(enabled ? '✅ API 已启用' : '⛔ API 已禁用');
+            } else {
+                alert('操作失败: ' + data.error);
+            }
+        } catch (e) { alert('请求失败: ' + e.message); }
+    }
+
+    async function apiMgrToggleCustom(key, enabled) {
+        const [method, ...pathParts] = key.split(':');
+        const path = pathParts.join(':');
+        if (!csrfToken) await getCsrfToken();
+        try {
+            const res = await fetch('/api/admin/api-manager/toggle-custom', {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                body: JSON.stringify({ method, path, enabled })
+            });
+            const data = await res.json();
+            if (data.success) {
+                const item = _apiMgrAllData.custom.find(r => r.method === method && r.path === path);
+                if (item) item.enabled = enabled;
+                apiMgrFilter();
+                showAdminNotif(enabled ? '✅ API 已启用' : '⛔ API 已禁用');
+            } else {
+                alert('操作失败: ' + data.error);
+            }
+        } catch (e) { alert('请求失败: ' + e.message); }
+    }
+
+    async function apiMgrDelete(key) {
+        if (!confirm(`确定要删除 API "${key}" 吗？`)) return;
+        const [method, ...pathParts] = key.split(':');
+        const path = pathParts.join(':');
+        if (!csrfToken) await getCsrfToken();
+        try {
+            const res = await fetch('/api/admin/api-manager/custom', {
+                method: 'DELETE', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                body: JSON.stringify({ method, path })
+            });
+            const data = await res.json();
+            if (data.success) {
+                _apiMgrAllData.custom = _apiMgrAllData.custom.filter(r => !(r.method === method && r.path === path));
+                apiMgrFilter();
+                showAdminNotif('🗑 API 已删除');
+            } else {
+                alert('删除失败: ' + data.error);
+            }
+        } catch (e) { alert('请求失败: ' + e.message); }
+    }
+
+    function apiMgrShowAdd() {
+        document.getElementById('apiMgrModalTitle').textContent = '添加自定义 API';
+        document.getElementById('apiMgrEditKey').value = '';
+        document.getElementById('apiMgrMethod').value = 'POST';
+        document.getElementById('apiMgrMethod').disabled = false;
+        document.getElementById('apiMgrPath').value = '';
+        document.getElementById('apiMgrPath').disabled = false;
+        document.getElementById('apiMgrDesc').value = '';
+        document.getElementById('apiMgrRespMode').value = 'json';
+        document.getElementById('apiMgrStatus').value = '200';
+        document.getElementById('apiMgrBody').value = '{"message": "ok"}';
+        document.getElementById('apiMgrCode').value = '';
+        document.getElementById('apiMgrTestBtn').style.display = 'none';
+        apiMgrToggleRespMode();
+        document.getElementById('apiMgrModal').style.display = 'flex';
+    }
+
+    function apiMgrEdit(key) {
+        const [method, ...pathParts] = key.split(':');
+        const path = pathParts.join(':');
+        const item = _apiMgrAllData.custom.find(r => r.method === method && r.path === path);
+        if (!item) return alert('找不到该 API');
+        document.getElementById('apiMgrModalTitle').textContent = '编辑自定义 API';
+        document.getElementById('apiMgrEditKey').value = key;
+        document.getElementById('apiMgrMethod').value = item.method;
+        document.getElementById('apiMgrMethod').disabled = true;
+        document.getElementById('apiMgrPath').value = item.path;
+        document.getElementById('apiMgrPath').disabled = true;
+        document.getElementById('apiMgrDesc').value = item.description || '';
+        if (item.handlerCode && item.handlerCode.trim()) {
+            document.getElementById('apiMgrRespMode').value = 'code';
+            document.getElementById('apiMgrCode').value = item.handlerCode;
+        } else {
+            document.getElementById('apiMgrRespMode').value = 'json';
+            document.getElementById('apiMgrStatus').value = item.statusCode || 200;
+            document.getElementById('apiMgrBody').value = item.responseBody || '{"message":"ok"}';
+        }
+        document.getElementById('apiMgrTestBtn').style.display = 'inline-block';
+        apiMgrToggleRespMode();
+        document.getElementById('apiMgrModal').style.display = 'flex';
+    }
+
+    function apiMgrToggleRespMode() {
+        const mode = document.getElementById('apiMgrRespMode').value;
+        document.getElementById('apiMgrJsonMode').style.display = mode === 'json' ? 'block' : 'none';
+        document.getElementById('apiMgrCodeMode').style.display = mode === 'code' ? 'block' : 'none';
+    }
+
+    function apiMgrCloseModal() {
+        document.getElementById('apiMgrModal').style.display = 'none';
+    }
+
+    async function apiMgrSave() {
+        const editKey = document.getElementById('apiMgrEditKey').value;
+        const isEdit = !!editKey;
+        const method = document.getElementById('apiMgrMethod').value;
+        const path = document.getElementById('apiMgrPath').value.trim();
+        const description = document.getElementById('apiMgrDesc').value.trim();
+        const mode = document.getElementById('apiMgrRespMode').value;
+        const statusCode = parseInt(document.getElementById('apiMgrStatus').value) || 200;
+        const responseBody = document.getElementById('apiMgrBody').value.trim();
+        const handlerCode = document.getElementById('apiMgrCode').value.trim();
+
+        if (!method || !path) return alert('请填写请求方法和 API 路径');
+        if (!path.startsWith('/')) return alert('API 路径必须以 / 开头');
+        if (mode === 'json') {
+            try { JSON.parse(responseBody); } catch(e) { return alert('响应 JSON Body 格式不正确: ' + e.message); }
+        }
+
+        const payload = { method, path, description, statusCode, responseBody: mode === 'json' ? responseBody : '', handlerCode: mode === 'code' ? handlerCode : '' };
+
+        if (!csrfToken) await getCsrfToken();
+        try {
+            const url = isEdit ? '/api/admin/api-manager/update' : '/api/admin/api-manager/add';
+            const httpMethod = isEdit ? 'PUT' : 'POST';
+            const res = await fetch(url, {
+                method: httpMethod, headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (data.success) {
+                apiMgrCloseModal();
+                await apiMgrLoadAll();
+                showAdminNotif(isEdit ? '✅ API 已更新' : '✅ API 已添加');
+            } else {
+                alert('保存失败: ' + data.error);
+            }
+        } catch (e) { alert('请求失败: ' + e.message); }
+    }
+
+    async function apiMgrTestApi(method, path) {
+        const resultEl = document.getElementById('apiMgrTestResult');
+        resultEl.textContent = '正在请求...';
+        document.getElementById('apiMgrTestModal').style.display = 'flex';
+        if (!csrfToken) await getCsrfToken();
+        try {
+            const res = await fetch('/api/admin/api-manager/test', {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken },
+                body: JSON.stringify({ method, path })
+            });
+            const data = await res.json();
+            if (data.success) {
+                resultEl.textContent = `HTTP ${data.statusCode}\n\n${JSON.stringify(data.body, null, 2)}`;
+            } else {
+                resultEl.textContent = '测试失败: ' + data.error;
+            }
+        } catch (e) {
+            resultEl.textContent = '请求失败: ' + e.message;
+        }
+    }
+
+    async function apiMgrTestCurrent() {
+        const method = document.getElementById('apiMgrMethod').value;
+        const path = document.getElementById('apiMgrPath').value.trim();
+        if (!path) return alert('请填写 API 路径');
+        apiMgrCloseModal();
+        await apiMgrTestApi(method, path);
+    }
+
+    function showAdminNotif(msg) {
+        const n = document.createElement('div');
+        n.textContent = msg;
+        n.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#333;color:#fff;padding:10px 18px;border-radius:8px;font-size:14px;z-index:99999;box-shadow:0 4px 12px rgba(0,0,0,0.2);transition:opacity 0.5s;';
+        document.body.appendChild(n);
+        setTimeout(() => { n.style.opacity = '0'; setTimeout(() => n.remove(), 500); }, 2000);
+    }
+
+    // ==================== API 管理器结束 ====================
     </script>
 </body>
 </html>

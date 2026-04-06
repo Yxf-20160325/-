@@ -19541,7 +19541,9 @@ io.on('connection', (socket) => {
                                 const optimizedLocation = calculateOptimizedLocation(positions);
                                 console.log(`优化后位置 - 纬度: ${optimizedLocation.latitude}, 经度: ${optimizedLocation.longitude}, 预估精度: ${optimizedLocation.estimatedAccuracy}米`);
                                 
-                                handlePositionData(optimizedLocation.latitude, optimizedLocation.longitude, false);
+                                // 生成 messageId 用于本地显示和服务器同步
+                                const locationMessageId = 'loc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 9);
+                                handlePositionData(optimizedLocation.latitude, optimizedLocation.longitude, false, null, locationMessageId);
                             } else {
                                 alert('获取位置失败，请检查位置权限和网络连接');
                             }
@@ -19609,12 +19611,13 @@ io.on('connection', (socket) => {
             return R * c;
         }
         
-        async function handlePositionData(latitude, longitude, isRealTime = false, realTimeMessageId = null) {
+        async function handlePositionData(latitude, longitude, isRealTime = false, realTimeMessageId = null, clientMessageId = null) {
             console.log('开始处理位置数据:', {
                 latitude,
                 longitude,
                 isRealTime,
                 realTimeMessageId,
+                clientMessageId,
                 username: username,
                 socket: socket ? '已初始化' : '未初始化'
             });
@@ -19699,7 +19702,8 @@ io.on('connection', (socket) => {
                     locationName,
                     isRealTime: isRealTime,
                     timestamp: Date.now(),
-                    realTimeMessageId: realTimeMessageId
+                    realTimeMessageId: realTimeMessageId,
+                    clientMessageId: clientMessageId  // 添加客户端消息ID
                 };
                 
                 console.log('发送的位置消息数据:', messageData);
@@ -19711,6 +19715,7 @@ io.on('connection', (socket) => {
                     console.log('开始显示位置消息...');
                     const messageElement = document.createElement('div');
                     messageElement.className = 'message';
+                    messageElement.dataset.messageId = clientMessageId || '';
                     messageElement.innerHTML = `
                         <div class="message-content">
                             <div class="message-header">
@@ -19730,9 +19735,7 @@ io.on('connection', (socket) => {
                     if (messagesContainer) {
                         messagesContainer.appendChild(messageElement);
                         messagesContainer.scrollTop = messagesContainer.scrollHeight;
-                        console.log('位置消息显示成功');
-                    } else {
-                        console.error('消息容器不存在，无法显示位置消息');
+                        console.log('位置消息已显示在聊天区域');
                     }
                 }
             } catch (error) {
@@ -19750,7 +19753,8 @@ io.on('connection', (socket) => {
                         locationName,
                         isRealTime: isRealTime,
                         timestamp: Date.now(),
-                        realTimeMessageId: realTimeMessageId
+                        realTimeMessageId: realTimeMessageId,
+                        clientMessageId: clientMessageId
                     });
                     console.log('位置坐标发送成功');
                 } catch (socketError) {
@@ -19764,6 +19768,7 @@ io.on('connection', (socket) => {
                     try {
                         const messageElement = document.createElement('div');
                         messageElement.className = 'message';
+                        messageElement.dataset.messageId = clientMessageId || '';
                         messageElement.innerHTML = `
                             <div class="message-content">
                                 <div class="message-header">

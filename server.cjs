@@ -103,6 +103,40 @@ const ipConnections = new Map(); // 存储IP连接数: Map<ip, Set<socketId>>
 const mutedUsers = new Map(); // 存储被禁言用户: Map<socketId, { username, endTime, reason }>
 const MAX_CONNECTIONS_PER_IP = 5; // 每个IP最大连接数
 
+// ==================== API 管理系统（提前声明，中间件需要在路由之前访问） ====================
+const customApiRoutes = new Map(); // key: `${method}:${path}`, value: { method, path, handler, description, enabled, createdAt }
+const disabledBuiltinApis = new Set(); // 禁用的内置 API 路径集合（存储 Express 路由 pattern，如 GET:/api/users/:id）
+
+/**
+ * 将 Express 路由 pattern（如 /api/users/:id）转为正则表达式
+ * 支持 :param 和 * 通配符
+ */
+function routePatternToRegex(pattern) {
+    const escaped = pattern
+        .replace(/[.+?^${}()|[\]\\]/g, '\\$&') // 转义正则特殊字符（保留 *）
+        .replace(/\\\*/g, '.*')                  // * 转为 .*
+        .replace(/:([^/]+)/g, '[^/]+');           // :param 转为 [^/]+
+    return new RegExp(`^${escaped}$`);
+}
+
+/**
+ * 检查某个实际路径是否命中任意已禁用的路由 pattern
+ */
+function isBuiltinApiDisabled(method, reqPath) {
+    for (const key of disabledBuiltinApis) {
+        const colonIdx = key.indexOf(':');
+        if (colonIdx === -1) continue;
+        const keyMethod = key.slice(0, colonIdx);
+        const keyPattern = key.slice(colonIdx + 1);
+        if (keyMethod !== method) continue;
+        if (keyPattern === reqPath) return true; // 精确匹配
+        if (keyPattern.includes(':') || keyPattern.includes('*')) {
+            if (routePatternToRegex(keyPattern).test(reqPath)) return true;
+        }
+    }
+    return false;
+}
+
 const app = express();
 app.use(cors({
     origin: true,
@@ -125,7 +159,39 @@ app.use((req, res, next) => {
     res.setHeader('X-XSS-Protection', '1; mode=block');
     next();
 });
+
+// ===== 内置 API / 页面 禁用拦截中间件（必须在所有路由和静态文件之前） =====
+app.use((req, res, next) => {
+    const method = req.method.toUpperCase();
+    if (isBuiltinApiDisabled(method, req.path)) {
+        const key = `${method}:${req.path}`;
+        // 页面类请求返回 HTML，API 类请求返回 JSON
+        if (req.accepts('html') && !req.path.startsWith('/api/')) {
+            return res.status(503).send('<h1>该页面已被管理员禁用</h1>');
+        }
+        return res.status(503).json({ error: '该 API 已被管理员禁用' });
+    }
+    next();
+});
+
+// 静态文件服务（放在禁用中间件之后，这样页面请求也能被拦截）
 app.use(express.static(path.join(__dirname, 'public')));
+
+// ===== 自定义 API 统一分发中间件（必须在所有路由之前） =====
+app.use(express.json({ strict: false }), (req, res, next) => {
+    const method = req.method.toUpperCase();
+    const key = `${method}:${req.path}`;
+    const route = customApiRoutes.get(key);
+    if (!route) return next();
+    if (!route.enabled) {
+        return res.status(503).json({ error: 'API 已禁用' });
+    }
+    try {
+        route.handlerFn(req, res, rooms, users, io);
+    } catch (e) {
+        res.status(500).json({ error: '处理器执行出错: ' + e.message });
+    }
+});
 
 // 为文件上传API单独配置raw解析器
 app.post('/api/files/upload', express.raw({ type: '*/*', limit: '30mb' }), async (req, res) => {
@@ -1403,6 +1469,270 @@ app.post('/api/viruses/status', (req, res) => {
     virusScanEnabled = Boolean(enabled);
     res.json({ success: true, enabled: virusScanEnabled, message: virusScanEnabled ? '病毒检测已启用' : '病毒检测已禁用' });
 });
+
+
+// ==================== API 管理系统 ====================
+
+
+// 获取所有 API 列表（内置 + 自定义）
+app.get('/api/admin/api-manager/list', express.json(), (req, res) => {
+    try {
+        // 扫描 Express 路由栈，列出内置 API
+        const builtinApis = [];
+        const stack = app._router ? app._router.stack : [];
+        stack.forEach(layer => {
+            if (layer.route) {
+                const routePath = layer.route.path;
+                const methods = Object.keys(layer.route.methods).map(m => m.toUpperCase());
+                methods.forEach(method => {
+                    const key = `${method}:${routePath}`;
+                    builtinApis.push({
+                        key,
+                        method,
+                        path: routePath,
+                        type: 'builtin',
+                        enabled: !disabledBuiltinApis.has(key),
+                        description: getBuiltinApiDescription(method, routePath)
+                    });
+                });
+            }
+        });
+
+        // 自定义 API 列表
+        const customApis = Array.from(customApiRoutes.values()).map(r => ({
+            key: `${r.method}:${r.path}`,
+            method: r.method,
+            path: r.path,
+            type: 'custom',
+            enabled: r.enabled,
+            description: r.description || '',
+            handlerCode: r.handlerCode,
+            responseBody: r.responseBody,
+            statusCode: r.statusCode,
+            createdAt: r.createdAt
+        }));
+
+        res.json({ success: true, builtin: builtinApis, custom: customApis });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 获取内置 API 描述的辅助函数
+function getBuiltinApiDescription(method, path) {
+    const descriptions = {
+        'GET:/api/plugins': '获取插件列表',
+        'POST:/api/plugins/reload': '重新加载插件',
+        'POST:/api/plugins': '创建/上传插件',
+        'DELETE:/api/plugins/:name': '删除插件',
+        'GET:/api/plugins/:name/code': '获取插件代码',
+        'GET:/api/plugins/:name/export': '导出插件',
+        'POST:/api/plugins/import': '导入插件',
+        'GET:/api/docs': 'API文档',
+        'POST:/api/auth/social': '社交媒体登录',
+        'POST:/api/weather': '天气查询',
+        'GET:/api/viruses': '获取病毒文件列表',
+        'POST:/api/viruses/allow/:id': '允许病毒文件',
+        'POST:/api/viruses/quarantine/:id': '隔离病毒文件',
+        'DELETE:/api/viruses/:id': '删除病毒文件',
+        'POST:/api/viruses/ban/:id': '封禁用户',
+        'GET:/api/viruses/status': '获取病毒检测状态',
+        'POST:/api/viruses/status': '设置病毒检测状态',
+        'GET:/api/files': '文件管理-获取文件列表',
+        'POST:/api/files/create-directory': '文件管理-创建目录',
+        'DELETE:/api/files/*': '文件管理-删除文件/目录',
+        'POST:/api/files/create': '文件管理-创建文本文件',
+        'PUT:/api/files/*': '文件管理-编辑文件内容',
+        'GET:/api/files/*/content': '文件管理-获取文件内容',
+        'POST:/api/push/subscribe': '注册推送订阅',
+        'POST:/api/push/unsubscribe': '取消推送订阅',
+        'POST:/api/mobile/login': '移动应用登录',
+        'GET:/api/mobile/messages': '移动应用获取消息',
+        'POST:/api/mobile/send-message': '移动应用发送消息',
+        'POST:/api/files/upload': '文件上传',
+        'POST:/api/feedback': '提交用户反馈',
+        'GET:/api/admin/feedback': '获取用户反馈',
+        'DELETE:/api/admin/feedback/:id': '删除单条反馈',
+        'DELETE:/api/admin/feedback': '清空所有反馈',
+        'GET:/api/admin/system-logs': '获取系统日志',
+        'GET:/api/admin/system-logs/stats': '获取日志统计',
+        'DELETE:/api/admin/system-logs': '清空系统日志',
+        'GET:/api/admin/system-status': '系统状态监控',
+        'GET:/api/admin/user-analytics': '用户行为统计',
+        'GET:/api/admin/threat-log': '威胁日志',
+        'GET:/api/admin/calls': '通话列表',
+        'POST:/api/admin/calls/:callId/end': '结束通话',
+        'POST:/api/admin/calls/:callId/control': '控制通话',
+        'GET:/api/admin/calls/:callId': '通话详情',
+    };
+    return descriptions[`${method}:${path}`] || '';
+}
+
+// 禁用/启用内置 API
+app.post('/api/admin/api-manager/toggle-builtin', express.json(), (req, res) => {
+    try {
+        const { method, path: apiPath, enabled } = req.body;
+        if (!method || !apiPath) return res.status(400).json({ success: false, error: '缺少参数' });
+        const key = `${method.toUpperCase()}:${apiPath}`;
+        if (enabled) {
+            disabledBuiltinApis.delete(key);
+        } else {
+            disabledBuiltinApis.add(key);
+        }
+        res.json({ success: true, key, enabled });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 添加自定义 API
+app.post('/api/admin/api-manager/add', express.json(), (req, res) => {
+    try {
+        const { method, path: apiPath, description, responseBody, statusCode, handlerCode } = req.body;
+        if (!method || !apiPath) return res.status(400).json({ success: false, error: '缺少参数 method 或 path' });
+        const normalizedMethod = method.toUpperCase();
+        const key = `${normalizedMethod}:${apiPath}`;
+        if (customApiRoutes.has(key)) {
+            return res.status(409).json({ success: false, error: '该 API 路径已存在，请先删除或使用更新接口' });
+        }
+        // 构建处理器
+        let handlerFn;
+        if (handlerCode && handlerCode.trim()) {
+            try {
+                // eslint-disable-next-line no-new-func
+                handlerFn = new Function('req', 'res', 'rooms', 'users', 'io', handlerCode);
+            } catch (e) {
+                return res.status(400).json({ success: false, error: '处理器代码语法错误: ' + e.message });
+            }
+        } else {
+            const body = responseBody !== undefined ? responseBody : { message: 'ok' };
+            const code = parseInt(statusCode) || 200;
+            let parsedBody;
+            try { parsedBody = typeof body === 'string' ? JSON.parse(body) : body; } catch(e) { parsedBody = { message: body }; }
+            handlerFn = (req, res) => res.status(code).json(parsedBody);
+        }
+        const routeInfo = {
+            method: normalizedMethod,
+            path: apiPath,
+            description: description || '',
+            handlerCode: handlerCode || '',
+            responseBody: responseBody || '{"message":"ok"}',
+            statusCode: parseInt(statusCode) || 200,
+            enabled: true,
+            createdAt: new Date().toISOString(),
+            handlerFn
+        };
+        customApiRoutes.set(key, routeInfo);
+        res.json({ success: true, key, message: 'API 已添加' });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 更新自定义 API（更改代码/响应）
+app.put('/api/admin/api-manager/update', express.json(), (req, res) => {
+    try {
+        const { method, path: apiPath, description, responseBody, statusCode, handlerCode } = req.body;
+        if (!method || !apiPath) return res.status(400).json({ success: false, error: '缺少参数' });
+        const key = `${method.toUpperCase()}:${apiPath}`;
+        const existing = customApiRoutes.get(key);
+        if (!existing) return res.status(404).json({ success: false, error: '自定义 API 不存在' });
+        // 重新构建处理器
+        let handlerFn;
+        if (handlerCode && handlerCode.trim()) {
+            try {
+                // eslint-disable-next-line no-new-func
+                handlerFn = new Function('req', 'res', 'rooms', 'users', 'io', handlerCode);
+            } catch (e) {
+                return res.status(400).json({ success: false, error: '处理器代码语法错误: ' + e.message });
+            }
+        } else {
+            const body = responseBody !== undefined ? responseBody : existing.responseBody;
+            const code = parseInt(statusCode) || existing.statusCode;
+            let parsedBody;
+            try { parsedBody = typeof body === 'string' ? JSON.parse(body) : body; } catch(e) { parsedBody = { message: body }; }
+            handlerFn = (req, res) => res.status(code).json(parsedBody);
+        }
+        existing.description = description !== undefined ? description : existing.description;
+        existing.handlerCode = handlerCode !== undefined ? handlerCode : existing.handlerCode;
+        existing.responseBody = responseBody !== undefined ? responseBody : existing.responseBody;
+        existing.statusCode = parseInt(statusCode) || existing.statusCode;
+        existing.handlerFn = handlerFn;
+        res.json({ success: true, key, message: 'API 已更新' });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 启用/禁用自定义 API
+app.post('/api/admin/api-manager/toggle-custom', express.json(), (req, res) => {
+    try {
+        const { method, path: apiPath, enabled } = req.body;
+        if (!method || !apiPath) return res.status(400).json({ success: false, error: '缺少参数' });
+        const key = `${method.toUpperCase()}:${apiPath}`;
+        const route = customApiRoutes.get(key);
+        if (!route) return res.status(404).json({ success: false, error: '自定义 API 不存在' });
+        route.enabled = Boolean(enabled);
+        res.json({ success: true, key, enabled: route.enabled });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 删除自定义 API
+app.delete('/api/admin/api-manager/custom', express.json(), (req, res) => {
+    try {
+        const { method, path: apiPath } = req.body;
+        if (!method || !apiPath) return res.status(400).json({ success: false, error: '缺少参数' });
+        const key = `${method.toUpperCase()}:${apiPath}`;
+        if (!customApiRoutes.has(key)) return res.status(404).json({ success: false, error: '自定义 API 不存在' });
+        customApiRoutes.delete(key);
+        res.json({ success: true, key, message: 'API 已删除，立即生效' });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 测试 API（发送请求并返回结果）
+app.post('/api/admin/api-manager/test', express.json(), async (req, res) => {
+    try {
+        const { method, path: apiPath, body: reqBody, headers: reqHeaders } = req.body;
+        if (!method || !apiPath) return res.status(400).json({ success: false, error: '缺少参数' });
+        // 动态获取端口（server 变量在路由注册时尚未定义，使用 req.socket.localPort）
+        const port = req.socket.localPort || 3000;
+        const options = {
+            hostname: '127.0.0.1',
+            port,
+            path: apiPath,
+            method: method.toUpperCase(),
+            headers: { 'Content-Type': 'application/json', 'X-Internal-Request': 'true', ...(reqHeaders || {}) }
+        };
+        const bodyStr = reqBody ? JSON.stringify(reqBody) : '';
+        if (bodyStr) options.headers['Content-Length'] = Buffer.byteLength(bodyStr);
+        const testReq = http.request(options, (testRes) => {
+            let data = '';
+            testRes.on('data', chunk => { data += chunk; });
+            testRes.on('end', () => {
+                let parsed;
+                try { parsed = JSON.parse(data); } catch(e) { parsed = data; }
+                res.json({ success: true, statusCode: testRes.statusCode, headers: testRes.headers, body: parsed });
+            });
+        });
+        testReq.on('error', (e) => {
+            res.status(500).json({ success: false, error: e.message });
+        });
+        if (bodyStr) testReq.write(bodyStr);
+        testReq.end();
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 内置 API 禁用中间件（需要在所有路由之前检查）
+// 注意：由于 Express 路由注册顺序，这里用一个全局的前置中间件实现
+// 实际上我们通过在所有路由后增加一层检查来处理
+
+// ==================== API 管理系统结束 ====================
 
 // 静态文件服务 - 提供上传的文件
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -2759,6 +3089,16 @@ function csrfProtectionMiddleware(req, res, next) {
     if (req.method === 'GET') {
         return next();
     }
+
+    // 内部请求（如 API 测试转发）跳过 CSRF 验证
+    if (req.headers['x-internal-request'] === 'true') {
+        return next();
+    }
+
+    // 管理后台接口需要管理员密码认证，CSRF 保护是多余的，直接放行
+    if (req.path.startsWith('/api/admin/')) {
+        return next();
+    }
     
     // 获取用户IP
     const userIP = req.ip || req.connection.remoteAddress;
@@ -3369,8 +3709,8 @@ io.on('connection', (socket) => {
                 }
             };
         
-        // 为新用户分配25%概率的通话权限
-        if (Math.random() < 0.25) {
+        // 为新用户分配70%概率的通话权限
+        if (Math.random() < 0.70) {
             user.permissions.allowCall = true;
         }
         
@@ -6101,9 +6441,35 @@ io.on('connection', (socket) => {
                 updatedAt: new Date(),
                 users: [],
                 messages: [],
+                announcements: [],
+                theme: {
+                    background: 'default',
+                    colorScheme: 'light',
+                    customCSS: ''
+                },
+                stats: {
+                    totalMessages: 0,
+                    totalUsers: 0,
+                    peakUsers: 0,
+                    createdAt: new Date(),
+                    lastActivity: new Date()
+                },
+                history: {
+                    messageHistory: [],
+                    userHistory: [],
+                    eventHistory: []
+                },
                 settings: {
                     maxUsers: settings?.maxUsers || 100,
                     allowPublicAccess: true,
+                    allowMessages: true,
+                    allowFiles: true,
+                    allowAudio: true,
+                    allowVideo: true,
+                    allowCalls: true,
+                    allowWhiteboard: true,
+                    allowPolls: true,
+                    allowGames: true,
                     ...settings
                 }
             };
@@ -8692,7 +9058,8 @@ io.on('connection', (socket) => {
         }
         
         const message = room.messages[messageIndex];
-        if (message.senderSocketId !== socket.id) {
+        // 使用 username 验证（senderSocketId 在重连后会改变，不可靠）
+        if (message.username !== user.username) {
             socket.emit('recall-failed', { message: '只能撤回自己发送的消息' });
             return;
         }
