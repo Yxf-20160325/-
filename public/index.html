@@ -2,7 +2,12 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <!-- 移动端 App 适配 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#667eea">
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
     <meta http-equiv="X-XSS-Protection" content="1; mode=block">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data: blob: https://restapi.amap.com https://api.giphy.com; media-src 'self' blob:; connect-src 'self' ws: wss: https://libretranslate.de https://api.mymemory.translated.net https://open.bigmodel.cn https://api.deepseek.com https://api.freegpt.one https://api.siliconflow.cn https://nominatim.openstreetmap.org https://api.giphy.com https://restapi.amap.com; font-src 'self' data:;">
@@ -3491,6 +3496,9 @@
     </style>
 </head>
 <body>
+    <!-- Capacitor 移动端适配层（仅原生环境生效） -->
+    <script src="mobile-bridge.js"></script>
+    <!-- Capacitor 核心 SDK（由 Capacitor 自动注入，这里做 polyfill） -->
     <div class="container">
         <div class="header">
             <h1>聊天室</h1>
