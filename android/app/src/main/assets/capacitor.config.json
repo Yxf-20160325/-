@@ -1,0 +1,39 @@
+{
+	"appId": "com.chatroom.app",
+	"appName": "ChatRoom",
+	"webDir": "public",
+	"server": {
+		"url": null,
+		"allowNavigation": [
+			"*"
+		]
+	},
+	"plugins": {
+		"SplashScreen": {
+			"launchShowDuration": 2000,
+			"backgroundColor": "#667eea",
+			"showSpinner": true,
+			"androidScaleType": "CENTER_CROP",
+			"spinnerColor": "#ffffff"
+		},
+		"StatusBar": {
+			"style": "LIGHT",
+			"backgroundColor": "#667eea"
+		},
+		"Keyboard": {
+			"resize": "body",
+			"resizeOnFullScreen": true
+		},
+		"WebView": {
+			"overrideUserAgent": null,
+			"allowFileAccess": true
+		},
+		"PushNotifications": {
+			"presentationOptions": [
+				"alert",
+				"badge",
+				"sound"
+			]
+		}
+	}
+}

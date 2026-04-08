@@ -1,0 +1,104 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ master, main ]
+  workflow_dispatch:   # 允许手动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 1. 拉取代码
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. 设置 Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # 3. 安装依赖
+      - name: Install npm dependencies
+        run: npm install
+
+      # 4. 同步 Capacitor 资源到 Android
+      - name: Sync Capacitor to Android
+        run: npx cap sync android
+
+      # 5. 设置 Java 17
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # 6. 设置 Android SDK
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # 7. 给 gradlew 加执行权限
+      - name: Grant execute permission for gradlew
+        run: chmod +x android/gradlew
+
+      # 8. 修复 Gradle wrapper（使用官方源，CI 环境不能用阿里云镜像）
+      - name: Fix Gradle wrapper distributionUrl
+        run: |
+          sed -i 's|distributionUrl=.*|distributionUrl=https\\://services.gradle.org/distributions/gradle-8.5-bin.zip|' \
+            android/gradle/wrapper/gradle-wrapper.properties
+          cat android/gradle/wrapper/gradle-wrapper.properties
+
+      # 9. 缓存 Gradle 依赖（加速二次构建）
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      # 10. 构建 Debug APK
+      - name: Build Debug APK
+        run: |
+          cd android
+          ./gradlew assembleDebug --no-daemon --stacktrace
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+
+      # 11. 上传 APK 为构建产物（可下载，保留 7 天）
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: chatroom-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
+
+      # 12. 在 Release 中发布 APK（每次 push 到 master 都创建/更新 release）
+      - name: Create Release and Upload APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: apk-latest
+          name: "ChatRoom App - 最新构建"
+          body: |
+            ## ChatRoom Android APK
+
+            **构建时间**: ${{ github.event.head_commit.timestamp }}
+            **提交**: ${{ github.sha }}
+            **提交说明**: ${{ github.event.head_commit.message }}
+
+            ### 安装方法
+            1. 下载下方的 `app-debug.apk`
+            2. 在手机上允许"安装未知来源应用"
+            3. 安装即可使用
+
+            > ⚠️ 这是 Debug 版本，仅供测试使用
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+          prerelease: true
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

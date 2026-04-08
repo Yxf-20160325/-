@@ -1,0 +1,15 @@
+# Android build output
+app/build/
+
+# Local configuration files (SDK path, etc)
+local.properties
+
+# Gradle
+.gradle/
+build/
+
+# Lint
+lint/intermediates/
+lint/generated/
+lint/outputs/
+lint/tmp/
