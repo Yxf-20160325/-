@@ -5427,27 +5427,8 @@
         </div>
     </div>
 
-    <!-- Socket.IO 客户端：App 环境从 CDN 加载，Web 环境从本地服务器加载 -->
-    <script>
-        if (window.Capacitor && window.Capacitor.isNativePlatform()) {
-            // 原生 App 环境：从 CDN 加载 socket.io 客户端
-            document.write('<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"><\/script>');
-        }
-    </script>
-    <script>
-        // Web 环境：从本地服务器加载（Capacitor App 时跳过）
-        if (!(window.Capacitor && window.Capacitor.isNativePlatform())) {
-            var sioScript = document.createElement('script');
-            sioScript.src = '/socket.io/socket.io.js';
-            sioScript.onerror = function() {
-                // 本地服务器不可用时，回退到 CDN
-                var cdnScript = document.createElement('script');
-                cdnScript.src = 'https://cdn.socket.io/4.7.5/socket.io.min.js';
-                document.head.appendChild(cdnScript);
-            };
-            document.head.appendChild(sioScript);
-        }
-    </script>
+    <!-- Socket.IO 客户端：优先从本地服务器加载，失败时自动回退到 CDN -->
+    <script src="/socket.io/socket.io.js" onerror="this.onerror=null;this.src='https://cdn.socket.io/4.7.5/socket.io.min.js'"></script>
     <script>
         // DOM 加载辅助函数 - 确保回调在 DOM 加载完成后执行
         // 解决 document.addEventListener('DOMContentLoaded') 在页面已加载时不触发的问题
