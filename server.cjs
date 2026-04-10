@@ -171,6 +171,16 @@ app.use((req, res, next) => {
     res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self)');
     // 【安全】启用旧版 XSS Filter（部分老浏览器）
     res.setHeader('X-XSS-Protection', '1; mode=block');
+    // 【安全】Content-Security-Policy（从 HTML meta tag 迁移到 HTTP header，App 环境不受影响）
+    res.setHeader('Content-Security-Policy',
+        "default-src 'self'; " +
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; " +
+        "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; " +
+        "img-src 'self' data: blob: https://restapi.amap.com https://api.giphy.com; " +
+        "media-src 'self' blob:; " +
+        "connect-src 'self' ws: wss: https://libretranslate.de https://api.mymemory.translated.net https://open.bigmodel.cn https://api.deepseek.com https://api.freegpt.one https://api.siliconflow.cn https://nominatim.openstreetmap.org https://api.giphy.com https://restapi.amap.com; " +
+        "font-src 'self' data:;"
+    );
     next();
 });
 

@@ -28,6 +28,18 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      # 3.5 安装 Node.js 并同步 Capacitor 资源
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies & Capacitor sync
+        run: |
+          npm install
+          npx cap sync android
+
       # 4. 修复 Gradle wrapper（替换阿里云镜像为官方源）
       - name: Fix Gradle wrapper distributionUrl
         run: |

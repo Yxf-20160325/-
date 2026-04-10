@@ -10,7 +10,6 @@
     <meta name="theme-color" content="#667eea">
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
     <meta http-equiv="X-XSS-Protection" content="1; mode=block">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data: blob: https://restapi.amap.com https://api.giphy.com; media-src 'self' blob:; connect-src 'self' ws: wss: https://libretranslate.de https://api.mymemory.translated.net https://open.bigmodel.cn https://api.deepseek.com https://api.freegpt.one https://api.siliconflow.cn https://nominatim.openstreetmap.org https://api.giphy.com https://restapi.amap.com; font-src 'self' data:;">
     <meta name="referrer" content="strict-origin-when-cross-origin">
     <title>聊天室</title>
     <!-- CodeMirror 编辑器（代码补全 + Tab缩进） -->
@@ -5428,7 +5427,27 @@
         </div>
     </div>
 
-    <script src="/socket.io/socket.io.js"></script>
+    <!-- Socket.IO 客户端：App 环境从 CDN 加载，Web 环境从本地服务器加载 -->
+    <script>
+        if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+            // 原生 App 环境：从 CDN 加载 socket.io 客户端
+            document.write('<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"><\/script>');
+        }
+    </script>
+    <script>
+        // Web 环境：从本地服务器加载（Capacitor App 时跳过）
+        if (!(window.Capacitor && window.Capacitor.isNativePlatform())) {
+            var sioScript = document.createElement('script');
+            sioScript.src = '/socket.io/socket.io.js';
+            sioScript.onerror = function() {
+                // 本地服务器不可用时，回退到 CDN
+                var cdnScript = document.createElement('script');
+                cdnScript.src = 'https://cdn.socket.io/4.7.5/socket.io.min.js';
+                document.head.appendChild(cdnScript);
+            };
+            document.head.appendChild(sioScript);
+        }
+    </script>
     <script>
         // DOM 加载辅助函数 - 确保回调在 DOM 加载完成后执行
         // 解决 document.addEventListener('DOMContentLoaded') 在页面已加载时不触发的问题
@@ -6323,14 +6342,62 @@
             }
         }
 
+        // ====== App 环境适配：拦截 fetch/XMLHttpRequest 请求，自动添加远程服务器前缀 ======
+        const APP_SERVER_URL = 'https://liaotianshi.onrender.com';
+        const isNativeApp = window.Capacitor && window.Capacitor.isNativePlatform();
+        
+        if (isNativeApp) {
+            console.log('[App] 拦截 fetch，添加服务器前缀:', APP_SERVER_URL);
+            
+            // 保存原始 fetch
+            const originalFetch = window.fetch;
+            window.fetch = function(input, init) {
+                // 只处理相对路径（以 / 开头）
+                let url = typeof input === 'string' ? input : (input instanceof Request ? input.url : String(input));
+                if (url.startsWith('/')) {
+                    url = APP_SERVER_URL + url;
+                    console.log('[App] fetch 重定向:', url);
+                }
+                if (typeof input === 'string') {
+                    return originalFetch(url, init);
+                } else if (input instanceof Request) {
+                    return originalFetch(new Request(url, input), init);
+                }
+                return originalFetch(url, init);
+            };
+            
+            // 保存原始 XMLHttpRequest
+            const OriginalXHR = window.XMLHttpRequest;
+            window.XMLHttpRequest = function() {
+                const xhr = new OriginalXHR();
+                const originalOpen = xhr.open.bind(xhr);
+                xhr.open = function(method, url, async, user, password) {
+                    if (typeof url === 'string' && url.startsWith('/')) {
+                        url = APP_SERVER_URL + url;
+                        console.log('[App] XHR 重定向:', url);
+                    }
+                    return originalOpen(method, url, async, user, password);
+                };
+                return xhr;
+            };
+        }
+        
         // 初始化Socket连接
         let socket;
         let connectionErrorShown = false;
         let isAdminLoggedIn = false; // 管理员登录状态
         function initSocket() {
             console.log('初始化Socket连接');
+            
+            // 原生 App 连接远程服务器，Web 环境使用当前域名
+            const socketUrl = isNativeApp ? APP_SERVER_URL : undefined;
+            
+            if (isNativeApp) {
+                console.log('[App] 使用远程服务器:', APP_SERVER_URL);
+            }
+            
             // 配置socket.io客户端，优化重连机制
-            socket = io({
+            socket = io(socketUrl, {
                 // 明确指定路径，确保与服务器端一致
                 path: '/socket.io/',
                 
@@ -6347,8 +6414,8 @@
                 pingInterval: 25000,
                 pingTimeout: 60000,
                 
-                // 传输方式 - 根据环境动态选择
-                transports: window.location.protocol === 'https:'
+                // 传输方式 - App 环境固定使用 polling+websocket
+                transports: (isNativeApp || window.location.protocol === 'https:')
                     ? ['websocket', 'polling']
                     : ['polling', 'websocket'],
                 
@@ -22286,7 +22353,8 @@ io.on('connection', (socket) => {
                     messagesDiv.scrollTop = messagesDiv.scrollHeight;
                     
                     // 播放提示音
-                    const audio = new Audio('/notification.mp3');
+                    const audioSrc = isNativeApp ? APP_SERVER_URL + '/notification.mp3' : '/notification.mp3';
+                    const audio = new Audio(audioSrc);
                     audio.play().catch(() => {});
                 });
             }

@@ -10,7 +10,6 @@
     <meta name="theme-color" content="#667eea">
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
     <meta http-equiv="X-XSS-Protection" content="1; mode=block">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; img-src 'self' data: blob: https://restapi.amap.com https://api.giphy.com; media-src 'self' blob:; connect-src 'self' ws: wss: https://libretranslate.de https://api.mymemory.translated.net https://open.bigmodel.cn https://api.deepseek.com https://api.freegpt.one https://api.siliconflow.cn https://nominatim.openstreetmap.org https://api.giphy.com https://restapi.amap.com; font-src 'self' data:;">
     <meta name="referrer" content="strict-origin-when-cross-origin">
     <title>聊天室</title>
     <!-- CodeMirror 编辑器（代码补全 + Tab缩进） -->
@@ -333,6 +332,9 @@
             border-radius: 10px;
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
             word-wrap: break-word;
+            word-break: break-word;
+            overflow-wrap: break-word;
+            max-width: 600px;
             color: #333;
             flex: 1;
         }
@@ -1147,6 +1149,8 @@
         .action-buttons {
             display: flex;
             gap: 8px;
+            flex-wrap: wrap;
+            max-width: 100%;
         }
 
         .action-btn {
@@ -4619,7 +4623,14 @@
     <!-- 白板模态框 -->
     <div class="modal" id="whiteboardModal">
         <div class="modal-content" style="max-width: 90vw; max-height: 90vh; width: 1200px; height: 800px;">
-            <h3>共享白板</h3>
+            <h3>共享白板 <span id="wbCurrentRoomName" style="font-size:14px;font-weight:normal;color:#6c757d;"></span></h3>
+            <!-- 白板房间管理区 -->
+            <div id="wbRoomSection" style="display:flex;gap:8px;align-items:center;padding:8px 12px;background:#f8f9fa;border-radius:8px;margin-bottom:8px;flex-wrap:wrap;">
+                <input type="text" id="wbRoomNameInput" placeholder="输入白板名称创建新房间" maxlength="30" style="flex:1;min-width:160px;padding:6px 10px;border:1px solid #dee2e6;border-radius:6px;font-size:13px;">
+                <button onclick="wbCreateRoom()" style="padding:6px 14px;background:#667eea;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;">🏗️ 创建房间</button>
+                <button onclick="wbShowRoomList()" style="padding:6px 14px;background:#6c757d;color:white;border:none;border-radius:6px;cursor:pointer;font-size:13px;font-weight:500;">📋 我的房间</button>
+                <div id="wbRoomList" style="display:none;position:absolute;top:80px;left:50%;transform:translateX(-50%);background:white;border:1px solid #dee2e6;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.15);z-index:100;min-width:320px;max-height:300px;overflow-y:auto;padding:10px;"></div>
+            </div>
             <div style="display: flex; flex-direction: column; height: 100%;">
                 <!-- 工具栏 - 第一行：绘图工具 -->
                 <div style="display: flex; gap: 6px; padding: 8px 10px; background: #f0f2f5; border-radius: 8px; margin-bottom: 8px; flex-wrap: wrap; align-items: center;">
@@ -5416,7 +5427,27 @@
         </div>
     </div>
 
-    <script src="/socket.io/socket.io.js"></script>
+    <!-- Socket.IO 客户端：App 环境从 CDN 加载，Web 环境从本地服务器加载 -->
+    <script>
+        if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+            // 原生 App 环境：从 CDN 加载 socket.io 客户端
+            document.write('<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"><\/script>');
+        }
+    </script>
+    <script>
+        // Web 环境：从本地服务器加载（Capacitor App 时跳过）
+        if (!(window.Capacitor && window.Capacitor.isNativePlatform())) {
+            var sioScript = document.createElement('script');
+            sioScript.src = '/socket.io/socket.io.js';
+            sioScript.onerror = function() {
+                // 本地服务器不可用时，回退到 CDN
+                var cdnScript = document.createElement('script');
+                cdnScript.src = 'https://cdn.socket.io/4.7.5/socket.io.min.js';
+                document.head.appendChild(cdnScript);
+            };
+            document.head.appendChild(sioScript);
+        }
+    </script>
     <script>
         // DOM 加载辅助函数 - 确保回调在 DOM 加载完成后执行
         // 解决 document.addEventListener('DOMContentLoaded') 在页面已加载时不触发的问题
@@ -5787,6 +5818,8 @@
         let currentTargetLanguage = 'zh'; // 默认翻译为中文，LibreTranslate使用'zh'而不是'zh-CN'
         
         // 互动中心功能
+        let _interactiveCenterRefreshTimer = null;
+
         function openInteractiveCenterModal() {
             const modal = document.getElementById('interactiveCenterModal');
             if (modal) {
@@ -5801,6 +5834,17 @@
                     // 加载游戏历史记录
                     socket.emit('get-game-history');
                 }
+                // 启动每2秒自动刷新用户列表
+                if (_interactiveCenterRefreshTimer) clearInterval(_interactiveCenterRefreshTimer);
+                _interactiveCenterRefreshTimer = setInterval(() => {
+                    const m = document.getElementById('interactiveCenterModal');
+                    if (m && m.classList.contains('active') && typeof socket !== 'undefined' && socket) {
+                        socket.emit('get-online-users');
+                    } else {
+                        clearInterval(_interactiveCenterRefreshTimer);
+                        _interactiveCenterRefreshTimer = null;
+                    }
+                }, 2000);
             }
         }
         
@@ -5823,6 +5867,11 @@
             const modal = document.getElementById('interactiveCenterModal');
             if (modal) {
                 modal.classList.remove('active');
+            }
+            // 停止用户列表自动刷新
+            if (_interactiveCenterRefreshTimer) {
+                clearInterval(_interactiveCenterRefreshTimer);
+                _interactiveCenterRefreshTimer = null;
             }
         }
         
@@ -6074,6 +6123,7 @@
                                 <div style="display: flex; align-items: center; gap: 10px;">
                                     <div style="width: 12px; height: 12px; border-radius: 50%; background: ${user.color};"></div>
                                     <span>${user.username}</span>
+                                    ${user.isBot ? '<span style="display:inline-flex;align-items:center;gap:3px;margin-left:5px;padding:2px 7px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-size:11px;font-weight:bold;border-radius:10px;letter-spacing:0.5px;box-shadow:0 1px 4px rgba(102,126,234,0.4);">🤖 AI</span>' : ''}
                                 </div>
                                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                                     <button onclick="sendGameInvitation('${user.socketId}', 'gomoku')" style="padding: 5px 10px; background: #667eea; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">♟️ 邀请下棋</button>
@@ -6292,14 +6342,62 @@
             }
         }
 
+        // ====== App 环境适配：拦截 fetch/XMLHttpRequest 请求，自动添加远程服务器前缀 ======
+        const APP_SERVER_URL = 'https://liaotianshi.onrender.com';
+        const isNativeApp = window.Capacitor && window.Capacitor.isNativePlatform();
+        
+        if (isNativeApp) {
+            console.log('[App] 拦截 fetch，添加服务器前缀:', APP_SERVER_URL);
+            
+            // 保存原始 fetch
+            const originalFetch = window.fetch;
+            window.fetch = function(input, init) {
+                // 只处理相对路径（以 / 开头）
+                let url = typeof input === 'string' ? input : (input instanceof Request ? input.url : String(input));
+                if (url.startsWith('/')) {
+                    url = APP_SERVER_URL + url;
+                    console.log('[App] fetch 重定向:', url);
+                }
+                if (typeof input === 'string') {
+                    return originalFetch(url, init);
+                } else if (input instanceof Request) {
+                    return originalFetch(new Request(url, input), init);
+                }
+                return originalFetch(url, init);
+            };
+            
+            // 保存原始 XMLHttpRequest
+            const OriginalXHR = window.XMLHttpRequest;
+            window.XMLHttpRequest = function() {
+                const xhr = new OriginalXHR();
+                const originalOpen = xhr.open.bind(xhr);
+                xhr.open = function(method, url, async, user, password) {
+                    if (typeof url === 'string' && url.startsWith('/')) {
+                        url = APP_SERVER_URL + url;
+                        console.log('[App] XHR 重定向:', url);
+                    }
+                    return originalOpen(method, url, async, user, password);
+                };
+                return xhr;
+            };
+        }
+        
         // 初始化Socket连接
         let socket;
         let connectionErrorShown = false;
         let isAdminLoggedIn = false; // 管理员登录状态
         function initSocket() {
             console.log('初始化Socket连接');
+            
+            // 原生 App 连接远程服务器，Web 环境使用当前域名
+            const socketUrl = isNativeApp ? APP_SERVER_URL : undefined;
+            
+            if (isNativeApp) {
+                console.log('[App] 使用远程服务器:', APP_SERVER_URL);
+            }
+            
             // 配置socket.io客户端，优化重连机制
-            socket = io({
+            socket = io(socketUrl, {
                 // 明确指定路径，确保与服务器端一致
                 path: '/socket.io/',
                 
@@ -6316,8 +6414,8 @@
                 pingInterval: 25000,
                 pingTimeout: 60000,
                 
-                // 传输方式 - 根据环境动态选择
-                transports: window.location.protocol === 'https:'
+                // 传输方式 - App 环境固定使用 polling+websocket
+                transports: (isNativeApp || window.location.protocol === 'https:')
                     ? ['websocket', 'polling']
                     : ['polling', 'websocket'],
                 
@@ -6808,6 +6906,7 @@
         // 消息收藏相关变量
         
         // 白板系统相关变量
+        let currentWhiteboardId = null; // 当前白板房间ID
         const whiteboardModal = document.getElementById('whiteboardModal');
         const whiteboardCanvas = document.getElementById('whiteboardCanvas');
         const whiteboardPenBtn = document.getElementById('whiteboardPenBtn');
@@ -7040,7 +7139,7 @@
             whiteboardCtx.clearRect(0, 0, whiteboardCanvas.width, whiteboardCanvas.height);
             saveHistory();
             if (typeof socket !== 'undefined' && socket) {
-                socket.emit('whiteboard-clear', {});
+                socket.emit('whiteboard-clear', { whiteboardId: currentWhiteboardId });
             }
         }
         
@@ -7050,13 +7149,13 @@
                 whiteboardHistoryIndex--;
                 restoreFromHistory();
                 if (typeof socket !== 'undefined' && socket) {
-                    socket.emit('whiteboard-undo', {});
+                    socket.emit('whiteboard-undo', { whiteboardId: currentWhiteboardId });
                 }
             } else if (whiteboardHistoryIndex === 0) {
                 whiteboardHistoryIndex = -1;
                 whiteboardCtx.clearRect(0, 0, whiteboardCanvas.width, whiteboardCanvas.height);
                 if (typeof socket !== 'undefined' && socket) {
-                    socket.emit('whiteboard-undo', {});
+                    socket.emit('whiteboard-undo', { whiteboardId: currentWhiteboardId });
                 }
             }
         }
@@ -7067,7 +7166,7 @@
                 whiteboardHistoryIndex++;
                 restoreFromHistory();
                 if (typeof socket !== 'undefined' && socket) {
-                    socket.emit('whiteboard-redo', {});
+                    socket.emit('whiteboard-redo', { whiteboardId: currentWhiteboardId });
                 }
             }
         }
@@ -7152,6 +7251,7 @@
             // 发送绘制事件到服务器
             if (typeof socket !== 'undefined' && socket) {
                 socket.emit('whiteboard-draw', {
+                    whiteboardId: currentWhiteboardId,
                     x1, y1, x2, y2,
                     color: whiteboardColor.value,
                     size: whiteboardSize.value,
@@ -7177,6 +7277,38 @@
             saveWhiteboardHistory();
         }
         
+        // 白板房间管理
+        function wbCreateRoom() {
+            const nameInput = document.getElementById('wbRoomNameInput');
+            const name = (nameInput?.value || '').trim();
+            if (!name) { showNotification('请输入白板名称', 'error'); return; }
+            if (typeof socket !== 'undefined' && socket) {
+                socket.emit('create-whiteboard', { name });
+            }
+        }
+        
+        function wbShowRoomList() {
+            const listEl = document.getElementById('wbRoomList');
+            if (!listEl) return;
+            if (listEl.style.display === 'block') {
+                listEl.style.display = 'none';
+                return;
+            }
+            if (typeof socket !== 'undefined' && socket) {
+                socket.emit('get-my-whiteboards');
+            }
+        }
+        
+        function wbJoinRoom(whiteboardId) {
+            // 先打开白板模态框，确保 canvas 初始化后再收到 whiteboard-data
+            openWhiteboardModal();
+            if (typeof socket !== 'undefined' && socket) {
+                socket.emit('join-whiteboard', { whiteboardId });
+            }
+            const listEl = document.getElementById('wbRoomList');
+            if (listEl) listEl.style.display = 'none';
+        }
+        
         // 打开白板模态框
         function openWhiteboardModal() {
             whiteboardModal.classList.add('active');
@@ -7190,6 +7322,8 @@
         function closeWhiteboardModal() {
             whiteboardModal.classList.remove('active');
             cancelTextInput(); // 关闭文本输入框
+            currentWhiteboardId = null;
+            document.getElementById('wbCurrentRoomName').textContent = '';
         }
         
         // 处理画布点击事件
@@ -7230,6 +7364,7 @@
                 // 发送文本绘制事件到服务器
                 if (typeof socket !== 'undefined' && socket) {
                     socket.emit('whiteboard-text', {
+                        whiteboardId: currentWhiteboardId,
                         text: text,
                         x: textInputPosition.x,
                         y: textInputPosition.y,
@@ -7349,6 +7484,116 @@
                     
                     // 绘制文本
                     whiteboardCtx.fillText(data.text, data.x, data.y);
+                });
+                
+                // 监听用户加入白板事件
+                socket.on('whiteboard-user-joined', (data) => {
+                    updateWhiteboardUsers();
+                    showNotification(`${data.username} 加入了白板`);
+                });
+                
+                // 白板创建成功
+                socket.on('whiteboard-created', (data) => {
+                    currentWhiteboardId = data.id;
+                    document.getElementById('wbCurrentRoomName').textContent = `— ${data.name}`;
+                    document.getElementById('wbRoomNameInput').value = '';
+                    clearWhiteboard();
+                    showNotification(`🏗️ 白板房间「${data.name}」创建成功！`);
+                });
+                
+                // 加入白板成功
+                socket.on('whiteboard-joined', (data) => {
+                    currentWhiteboardId = data.id;
+                    document.getElementById('wbCurrentRoomName').textContent = `— ${data.name}`;
+                    showNotification(`已加入白板「${data.name}」`);
+                });
+                
+                // 收到白板数据（重绘）
+                socket.on('whiteboard-data', (data) => {
+                    function doRedraw() {
+                        whiteboardCtx.clearRect(0, 0, whiteboardCanvas.width, whiteboardCanvas.height);
+                        if (data.data && data.data.length > 0) {
+                            data.data.forEach(item => {
+                                if (item.tool === 'pen' || item.tool === 'eraser') {
+                                    whiteboardCtx.beginPath();
+                                    whiteboardCtx.strokeStyle = item.tool === 'eraser' ? '#ffffff' : item.color;
+                                    whiteboardCtx.lineWidth = item.size;
+                                    whiteboardCtx.lineCap = 'round';
+                                    whiteboardCtx.lineJoin = 'round';
+                                    if (item.points && item.points.length > 0) {
+                                        whiteboardCtx.moveTo(item.points[0].x, item.points[0].y);
+                                        item.points.forEach(p => whiteboardCtx.lineTo(p.x, p.y));
+                                    }
+                                    whiteboardCtx.stroke();
+                                } else if (item.tool === 'text') {
+                                    whiteboardCtx.fillStyle = item.color;
+                                    whiteboardCtx.font = `${item.size}px ${item.font || 'Arial'}`;
+                                    whiteboardCtx.fillText(item.text, item.x, item.y);
+                                }
+                            });
+                        }
+                    }
+
+                    // 确保 canvas 已初始化且有尺寸，再执行重绘
+                    if (!whiteboardCtx) {
+                        // canvas 还没初始化，延迟等待
+                        const waitAndRedraw = () => {
+                            if (whiteboardCanvas.width > 0 && whiteboardCanvas.height > 0) {
+                                doRedraw();
+                            } else {
+                                requestAnimationFrame(waitAndRedraw);
+                            }
+                        };
+                        waitAndRedraw();
+                    } else if (whiteboardCanvas.width === 0 || whiteboardCanvas.height === 0) {
+                        // canvas 已初始化但尺寸为 0，重新获取尺寸
+                        const rect = whiteboardCanvas.getBoundingClientRect();
+                        whiteboardCanvas.width = rect.width || 800;
+                        whiteboardCanvas.height = rect.height || 600;
+                        whiteboardCtx = whiteboardCanvas.getContext('2d');
+                        whiteboardCtx.lineCap = 'round';
+                        whiteboardCtx.lineJoin = 'round';
+                        doRedraw();
+                    } else {
+                        doRedraw();
+                    }
+                });
+                
+                // 获取我的白板列表
+                socket.on('whiteboards-list', (data) => {
+                    const listEl = document.getElementById('wbRoomList');
+                    if (!listEl) return;
+                    listEl.style.display = 'block';
+                    if (!data.whiteboards || data.whiteboards.length === 0) {
+                        listEl.innerHTML = '<div style="text-align:center;color:#adb5bd;padding:16px;">暂无房间，点击上方创建</div>';
+                    } else {
+                        const mySocketId = socket.id;
+                        listEl.innerHTML = data.whiteboards.map(wb => {
+                            const isJoined = wb.users.includes(mySocketId);
+                            return `
+                            <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;border-bottom:1px solid #f1f3f4;">
+                                <div>
+                                    <div style="font-weight:600;color:#495057;">${wb.name}</div>
+                                    <div style="font-size:12px;color:#adb5bd;margin-top:2px;">成员 ${wb.users.length} 人${isJoined ? ' · <span style="color:#51cf66;">已加入</span>' : ''}</div>
+                                </div>
+                                ${isJoined
+                                    ? `<button onclick="wbJoinRoom(${wb.id})" style="padding:5px 12px;background:#51cf66;color:white;border:none;border-radius:5px;cursor:pointer;font-size:13px;">查看</button>`
+                                    : `<button onclick="wbJoinRoom(${wb.id})" style="padding:5px 12px;background:#667eea;color:white;border:none;border-radius:5px;cursor:pointer;font-size:13px;">加入</button>`
+                                }
+                            </div>
+                        `}).join('');
+                    }
+                    document.addEventListener('click', function closeList(e) {
+                        if (!listEl.contains(e.target) && e.target.id !== 'wbRoomNameInput' && !e.target.closest('[onclick="wbShowRoomList()"]')) {
+                            listEl.style.display = 'none';
+                            document.removeEventListener('click', closeList);
+                        }
+                    });
+                });
+                
+                // 白板错误
+                socket.on('whiteboard-error', (data) => {
+                    showNotification(data.message || '白板操作失败', 'error');
                 });
             }
         }
@@ -8308,6 +8553,7 @@
         function registerGuessNumberListeners() {
             socket.on('guess-number-start', (data) => {
                 console.log('猜数字游戏开始:', data);
+                closeInteractiveCenterModal();
                 gnGame = { ...data, gameId: data.gameId };
                 openGuessNumberModal(gnGame);
                 const firstPlayer = (data.players || []).find(p => p.socketId === data.currentGuesser)?.username || '邀请者';
@@ -9391,6 +9637,7 @@
                 }, 500);
 
                 openTypingModal();
+                closeInteractiveCenterModal();
             });
 
             socket.on('typing-opponent-update', (data) => {
@@ -10188,6 +10435,7 @@
         function registerRPSListeners() {
             socket.on('rps-start', (data) => {
                 console.log('猜拳游戏开始:', data);
+                closeInteractiveCenterModal();
                 rpsGame = { ...data, gameId: data.gameId };
                 openRPSModal(rpsGame);
                 showNotification('✊ 剪刀石头布开始！');
@@ -10395,6 +10643,7 @@
         function registerBombListeners() {
             socket.on('bomb-start', (data) => {
                 console.log('数字炸弹游戏开始:', data);
+                closeInteractiveCenterModal();
                 bombGame = {
                     gameId: data.gameId,
                     players: data.players,
@@ -10465,6 +10714,8 @@
                 
                 // 监听服务器发送的游戏开始事件
                 socket.on('game-start', (data) => {
+                    // 游戏开始时关闭互动中心弹窗
+                    closeInteractiveCenterModal();
                     // 你画我猜走独立的初始化流程
                     if (data.gameType === 'pictionary') {
                         ptGame = {
@@ -21703,10 +21954,11 @@ io.on('connection', (socket) => {
                     showUserDetail(user.socketId, user.username, user.color, JSON.stringify(user.permissions).replace(/"/g, '&quot;'));
                 };
                 
+                const displayName = user.username === 'ai' ? 'ai <span style="background:#e74c3c;color:#fff;font-size:10px;padding:1px 4px;border-radius:3px;vertical-align:middle;margin-left:4px">AI</span>' : escapeHtml(user.username);
                 userDiv.innerHTML = `
                     <div class="status-indicator status-${status}"></div>
                     <div class="user-color" style="background: ${user.color}"></div>
-                    <div class="user-name">${escapeHtml(user.username)}</div>
+                    <div class="user-name">${displayName}</div>
                 `;
                 
                 usersListDiv.appendChild(userDiv);
@@ -22101,7 +22353,8 @@ io.on('connection', (socket) => {
                     messagesDiv.scrollTop = messagesDiv.scrollHeight;
                     
                     // 播放提示音
-                    const audio = new Audio('/notification.mp3');
+                    const audioSrc = isNativeApp ? APP_SERVER_URL + '/notification.mp3' : '/notification.mp3';
+                    const audio = new Audio(audioSrc);
                     audio.play().catch(() => {});
                 });
             }
