@@ -81,6 +81,20 @@ const rooms = new Map();
 const users = new Map();
 const games = new Map(); // 存储游戏: Map<gameId, game>（全局共享，所有连接可见）
 
+// ===== PC 虚拟账户 =====
+const PC_SOCKET_ID = 'pc-bot-virtual-socket';
+const PC_USERNAME = 'ai';
+const PC_COLOR = '#6c757d';
+// pc 的虚拟用户对象（由各房间共享，roomName 动态设置）
+const pcUserBase = {
+    socketId: PC_SOCKET_ID,
+    username: PC_USERNAME,
+    color: PC_COLOR,
+    status: 'online',
+    role: 'user'
+};
+// ===== PC 虚拟账户 END =====
+
 // 默认权限（提前声明，避免 TDZ 问题）
 let defaultPermissions = {
     allowAudio: true,
@@ -5824,6 +5838,17 @@ io.on('connection', (socket) => {
             socket.emit('whiteboard-error', { message: '获取白板列表失败' });
         }
     });
+    
+    socket.on('get-my-whiteboards', () => {
+        try {
+            // 返回所有白板（而非仅自己加入的），供用户自由加入
+            const allWhiteboards = Array.from(whiteboards.values());
+            socket.emit('whiteboards-list', { whiteboards: allWhiteboards });
+        } catch (error) {
+            console.error('获取白板列表失败:', error);
+            socket.emit('whiteboard-error', { message: '获取白板列表失败' });
+        }
+    });
 
     // 断开连接事件
     socket.on('disconnect', () => {
@@ -6947,61 +6972,95 @@ io.on('connection', (socket) => {
     socket.on('whiteboard-draw', (data) => {
         const user = users.get(socket.id);
         if (user) {
-            // 广播绘制事件给房间内所有用户
-            socket.to(user.roomName).emit('whiteboard-draw', {
-                ...data,
-                username: user.username
-                // 不要覆盖客户端发送的color，保持用户选择的颜色
-            });
-            // 移除日志输出，避免服务端日志过多
-            // console.log(`[房间 ${user.roomName}] ${user.username} 在白板上绘制`);
+            const wbId = data.whiteboardId;
+            // 有白板房间则发送到白板房间，否则降级到聊天室
+            if (wbId && whiteboards.has(wbId)) {
+                socket.to(`whiteboard-${wbId}`).emit('whiteboard-draw', {
+                    ...data,
+                    username: user.username
+                });
+                // 追加到白板数据
+                const wb = whiteboards.get(wbId);
+                wb.data.push(data);
+                whiteboards.set(wbId, wb);
+            } else {
+                socket.to(user.roomName).emit('whiteboard-draw', {
+                    ...data,
+                    username: user.username
+                });
+            }
         }
     });
     
     socket.on('whiteboard-clear', (data) => {
         const user = users.get(socket.id);
         if (user) {
-            // 广播清屏事件给房间内所有用户
-            socket.to(user.roomName).emit('whiteboard-clear', {
-                username: user.username
-            });
-            // 移除日志输出，避免服务端日志过多
-            // console.log(`[房间 ${user.roomName}] ${user.username} 清空了白板`);
+            const wbId = data.whiteboardId;
+            if (wbId && whiteboards.has(wbId)) {
+                const wb = whiteboards.get(wbId);
+                wb.data = [];
+                whiteboards.set(wbId, wb);
+                socket.to(`whiteboard-${wbId}`).emit('whiteboard-clear', {
+                    username: user.username
+                });
+            } else {
+                socket.to(user.roomName).emit('whiteboard-clear', {
+                    username: user.username
+                });
+            }
         }
     });
     
     socket.on('whiteboard-text', (data) => {
         const user = users.get(socket.id);
         if (user) {
-            // 广播文本绘制事件给房间内所有用户
-            socket.to(user.roomName).emit('whiteboard-text', {
-                ...data,
-                username: user.username
-            });
-            // 移除日志输出，避免服务端日志过多
-            // console.log(`[房间 ${user.roomName}] ${user.username} 在白板上添加了文本: ${data.text}`);
+            const wbId = data.whiteboardId;
+            if (wbId && whiteboards.has(wbId)) {
+                socket.to(`whiteboard-${wbId}`).emit('whiteboard-text', {
+                    ...data,
+                    username: user.username
+                });
+                const wb = whiteboards.get(wbId);
+                wb.data.push(data);
+                whiteboards.set(wbId, wb);
+            } else {
+                socket.to(user.roomName).emit('whiteboard-text', {
+                    ...data,
+                    username: user.username
+                });
+            }
         }
     });
     
     socket.on('whiteboard-undo', (data) => {
         const user = users.get(socket.id);
         if (user) {
-            // 广播撤销事件给房间内所有用户
-            socket.to(user.roomName).emit('whiteboard-undo', {
-                username: user.username
-            });
-            // 移除日志输出，避免服务端日志过多
-            // console.log(`[房间 ${user.roomName}] ${user.username} 撤销了操作`);
+            const wbId = data.whiteboardId;
+            if (wbId && whiteboards.has(wbId)) {
+                socket.to(`whiteboard-${wbId}`).emit('whiteboard-undo', {
+                    username: user.username
+                });
+            } else {
+                socket.to(user.roomName).emit('whiteboard-undo', {
+                    username: user.username
+                });
+            }
         }
     });
     
     socket.on('whiteboard-redo', (data) => {
         const user = users.get(socket.id);
         if (user) {
-            // 广播重做事件给房间内所有用户
-            socket.to(user.roomName).emit('whiteboard-redo', {
-                username: user.username
-            });
+            const wbId = data.whiteboardId;
+            if (wbId && whiteboards.has(wbId)) {
+                socket.to(`whiteboard-${wbId}`).emit('whiteboard-redo', {
+                    username: user.username
+                });
+            } else {
+                socket.to(user.roomName).emit('whiteboard-redo', {
+                    username: user.username
+                });
+            }
         }
     });
     
@@ -7591,7 +7650,7 @@ io.on('connection', (socket) => {
                     winner: latestGame.winner,
                     players: latestGame.players.map(pid => ({
                         socketId: pid,
-                        username: users.get(pid)?.username || '未知'
+                        username: pid === PC_SOCKET_ID ? PC_USERNAME : (users.get(pid)?.username || '未知')
                     }))
                 });
                 console.log('已向玩家发送游戏更新:', playerSocketId);
@@ -7610,7 +7669,7 @@ io.on('connection', (socket) => {
                     winner: latestGame.winner,
                     players: latestGame.players.map(pid => ({
                         socketId: pid,
-                        username: users.get(pid)?.username || '未知'
+                        username: pid === PC_SOCKET_ID ? PC_USERNAME : (users.get(pid)?.username || '未知')
                     }))
                 });
                 console.log('已向观战者发送游戏更新:', spectatorSocketId);
@@ -7619,6 +7678,9 @@ io.on('connection', (socket) => {
             if (latestGame.status === 'ended') {
                 const winnerUser = users.get(latestGame.winner);
                 console.log(`[房间 ${user.roomName}] 五子棋游戏 ${latestGame.id} 结束，赢家: ${winnerUser?.username || '未知'}`);
+            } else if (latestGame.currentPlayer === PC_SOCKET_ID) {
+                // 轮到 pc，延迟 800ms 后 AI 落子
+                setTimeout(() => pcGomokuMove(latestGame.id), 800);
             }
         } else {
             console.log('makeGomokuMove返回null');
@@ -7875,7 +7937,7 @@ io.on('connection', (socket) => {
             currentGuesser: game.currentGuesser,
             status: game.status,
             winner: game.winner,
-            winnerName: game.winner ? (users.get(game.winner)?.username || '未知') : null
+            winnerName: game.winner ? (game.winner === PC_SOCKET_ID ? PC_USERNAME : (users.get(game.winner)?.username || '未知')) : null
         };
 
         [...game.players, ...game.spectators].forEach(pid => {
@@ -7886,6 +7948,9 @@ io.on('connection', (socket) => {
         if (game.status === 'ended') {
             recordGameHistory(game);
             console.log(`[房间 ${user.roomName}] 猜数字游戏 ${game.id} 结束，胜者: ${users.get(game.winner)?.username}`);
+        } else if (game.currentGuesser === PC_SOCKET_ID) {
+            // 轮到 pc 猜数字，延迟 1000ms 后 AI 猜
+            setTimeout(() => pcGuessNumber(game.id), 1000);
         }
     });
 
@@ -8224,7 +8289,436 @@ io.on('connection', (socket) => {
         
         return false;
     }
-    
+
+    // ===================================================================
+    // PC 虚拟账户 AI 逻辑
+    // ===================================================================
+
+    /**
+     * 创建与 pc 的游戏并通知真实玩家开始
+     * @param {string} playerSocketId  真实玩家 socketId
+     * @param {object} user            真实玩家 users 对象
+     * @param {string} gameType        游戏类型
+     */
+    function pcCreateAndStartGame(playerSocketId, user, gameType) {
+        const pcCreator = { username: PC_USERNAME, socketId: PC_SOCKET_ID };
+
+        if (gameType === 'gomoku') {
+            // 玩家先手（黑棋），pc 后手（白棋）
+            const game = createGomokuGame({ username: user.username, socketId: playerSocketId }, user.roomName);
+            if (!game) return;
+            // pc 加入作为第二个玩家
+            game.players.push(PC_SOCKET_ID);
+            game.status = 'playing';
+            game.startTime = new Date();
+            games.set(game.id, game);
+
+            const startPayload = {
+                gameId: game.id,
+                gameType: 'gomoku',
+                players: [
+                    { socketId: playerSocketId, username: user.username },
+                    { socketId: PC_SOCKET_ID, username: PC_USERNAME }
+                ],
+                board: game.board,
+                currentPlayer: game.currentPlayer  // 玩家先手
+            };
+            io.to(playerSocketId).emit('game-start', startPayload);
+            console.log(`[PC] 五子棋游戏 ${game.id} 开始，对战 ${user.username}，玩家先手`);
+
+        } else if (gameType === 'guess-number') {
+            const game = createGuessNumberGame(pcCreator, user.roomName);
+            if (!game) return;
+            const updatedGame = joinGuessNumberGame(game.id, playerSocketId);
+            if (!updatedGame) return;
+            // 让玩家先猜（玩家是 players[1]）
+            updatedGame.currentGuesser = playerSocketId;
+            games.set(updatedGame.id, updatedGame);
+
+            const startPayload = {
+                gameId: updatedGame.id,
+                gameType: 'guess-number',
+                players: [
+                    { socketId: PC_SOCKET_ID, username: PC_USERNAME },
+                    { socketId: playerSocketId, username: user.username }
+                ],
+                currentGuesser: updatedGame.currentGuesser,
+                guessCounts: updatedGame.guessCounts
+            };
+            io.to(playerSocketId).emit('guess-number-start', startPayload);
+            console.log(`[PC] 猜数字游戏 ${updatedGame.id} 开始，对战 ${user.username}，玩家先猜`);
+
+        } else if (gameType === 'rps') {
+            const game = createRPSGame(pcCreator, user.roomName);
+            if (!game) return;
+            const updatedGame = joinRPSGame(game.id, playerSocketId, user.username);
+            if (!updatedGame) return;
+
+            const startPayload = {
+                gameId: updatedGame.id,
+                gameType: 'rps',
+                players: [
+                    { socketId: PC_SOCKET_ID, username: PC_USERNAME },
+                    { socketId: playerSocketId, username: user.username }
+                ],
+                wins: { ...updatedGame.wins },
+                maxWins: updatedGame.maxWins,
+                round: updatedGame.round
+            };
+            io.to(playerSocketId).emit('rps-start', startPayload);
+            console.log(`[PC] 猜拳游戏 ${updatedGame.id} 开始，对战 ${user.username}`);
+
+        } else if (gameType === 'bomb') {
+            const game = createBombGame(pcCreator, user.roomName);
+            if (!game) return;
+            const updatedGame = joinBombGame(game.id, playerSocketId, user.username);
+            if (!updatedGame) return;
+
+            const startPayload = {
+                gameId: updatedGame.id,
+                gameType: 'bomb',
+                players: [
+                    { socketId: PC_SOCKET_ID, username: PC_USERNAME },
+                    { socketId: playerSocketId, username: user.username }
+                ],
+                maxStep: updatedGame.maxStep,
+                current: 0,
+                currentPlayer: updatedGame.players[0]
+            };
+            io.to(playerSocketId).emit('bomb-start', startPayload);
+            console.log(`[PC] 炸弹游戏 ${updatedGame.id} 开始，对战 ${user.username}`);
+            // 若 pc 先手
+            if (updatedGame.players[0] === PC_SOCKET_ID) {
+                setTimeout(() => pcBombMove(updatedGame.id), 900);
+            }
+        }
+    }
+
+    /**
+     * PC 五子棋 AI：评分贪心策略
+     * 优先级：自己能赢 > 阻止对手赢 > 进攻 > 防守
+     */
+    function pcGomokuMove(gameId) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing' || game.currentPlayer !== PC_SOCKET_ID) return;
+
+        const board = game.board;
+        const opponentId = game.players.find(p => p !== PC_SOCKET_ID);
+        const size = 15;
+
+        // 计算某个落子位置的分数
+        function scorePosition(x, y, playerId) {
+            if (board[x][y] !== null) return -Infinity;
+            const directions = [[1,0],[0,1],[1,1],[1,-1]];
+            let total = 0;
+            for (const [dx, dy] of directions) {
+                let count = 1;
+                let open = 0;
+                for (let i = 1; i < 5; i++) {
+                    const nx = x + i*dx, ny = y + i*dy;
+                    if (nx < 0 || nx >= size || ny < 0 || ny >= size) break;
+                    if (board[nx][ny] === playerId) count++;
+                    else { if (board[nx][ny] === null) open++; break; }
+                }
+                for (let i = 1; i < 5; i++) {
+                    const nx = x - i*dx, ny = y - i*dy;
+                    if (nx < 0 || nx >= size || ny < 0 || ny >= size) break;
+                    if (board[nx][ny] === playerId) count++;
+                    else { if (board[nx][ny] === null) open++; break; }
+                }
+                const scoreMap = [0, 1, 10, 100, 1000, 100000];
+                total += (scoreMap[Math.min(count, 5)] || 0) * (open > 0 ? 1 : 0.5);
+            }
+            return total;
+        }
+
+        let bestX = -1, bestY = -1, bestScore = -Infinity;
+
+        // 仅评估棋盘上已有棋子周围2格内的位置（效率优化）
+        const candidates = new Set();
+        for (let x = 0; x < size; x++) {
+            for (let y = 0; y < size; y++) {
+                if (board[x][y] !== null) {
+                    for (let dx = -2; dx <= 2; dx++) {
+                        for (let dy = -2; dy <= 2; dy++) {
+                            const nx = x + dx, ny = y + dy;
+                            if (nx >= 0 && nx < size && ny >= 0 && ny < size && board[nx][ny] === null) {
+                                candidates.add(`${nx},${ny}`);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 棋盘为空时走中央
+        if (candidates.size === 0) {
+            bestX = 7; bestY = 7;
+        } else {
+            // ===== 最高优先级：必胜/必堵检查 =====
+            let blockOpponentWin = null;   // 必须堵的位置
+            let aiWinningMove = null;       // AI能赢的位置
+            let doubleThreat = null;         // 制造双威胁的位置
+
+            for (const pos of candidates) {
+                const [x, y] = pos.split(',').map(Number);
+
+                // 模拟落子后检查是否连五
+                const simulateCheck = (px, py, playerId) => {
+                    const directions = [[1,0],[0,1],[1,1],[1,-1]];
+                    for (const [dx, dy] of directions) {
+                        let count = 1;
+                        for (let i = 1; i < 5; i++) {
+                            const nx = px + i*dx, ny = py + i*dy;
+                            if (nx < 0 || nx >= size || ny < 0 || ny >= size) break;
+                            if (board[nx][ny] === playerId) count++;
+                            else break;
+                        }
+                        for (let i = 1; i < 5; i++) {
+                            const nx = px - i*dx, ny = py - i*dy;
+                            if (nx < 0 || nx >= size || ny < 0 || ny >= size) break;
+                            if (board[nx][ny] === playerId) count++;
+                            else break;
+                        }
+                        if (count >= 5) return true;
+                    }
+                    return false;
+                };
+
+                if (simulateCheck(x, y, opponentId)) {
+                    blockOpponentWin = { x, y }; // 必须先堵
+                }
+                if (simulateCheck(x, y, PC_SOCKET_ID)) {
+                    aiWinningMove = { x, y }; // AI能赢
+                }
+            }
+
+            // 优先级：先堵玩家必胜 > AI必胜 > 贪心评估
+            if (blockOpponentWin) {
+                bestX = blockOpponentWin.x; bestY = blockOpponentWin.y;
+            } else if (aiWinningMove) {
+                bestX = aiWinningMove.x; bestY = aiWinningMove.y;
+            } else {
+                for (const pos of candidates) {
+                    const [x, y] = pos.split(',').map(Number);
+                    const attackScore = scorePosition(x, y, PC_SOCKET_ID);
+                    const defendScore = scorePosition(x, y, opponentId) * 2.5;
+                    const score = Math.max(attackScore, defendScore);
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestX = x; bestY = y;
+                    }
+                }
+            }
+        }
+
+        if (bestX === -1) {
+            // 找任意空位
+            outer: for (let x = 0; x < size; x++) {
+                for (let y = 0; y < size; y++) {
+                    if (board[x][y] === null) { bestX = x; bestY = y; break outer; }
+                }
+            }
+        }
+
+        if (bestX === -1) return; // 棋盘满了
+
+        const updatedGame = makeGomokuMove(gameId, PC_SOCKET_ID, bestX, bestY);
+        if (!updatedGame) return;
+
+        const latestGame = games.get(gameId);
+        if (!latestGame) return;
+
+        const payload = {
+            gameId: latestGame.id,
+            gameType: 'gomoku',
+            board: latestGame.board,
+            currentPlayer: latestGame.currentPlayer,
+            lastMove: { x: bestX, y: bestY, player: PC_SOCKET_ID },
+            status: latestGame.status,
+            winner: latestGame.winner,
+            players: latestGame.players.map(pid => ({
+                socketId: pid,
+                username: pid === PC_SOCKET_ID ? PC_USERNAME : (users.get(pid)?.username || '未知')
+            }))
+        };
+        // 通知真实玩家
+        latestGame.players.filter(p => p !== PC_SOCKET_ID).forEach(pid => {
+            io.to(pid).emit('game-update', payload);
+        });
+        latestGame.spectators.forEach(pid => io.to(pid).emit('game-update', payload));
+
+        if (latestGame.status === 'ended') {
+            recordGameHistory(latestGame);
+        }
+        console.log(`[PC] 五子棋落子 (${bestX},${bestY})`);
+    }
+
+    /**
+     * PC 猜数字 AI：智能二分法
+     * 直接从 game.guesses[PC_SOCKET_ID] 计算自己的区间（lo/hi），
+     * 再收集全局已猜数字避免重复，永不使用 pcGuessRanges Map。
+     */
+    function pcGuessNumber(gameId) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing' || game.currentGuesser !== PC_SOCKET_ID) return;
+
+        // 从所有玩家的猜测结果中计算全局有效区间（AI 也能看到玩家的大了/小了反馈）
+        let lo = 1, hi = 100;
+        Object.values(game.guesses).forEach(arr => {
+            arr.forEach(entry => {
+                if (entry.result === 'low')  lo = Math.max(lo, entry.guess + 1);
+                if (entry.result === 'high') hi = Math.min(hi, entry.guess - 1);
+            });
+        });
+
+        // 收集全局已猜过的数字
+        const guessedNumbers = new Set();
+        Object.values(game.guesses).forEach(arr => {
+            arr.forEach(entry => guessedNumbers.add(entry.guess));
+        });
+
+        // 在 [lo, hi] 区间内找第一个未被猜过的数
+        let mid = Math.floor((lo + hi) / 2);
+        if (guessedNumbers.has(mid)) {
+            for (let n = mid; n <= 100; n++) {
+                if (!guessedNumbers.has(n)) { mid = n; break; }
+            }
+            if (guessedNumbers.has(mid)) {
+                for (let n = mid - 1; n >= 1; n--) {
+                    if (!guessedNumbers.has(n)) { mid = n; break; }
+                }
+            }
+        }
+
+        const res = makeGuessNumberGuess(gameId, PC_SOCKET_ID, mid);
+        if (!res) return;
+        const { game: g, result } = res;
+
+        const payload = {
+            gameId: g.id,
+            guesserSocketId: PC_SOCKET_ID,
+            guesserUsername: PC_USERNAME,
+            guess: mid,
+            result,
+            guessCounts: g.guessCounts,
+            currentGuesser: g.currentGuesser,
+            status: g.status,
+            winner: g.winner,
+            winnerName: g.winner === PC_SOCKET_ID ? PC_USERNAME : (users.get(g.winner)?.username || null)
+        };
+        [...g.players, ...g.spectators].filter(p => p !== PC_SOCKET_ID).forEach(pid => {
+            io.to(pid).emit('guess-number-update', payload);
+        });
+
+        if (g.status === 'ended') {
+            recordGameHistory(g);
+        } else if (g.currentGuesser === PC_SOCKET_ID) {
+            setTimeout(() => pcGuessNumber(gameId), 1000);
+        }
+        console.log(`[PC] 猜数字 gameId=${gameId} 区间=[${lo},${hi}] 读已猜=[${[...guessedNumbers].sort((a,b)=>a-b).join(',')}] 猜了 ${mid}，结果: ${result}`);
+    }
+
+    /**
+     * PC 猜拳 AI：随机出招（三选一）
+     */
+    function pcRPSMove(gameId) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing') return;
+        if (game.choices && game.choices[PC_SOCKET_ID]) return; // 已出招
+
+        const choices = ['rock', 'paper', 'scissors'];
+        const choice = choices[Math.floor(Math.random() * 3)];
+
+        const updatedGame = makeRPSMove(gameId, PC_SOCKET_ID, choice);
+        if (!updatedGame) return;
+
+        // 发给真实玩家
+        const realPlayers = updatedGame.players.filter(p => p !== PC_SOCKET_ID);
+        if (updatedGame.roundResult) {
+            realPlayers.forEach(pid => {
+                io.to(pid).emit('rps-update', {
+                    gameId: updatedGame.id,
+                    roundResult: updatedGame.roundResult,
+                    wins: { ...updatedGame.wins },
+                    round: updatedGame.round,
+                    status: updatedGame.status,
+                    champion: updatedGame.champion || null
+                });
+            });
+            if (updatedGame.status === 'finished') {
+                updatedGame.endTime = new Date().toISOString();
+                recordGameHistory(updatedGame);
+            }
+        } else {
+            realPlayers.forEach(pid => {
+                io.to(pid).emit('rps-waiting', {
+                    gameId: updatedGame.id,
+                    waitingFor: updatedGame.players.filter(p => !updatedGame.choices[p])
+                        .map(p => p === PC_SOCKET_ID ? PC_USERNAME : (updatedGame.playerNames[p] || '未知')),
+                    devOpponentChoice: choice
+                });
+            });
+        }
+        console.log(`[PC] 猜拳出招: ${choice}`);
+    }
+
+    /**
+     * PC 炸弹游戏 AI：尽量不让对手报到 bombNumber
+     * 策略：若能让对手下一步必须报 bombNumber 则只报1个；否则随机报1-3个
+     */
+    function pcBombMove(gameId) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing') return;
+        if (game.players[game.currentPlayerIdx] !== PC_SOCKET_ID) return;
+
+        const bomb = game.bombNumber;
+        const current = game.current;
+        const maxStep = game.maxStep;
+        const remaining = bomb - current;
+
+        let count;
+        // 安全数字：报完后 remaining % (maxStep+1) === 0，即强迫对手最终踩雷
+        const safeCount = remaining % (maxStep + 1);
+        if (safeCount >= 1 && safeCount <= maxStep) {
+            count = safeCount;
+        } else {
+            // 随机报1~maxStep个（但不能超过剩余）
+            const maxPossible = Math.min(maxStep, remaining - 1);
+            count = maxPossible >= 1 ? (Math.floor(Math.random() * maxPossible) + 1) : 1;
+        }
+        count = Math.max(1, Math.min(count, maxStep, remaining));
+
+        const updatedGame = makeBombMove(gameId, PC_SOCKET_ID, count);
+        if (!updatedGame) return;
+
+        const realPlayers = updatedGame.players.filter(p => p !== PC_SOCKET_ID);
+        realPlayers.forEach(pid => {
+            io.to(pid).emit('bomb-update', {
+                gameId: updatedGame.id,
+                current: updatedGame.current,
+                lastMove: updatedGame.history[updatedGame.history.length - 1],
+                currentPlayer: updatedGame.status === 'playing' ? updatedGame.players[updatedGame.currentPlayerIdx] : null,
+                status: updatedGame.status,
+                loser: updatedGame.loser || null,
+                loserName: updatedGame.loser ? updatedGame.playerNames[updatedGame.loser] : null,
+                bombNumber: updatedGame.status === 'finished' ? updatedGame.bombNumber : null
+            });
+        });
+        if (updatedGame.status === 'finished') {
+            updatedGame.endTime = new Date().toISOString();
+            recordGameHistory(updatedGame);
+        } else if (updatedGame.status === 'playing' &&
+                   updatedGame.players[updatedGame.currentPlayerIdx] === PC_SOCKET_ID) {
+            setTimeout(() => pcBombMove(gameId), 900);
+        }
+        console.log(`[PC] 炸弹报数 +${count}，当前: ${updatedGame.current}`);
+    }
+
+    // ===================================================================
+    // PC 虚拟账户 AI 逻辑 END
+    // ===================================================================
+
     // 猜数字游戏逻辑（1-100，双方轮流猜同一个数，猜对者赢）
     function createGuessNumberGame(creator, roomName) {
         const gameId = `guess-number-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
@@ -9332,8 +9826,17 @@ io.on('connection', (socket) => {
                     socketId: u.socketId,
                     username: u.username,
                     color: u.color,
-                    status: u.status || 'online'
+                    status: u.status || 'online',
+                    isBot: false
                 }));
+            // 添加 pc 虚拟账户到列表末尾
+            onlineUsers.push({
+                socketId: PC_SOCKET_ID,
+                username: PC_USERNAME,
+                color: PC_COLOR,
+                status: 'online',
+                isBot: true
+            });
             socket.emit('online-users', onlineUsers);
         }
     });
@@ -9342,6 +9845,35 @@ io.on('connection', (socket) => {
     socket.on('send-game-invitation', (data) => {
         const user = users.get(socket.id);
         if (user && data.userId && data.gameType) {
+            // ===== PC 虚拟账户：自动接受邀请 =====
+            if (data.userId === PC_SOCKET_ID) {
+                const pcAcceptedGameTypes = ['gomoku', 'guess-number', 'rps', 'bomb'];
+                if (!pcAcceptedGameTypes.includes(data.gameType)) {
+                    socket.emit('game-invitation-error', { message: `pc 暂不支持「${data.gameType}」游戏` });
+                    return;
+                }
+                // 通知发送者：pc 接受了邀请
+                socket.emit('game-invitation-sent', {
+                    id: `inv-pc-${Date.now()}`,
+                    from: socket.id,
+                    fromUsername: user.username,
+                    to: PC_SOCKET_ID,
+                    toUsername: PC_USERNAME,
+                    gameType: data.gameType,
+                    status: 'accepted',
+                    createdAt: new Date().toISOString(),
+                    roomName: user.roomName
+                });
+                socket.emit('game-invitation-response', {
+                    accept: true,
+                    username: PC_USERNAME
+                });
+                // 创建游戏并让 pc 加入
+                pcCreateAndStartGame(socket.id, user, data.gameType);
+                return;
+            }
+            // ===== PC 虚拟账户 END =====
+
             const targetUser = users.get(data.userId);
             if (targetUser) {
                 // 检查是否已存在同一对用户+游戏类型的 pending 邀请
@@ -9653,6 +10185,10 @@ io.on('connection', (socket) => {
                     devOpponentChoice: opponentChoice || null
                 });
             });
+            // 若 pc 还没出招，触发 AI
+            if (updatedGame.players.includes(PC_SOCKET_ID) && !updatedGame.choices[PC_SOCKET_ID]) {
+                setTimeout(() => pcRPSMove(updatedGame.id), 800);
+            }
         }
     });
 
@@ -9708,6 +10244,9 @@ io.on('connection', (socket) => {
         if (updatedGame.status === 'finished') {
             updatedGame.endTime = new Date().toISOString();
             recordGameHistory(updatedGame);
+        } else if (updatedGame.status === 'playing' &&
+                   updatedGame.players[updatedGame.currentPlayerIdx] === PC_SOCKET_ID) {
+            setTimeout(() => pcBombMove(updatedGame.id), 900);
         }
     });
 
@@ -9747,7 +10286,7 @@ io.on('connection', (socket) => {
                     roomName: g.roomName,
                     players: g.players.map(pid => ({
                         socketId: pid,
-                        username: users.get(pid)?.username || '未知'
+                        username: pid === PC_SOCKET_ID ? PC_USERNAME : (users.get(pid)?.username || '未知')
                     })),
                     spectators: g.spectators.length,
                     startTime: g.startTime
@@ -9924,9 +10463,9 @@ io.on('connection', (socket) => {
                 gameType: game.type,
                 type: game.type, // 兼容前端 game.type 字段
                 players: game.players,
-                playerNames: game.players.map(pid => users.get(pid)?.username || game.playerNames?.[pid] || '未知'),
+                playerNames: game.players.map(pid => pid === PC_SOCKET_ID ? PC_USERNAME : (users.get(pid)?.username || game.playerNames?.[pid] || '未知')),
                 winner: winner,
-                winnerName: winner ? (users.get(winner)?.username || game.playerNames?.[winner] || '未知') : '平局',
+                winnerName: winner ? (winner === PC_SOCKET_ID ? PC_USERNAME : (users.get(winner)?.username || game.playerNames?.[winner] || '未知')) : '平局',
                 startTime: game.startTime || now,
                 endTime: now,
                 roomName: game.roomName
@@ -10888,5 +11427,43 @@ server.listen(PORT, () => {
     console.log(`本地访问: http://localhost:${PORT}`);
     console.log(`局域网访问: http://<你的IP地址>:${PORT}`);
     console.log(`管理员页面: http://localhost:${PORT}/admin`);
-    console.log(`========================================\n`);
+    console.log(`========================================`);
+    console.log(`控制台命令: clear(清屏) | restart(重启) | exit(关闭)\n`);
+    setupConsoleCommands();
 });
+
+function setupConsoleCommands() {
+    const rl = require('readline').createInterface({
+        input: process.stdin,
+        output: process.stdout,
+        prompt: '\x1b[32m>\x1b[0m '
+    });
+    rl.prompt();
+
+    rl.on('line', (line) => {
+        const cmd = line.trim().toLowerCase();
+        if (cmd === 'clear') {
+            console.clear();
+            console.log(`服务器运行中 (PID: ${process.pid})，输入 help 查看命令\n`);
+        } else if (cmd === 'restart') {
+            console.log(`\n正在重启服务器...\n`);
+            rl.close();
+            process.exit(0);
+        } else if (cmd === 'exit' || cmd === 'quit') {
+            console.log(`\n正在关闭服务器...\n`);
+            rl.close();
+            process.exit(0);
+        } else if (cmd === 'help') {
+            console.log(`  clear   - 清空终端`);
+            console.log(`  restart - 重启服务器`);
+            console.log(`  exit    - 关闭服务器\n`);
+        } else if (cmd !== '') {
+            console.log(`未知命令: ${cmd}，输入 help 查看可用命令`);
+        }
+        rl.prompt();
+    });
+
+    rl.on('close', () => {
+        // readline 关闭不影响服务器继续运行
+    });
+}

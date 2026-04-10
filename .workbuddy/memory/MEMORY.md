@@ -57,9 +57,13 @@ Node.js + Express + Socket.IO 聊天室项目，前端为单文件 `public/index
 - 降噪级别: low(-55dB)/medium(-45dB)/high(-35dB)
 - 基于 RMS、dB、零交叉率、峰峭因子的语音检测
 
----
+### 2026-04-09: 互动中心 PC 虚拟账户联机
+- **位置**：`server.cjs` 全局变量区 + 游戏事件处理区
+- **常量**：`PC_SOCKET_ID='pc-bot-virtual-socket'`，`PC_USERNAME='pc'`
+- **触发**：在线用户列表自动出现 pc；向 pc 发邀请自动接受并创建游戏
+- **支持游戏**：五子棋（贪心AI）、猜数字（二分法）、猜拳（随机）、数字炸弹（余数策略）
+- **先手**：玩家先手（五子棋/猜数字），自然体验
 
-## 技术债务
 
 - `substr()` 大量使用（已废弃，建议替换为 `substring()` 或 `slice()`）
 - `public/index.html` 体积过大（约25000行），建议拆分模块
