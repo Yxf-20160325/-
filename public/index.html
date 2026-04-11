@@ -6536,6 +6536,11 @@
                 rememberUpgrade: true
             });
             
+            // 立即注册加入错误监听器（不需要等待连接成功）
+            socket.on('join-error', (data) => {
+                alert(data.message || '加入房间失败');
+            });
+            
             // Socket连接状态管理
             socket.on('connect', () => {
                 console.log('Socket连接成功:', socket.id);
