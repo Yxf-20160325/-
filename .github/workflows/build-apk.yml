@@ -37,6 +37,9 @@ jobs:
 
       - name: Install dependencies & Capacitor sync
         run: |
+          # 安装原生模块编译所需的工具
+          sudo apt-get update
+          sudo apt-get install -y python3 make g++
           npm install
           npx cap sync android
 
