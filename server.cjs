@@ -95,6 +95,16 @@ const pcUserBase = {
 };
 // ===== PC 虚拟账户 END =====
 
+// ===== PC AI 函数前置声明（避免 TDZ 问题）=====
+function pcGomokuMove(gameId) {}
+function pcGuessNumber(gameId) {}
+function pcRPSMove(gameId) {}
+function pcBombMove(gameId) {}
+function pcPictionaryDraw(gameId) {}
+function pcTypingMove(gameId) {}
+function pcGoMove(gameId) {}
+// ===== PC AI 函数前置声明 END =====
+
 // 默认权限（提前声明，避免 TDZ 问题）
 let defaultPermissions = {
     allowAudio: true,
@@ -677,6 +687,7 @@ app.get('/api/mobile/messages', (req, res) => {
 });
 
 // 移动应用发送消息
+// 用途：移动端向指定房间发送聊天消息
 app.post('/api/mobile/send-message', express.json(), (req, res) => {
     try {
         const { token, roomName, message, type = 'text', fileName, fileSize, contentType } = req.body;
@@ -1249,6 +1260,7 @@ app.get('/api/docs', (req, res) => {
 
 // 第三方集成
 // 社交媒体登录接口（示例）
+// 用途：处理第三方社交媒体账号登录（微信/QQ/微博等）
 app.post('/api/auth/social', express.json(), (req, res) => {
     try {
         const { provider, token } = req.body;
@@ -1483,6 +1495,7 @@ app.post('/api/viruses/ban/:id', (req, res) => {
 });
 
 // 获取病毒检测状态
+// 用途：获取当前病毒检测功能的启用/禁用状态
 app.get('/api/viruses/status', (req, res) => {
     res.json({ enabled: virusScanEnabled });
 });
@@ -1588,6 +1601,19 @@ function getBuiltinApiDescription(method, path) {
         'POST:/api/admin/calls/:callId/end': '结束通话',
         'POST:/api/admin/calls/:callId/control': '控制通话',
         'GET:/api/admin/calls/:callId': '通话详情',
+        'GET:/api/admin/api-manager/list': 'API管理-获取所有API列表',
+        'POST:/api/admin/api-manager/toggle-builtin': 'API管理-启用/禁用内置API',
+        'POST:/api/admin/api-manager/add': 'API管理-添加自定义API',
+        'PUT:/api/admin/api-manager/update': 'API管理-更新自定义API',
+        'POST:/api/admin/api-manager/toggle-custom': 'API管理-启用/禁用自定义API',
+        'DELETE:/api/admin/api-manager/custom': 'API管理-删除自定义API',
+        'POST:/api/admin/api-manager/test': 'API管理-测试API',
+        'POST:/upload-image': '上传图片文件',
+        'POST:/upload-audio': '上传音频文件',
+        'GET:/api/csrf-token': '获取CSRF令牌',
+        'GET:/admin': '管理后台页面',
+        'GET:/:roomName': '聊天室房间页面',
+        'GET:/': '首页',
     };
     return descriptions[`${method}:${path}`] || '';
 }
@@ -1718,6 +1744,7 @@ app.delete('/api/admin/api-manager/custom', express.json(), (req, res) => {
 });
 
 // 测试 API（发送请求并返回结果）
+// 用途：测试指定API端点的可用性和响应
 app.post('/api/admin/api-manager/test', express.json(), async (req, res) => {
     try {
         const { method, path: apiPath, body: reqBody, headers: reqHeaders } = req.body;
@@ -2011,6 +2038,506 @@ app.delete('/api/admin/feedback', (req, res) => {
     userFeedbackList.length = 0;
     res.json({ success: true });
 });
+// ==================== AI 游戏管理 API ====================
+// 用途：管理 AI (pc) 的游戏状态，查看游戏列表、控制游戏开关、查看 AI 思考日志
+
+// AI 游戏开关状态
+let aiGamesEnabled = true;
+
+// AI 思考日志（用于管理员查看）
+const aiThoughtsLog = [];
+
+// 添加 AI 思考日志
+function addAiThought(gameType, action, thought) {
+    const entry = {
+        timestamp: new Date().toISOString(),
+        gameType,
+        action,
+        thought
+    };
+    aiThoughtsLog.push(entry);
+    // 限制日志数量，最多保留 100 条
+    if (aiThoughtsLog.length > 100) {
+        aiThoughtsLog.shift();
+    }
+    // 广播给所有连接的 admin 客户端
+    io.emit('ai-thought', entry);
+}
+
+// 获取 AI 游戏状态
+app.get('/api/admin/ai-games/status', (req, res) => {
+    try {
+        // 获取所有包含 AI 的游戏
+        const aiGames = [];
+        for (const [gameId, game] of games.entries()) {
+            if (game.players && game.players.includes(PC_SOCKET_ID)) {
+                aiGames.push({
+                    id: gameId,
+                    type: game.type,
+                    status: game.status,
+                    roomName: game.roomName,
+                    players: game.players.map(pid => ({
+                        socketId: pid,
+                        username: pid === PC_SOCKET_ID ? PC_USERNAME : (users.get(pid)?.username || '未知')
+                    })),
+                    currentPlayer: game.currentPlayer,
+                    startTime: game.startTime,
+                    endTime: game.endTime
+                });
+            }
+        }
+        
+        res.json({
+            success: true,
+            enabled: aiGamesEnabled,
+            games: aiGames,
+            thoughts: aiThoughtsLog.slice(-50) // 返回最近 50 条思考日志
+        });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 切换 AI 游戏开关
+app.post('/api/admin/ai-games/toggle', express.json(), (req, res) => {
+    try {
+        const { enabled } = req.body;
+        aiGamesEnabled = enabled;
+        
+        if (!aiGamesEnabled) {
+            // 禁用所有 AI 游戏
+            for (const [gameId, game] of games.entries()) {
+                if (game.players && game.players.includes(PC_SOCKET_ID) && game.status === 'playing') {
+                    game.status = 'ended';
+                    game.endTime = new Date();
+                    game.winner = game.players.find(p => p !== PC_SOCKET_ID); // 玩家获胜
+                    games.set(gameId, game);
+                    
+                    // 通知玩家游戏结束
+                    game.players.forEach(pid => {
+                        if (pid !== PC_SOCKET_ID) {
+                            io.to(pid).emit(`${game.type}-end`, {
+                                gameId,
+                                winner: pid,
+                                reason: 'AI 游戏已被管理员禁用'
+                            });
+                        }
+                    });
+                }
+            }
+        }
+        
+        res.json({ success: true, enabled: aiGamesEnabled });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 获取游戏详情
+app.get('/api/admin/ai-games/details', (req, res) => {
+    try {
+        const { gameId } = req.query;
+        const game = games.get(gameId);
+        
+        if (!game) {
+            return res.status(404).json({ success: false, error: '游戏不存在' });
+        }
+        
+        res.json({
+            success: true,
+            game: {
+                id: game.id,
+                type: game.type,
+                status: game.status,
+                roomName: game.roomName,
+                players: game.players.map(pid => ({
+                    socketId: pid,
+                    username: pid === PC_SOCKET_ID ? PC_USERNAME : (users.get(pid)?.username || '未知')
+                })),
+                currentPlayer: game.currentPlayer,
+                startTime: game.startTime,
+                endTime: game.endTime,
+                board: game.board, // 棋盘类游戏
+                snakes: game.snakes, // 贪吃蛇
+                scores: game.scores ? Object.fromEntries(game.scores) : undefined
+            }
+        });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 强制 AI 行动
+app.post('/api/admin/ai-games/force-move', express.json(), (req, res) => {
+    try {
+        const { gameId } = req.body;
+        const game = games.get(gameId);
+        
+        if (!game) {
+            return res.status(404).json({ success: false, error: '游戏不存在' });
+        }
+        
+        if (game.status !== 'playing') {
+            return res.status(400).json({ success: false, error: '游戏不在进行中' });
+        }
+        
+        // 根据游戏类型调用对应的 AI 函数
+        switch (game.type) {
+            case 'gomoku':
+                pcGomokuMove(gameId);
+                break;
+            case 'guess-number':
+                pcGuessNumber(gameId);
+                break;
+            case 'rps':
+                pcRpsMove(gameId);
+                break;
+            case 'bomb':
+                pcBombMove(gameId);
+                break;
+            case 'pictionary':
+                pcPictionaryDraw(gameId);
+                break;
+            case 'typing':
+                pcTypingMove(gameId);
+                break;
+            case 'go':
+                pcGoMove(gameId);
+                break;
+            case 'snake':
+                // 贪吃蛇是实时游戏，不需要强制行动
+                return res.status(400).json({ success: false, error: '贪吃蛇是实时游戏，无法强制行动' });
+            default:
+                return res.status(400).json({ success: false, error: '未知的游戏类型' });
+        }
+        
+        addAiThought(game.type, '强制行动', `管理员强制 AI 在 ${game.type} 游戏中行动`);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 结束 AI 游戏
+app.post('/api/admin/ai-games/end', express.json(), (req, res) => {
+    try {
+        const { gameId } = req.body;
+        const game = games.get(gameId);
+        
+        if (!game) {
+            return res.status(404).json({ success: false, error: '游戏不存在' });
+        }
+        
+        game.status = 'ended';
+        game.endTime = new Date();
+        game.winner = game.players.find(p => p !== PC_SOCKET_ID); // 玩家获胜
+        games.set(gameId, game);
+        
+        // 通知所有玩家
+        game.players.forEach(pid => {
+            io.to(pid).emit(`${game.type}-end`, {
+                gameId,
+                winner: game.winner,
+                reason: '游戏被管理员结束'
+            });
+        });
+        
+        addAiThought(game.type, '游戏结束', `管理员结束了 ${game.type} 游戏`);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// ==================== AI 游戏管理 API END ====================
+
+// ==================== 互动中心管理 API ====================
+// 存储互动中心数据
+const interactionPairs = new Map(); // player1,player2 -> { allowed }
+const gamePermissions = new Map(); // player,game -> { allowed }
+const activeGames = new Map(); // gameId -> gameData
+
+// 获取配对列表
+app.get('/api/admin/interaction/pairs', (req, res) => {
+    try {
+        const pairs = [];
+        for (const [key, value] of interactionPairs) {
+            const [p1, p2] = key.split(',');
+            pairs.push({ player1: p1, player2: p2, allowed: value.allowed });
+        }
+        res.json({ success: true, pairs });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 设置配对权限
+app.post('/api/admin/interaction/pairs', express.json(), (req, res) => {
+    try {
+        const { player1, player2, allowed } = req.body;
+        const key = [player1, player2].sort().join(',');
+        interactionPairs.set(key, { allowed, timestamp: Date.now() });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 删除配对限制
+app.delete('/api/admin/interaction/pairs', express.json(), (req, res) => {
+    try {
+        const { player1, player2 } = req.body;
+        const key = [player1, player2].sort().join(',');
+        interactionPairs.delete(key);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 获取游戏权限
+app.get('/api/admin/interaction/game-permissions', (req, res) => {
+    try {
+        const perms = [];
+        for (const [key, value] of gamePermissions) {
+            const [player, game] = key.split(',');
+            perms.push({ player, game, allowed: value.allowed });
+        }
+        res.json({ success: true, permissions: perms });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 设置游戏权限
+app.post('/api/admin/interaction/game-permissions', express.json(), (req, res) => {
+    try {
+        const { player, game, allowed } = req.body;
+        const key = `${player},${game}`;
+        gamePermissions.set(key, { allowed, timestamp: Date.now() });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 删除游戏权限
+app.delete('/api/admin/interaction/game-permissions', express.json(), (req, res) => {
+    try {
+        const { player, game } = req.body;
+        const key = `${player},${game}`;
+        gamePermissions.delete(key);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 获取当前游戏
+app.get('/api/admin/interaction/active-games', (req, res) => {
+    try {
+        const games = [];
+        for (const [gameId, game] of games) {
+            if (game.status === 'playing') {
+                games.push({
+                    id: gameId,
+                    type: game.type,
+                    players: game.players.map(p => users.get(p)?.username || p),
+                    roomName: game.roomName,
+                    startTime: game.startTime
+                });
+            }
+        }
+        res.json({ success: true, games });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 结束游戏
+app.post('/api/admin/interaction/end-game', express.json(), (req, res) => {
+    try {
+        const { gameId } = req.body;
+        const game = games.get(gameId);
+        if (game) {
+            game.status = 'ended';
+            game.endTime = Date.now();
+            io.to(game.roomName).emit('game-ended', { gameId, reason: 'admin' });
+        }
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 结束所有游戏
+app.post('/api/admin/interaction/end-all-games', (req, res) => {
+    try {
+        let count = 0;
+        for (const [gameId, game] of games) {
+            if (game.status === 'playing') {
+                game.status = 'ended';
+                game.endTime = Date.now();
+                io.to(game.roomName).emit('game-ended', { gameId, reason: 'admin' });
+                count++;
+            }
+        }
+        res.json({ success: true, count });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// ==================== 互动中心管理 API END ====================
+
+// ==================== 页面权限管理 API ====================
+const pagePermissions = new Map(); // user/role -> permissions
+
+// 获取用户页面权限
+app.get('/api/admin/page-permissions', (req, res) => {
+    try {
+        const { user, role } = req.query;
+        const key = user || role;
+        const perms = pagePermissions.get(key) || {
+            chat: true, voice: true, video: true, games: true, ai: true,
+            emoji: true, file: true, location: true, music: true, settings: true,
+            btnSendMsg: true, btnSendImage: true, btnSendVoice: true,
+            btnCreateRoom: true, btnInvite: true, btnKick: true
+        };
+        res.json({ success: true, permissions: perms });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 保存页面权限
+app.post('/api/admin/page-permissions', express.json(), (req, res) => {
+    try {
+        const { user, role, permissions } = req.body;
+        const key = user || role;
+        pagePermissions.set(key, permissions);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 获取所有权限
+app.get('/api/admin/page-permissions/all', (req, res) => {
+    try {
+        const perms = [];
+        for (const [key, value] of pagePermissions) {
+            perms.push({ user: key.includes('-') ? key : null, role: !key.includes('-') ? key : null, permissions: value });
+        }
+        res.json({ success: true, permissions: perms });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// ==================== 页面权限管理 API END ====================
+
+// ==================== 表情包管理 API ====================
+const emojiLibrary = [];
+const emojiPermissions = new Map();
+let emojiIdCounter = 1;
+
+// 初始化默认表情包
+function initDefaultEmojis() {
+    const defaultEmojis = ['😀', '😂', '🥰', '😎', '🤔', '👍', '👎', '❤️', '🎉', '🔥'];
+    defaultEmojis.forEach((emoji, i) => {
+        emojiLibrary.push({
+            id: `emoji_${i}`,
+            name: `默认表情${i + 1}`,
+            url: `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text x="50" y="70" font-size="60" text-anchor="middle">${emoji}</text></svg>`,
+            category: 'default',
+            keywords: [emoji],
+            usageCount: 0
+        });
+    });
+}
+initDefaultEmojis();
+
+// 获取表情包库
+app.get('/api/admin/emoji-library', (req, res) => {
+    try {
+        res.json({ success: true, emojis: emojiLibrary });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 添加表情包
+app.post('/api/admin/emoji-library', express.json(), (req, res) => {
+    try {
+        const { name, category, url, keywords } = req.body;
+        const emoji = {
+            id: `emoji_${emojiIdCounter++}`,
+            name,
+            category: category || 'custom',
+            url,
+            keywords: keywords || [],
+            usageCount: 0
+        };
+        emojiLibrary.push(emoji);
+        res.json({ success: true, emoji });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 删除表情包
+app.delete('/api/admin/emoji-library/:id', (req, res) => {
+    try {
+        const idx = emojiLibrary.findIndex(e => e.id === req.params.id);
+        if (idx > -1) {
+            emojiLibrary.splice(idx, 1);
+        }
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 获取表情包权限
+app.get('/api/admin/emoji-permissions', (req, res) => {
+    try {
+        const { user, role } = req.query;
+        const key = user || role;
+        const perms = emojiPermissions.get(key) || { send: true, search: true, custom: true, upload: true };
+        res.json({ success: true, permissions: perms });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 保存表情包权限
+app.post('/api/admin/emoji-permissions', express.json(), (req, res) => {
+    try {
+        const { user, role, permissions } = req.body;
+        const key = user || role;
+        emojiPermissions.set(key, permissions);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 获取表情包统计
+app.get('/api/admin/emoji-stats', (req, res) => {
+    try {
+        const stats = emojiLibrary
+            .map(e => ({ ...e, rank: 0 }))
+            .sort((a, b) => b.usageCount - a.usageCount)
+            .map((e, i) => ({ ...e, rank: i + 1 }));
+        res.json({ success: true, stats });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// ==================== 表情包管理 API END ====================
+
 // ==================== 用户错误反馈 END ====================
 
 // ==================== 系统日志 API ====================
@@ -3120,7 +3647,8 @@ function csrfProtectionMiddleware(req, res, next) {
     }
 
     // 管理后台接口需要管理员密码认证，CSRF 保护是多余的，直接放行
-    if (req.path.startsWith('/api/admin/')) {
+    // 注意：由于此中间件挂载在 /api/ 路径下，req.path 不包含 /api/ 前缀
+    if (req.path.startsWith('/admin/')) {
         return next();
     }
     
@@ -7761,6 +8289,9 @@ io.on('connection', (socket) => {
                     if (updatedGame.status === 'ended') {
                         const winnerUser = users.get(updatedGame.winner);
                         console.log(`[房间 ${user.roomName}] 你画我猜游戏 ${updatedGame.id} 结束，赢家: ${winnerUser?.username || '未知'}`);
+                    } else if (updatedGame.currentDrawer === PC_SOCKET_ID) {
+                        // 轮到 PC 画，延迟后开始画
+                        setTimeout(() => pcPictionaryDraw(updatedGame.id), 1000);
                     }
                 }
             }
@@ -7831,6 +8362,10 @@ io.on('connection', (socket) => {
             console.log(`[房间 ${user.roomName}] 你画我猜游戏 ${game.id} 结束`);
         } else {
             console.log(`[房间 ${user.roomName}] ${user.username} 画完了，进入第 ${game.currentRound + 1} 轮`);
+            // 如果下一轮是 PC 画，自动开始画
+            if (game.currentDrawer === PC_SOCKET_ID) {
+                setTimeout(() => pcPictionaryDraw(game.id), 1000);
+            }
         }
     });
 
@@ -8300,6 +8835,438 @@ io.on('connection', (socket) => {
         return false;
     }
 
+    // 围棋游戏逻辑（19x19棋盘，吃子规则）
+    function createGoGame(creator, roomName) {
+        const gameId = `go-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+        const game = {
+            id: gameId,
+            type: 'go',
+            creator: creator.username,
+            creatorSocketId: creator.socketId,
+            roomName: roomName,
+            players: [creator.socketId],
+            board: Array(19).fill().map(() => Array(19).fill(null)), // null, 'black', 'white'
+            currentPlayer: creator.socketId,
+            currentColor: 'black', // 黑棋先手
+            status: 'waiting',
+            startTime: null,
+            endTime: null,
+            winner: null,
+            spectators: [],
+            capturedStones: { black: 0, white: 0 }, // 提子数
+            lastMove: null,
+            moveHistory: [],
+            passCount: 0 // 连续pass次数，达到2次结束游戏
+        };
+        
+        games.set(gameId, game);
+        return game;
+    }
+    
+    function joinGoGame(gameId, playerSocketId, playerUsername) {
+        const game = games.get(gameId);
+        if (game && game.status === 'waiting' && game.players.length < 2) {
+            game.players.push(playerSocketId);
+            game.status = 'playing';
+            game.startTime = new Date();
+            games.set(gameId, game);
+            return game;
+        }
+        return null;
+    }
+    
+    function makeGoMove(gameId, playerSocketId, x, y) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing') return null;
+        
+        if (game.currentPlayer !== playerSocketId) return null;
+        if (x < 0 || x >= 19 || y < 0 || y >= 19) return null;
+        if (game.board[x][y] !== null) return null;
+        
+        const color = game.currentColor;
+        const opponentColor = color === 'black' ? 'white' : 'black';
+        
+        // 尝试落子
+        game.board[x][y] = color;
+        
+        // 检查提子（吃掉对方无气棋子）
+        const captured = checkGoCaptures(game.board, x, y, opponentColor);
+        if (captured.length > 0) {
+            captured.forEach(([cx, cy]) => {
+                game.board[cx][cy] = null;
+            });
+            game.capturedStones[color] += captured.length;
+        }
+        
+        // 检查自杀规则（落子后自己无气且没有提子）
+        if (captured.length === 0 && !hasLiberty(game.board, x, y, color)) {
+            // 自杀，撤销落子
+            game.board[x][y] = null;
+            return null;
+        }
+        
+        // 记录历史
+        game.moveHistory.push({ x, y, color, captured: captured.length });
+        game.lastMove = { x, y };
+        game.passCount = 0;
+        
+        // 切换玩家
+        game.currentPlayer = game.players[0] === playerSocketId ? game.players[1] : game.players[0];
+        game.currentColor = opponentColor;
+        
+        games.set(gameId, game);
+        return { game, captured };
+    }
+    
+    function passGoMove(gameId, playerSocketId) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing') return null;
+        if (game.currentPlayer !== playerSocketId) return null;
+        
+        game.passCount++;
+        game.moveHistory.push({ pass: true, color: game.currentColor });
+        
+        // 双方连续pass，结束游戏
+        if (game.passCount >= 2) {
+            game.status = 'ended';
+            game.endTime = new Date();
+            // 简单计目：盘面棋子数 + 提子数
+            const result = calculateGoScore(game.board, game.capturedStones);
+            game.winner = result.blackScore > result.whiteScore ? game.players[0] : game.players[1];
+            game.scores = result;
+        } else {
+            // 切换玩家
+            game.currentPlayer = game.players[0] === playerSocketId ? game.players[1] : game.players[0];
+            game.currentColor = game.currentColor === 'black' ? 'white' : 'black';
+        }
+        
+        games.set(gameId, game);
+        return game;
+    }
+    
+    // 检查提子
+    function checkGoCaptures(board, x, y, opponentColor) {
+        const captured = [];
+        const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+        
+        for (const [dx, dy] of directions) {
+            const nx = x + dx, ny = y + dy;
+            if (nx >= 0 && nx < 19 && ny >= 0 && ny < 19 && board[nx][ny] === opponentColor) {
+                if (!hasLiberty(board, nx, ny, opponentColor)) {
+                    // 找到所有相连的无气棋子
+                    const group = getStoneGroup(board, nx, ny, opponentColor);
+                    captured.push(...group);
+                }
+            }
+        }
+        return captured;
+    }
+    
+    // 检查棋子/棋块是否有气
+    function hasLiberty(board, x, y, color) {
+        const visited = new Set();
+        const queue = [[x, y]];
+        visited.add(`${x},${y}`);
+        const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+        
+        while (queue.length > 0) {
+            const [cx, cy] = queue.shift();
+            for (const [dx, dy] of directions) {
+                const nx = cx + dx, ny = cy + dy;
+                if (nx >= 0 && nx < 19 && ny >= 0 && ny < 19) {
+                    if (board[nx][ny] === null) return true; // 有气
+                    if (board[nx][ny] === color && !visited.has(`${nx},${ny}`)) {
+                        visited.add(`${nx},${ny}`);
+                        queue.push([nx, ny]);
+                    }
+                }
+            }
+        }
+        return false; // 无气
+    }
+    
+    // 获取相连的同色棋子组
+    function getStoneGroup(board, x, y, color) {
+        const group = [];
+        const visited = new Set();
+        const queue = [[x, y]];
+        visited.add(`${x},${y}`);
+        const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+        
+        while (queue.length > 0) {
+            const [cx, cy] = queue.shift();
+            group.push([cx, cy]);
+            for (const [dx, dy] of directions) {
+                const nx = cx + dx, ny = cy + dy;
+                if (nx >= 0 && nx < 19 && ny >= 0 && ny < 19 && 
+                    board[nx][ny] === color && !visited.has(`${nx},${ny}`)) {
+                    visited.add(`${nx},${ny}`);
+                    queue.push([nx, ny]);
+                }
+            }
+        }
+        return group;
+    }
+    
+    // 简单计目（中国规则简化版）
+    function calculateGoScore(board, capturedStones) {
+        let blackStones = 0, whiteStones = 0;
+        for (let x = 0; x < 19; x++) {
+            for (let y = 0; y < 19; y++) {
+                if (board[x][y] === 'black') blackStones++;
+                else if (board[x][y] === 'white') whiteStones++;
+            }
+        }
+        // 黑贴3.75目（简化）
+        return {
+            blackScore: blackStones + capturedStones.black,
+            whiteScore: whiteStones + capturedStones.white + 3.75
+        };
+    }
+
+    // 贪吃蛇对战游戏逻辑
+    function createSnakeGame(creator, roomName) {
+        const gameId = `snake-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+        const GRID_SIZE = 20; // 20x20网格
+        
+        const game = {
+            id: gameId,
+            type: 'snake',
+            creator: creator.username,
+            creatorSocketId: creator.socketId,
+            roomName: roomName,
+            players: [creator.socketId],
+            status: 'waiting',
+            gridSize: GRID_SIZE,
+            snakes: {}, // Map<socketId, {body: [{x,y}], direction, alive}>
+            foods: [], // [{x, y}]
+            scores: new Map(),
+            startTime: null,
+            endTime: null,
+            winner: null,
+            gameLoop: null,
+            spectators: []
+        };
+        
+        games.set(gameId, game);
+        return game;
+    }
+    
+    function joinSnakeGame(gameId, playerSocketId, playerUsername) {
+        const game = games.get(gameId);
+        if (game && game.status === 'waiting' && game.players.length < 2) {
+            game.players.push(playerSocketId);
+            game.status = 'playing';
+            game.startTime = new Date();
+            
+            // 初始化两条蛇
+            const GRID_SIZE = game.gridSize;
+            game.snakes[game.players[0]] = {
+                body: [{x: 5, y: 10}, {x: 4, y: 10}, {x: 3, y: 10}],
+                direction: 'right',
+                alive: true,
+                color: '#28a745'
+            };
+            game.snakes[playerSocketId] = {
+                body: [{x: 14, y: 10}, {x: 15, y: 10}, {x: 16, y: 10}],
+                direction: 'left',
+                alive: true,
+                color: '#dc3545'
+            };
+            
+            // 初始化分数
+            game.scores.set(game.players[0], 0);
+            game.scores.set(playerSocketId, 0);
+            
+            // 生成食物
+            generateSnakeFoods(game);
+            
+            games.set(gameId, game);
+            return game;
+        }
+        return null;
+    }
+    
+    function generateSnakeFoods(game) {
+        const GRID_SIZE = game.gridSize;
+        const foodCount = 3; // 同时存在3个食物
+        
+        while (game.foods.length < foodCount) {
+            const x = Math.floor(Math.random() * GRID_SIZE);
+            const y = Math.floor(Math.random() * GRID_SIZE);
+            
+            // 检查是否与蛇身重叠
+            let overlap = false;
+            for (const playerId of game.players) {
+                const snake = game.snakes[playerId];
+                if (snake && snake.body.some(seg => seg.x === x && seg.y === y)) {
+                    overlap = true;
+                    break;
+                }
+            }
+            
+            if (!overlap && !game.foods.some(f => f.x === x && f.y === y)) {
+                game.foods.push({ x, y });
+            }
+        }
+    }
+    
+    function updateSnakeGame(gameId) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing') return null;
+        
+        const GRID_SIZE = game.gridSize;
+        const directions = {
+            'up': { x: 0, y: -1 },
+            'down': { x: 0, y: 1 },
+            'left': { x: -1, y: 0 },
+            'right': { x: 1, y: 0 }
+        };
+        
+        for (const playerId of game.players) {
+            const snake = game.snakes[playerId];
+            if (!snake || !snake.alive) continue;
+            
+            const dir = directions[snake.direction];
+            const head = snake.body[0];
+            const newHead = { x: head.x + dir.x, y: head.y + dir.y };
+            
+            // 检查撞墙
+            if (newHead.x < 0 || newHead.x >= GRID_SIZE || newHead.y < 0 || newHead.y >= GRID_SIZE) {
+                snake.alive = false;
+                continue;
+            }
+            
+            // 检查撞自己
+            if (snake.body.some(seg => seg.x === newHead.x && seg.y === newHead.y)) {
+                snake.alive = false;
+                continue;
+            }
+            
+            // 检查撞其他蛇
+            for (const otherId of game.players) {
+                if (otherId === playerId) continue;
+                const otherSnake = game.snakes[otherId];
+                if (otherSnake && otherSnake.body.some(seg => seg.x === newHead.x && seg.y === newHead.y)) {
+                    snake.alive = false;
+                    break;
+                }
+            }
+            
+            if (!snake.alive) continue;
+            
+            // 移动蛇
+            snake.body.unshift(newHead);
+            
+            // 检查吃食物
+            const foodIndex = game.foods.findIndex(f => f.x === newHead.x && f.y === newHead.y);
+            if (foodIndex >= 0) {
+                // 吃到食物，增长，加分
+                game.foods.splice(foodIndex, 1);
+                game.scores.set(playerId, (game.scores.get(playerId) || 0) + 10);
+                generateSnakeFoods(game);
+            } else {
+                // 没吃到，移除尾巴
+                snake.body.pop();
+            }
+        }
+        
+        // 检查游戏结束
+        const alivePlayers = game.players.filter(pid => game.snakes[pid]?.alive);
+        if (alivePlayers.length <= 1) {
+            game.status = 'ended';
+            game.endTime = new Date();
+            if (alivePlayers.length === 1) {
+                game.winner = alivePlayers[0];
+            }
+            if (game.gameLoop) {
+                clearInterval(game.gameLoop);
+                game.gameLoop = null;
+            }
+        }
+        
+        games.set(gameId, game);
+        return game;
+    }
+    
+    function changeSnakeDirection(gameId, playerSocketId, direction) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing') return null;
+        
+        const snake = game.snakes[playerSocketId];
+        if (!snake || !snake.alive) return null;
+        
+        // 防止180度转向
+        const opposites = { 'up': 'down', 'down': 'up', 'left': 'right', 'right': 'left' };
+        if (opposites[direction] === snake.direction) return null;
+        
+        snake.direction = direction;
+        games.set(gameId, game);
+        return game;
+    }
+    
+    // 启动贪吃蛇游戏循环
+    function startSnakeGameLoop(gameId) {
+        const game = games.get(gameId);
+        if (!game || game.gameLoop) return;
+        
+        game.gameLoop = setInterval(() => {
+            const currentGame = games.get(gameId);
+            if (!currentGame || currentGame.status !== 'playing') {
+                if (currentGame && currentGame.gameLoop) {
+                    clearInterval(currentGame.gameLoop);
+                    currentGame.gameLoop = null;
+                    games.set(gameId, currentGame);
+                }
+                return;
+            }
+            
+            // 更新游戏状态
+            const updated = updateSnakeGame(gameId);
+            if (updated) {
+                // 广播更新给所有玩家
+                updated.players.forEach(pid => {
+                    io.to(pid).emit('snake-update', {
+                        gameId: updated.id,
+                        snakes: updated.snakes,
+                        foods: updated.foods,
+                        scores: Array.from(updated.scores.entries()).map(([socketId, score]) => ({
+                            socketId,
+                            username: users.get(socketId)?.username || '未知',
+                            score
+                        })),
+                        status: updated.status,
+                        winner: updated.winner
+                    });
+                });
+                
+                // 游戏结束通知
+                if (updated.status === 'ended') {
+                    updated.players.forEach(pid => {
+                        const isWinner = updated.winner === pid;
+                        io.to(pid).emit('snake-end', {
+                            gameId: updated.id,
+                            winner: updated.winner,
+                            scores: Array.from(updated.scores.entries()).map(([socketId, score]) => ({
+                                socketId,
+                                username: users.get(socketId)?.username || '未知',
+                                score
+                            }))
+                        });
+                    });
+                    
+                    if (updated.gameLoop) {
+                        clearInterval(updated.gameLoop);
+                        updated.gameLoop = null;
+                        games.set(gameId, updated);
+                    }
+                }
+            }
+        }, 1000); // 1000ms 更新一次（1秒刷新）
+        
+        games.set(gameId, game);
+    }
+
     // ===================================================================
     // PC 虚拟账户 AI 逻辑
     // ===================================================================
@@ -8401,6 +9368,315 @@ io.on('connection', (socket) => {
             if (updatedGame.players[0] === PC_SOCKET_ID) {
                 setTimeout(() => pcBombMove(updatedGame.id), 900);
             }
+
+        } else if (gameType === 'pictionary') {
+            // 你画我猜：pc 作为画者，玩家猜词
+            const game = createPictionaryGame(pcCreator, user.roomName);
+            if (!game) return;
+            const updatedGame = joinPictionaryGame(game.id, playerSocketId, user.username);
+            if (!updatedGame) return;
+            
+            // pc 作为画者（players[0]），玩家作为猜词者（players[1]）
+            updatedGame.currentDrawer = PC_SOCKET_ID;
+            updatedGame.status = 'playing';
+            updatedGame.startTime = new Date();
+            updatedGame.roundStartTime = new Date();
+            games.set(updatedGame.id, updatedGame);
+
+            const startPayload = {
+                gameId: updatedGame.id,
+                gameType: 'pictionary',
+                players: [
+                    { socketId: PC_SOCKET_ID, username: PC_USERNAME },
+                    { socketId: playerSocketId, username: user.username }
+                ],
+                currentDrawer: PC_SOCKET_ID,
+                currentDrawerName: PC_USERNAME,
+                currentRound: updatedGame.currentRound,
+                maxRounds: updatedGame.maxRounds,
+                scores: Array.from(updatedGame.scores.entries()).map(([socketId, score]) => ({
+                    socketId,
+                    username: socketId === PC_SOCKET_ID ? PC_USERNAME : (users.get(socketId)?.username || '未知'),
+                    score
+                })),
+                wordHint: updatedGame.currentWord ? (updatedGame.currentWord.length + '个字') : '',
+                status: updatedGame.status
+            };
+            io.to(playerSocketId).emit('pictionary-start', startPayload);
+            console.log(`[PC] 你画我猜游戏 ${updatedGame.id} 开始，对战 ${user.username}，PC画玩家猜，词汇：${updatedGame.currentWord}`);
+            
+            // PC 开始画画（延迟1秒后发送绘画数据）
+            setTimeout(() => pcPictionaryDraw(updatedGame.id), 1000);
+
+        } else if (gameType === 'go') {
+            // 围棋：玩家执黑先手，PC执白
+            const game = createGoGame({ username: user.username, socketId: playerSocketId }, user.roomName);
+            if (!game) return;
+            // PC 加入作为第二个玩家（白棋）
+            game.players.push(PC_SOCKET_ID);
+            game.status = 'playing';
+            game.startTime = new Date();
+            games.set(game.id, game);
+
+            const startPayload = {
+                gameId: game.id,
+                gameType: 'go',
+                players: [
+                    { socketId: playerSocketId, username: user.username, color: 'black' },
+                    { socketId: PC_SOCKET_ID, username: PC_USERNAME, color: 'white' }
+                ],
+                board: game.board,
+                currentPlayer: game.currentPlayer,
+                currentColor: game.currentColor,
+                capturedStones: game.capturedStones
+            };
+            io.to(playerSocketId).emit('go-start', startPayload);
+            console.log(`[PC] 围棋游戏 ${game.id} 开始，对战 ${user.username}，玩家执黑先手`);
+
+        } else if (gameType === 'snake') {
+            // 贪吃蛇对战
+            const game = createSnakeGame(pcCreator, user.roomName);
+            if (!game) return;
+            const updatedGame = joinSnakeGame(game.id, playerSocketId, user.username);
+            if (!updatedGame) return;
+
+            const startPayload = {
+                gameId: updatedGame.id,
+                gameType: 'snake',
+                players: [
+                    { socketId: game.players[0], username: PC_USERNAME, color: '#28a745' },
+                    { socketId: playerSocketId, username: user.username, color: '#dc3545' }
+                ],
+                gridSize: updatedGame.gridSize,
+                snakes: updatedGame.snakes,
+                foods: updatedGame.foods,
+                scores: Array.from(updatedGame.scores.entries()).map(([socketId, score]) => ({
+                    socketId,
+                    username: socketId === PC_SOCKET_ID ? PC_USERNAME : user.username,
+                    score
+                }))
+            };
+            io.to(playerSocketId).emit('snake-start', startPayload);
+            console.log(`[PC] 贪吃蛇游戏 ${updatedGame.id} 开始，对战 ${user.username}`);
+            
+            // 启动游戏循环
+            updatedGame.gameLoop = setInterval(() => {
+                const game = games.get(updatedGame.id);
+                if (!game || game.status !== 'playing') {
+                    if (game && game.gameLoop) {
+                        clearInterval(game.gameLoop);
+                        game.gameLoop = null;
+                    }
+                    return;
+                }
+                
+                // PC AI 移动
+                pcSnakeMove(updatedGame.id);
+                
+                // 更新游戏状态
+                const updated = updateSnakeGame(updatedGame.id);
+                if (updated) {
+                    // 广播更新给所有玩家
+                    updated.players.forEach(pid => {
+                        io.to(pid).emit('snake-update', {
+                            gameId: updated.id,
+                            snakes: updated.snakes,
+                            foods: updated.foods,
+                            scores: Array.from(updated.scores.entries()).map(([socketId, score]) => ({
+                                socketId,
+                                username: socketId === PC_SOCKET_ID ? PC_USERNAME : (users.get(socketId)?.username || '未知'),
+                                score
+                            })),
+                            status: updated.status,
+                            winner: updated.winner
+                        });
+                    });
+                    
+                    // 游戏结束
+                    if (updated.status === 'ended') {
+                        updated.players.forEach(pid => {
+                            io.to(pid).emit('snake-end', {
+                                gameId: updated.id,
+                                winner: updated.winner,
+                                scores: Array.from(updated.scores.entries()).map(([socketId, score]) => ({
+                                    socketId,
+                                    username: socketId === PC_SOCKET_ID ? PC_USERNAME : (users.get(socketId)?.username || '未知'),
+                                    score
+                                }))
+                            });
+                        });
+                    }
+                }
+            }, 150); // 150ms 更新一次
+        }
+    }
+
+    /**
+     * PC 贪吃蛇 AI：简单寻路策略
+     * 优先吃食物，避免撞墙和撞自己
+     */
+    function pcSnakeMove(gameId) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing') return;
+        
+        const pcSnake = game.snakes[PC_SOCKET_ID];
+        if (!pcSnake || !pcSnake.alive) return;
+        
+        const head = pcSnake.body[0];
+        const GRID_SIZE = game.gridSize;
+        const directions = ['up', 'down', 'left', 'right'];
+        const dirVectors = { 'up': {x:0, y:-1}, 'down': {x:0, y:1}, 'left': {x:-1, y:0}, 'right': {x:1, y:0} };
+        const opposites = { 'up': 'down', 'down': 'up', 'left': 'right', 'right': 'left' };
+        
+        // 寻找最近的食物
+        let targetFood = null;
+        let minDist = Infinity;
+        for (const food of game.foods) {
+            const dist = Math.abs(head.x - food.x) + Math.abs(head.y - food.y);
+            if (dist < minDist) {
+                minDist = dist;
+                targetFood = food;
+            }
+        }
+        
+        // 评估每个方向
+        let bestDir = null;
+        let bestScore = -Infinity;
+        
+        for (const dir of directions) {
+            // 不能180度转向
+            if (opposites[dir] === pcSnake.direction) continue;
+            
+            const vec = dirVectors[dir];
+            const newX = head.x + vec.x;
+            const newY = head.y + vec.y;
+            
+            // 检查撞墙
+            if (newX < 0 || newX >= GRID_SIZE || newY < 0 || newY >= GRID_SIZE) continue;
+            
+            // 检查撞自己
+            if (pcSnake.body.some(seg => seg.x === newX && seg.y === newY)) continue;
+            
+            // 计算分数
+            let score = 0;
+            
+            // 距离食物的曼哈顿距离（越近越好）
+            if (targetFood) {
+                const distToFood = Math.abs(newX - targetFood.x) + Math.abs(newY - targetFood.y);
+                score += (GRID_SIZE * 2 - distToFood) * 10;
+            }
+            
+            // 避免边缘
+            if (newX > 0 && newX < GRID_SIZE - 1) score += 5;
+            if (newY > 0 && newY < GRID_SIZE - 1) score += 5;
+            
+            // 随机因子增加变化
+            score += Math.random() * 10;
+            
+            if (score > bestScore) {
+                bestScore = score;
+                bestDir = dir;
+            }
+        }
+        
+        if (bestDir) {
+            pcSnake.direction = bestDir;
+        }
+    }
+
+    /**
+     * PC 围棋 AI：简单策略
+     * 优先提子，其次占角，随机落子
+     */
+    function pcGoMove(gameId) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing' || game.currentPlayer !== PC_SOCKET_ID) return;
+        
+        const board = game.board;
+        const opponentColor = 'black';
+        const myColor = 'white';
+        
+        // 寻找最佳落子点
+        let bestMove = null;
+        let bestScore = -Infinity;
+        
+        // 优先占角和边
+        const corners = [[0,0], [0,18], [18,0], [18,18]];
+        const edges = [];
+        for (let i = 3; i < 16; i++) {
+            edges.push([0,i], [18,i], [i,0], [i,18]);
+        }
+        
+        // 检查所有空点
+        for (let x = 0; x < 19; x++) {
+            for (let y = 0; y < 19; y++) {
+                if (board[x][y] !== null) continue;
+                
+                // 模拟落子
+                board[x][y] = myColor;
+                
+                // 检查是否能提子
+                const captured = checkGoCaptures(board, x, y, opponentColor);
+                
+                // 检查是否自杀
+                let suicide = false;
+                if (captured.length === 0 && !hasLiberty(board, x, y, myColor)) {
+                    suicide = true;
+                }
+                
+                board[x][y] = null; // 恢复
+                
+                if (suicide) continue;
+                
+                let score = 0;
+                
+                // 提子得分最高
+                score += captured.length * 100;
+                
+                // 占角得分
+                if (corners.some(([cx, cy]) => cx === x && cy === y)) score += 50;
+                // 占边得分
+                else if (edges.some(([ex, ey]) => ex === x && ey === y)) score += 20;
+                
+                // 靠近已有棋子
+                const directions = [[0,1], [0,-1], [1,0], [-1,0]];
+                for (const [dx, dy] of directions) {
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < 19 && ny >= 0 && ny < 19 && board[nx][ny] === myColor) {
+                        score += 10;
+                    }
+                }
+                
+                // 随机因子
+                score += Math.random() * 5;
+                
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestMove = { x, y };
+                }
+            }
+        }
+        
+        if (bestMove) {
+            makeGoMove(gameId, PC_SOCKET_ID, bestMove.x, bestMove.y);
+            
+            // 通知玩家
+            const playerSocketId = game.players.find(p => p !== PC_SOCKET_ID);
+            if (playerSocketId) {
+                io.to(playerSocketId).emit('go-move', {
+                    gameId: game.id,
+                    x: bestMove.x,
+                    y: bestMove.y,
+                    color: myColor,
+                    board: game.board,
+                    currentPlayer: game.currentPlayer,
+                    currentColor: game.currentColor,
+                    capturedStones: game.capturedStones
+                });
+            }
+        } else {
+            // 无合法落子，pass
+            passGoMove(gameId, PC_SOCKET_ID);
         }
     }
 
@@ -8533,6 +9809,19 @@ io.on('connection', (socket) => {
 
         if (bestX === -1) return; // 棋盘满了
 
+        // 记录 AI 思考过程
+        let thought;
+        if (typeof aiWinningMove !== 'undefined' && aiWinningMove && bestX === aiWinningMove.x && bestY === aiWinningMove.y) {
+            thought = `发现必胜位置 (${bestX}, ${bestY})，直接落子获胜！`;
+        } else if (typeof blockOpponentWin !== 'undefined' && blockOpponentWin && bestX === blockOpponentWin.x && bestY === blockOpponentWin.y) {
+            thought = `发现对手必胜威胁，必须在 (${bestX}, ${bestY}) 堵截`;
+        } else if (candidates.size > 0) {
+            thought = `选择最佳位置 (${bestX}, ${bestY})，得分 ${Math.round(bestScore)}`;
+        } else {
+            thought = `棋盘为空，选择中央位置 (${bestX}, ${bestY})`;
+        }
+        addAiThought('gomoku', '落子思考', thought);
+
         const updatedGame = makeGomokuMove(gameId, PC_SOCKET_ID, bestX, bestY);
         if (!updatedGame) return;
 
@@ -8601,6 +9890,9 @@ io.on('connection', (socket) => {
             }
         }
 
+        // 记录 AI 思考过程
+        addAiThought('guess-number', '猜测思考', `当前有效区间 [${lo}, ${hi}]，已猜数字 ${guessedNumbers.size} 个，选择中间值 ${mid}`);
+
         const res = makeGuessNumberGuess(gameId, PC_SOCKET_ID, mid);
         if (!res) return;
         const { game: g, result } = res;
@@ -8639,6 +9931,10 @@ io.on('connection', (socket) => {
 
         const choices = ['rock', 'paper', 'scissors'];
         const choice = choices[Math.floor(Math.random() * 3)];
+
+        // 记录 AI 思考过程
+        const choiceNames = { rock: '石头', paper: '布', scissors: '剪刀' };
+        addAiThought('rps', '出招思考', `随机选择出 ${choiceNames[choice]}`);
 
         const updatedGame = makeRPSMove(gameId, PC_SOCKET_ID, choice);
         if (!updatedGame) return;
@@ -8699,6 +9995,10 @@ io.on('connection', (socket) => {
         }
         count = Math.max(1, Math.min(count, maxStep, remaining));
 
+        // 记录 AI 思考过程
+        const strategy = (safeCount >= 1 && safeCount <= maxStep) ? '使用必胜策略' : '随机报数';
+        addAiThought('bomb', '报数思考', `当前 ${current}，炸弹在 ${bomb}，剩余 ${remaining}，${strategy}，报 ${count} 个数`);
+
         const updatedGame = makeBombMove(gameId, PC_SOCKET_ID, count);
         if (!updatedGame) return;
 
@@ -8723,6 +10023,114 @@ io.on('connection', (socket) => {
             setTimeout(() => pcBombMove(gameId), 900);
         }
         console.log(`[PC] 炸弹报数 +${count}，当前: ${updatedGame.current}`);
+    }
+
+    /**
+     * PC 你画我猜 AI：模拟绘画过程
+     * PC 作为画者，发送绘画数据给玩家猜词
+     * 不会自动猜对，只是模拟画画动作
+     */
+    function pcPictionaryDraw(gameId) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing' || game.currentDrawer !== PC_SOCKET_ID) return;
+
+        const playerSocketId = game.players.find(p => p !== PC_SOCKET_ID);
+        if (!playerSocketId) return;
+
+        const word = game.currentWord;
+        const color = '#000000';
+        const size = 5;
+        
+        // 根据词汇生成线条数据（前端 ptDrawLine 需要 x1, y1, x2, y2, color, size）
+        let strokes = [];
+        
+        // 根据词汇特征选择绘画方式
+        if (['苹果', '橙子', '西瓜', '葡萄', '太阳', '月亮', '球', '篮球', '足球', '乒乓球'].some(w => word.includes(w))) {
+            // 画圆形 - 用多条短线模拟圆
+            const cx = 250, cy = 200, r = 60;
+            for (let i = 0; i < 20; i++) {
+                const angle1 = (i / 20) * Math.PI * 2;
+                const angle2 = ((i + 1) / 20) * Math.PI * 2;
+                strokes.push({
+                    x1: cx + Math.cos(angle1) * r,
+                    y1: cy + Math.sin(angle1) * r,
+                    x2: cx + Math.cos(angle2) * r,
+                    y2: cy + Math.sin(angle2) * r,
+                    color, size
+                });
+            }
+        } else if (['电视', '冰箱', '电脑', '手机', '书', '门', '窗', '电脑', '冰箱'].some(w => word.includes(w))) {
+            // 画方形
+            strokes = [
+                { x1: 190, y1: 140, x2: 310, y2: 140, color, size },
+                { x1: 310, y1: 140, x2: 310, y2: 260, color, size },
+                { x1: 310, y1: 260, x2: 190, y2: 260, color, size },
+                { x1: 190, y1: 260, x2: 190, y2: 140, color, size }
+            ];
+        } else if (['山', '屋顶', '帽子'].some(w => word.includes(w))) {
+            // 画三角形/山形
+            strokes = [
+                { x1: 150, y1: 250, x2: 250, y2: 100, color, size },
+                { x1: 250, y1: 100, x2: 350, y2: 250, color, size },
+                { x1: 150, y1: 250, x2: 350, y2: 250, color, size }
+            ];
+        } else if (['鱼', '鲨鱼', '鲸鱼'].some(w => word.includes(w))) {
+            // 画简单的鱼形状
+            strokes = [
+                // 鱼身椭圆
+                { x1: 200, y1: 180, x2: 300, y2: 180, color, size },
+                { x1: 300, y1: 180, x2: 300, y2: 220, color, size },
+                { x1: 300, y1: 220, x2: 200, y2: 220, color, size },
+                { x1: 200, y1: 220, x2: 200, y2: 180, color, size },
+                // 鱼尾
+                { x1: 200, y1: 200, x2: 150, y2: 170, color, size },
+                { x1: 200, y1: 200, x2: 150, y2: 230, color, size }
+            ];
+        } else if (['树', '花', '草'].some(w => word.includes(w))) {
+            // 画简单的树
+            strokes = [
+                // 树干
+                { x1: 250, y1: 280, x2: 250, y2: 180, color, size },
+                // 树冠（几条线表示）
+                { x1: 200, y1: 180, x2: 300, y2: 180, color, size },
+                { x1: 210, y1: 150, x2: 290, y2: 150, color, size },
+                { x1: 230, y1: 120, x2: 270, y2: 120, color, size }
+            ];
+        } else {
+            // 默认：画一个简单的房子轮廓
+            strokes = [
+                // 屋顶
+                { x1: 180, y1: 180, x2: 250, y2: 100, color, size },
+                { x1: 250, y1: 100, x2: 320, y2: 180, color, size },
+                // 房子主体
+                { x1: 190, y1: 180, x2: 190, y2: 280, color, size },
+                { x1: 190, y1: 280, x2: 310, y2: 280, color, size },
+                { x1: 310, y1: 280, x2: 310, y2: 180, color, size }
+            ];
+        }
+
+        // 逐条发送绘画线条，模拟绘画过程
+        let strokeIndex = 0;
+        const sendStroke = () => {
+            if (strokeIndex >= strokes.length || game.status !== 'playing') return;
+            
+            const stroke = strokes[strokeIndex];
+            io.to(playerSocketId).emit('game-draw', {
+                gameId: game.id,
+                drawingData: stroke,
+                drawer: PC_SOCKET_ID
+            });
+            
+            strokeIndex++;
+            if (strokeIndex < strokes.length) {
+                setTimeout(sendStroke, 300); // 每300ms画一条线
+            }
+        };
+
+        // 开始绘画
+        sendStroke();
+
+        console.log(`[PC] 你画我猜游戏 ${game.id}，PC正在画：${word}，共${strokes.length}笔`);
     }
 
     // ===================================================================
@@ -8878,11 +10286,15 @@ io.on('connection', (socket) => {
     
     function joinPictionaryGame(gameId, playerSocketId, playerUsername) {
         const game = games.get(gameId);
-        if (game && game.status === 'waiting') {
-            game.players.push(playerSocketId);
-            game.scores.set(playerSocketId, 0);
+        // 支持 waiting 状态（正常加入）或 playing 状态（PC自动创建的游戏）
+        if (game && (game.status === 'waiting' || game.status === 'playing')) {
+            // 避免重复加入
+            if (!game.players.includes(playerSocketId)) {
+                game.players.push(playerSocketId);
+                game.scores.set(playerSocketId, 0);
+            }
             
-            if (game.players.length >= 2) {
+            if (game.players.length >= 2 && game.status === 'waiting') {
                 game.status = 'playing';
                 game.startTime = new Date();
                 game.roundStartTime = new Date();
@@ -9857,7 +11269,7 @@ io.on('connection', (socket) => {
         if (user && data.userId && data.gameType) {
             // ===== PC 虚拟账户：自动接受邀请 =====
             if (data.userId === PC_SOCKET_ID) {
-                const pcAcceptedGameTypes = ['gomoku', 'guess-number', 'rps', 'bomb'];
+                const pcAcceptedGameTypes = ['gomoku', 'guess-number', 'rps', 'bomb', 'go', 'snake'];
                 if (!pcAcceptedGameTypes.includes(data.gameType)) {
                     socket.emit('game-invitation-error', { message: `pc 暂不支持「${data.gameType}」游戏` });
                     return;
@@ -10144,6 +11556,89 @@ io.on('connection', (socket) => {
                                 console.log(`[房间 ${invitation.roomName}] 俄罗斯方块对战 ${updatedGame.id} 等待双方确认开始`);
                             }
                         }
+                    } else if (invitation.gameType === 'go') {
+                        game = createGoGame({ username: invitation.fromUsername, socketId: invitation.from }, invitation.roomName);
+                        if (game) {
+                            // 使用 joinGoGame 来正确初始化游戏状态
+                            const updatedGame = joinGoGame(game.id, socket.id, user.username);
+                            if (updatedGame) {
+                                // 通知双方游戏开始
+                                [invitation.from, socket.id].forEach(playerSocketId => {
+                                    const isBlack = playerSocketId === invitation.from;
+                                    io.to(playerSocketId).emit('go-start', {
+                                        gameId: updatedGame.id,
+                                        gameType: 'go',
+                                        status: updatedGame.status,
+                                        players: updatedGame.players.map(pid => ({
+                                            socketId: pid,
+                                            username: users.get(pid)?.username || '未知',
+                                            color: pid === invitation.from ? 'black' : 'white'
+                                        })),
+                                        board: updatedGame.board,
+                                        currentPlayer: updatedGame.currentPlayer,
+                                        currentColor: updatedGame.currentColor,
+                                        capturedStones: updatedGame.capturedStones,
+                                        yourColor: isBlack ? 'black' : 'white'
+                                    });
+                                });
+
+                                // 广播给房间其他人
+                                socket.to(invitation.roomName).emit('game-started', {
+                                    gameId: updatedGame.id,
+                                    gameType: 'go',
+                                    players: updatedGame.players.map(pid => users.get(pid)?.username || '未知')
+                                });
+
+                                console.log(`[房间 ${invitation.roomName}] 围棋游戏 ${updatedGame.id} 开始`);
+                            }
+                        }
+                    } else if (invitation.gameType === 'snake') {
+                        game = createSnakeGame({ username: invitation.fromUsername, socketId: invitation.from }, invitation.roomName);
+                        if (game) {
+                            // 使用 joinSnakeGame 来正确初始化游戏状态
+                            const updatedGame = joinSnakeGame(game.id, socket.id, user.username);
+                            if (updatedGame) {
+                                // 启动游戏循环
+                                startSnakeGameLoop(updatedGame.id);
+
+                                // 通知双方游戏开始
+                                [invitation.from, socket.id].forEach(playerSocketId => {
+                                    const mySnake = updatedGame.snakes[playerSocketId];
+                                    io.to(playerSocketId).emit('snake-start', {
+                                        gameId: updatedGame.id,
+                                        gameType: 'snake',
+                                        players: updatedGame.players.map(pid => ({
+                                            socketId: pid,
+                                            username: users.get(pid)?.username || '未知',
+                                            color: updatedGame.snakes[pid]?.color || '#28a745'
+                                        })),
+                                        gridSize: updatedGame.gridSize,
+                                        playerSnake: mySnake,
+                                        myColor: mySnake?.color || '#28a745',
+                                        opponentSnakes: updatedGame.players
+                                            .filter(p => p !== playerSocketId)
+                                            .map(p => ({
+                                                socketId: p,
+                                                snake: updatedGame.snakes[p]
+                                            })),
+                                        food: updatedGame.foods,
+                                        scores: updatedGame.players.reduce((acc, pid) => {
+                                            acc[pid] = updatedGame.scores.get(pid) || 0;
+                                            return acc;
+                                        }, {})
+                                    });
+                                });
+
+                                // 广播给房间其他人
+                                socket.to(invitation.roomName).emit('game-started', {
+                                    gameId: updatedGame.id,
+                                    gameType: 'snake',
+                                    players: updatedGame.players.map(pid => users.get(pid)?.username || '未知')
+                                });
+
+                                console.log(`[房间 ${invitation.roomName}] 贪吃蛇游戏 ${updatedGame.id} 开始`);
+                            }
+                        }
                     }
 
                     console.log(`[房间 ${invitation.roomName}] ${user.username} 接受了 ${invitation.fromUsername} 的 ${invitation.gameType} 邀请`);
@@ -10258,6 +11753,116 @@ io.on('connection', (socket) => {
                    updatedGame.players[updatedGame.currentPlayerIdx] === PC_SOCKET_ID) {
             setTimeout(() => pcBombMove(updatedGame.id), 900);
         }
+    });
+
+    // ---- 围棋：落子 ----
+    socket.on('go-move', (data) => {
+        const user = users.get(socket.id);
+        if (!user || !data.gameId || data.x === undefined || data.y === undefined) return;
+
+        const result = makeGoMove(data.gameId, socket.id, data.x, data.y);
+        if (!result) return;
+
+        const { game, captured } = result;
+
+        // 通知所有玩家
+        game.players.forEach(pid => {
+            io.to(pid).emit('go-move', {
+                gameId: game.id,
+                x: data.x,
+                y: data.y,
+                color: game.currentColor === 'black' ? 'white' : 'black', // 刚落下的颜色
+                board: game.board,
+                currentPlayer: game.currentPlayer,
+                currentColor: game.currentColor,
+                capturedStones: game.capturedStones,
+                captured: captured,
+                lastMove: { x: data.x, y: data.y }
+            });
+        });
+
+        // 检查游戏结束（双方连续pass）
+        if (game.status === 'ended') {
+            game.players.forEach(pid => {
+                io.to(pid).emit('go-end', {
+                    gameId: game.id,
+                    winner: game.winner,
+                    scores: game.scores
+                });
+            });
+            recordGameHistory(game);
+        } else if (game.currentPlayer === PC_SOCKET_ID) {
+            // PC 下棋
+            setTimeout(() => pcGoMove(game.id), 1000);
+        }
+    });
+
+    // ---- 围棋：停一手 ----
+    socket.on('go-pass', (data) => {
+        const user = users.get(socket.id);
+        if (!user || !data.gameId) return;
+
+        const game = passGoMove(data.gameId, socket.id);
+        if (!game) return;
+
+        // 通知所有玩家
+        game.players.forEach(pid => {
+            io.to(pid).emit('go-move', {
+                gameId: game.id,
+                pass: true,
+                color: game.currentColor === 'black' ? 'white' : 'black',
+                board: game.board,
+                currentPlayer: game.currentPlayer,
+                currentColor: game.currentColor,
+                capturedStones: game.capturedStones
+            });
+        });
+
+        // 检查游戏结束
+        if (game.status === 'ended') {
+            game.players.forEach(pid => {
+                io.to(pid).emit('go-end', {
+                    gameId: game.id,
+                    winner: game.winner,
+                    scores: game.scores
+                });
+            });
+            recordGameHistory(game);
+        } else if (game.currentPlayer === PC_SOCKET_ID) {
+            setTimeout(() => pcGoMove(game.id), 1000);
+        }
+    });
+
+    // ---- 围棋：认输 ----
+    socket.on('go-resign', (data) => {
+        const user = users.get(socket.id);
+        if (!user || !data.gameId) return;
+
+        const game = games.get(data.gameId);
+        if (!game || game.status !== 'playing') return;
+
+        game.status = 'ended';
+        game.endTime = new Date();
+        game.winner = game.players.find(p => p !== socket.id);
+        games.set(data.gameId, game);
+
+        game.players.forEach(pid => {
+            io.to(pid).emit('go-end', {
+                gameId: game.id,
+                winner: game.winner,
+                resign: socket.id
+            });
+        });
+        recordGameHistory(game);
+    });
+
+    // ---- 贪吃蛇：改变方向 ----
+    socket.on('snake-change-direction', (data) => {
+        const user = users.get(socket.id);
+        if (!user || !data.gameId || !data.direction) return;
+
+        const game = changeSnakeDirection(data.gameId, socket.id, data.direction);
+        // 方向改变不需要广播，游戏循环会处理状态更新
     });
 
     // 获取游戏邀请列表
