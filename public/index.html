@@ -18916,8 +18916,22 @@ io.on('connection', (socket) => {
                         return;
                     }
 
-                    // 确保socket已初始化
+                    // 确保socket已初始化且已连接
                     if (typeof socket !== 'undefined' && socket) {
+                        // App环境下检查连接状态
+                        if (isNativeApp && !socket.connected) {
+                            alert('正在连接服务器，请稍候...');
+                            // 监听连接成功后再加入
+                            socket.once('connect', () => {
+                                setTimeout(() => {
+                                    const roomName = getRoomFromUrl() || 'main';
+                                    currentRoom = roomName;
+                                    socket.emit('join', { username, roomName });
+                                }, 500);
+                            });
+                            return;
+                        }
+                        
                         // 从URL获取房间名，默认使用'main'
                         const roomName = getRoomFromUrl() || 'main';
                         
