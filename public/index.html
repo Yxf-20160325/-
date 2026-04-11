@@ -53,21 +53,34 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: #f5f5f5;
             height: 100vh;
+            min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
+            /* 修复 Android WebView 键盘弹出时的布局问题 */
+            width: 100%;
+            overflow: hidden;
+        }
+
+        /* 修复 Android WebView 中的触摸问题 */
+        html {
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
         }
 
         .container {
             width: 95%;
             max-width: 900px;
             height: 95vh;
+            max-height: 100vh;
             background: white;
             border-radius: 20px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            /* 修复 Android WebView 中的布局问题 */
+            position: relative;
         }
 
         .header {
@@ -1132,6 +1145,41 @@
             align-items: center;
         }
 
+        /* 输入区域样式 - 修复 Android WebView 显示问题 */
+        .input-area {
+            padding: 15px 20px;
+            background: white;
+            border-top: 1px solid #e9ecef;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* 登录表单样式 */
+        #loginForm {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        /* 修复 Android WebView 点击问题 */
+        #joinBtn {
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            /* 确保按钮在 Android WebView 中可点击 */
+            cursor: pointer;
+            pointer-events: auto;
+        }
+
+        #usernameInput {
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+            /* 确保输入框在 Android WebView 中可点击 */
+            pointer-events: auto;
+        }
+
         #messageInput {
             flex: 1;
             padding: 12px 15px;
@@ -1729,53 +1777,6 @@
             cursor: pointer;
         }
         
-        .container {
-            width: 100%;
-            height: 100vh;
-            border-radius: 0;
-        }
-        .chat-container {
-            flex-direction: column;
-        }
-        .messages {
-            padding: 15px;
-            width: 100%;
-        }
-        .action-btn {
-            width: 40px;
-            height: 40px;
-            font-size: 16px;
-        }
-        #chatForm {
-            flex-wrap: wrap;
-        }
-        #messageInput {
-            flex-basis: 100%;
-        }
-    
-            .container {
-            width: 100%;
-            height: 100vh;
-            border-radius: 0;
-        }
-        .chat-container {
-            flex-direction: column;
-        }
-        .messages {
-            padding: 15px;
-            width: 100%;
-        }
-        .action-btn {
-            width: 40px;
-            height: 40px;
-            font-size: 16px;
-        }
-        #chatForm {
-            flex-wrap: wrap;
-        }
-        #messageInput {
-            flex-basis: 100%;
-        }
         @media (max-width: 768px) {
             .container {
                 width: 100%;
@@ -1825,6 +1826,34 @@
             #sendBtn {
                 flex-basis: 100%;
                 margin-top: 10px;
+            }
+
+            /* 移动端输入区域适配 */
+            .input-area {
+                padding: 10px 15px;
+                background: white;
+                border-top: 1px solid #e9ecef;
+                z-index: 100;
+                max-width: 100%;
+                box-sizing: border-box;
+                /* 使用相对定位而不是固定定位，避免键盘弹出时布局问题 */
+                position: relative;
+                width: 100%;
+            }
+
+            #loginForm {
+                width: 100%;
+            }
+
+            #usernameInput {
+                font-size: 16px; /* 防止 iOS 缩放 */
+                padding: 12px 15px;
+            }
+
+            #joinBtn {
+                padding: 14px 30px;
+                font-size: 16px;
+                min-height: 48px; /* 确保可点击区域足够大 */
             }
             
             .header h1 {
@@ -6482,10 +6511,6 @@
                 // 超时配置
                 timeout: 20000,
                 
-                // 心跳配置 - 适配 Render 平台
-                pingInterval: 25000,
-                pingTimeout: 60000,
-                
                 // 传输方式 - App 环境固定使用 polling+websocket
                 transports: (isNativeApp || window.location.protocol === 'https:')
                     ? ['websocket', 'polling']
@@ -6841,6 +6866,15 @@
         const messageInput = document.getElementById('messageInput');
         const joinBtn = document.getElementById('joinBtn');
         const sendBtn = document.getElementById('sendBtn');
+        
+        // 调试日志：检查关键元素是否存在（Android WebView 调试用）
+        console.log('[Debug] 元素检查:', {
+            joinBtn: !!joinBtn,
+            usernameInput: !!usernameInput,
+            loginForm: !!document.getElementById('loginForm'),
+            chatForm: !!document.getElementById('chatForm'),
+            messagesDiv: !!messagesDiv
+        });
         const loginForm = document.getElementById('loginForm');
         const chatForm = document.getElementById('chatForm');
         const imageInput = document.getElementById('imageInput');
@@ -18838,7 +18872,13 @@ io.on('connection', (socket) => {
         // 处理加入按钮点击
         // 确保joinBtn已定义
         if (joinBtn) {
-            joinBtn.addEventListener('click', () => {
+            // 同时支持 click 和 touchend 事件，确保在 Android WebView 中可点击
+            const handleJoinClick = (e) => {
+                // 防止重复触发
+                if (e.type === 'touchend') {
+                    e.preventDefault();
+                }
+                
                 // 直接使用document.getElementById获取元素，确保元素存在
                 const usernameInput = document.getElementById('usernameInput');
                 if (!usernameInput) {
@@ -18876,7 +18916,10 @@ io.on('connection', (socket) => {
                 } else {
                     alert('请输入用户名');
                 }
-            });
+            };
+            
+            joinBtn.addEventListener('click', handleJoinClick);
+            joinBtn.addEventListener('touchend', handleJoinClick);
         }
         
         // 确保usernameInput已定义

@@ -22,8 +22,11 @@
       "backgroundColor": "#667eea"
     },
     "Keyboard": {
-      "resize": "body",
-      "resizeOnFullScreen": true
+      "resize": "native",
+      "resizeOnFullScreen": true,
+      "android": {
+        "resize": "native"
+      }
     },
     "WebView": {
       "overrideUserAgent": null,

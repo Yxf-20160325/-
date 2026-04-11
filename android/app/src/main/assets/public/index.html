@@ -53,21 +53,34 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: #f5f5f5;
             height: 100vh;
+            min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
+            /* 修复 Android WebView 键盘弹出时的布局问题 */
+            width: 100%;
+            overflow: hidden;
+        }
+
+        /* 修复 Android WebView 中的触摸问题 */
+        html {
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
         }
 
         .container {
             width: 95%;
             max-width: 900px;
             height: 95vh;
+            max-height: 100vh;
             background: white;
             border-radius: 20px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            /* 修复 Android WebView 中的布局问题 */
+            position: relative;
         }
 
         .header {
@@ -1132,6 +1145,41 @@
             align-items: center;
         }
 
+        /* 输入区域样式 - 修复 Android WebView 显示问题 */
+        .input-area {
+            padding: 15px 20px;
+            background: white;
+            border-top: 1px solid #e9ecef;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* 登录表单样式 */
+        #loginForm {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        /* 修复 Android WebView 点击问题 */
+        #joinBtn {
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            /* 确保按钮在 Android WebView 中可点击 */
+            cursor: pointer;
+            pointer-events: auto;
+        }
+
+        #usernameInput {
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+            /* 确保输入框在 Android WebView 中可点击 */
+            pointer-events: auto;
+        }
+
         #messageInput {
             flex: 1;
             padding: 12px 15px;
@@ -1729,53 +1777,6 @@
             cursor: pointer;
         }
         
-        .container {
-            width: 100%;
-            height: 100vh;
-            border-radius: 0;
-        }
-        .chat-container {
-            flex-direction: column;
-        }
-        .messages {
-            padding: 15px;
-            width: 100%;
-        }
-        .action-btn {
-            width: 40px;
-            height: 40px;
-            font-size: 16px;
-        }
-        #chatForm {
-            flex-wrap: wrap;
-        }
-        #messageInput {
-            flex-basis: 100%;
-        }
-    
-            .container {
-            width: 100%;
-            height: 100vh;
-            border-radius: 0;
-        }
-        .chat-container {
-            flex-direction: column;
-        }
-        .messages {
-            padding: 15px;
-            width: 100%;
-        }
-        .action-btn {
-            width: 40px;
-            height: 40px;
-            font-size: 16px;
-        }
-        #chatForm {
-            flex-wrap: wrap;
-        }
-        #messageInput {
-            flex-basis: 100%;
-        }
         @media (max-width: 768px) {
             .container {
                 width: 100%;
@@ -1825,6 +1826,34 @@
             #sendBtn {
                 flex-basis: 100%;
                 margin-top: 10px;
+            }
+
+            /* 移动端输入区域适配 */
+            .input-area {
+                padding: 10px 15px;
+                background: white;
+                border-top: 1px solid #e9ecef;
+                z-index: 100;
+                max-width: 100%;
+                box-sizing: border-box;
+                /* 使用相对定位而不是固定定位，避免键盘弹出时布局问题 */
+                position: relative;
+                width: 100%;
+            }
+
+            #loginForm {
+                width: 100%;
+            }
+
+            #usernameInput {
+                font-size: 16px; /* 防止 iOS 缩放 */
+                padding: 12px 15px;
+            }
+
+            #joinBtn {
+                padding: 14px 30px;
+                font-size: 16px;
+                min-height: 48px; /* 确保可点击区域足够大 */
             }
             
             .header h1 {
@@ -4978,6 +5007,95 @@
         </div>
     </div>
 
+    <!-- 围棋游戏模态框 -->
+    <div class="modal" id="goModal">
+        <div class="modal-content" style="max-width: 700px; max-height: 95vh; overflow-y: auto;">
+            <h3>⚫ 围棋</h3>
+            <p style="color:#6c757d;font-size:13px;margin-top:-8px;">19×19路围棋，黑先白后，吃子计分</p>
+
+            <!-- 玩家信息栏 -->
+            <div id="goPlayers" style="display:flex;gap:12px;margin-bottom:14px;justify-content:center;"></div>
+
+            <!-- 提子计数 -->
+            <div style="display:flex;gap:20px;justify-content:center;margin-bottom:12px;">
+                <div style="text-align:center;padding:8px 16px;background:#333;color:white;border-radius:6px;">
+                    <div style="font-size:12px;">⚫ 黑提子</div>
+                    <div id="goCapturedBlack" style="font-size:20px;font-weight:bold;">0</div>
+                </div>
+                <div style="text-align:center;padding:8px 16px;background:#fff;border:2px solid #333;border-radius:6px;color:#333;">
+                    <div style="font-size:12px;">⚪ 白提子</div>
+                    <div id="goCapturedWhite" style="font-size:20px;font-weight:bold;">0</div>
+                </div>
+            </div>
+
+            <!-- 状态 -->
+            <div id="goStatus" style="text-align:center;font-weight:bold;margin-bottom:12px;padding:8px;background:#e3f2fd;border-radius:6px;color:#1976d2;">等待游戏开始...</div>
+
+            <!-- 棋盘 -->
+            <div style="display:flex;justify-content:center;margin-bottom:14px;">
+                <canvas id="goBoard" width="570" height="570" style="background:#dcb35c;cursor:pointer;border-radius:4px;box-shadow:0 4px 12px rgba(0,0,0,0.15);"></canvas>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div id="goControls" style="display:flex;gap:10px;justify-content:center;margin-bottom:14px;">
+                <button id="goPassBtn" onclick="goPass()" style="padding:8px 20px;background:#6c757d;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px;">🏳️ 停一手</button>
+                <button id="goResignBtn" onclick="goResign()" style="padding:8px 20px;background:#dc3545;color:white;border:none;border-radius:6px;cursor:pointer;font-size:14px;">🏳️ 认输</button>
+            </div>
+
+            <!-- 最终结果 -->
+            <div id="goResult" style="display:none;text-align:center;padding:14px;background:#d4edda;border-radius:8px;font-size:18px;font-weight:bold;color:#155724;margin-bottom:10px;"></div>
+
+            <div class="modal-buttons" style="margin-top:4px;">
+                <button type="button" id="goRematchBtn" style="display:none;background:#28a745;color:white;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:bold;margin-right:8px;" onclick="goRematch()">🔄 再来一局</button>
+                <button type="button" class="friend-btn" onclick="closeGoModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 贪吃蛇对战模态框 -->
+    <div class="modal" id="snakeModal">
+        <div class="modal-content" style="max-width: 600px; max-height: 95vh; overflow-y: auto;">
+            <h3>🐍 贪吃蛇对战</h3>
+            <p style="color:#6c757d;font-size:13px;margin-top:-8px;">吃掉食物增长，不要撞墙或撞到自己！</p>
+
+            <!-- 玩家信息栏 -->
+            <div id="snakePlayers" style="display:flex;gap:12px;margin-bottom:14px;justify-content:center;"></div>
+
+            <!-- 分数 -->
+            <div style="display:flex;gap:20px;justify-content:center;margin-bottom:12px;">
+                <div id="snakeScore1" style="text-align:center;padding:8px 16px;background:#28a745;color:white;border-radius:6px;">
+                    <div style="font-size:12px;">🟢 玩家1</div>
+                    <div style="font-size:20px;font-weight:bold;">0</div>
+                </div>
+                <div id="snakeScore2" style="text-align:center;padding:8px 16px;background:#dc3545;color:white;border-radius:6px;">
+                    <div style="font-size:12px;">🔴 玩家2</div>
+                    <div style="font-size:20px;font-weight:bold;">0</div>
+                </div>
+            </div>
+
+            <!-- 状态 -->
+            <div id="snakeStatus" style="text-align:center;font-weight:bold;margin-bottom:12px;padding:8px;background:#e3f2fd;border-radius:6px;color:#1976d2;">等待游戏开始...</div>
+
+            <!-- 游戏画布 -->
+            <div style="display:flex;justify-content:center;margin-bottom:14px;">
+                <canvas id="snakeCanvas" width="400" height="400" style="background:#1a1a2e;border:3px solid #333;border-radius:4px;"></canvas>
+            </div>
+
+            <!-- 操作说明 -->
+            <div style="text-align:center;font-size:13px;color:#6c757d;margin-bottom:14px;">
+                使用方向键 ↑↓←→ 控制蛇的移动
+            </div>
+
+            <!-- 最终结果 -->
+            <div id="snakeResult" style="display:none;text-align:center;padding:14px;background:#d4edda;border-radius:8px;font-size:18px;font-weight:bold;color:#155724;margin-bottom:10px;"></div>
+
+            <div class="modal-buttons" style="margin-top:4px;">
+                <button type="button" id="snakeRematchBtn" style="display:none;background:#28a745;color:white;border:none;padding:8px 20px;border-radius:6px;cursor:pointer;font-size:14px;font-weight:bold;margin-right:8px;" onclick="snakeRematch()">🔄 再来一局</button>
+                <button type="button" class="friend-btn" onclick="closeSnakeModal()">关闭</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 数字炸弹游戏模态框 -->
     <div class="modal" id="bombModal">
         <div class="modal-content" style="max-width: 480px; max-height: 90vh; overflow-y: auto;">
@@ -6107,10 +6225,12 @@
                                     ${user.isBot ? '<span style="display:inline-flex;align-items:center;gap:3px;margin-left:5px;padding:2px 7px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-size:11px;font-weight:bold;border-radius:10px;letter-spacing:0.5px;box-shadow:0 1px 4px rgba(102,126,234,0.4);">🤖 AI</span>' : ''}
                                 </div>
                                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                    <button onclick="sendGameInvitation('${user.socketId}', 'gomoku')" style="padding: 5px 10px; background: #667eea; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">♟️ 邀请下棋</button>
+                                    <button onclick="sendGameInvitation('${user.socketId}', 'gomoku')" style="padding: 5px 10px; background: #667eea; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">♟️ 五子棋</button>
+                                    <button onclick="sendGameInvitation('${user.socketId}', 'go')" style="padding: 5px 10px; background: #5a4fcf; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">⚫ 围棋</button>
                                     <button onclick="sendGameInvitation('${user.socketId}', 'guess-number')" style="padding: 5px 10px; background: #f093fb; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">🔢 猜数字</button>
                                     <button onclick="sendGameInvitation('${user.socketId}', 'pictionary')" style="padding: 5px 10px; background: #43b97f; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">🎨 你画我猜</button>
                                     <button onclick="sendGameInvitation('${user.socketId}', 'rps')" style="padding: 5px 10px; background: #fd7e14; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">✊ 猜拳</button>
+                                    <button onclick="sendGameInvitation('${user.socketId}', 'snake')" style="padding: 5px 10px; background: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">🐍 贪吃蛇</button>
                                     <button onclick="sendGameInvitation('${user.socketId}', 'typing')" style="padding: 5px 10px; background: #20c997; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">⌨️ 打字对战</button>
                                     <button onclick="sendGameInvitation('${user.socketId}', 'tetris')" style="padding: 5px 10px; background: #ff6b6b; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">🧱 方块对战</button>
                                 </div>
@@ -6126,7 +6246,7 @@
             socket.on('active-games', (games) => {
                 console.log('收到活跃游戏列表:', games);
                 const activeGamesList = document.getElementById('activeGamesList');
-                const GAME_NAMES = { gomoku: '♟️ 五子棋', 'guess-number': '🔢 猜数字', pictionary: '🎨 你画我猜', rps: '✊ 剪刀石头布', bomb: '💣 数字炸弹', typing: '⌨️ 打字对战', tetris: '🧱 俄罗斯方块' };
+                const GAME_NAMES = { gomoku: '♟️ 五子棋', 'guess-number': '🔢 猜数字', pictionary: '🎨 你画我猜', rps: '✊ 剪刀石头布', bomb: '💣 数字炸弹', typing: '⌨️ 打字对战', tetris: '🧱 俄罗斯方块', go: '⚫ 围棋', snake: '🐍 贪吃蛇' };
                 const STATUS_NAMES = { waiting: '等待加入', playing: '进行中', finished: '已结束' };
                 if (activeGamesList) {
                     if (!games || games.length === 0) {
@@ -6179,7 +6299,7 @@
             socket.on('game-invitations', (invitations) => {
                 console.log('收到游戏邀请列表:', invitations);
                 const gameInvitationsList = document.getElementById('gameInvitationsList');
-                const GAME_NAMES = { gomoku: '♟️ 五子棋', 'guess-number': '🔢 猜数字', pictionary: '🎨 你画我猜', rps: '✊ 剪刀石头布', bomb: '💣 数字炸弹', typing: '⌨️ 打字对战', tetris: '🧱 俄罗斯方块' };
+                const GAME_NAMES = { gomoku: '♟️ 五子棋', 'guess-number': '🔢 猜数字', pictionary: '🎨 你画我猜', rps: '✊ 剪刀石头布', bomb: '💣 数字炸弹', typing: '⌨️ 打字对战', tetris: '🧱 俄罗斯方块', go: '⚫ 围棋', snake: '🐍 贪吃蛇' };
                 if (gameInvitationsList) {
                     if (invitations.length === 0) {
                         gameInvitationsList.innerHTML = '<p style="text-align: center; color: #6c757d;">暂无游戏邀请</p>';
@@ -6208,7 +6328,7 @@
             socket.on('game-history', (history) => {
                 console.log('收到游戏历史记录:', history);
                 const gameHistoryList = document.getElementById('gameHistoryList');
-                const GAME_NAMES = { gomoku: '♟️ 五子棋', 'guess-number': '🔢 猜数字', pictionary: '🎨 你画我猜', rps: '✊ 剪刀石头布', bomb: '💣 数字炸弹', typing: '⌨️ 打字对战', tetris: '🧱 俄罗斯方块' };
+                const GAME_NAMES = { gomoku: '♟️ 五子棋', 'guess-number': '🔢 猜数字', pictionary: '🎨 你画我猜', rps: '✊ 剪刀石头布', bomb: '💣 数字炸弹', typing: '⌨️ 打字对战', tetris: '🧱 俄罗斯方块', go: '⚫ 围棋', snake: '🐍 贪吃蛇' };
                 if (gameHistoryList) {
                     if (history.length === 0) {
                         gameHistoryList.innerHTML = '<p style="text-align: center; color: #6c757d;">暂无游戏历史</p>';
@@ -6391,10 +6511,6 @@
                 // 超时配置
                 timeout: 20000,
                 
-                // 心跳配置 - 适配 Render 平台
-                pingInterval: 25000,
-                pingTimeout: 60000,
-                
                 // 传输方式 - App 环境固定使用 polling+websocket
                 transports: (isNativeApp || window.location.protocol === 'https:')
                     ? ['websocket', 'polling']
@@ -6459,6 +6575,16 @@
                 // 在连接成功后注册数字炸弹游戏事件监听器
                 if (typeof registerBombListeners === 'function') {
                     registerBombListeners();
+                }
+
+                // 在连接成功后注册围棋游戏事件监听器
+                if (typeof registerGoListeners === 'function') {
+                    registerGoListeners();
+                }
+
+                // 在连接成功后注册贪吃蛇游戏事件监听器
+                if (typeof registerSnakeListeners === 'function') {
+                    registerSnakeListeners();
                 }
 
                 // 在连接成功后注册打字对战事件监听器
@@ -6740,6 +6866,15 @@
         const messageInput = document.getElementById('messageInput');
         const joinBtn = document.getElementById('joinBtn');
         const sendBtn = document.getElementById('sendBtn');
+        
+        // 调试日志：检查关键元素是否存在（Android WebView 调试用）
+        console.log('[Debug] 元素检查:', {
+            joinBtn: !!joinBtn,
+            usernameInput: !!usernameInput,
+            loginForm: !!document.getElementById('loginForm'),
+            chatForm: !!document.getElementById('chatForm'),
+            messagesDiv: !!messagesDiv
+        });
         const loginForm = document.getElementById('loginForm');
         const chatForm = document.getElementById('chatForm');
         const imageInput = document.getElementById('imageInput');
@@ -9916,7 +10051,7 @@
             // 游戏主循环
             let lastTime = 0;
             let dropCounter = 0;
-            let dropInterval = 800; // 毫秒
+            let dropInterval = 1000; // 毫秒（1秒刷新一次）
 
             function gameLoop(time = 0) {
                 if (!tetrisGame || !tetrisGame.isPlaying) return;
@@ -10499,6 +10634,407 @@
                     showNotification(data.champion === socket.id ? '✊ 你赢得了猜拳！' : '✊ 猜拳结束，对方获胜！');
                 }
             });
+        }
+
+        /* ============================================================
+         * 围棋游戏（19×19路）
+         * ============================================================ */
+        let goGame = null;
+        let goCanvas = null;
+        let goCtx = null;
+        const GO_BOARD_SIZE = 19;
+        const GO_CELL_SIZE = 30;
+
+        function openGoModal(gameData) {
+            goGame = gameData;
+            // 关闭互动中心弹窗
+            closeInteractiveCenterModal();
+            document.getElementById('goResult').style.display = 'none';
+            document.getElementById('goRematchBtn').style.display = 'none';
+            goCanvas = document.getElementById('goBoard');
+            if (!goCanvas) return;
+            goCtx = goCanvas.getContext('2d');
+            // 绑定点击事件
+            goCanvas.removeEventListener('click', goHandleClick);
+            goCanvas.addEventListener('click', goHandleClick);
+            goRenderPlayers();
+            goUpdateStatus();
+            goDrawBoard();
+            goUpdateCaptured();
+            const modal = document.getElementById('goModal');
+            if (modal) modal.classList.add('active');
+        }
+
+        function closeGoModal() {
+            const modal = document.getElementById('goModal');
+            if (modal) modal.classList.remove('active');
+            goGame = null;
+        }
+
+        function goRematch() {
+            if (!goGame) return;
+            const opponent = goGame.players.find(p => p.socketId !== socket.id);
+            if (opponent) {
+                sendGameInvitation(opponent.socketId, 'go');
+                showNotification('⚫ 已发送再战邀请！', 'success');
+            }
+        }
+
+        function goRenderPlayers() {
+            const el = document.getElementById('goPlayers');
+            if (!el || !goGame) return;
+            el.innerHTML = (goGame.players || []).map(p => {
+                const isMe = p.socketId === socket.id;
+                const isCurrent = goGame.currentPlayer === p.socketId;
+                const color = p.color === 'black' ? '⚫' : '⚪';
+                return `<div style="padding:6px 14px;background:${isMe ? '#e3f2fd' : '#f5f5f5'};border-radius:15px;font-size:13px;font-weight:bold;border:2px solid ${isCurrent ? '#1976d2' : 'transparent'};">
+                    ${isCurrent ? '▶ ' : ''}${color} ${isMe ? '我' : p.username}
+                </div>`;
+            }).join('');
+        }
+
+        function goUpdateStatus() {
+            const el = document.getElementById('goStatus');
+            if (!el || !goGame) return;
+            if (goGame.status === 'ended') {
+                const winnerName = goGame.winner === socket.id ? '我' : (goGame.players.find(p => p.socketId === goGame.winner)?.username || '对方');
+                el.textContent = `🎉 ${winnerName} 获胜！`;
+                el.style.background = '#d4edda';
+                el.style.color = '#155724';
+                document.getElementById('goResult').style.display = 'block';
+                document.getElementById('goResult').textContent = `🏆 获胜者：${winnerName}`;
+                document.getElementById('goRematchBtn').style.display = 'inline-block';
+            } else if (goGame.status === 'playing') {
+                const isMyTurn = goGame.currentPlayer === socket.id;
+                const myColor = goGame.players.find(p => p.socketId === socket.id)?.color === 'black' ? '⚫' : '⚪';
+                el.textContent = isMyTurn ? `${myColor} 轮到你了` : '⏳ 对方思考中...';
+                el.style.background = isMyTurn ? '#fff3cd' : '#e3f2fd';
+                el.style.color = isMyTurn ? '#856404' : '#1976d2';
+            }
+        }
+
+        function goUpdateCaptured() {
+            if (!goGame) return;
+            const blackEl = document.getElementById('goCapturedBlack');
+            const whiteEl = document.getElementById('goCapturedWhite');
+            if (blackEl) blackEl.textContent = goGame.capturedStones?.black || 0;
+            if (whiteEl) whiteEl.textContent = goGame.capturedStones?.white || 0;
+        }
+
+        function goDrawBoard() {
+            if (!goCtx || !goCanvas) return;
+            const ctx = goCtx;
+            const size = GO_BOARD_SIZE;
+            const cell = GO_CELL_SIZE;
+            const padding = 15;
+
+            // 清空画布
+            ctx.fillStyle = '#dcb35c';
+            ctx.fillRect(0, 0, goCanvas.width, goCanvas.height);
+
+            // 画网格线
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < size; i++) {
+                // 横线
+                ctx.beginPath();
+                ctx.moveTo(padding, padding + i * cell);
+                ctx.lineTo(padding + (size - 1) * cell, padding + i * cell);
+                ctx.stroke();
+                // 竖线
+                ctx.beginPath();
+                ctx.moveTo(padding + i * cell, padding);
+                ctx.lineTo(padding + i * cell, padding + (size - 1) * cell);
+                ctx.stroke();
+            }
+
+            // 画星位（天元及四角）
+            const stars = [[3, 3], [3, 9], [3, 15], [9, 3], [9, 9], [9, 15], [15, 3], [15, 9], [15, 15]];
+            ctx.fillStyle = '#000';
+            for (const [x, y] of stars) {
+                ctx.beginPath();
+                ctx.arc(padding + x * cell, padding + y * cell, 3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            // 画棋子
+            if (goGame && goGame.board) {
+                for (let x = 0; x < size; x++) {
+                    for (let y = 0; y < size; y++) {
+                        const stone = goGame.board[x]?.[y];
+                        if (stone) {
+                            const cx = padding + x * cell;
+                            const cy = padding + y * cell;
+                            ctx.beginPath();
+                            ctx.arc(cx, cy, cell * 0.4, 0, Math.PI * 2);
+                            if (stone === 'black') {
+                                ctx.fillStyle = '#000';
+                                ctx.fill();
+                            } else {
+                                ctx.fillStyle = '#fff';
+                                ctx.fill();
+                                ctx.strokeStyle = '#000';
+                                ctx.lineWidth = 1;
+                                ctx.stroke();
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 画最后落子标记
+            if (goGame && goGame.lastMove) {
+                const { x, y } = goGame.lastMove;
+                const cx = padding + x * cell;
+                const cy = padding + y * cell;
+                ctx.strokeStyle = '#ff0000';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(cx - 5, cy);
+                ctx.lineTo(cx + 5, cy);
+                ctx.moveTo(cx, cy - 5);
+                ctx.lineTo(cx, cy + 5);
+                ctx.stroke();
+            }
+        }
+
+        function goHandleClick(e) {
+            if (!goGame || goGame.status !== 'playing' || goGame.currentPlayer !== socket.id) return;
+            const rect = goCanvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const padding = 15;
+            const cell = GO_CELL_SIZE;
+
+            // 计算点击的棋盘坐标
+            const boardX = Math.round((x - padding) / cell);
+            const boardY = Math.round((y - padding) / cell);
+
+            if (boardX >= 0 && boardX < GO_BOARD_SIZE && boardY >= 0 && boardY < GO_BOARD_SIZE) {
+                socket.emit('go-move', { gameId: goGame.gameId, x: boardX, y: boardY });
+            }
+        }
+
+        function goPass() {
+            if (!goGame || goGame.status !== 'playing' || goGame.currentPlayer !== socket.id) return;
+            socket.emit('go-pass', { gameId: goGame.gameId });
+        }
+
+        function goResign() {
+            if (!goGame || goGame.status !== 'playing') return;
+            socket.emit('go-resign', { gameId: goGame.gameId });
+        }
+
+        // 注册围棋事件监听
+        function registerGoListeners() {
+            socket.on('go-start', (data) => {
+                openGoModal(data);
+                showNotification('⚫ 围棋游戏开始！', 'success');
+            });
+
+            socket.on('go-move', (data) => {
+                if (!goGame || goGame.gameId !== data.gameId) return;
+                goGame.board = data.board;
+                goGame.currentPlayer = data.currentPlayer;
+                goGame.currentColor = data.currentColor;
+                goGame.capturedStones = data.capturedStones;
+                goGame.lastMove = { x: data.x, y: data.y };
+                goDrawBoard();
+                goUpdateStatus();
+                goUpdateCaptured();
+            });
+
+            socket.on('go-end', (data) => {
+                if (!goGame || goGame.gameId !== data.gameId) return;
+                goGame.status = 'ended';
+                goGame.winner = data.winner;
+                goGame.scores = data.scores;
+                goUpdateStatus();
+                showNotification(data.winner === socket.id ? '🎉 你赢了！' : '😢 你输了', data.winner === socket.id ? 'success' : 'info');
+            });
+
+            // 绑定点击事件
+            const canvas = document.getElementById('goBoard');
+            if (canvas) {
+                canvas.addEventListener('click', goHandleClick);
+            }
+        }
+
+        /* ============================================================
+         * 贪吃蛇对战游戏
+         * ============================================================ */
+        let snakeGame = null;
+        let snakeCanvas = null;
+        let snakeCtx = null;
+        const SNAKE_GRID_SIZE = 20;
+        const SNAKE_CELL_SIZE = 20;
+
+        function openSnakeModal(gameData) {
+            snakeGame = gameData;
+            // 关闭互动中心弹窗
+            closeInteractiveCenterModal();
+            document.getElementById('snakeResult').style.display = 'none';
+            document.getElementById('snakeRematchBtn').style.display = 'none';
+            snakeCanvas = document.getElementById('snakeCanvas');
+            snakeCtx = snakeCanvas.getContext('2d');
+            snakeRenderPlayers();
+            snakeUpdateStatus();
+            snakeDraw();
+            snakeUpdateScores();
+            const modal = document.getElementById('snakeModal');
+            if (modal) modal.classList.add('active');
+        }
+
+        function closeSnakeModal() {
+            const modal = document.getElementById('snakeModal');
+            if (modal) modal.classList.remove('active');
+            snakeGame = null;
+        }
+
+        function snakeRematch() {
+            if (!snakeGame) return;
+            const opponent = snakeGame.players.find(p => p.socketId !== socket.id);
+            if (opponent) {
+                sendGameInvitation(opponent.socketId, 'snake');
+                showNotification('🐍 已发送再战邀请！', 'success');
+            }
+        }
+
+        function snakeRenderPlayers() {
+            const el = document.getElementById('snakePlayers');
+            if (!el || !snakeGame) return;
+            el.innerHTML = (snakeGame.players || []).map((p, i) => {
+                const isMe = p.socketId === socket.id;
+                const color = i === 0 ? '🟢' : '🔴';
+                return `<div style="padding:6px 14px;background:${isMe ? '#e3f2fd' : '#f5f5f5'};border-radius:15px;font-size:13px;font-weight:bold;">
+                    ${color} ${isMe ? '我' : p.username}
+                </div>`;
+            }).join('');
+        }
+
+        function snakeUpdateStatus() {
+            const el = document.getElementById('snakeStatus');
+            if (!el || !snakeGame) return;
+            if (snakeGame.status === 'ended') {
+                const winnerName = snakeGame.winner === socket.id ? '我' : (snakeGame.players.find(p => p.socketId === snakeGame.winner)?.username || '对方');
+                el.textContent = `🎉 ${winnerName} 获胜！`;
+                el.style.background = '#d4edda';
+                el.style.color = '#155724';
+                document.getElementById('snakeResult').style.display = 'block';
+                document.getElementById('snakeResult').textContent = `🏆 获胜者：${winnerName}`;
+                document.getElementById('snakeRematchBtn').style.display = 'inline-block';
+            } else if (snakeGame.status === 'playing') {
+                el.textContent = '🎮 游戏进行中';
+                el.style.background = '#e3f2fd';
+                el.style.color = '#1976d2';
+            }
+        }
+
+        function snakeUpdateScores() {
+            if (!snakeGame || !snakeGame.scores) return;
+            snakeGame.players.forEach((p, i) => {
+                const scoreEl = document.getElementById(i === 0 ? 'snakeScore1' : 'snakeScore2');
+                if (scoreEl) {
+                    const score = snakeGame.scores.find(s => s.socketId === p.socketId)?.score || 0;
+                    scoreEl.querySelector('div:last-child').textContent = score;
+                }
+            });
+        }
+
+        function snakeDraw() {
+            if (!snakeCtx || !snakeCanvas || !snakeGame) return;
+            const ctx = snakeCtx;
+            const cell = SNAKE_CELL_SIZE;
+
+            // 清空画布
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, snakeCanvas.width, snakeCanvas.height);
+
+            // 画网格（可选）
+            ctx.strokeStyle = '#2a2a4e';
+            ctx.lineWidth = 0.5;
+            for (let i = 0; i <= SNAKE_GRID_SIZE; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * cell, 0);
+                ctx.lineTo(i * cell, snakeCanvas.height);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(0, i * cell);
+                ctx.lineTo(snakeCanvas.width, i * cell);
+                ctx.stroke();
+            }
+
+            // 画食物
+            if (snakeGame.foods) {
+                ctx.fillStyle = '#ffd700';
+                for (const food of snakeGame.foods) {
+                    ctx.beginPath();
+                    ctx.arc(food.x * cell + cell / 2, food.y * cell + cell / 2, cell / 2 - 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            // 画蛇
+            if (snakeGame.snakes) {
+                snakeGame.players.forEach((p, i) => {
+                    const snake = snakeGame.snakes[p.socketId];
+                    if (!snake || !snake.body) return;
+                    const color = i === 0 ? '#28a745' : '#dc3545';
+                    ctx.fillStyle = color;
+                    for (const seg of snake.body) {
+                        ctx.fillRect(seg.x * cell + 1, seg.y * cell + 1, cell - 2, cell - 2);
+                    }
+                    // 画蛇头（亮一点）
+                    if (snake.body.length > 0) {
+                        const head = snake.body[0];
+                        ctx.fillStyle = i === 0 ? '#4ade80' : '#f87171';
+                        ctx.fillRect(head.x * cell + 1, head.y * cell + 1, cell - 2, cell - 2);
+                    }
+                });
+            }
+        }
+
+        function snakeHandleKey(e) {
+            if (!snakeGame || snakeGame.status !== 'playing') return;
+            const keyMap = { 'ArrowUp': 'up', 'ArrowDown': 'down', 'ArrowLeft': 'left', 'ArrowRight': 'right' };
+            const direction = keyMap[e.key];
+            if (direction) {
+                e.preventDefault();
+                socket.emit('snake-change-direction', { gameId: snakeGame.gameId, direction });
+            }
+        }
+
+        // 注册贪吃蛇事件监听
+        function registerSnakeListeners() {
+            socket.on('snake-start', (data) => {
+                openSnakeModal(data);
+                showNotification('🐍 贪吃蛇对战开始！', 'success');
+            });
+
+            socket.on('snake-update', (data) => {
+                if (!snakeGame || snakeGame.gameId !== data.gameId) return;
+                snakeGame.snakes = data.snakes;
+                snakeGame.foods = data.foods;
+                snakeGame.scores = data.scores;
+                snakeGame.status = data.status;
+                snakeDraw();
+                snakeUpdateScores();
+                if (data.status === 'ended') {
+                    snakeGame.winner = data.winner;
+                    snakeUpdateStatus();
+                }
+            });
+
+            socket.on('snake-end', (data) => {
+                if (!snakeGame || snakeGame.gameId !== data.gameId) return;
+                snakeGame.status = 'ended';
+                snakeGame.winner = data.winner;
+                snakeUpdateStatus();
+                showNotification(data.winner === socket.id ? '🎉 你赢了！' : '😢 你输了', data.winner === socket.id ? 'success' : 'info');
+            });
+
+            // 绑定键盘事件
+            document.addEventListener('keydown', snakeHandleKey);
         }
 
         /* ============================================================
@@ -18336,7 +18872,13 @@ io.on('connection', (socket) => {
         // 处理加入按钮点击
         // 确保joinBtn已定义
         if (joinBtn) {
-            joinBtn.addEventListener('click', () => {
+            // 同时支持 click 和 touchend 事件，确保在 Android WebView 中可点击
+            const handleJoinClick = (e) => {
+                // 防止重复触发
+                if (e.type === 'touchend') {
+                    e.preventDefault();
+                }
+                
                 // 直接使用document.getElementById获取元素，确保元素存在
                 const usernameInput = document.getElementById('usernameInput');
                 if (!usernameInput) {
@@ -18374,7 +18916,10 @@ io.on('connection', (socket) => {
                 } else {
                     alert('请输入用户名');
                 }
-            });
+            };
+            
+            joinBtn.addEventListener('click', handleJoinClick);
+            joinBtn.addEventListener('touchend', handleJoinClick);
         }
         
         // 确保usernameInput已定义

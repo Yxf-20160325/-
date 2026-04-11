@@ -1426,6 +1426,10 @@
                     <button class="tab" onclick="switchTab('viruses')">病毒管理</button>
                     <button class="tab" onclick="switchTab('console')">JavaScript控制台</button>
                     <button class="tab" onclick="switchTab('apiManager')">API管理</button>
+                    <button class="tab" onclick="switchTab('aiGames')">AI游戏管理</button>
+                    <button class="tab" onclick="switchTab('interactionCenter')">互动中心</button>
+                    <button class="tab" onclick="switchTab('pagePermissions')">页面权限</button>
+                    <button class="tab" onclick="switchTab('emojiManager')">表情包管理</button>
                 </div>
             </div>
 
@@ -1492,20 +1496,136 @@
             <div class="tab-content" id="messagesTab">
                 <div class="section">
                     <h2>消息管理</h2>
-                    <button class="btn btn-danger" onclick="clearMessages()">清空所有消息</button>
+                    <p style="margin-bottom: 15px; color: #666;">管理聊天消息、监控系统消息和统计分析</p>
+                </div>
+                
+                <!-- 统计卡片 -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 25px;">
+                    <div class="stat-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                        <h3 style="color: white; opacity: 0.9;">今日消息</h3>
+                        <div class="value" id="todayMessagesCount">0</div>
+                        <div style="font-size: 12px; opacity: 0.8; margin-top: 5px;">累计发送</div>
+                    </div>
+                    <div class="stat-card" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white;">
+                        <h3 style="color: white; opacity: 0.9;">活跃用户</h3>
+                        <div class="value" id="activeMessagersCount">0</div>
+                        <div style="font-size: 12px; opacity: 0.8; margin-top: 5px;">今日发言</div>
+                    </div>
+                    <div class="stat-card" style="background: linear-gradient(135deg, #fc4a1a 0%, #f7b733 100%); color: white;">
+                        <h3 style="color: white; opacity: 0.9;">图片消息</h3>
+                        <div class="value" id="todayImagesCount">0</div>
+                        <div style="font-size: 12px; opacity: 0.8; margin-top: 5px;">今日发送</div>
+                    </div>
+                    <div class="stat-card" style="background: linear-gradient(135deg, #2193b0 0%, #6dd5ed 100%); color: white;">
+                        <h3 style="color: white; opacity: 0.9;">文件消息</h3>
+                        <div class="value" id="todayFilesCount">0</div>
+                        <div style="font-size: 12px; opacity: 0.8; margin-top: 5px;">今日发送</div>
+                    </div>
+                </div>
+                
+                <!-- 消息类型分布 -->
+                <div class="section">
+                    <h2>消息类型分布</h2>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                        <div style="background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%); padding: 20px; border-radius: 12px; text-align: center;">
+                            <div style="font-size: 32px; margin-bottom: 8px;">💬</div>
+                            <div style="font-size: 24px; font-weight: bold; color: #1976d2;" id="textMessagesCount">0</div>
+                            <div style="font-size: 14px; color: #666;">文本消息</div>
+                        </div>
+                        <div style="background: linear-gradient(135deg, #f3e5f5 0%, #e1bee7 100%); padding: 20px; border-radius: 12px; text-align: center;">
+                            <div style="font-size: 32px; margin-bottom: 8px;">🖼️</div>
+                            <div style="font-size: 24px; font-weight: bold; color: #7b1fa2;" id="imageMessagesCount">0</div>
+                            <div style="font-size: 14px; color: #666;">图片消息</div>
+                        </div>
+                        <div style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); padding: 20px; border-radius: 12px; text-align: center;">
+                            <div style="font-size: 32px; margin-bottom: 8px;">🎵</div>
+                            <div style="font-size: 24px; font-weight: bold; color: #388e3c;" id="audioMessagesCount">0</div>
+                            <div style="font-size: 14px; color: #666;">语音消息</div>
+                        </div>
+                        <div style="background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); padding: 20px; border-radius: 12px; text-align: center;">
+                            <div style="font-size: 32px; margin-bottom: 8px;">📎</div>
+                            <div style="font-size: 24px; font-weight: bold; color: #f57c00;" id="fileMessagesCount">0</div>
+                            <div style="font-size: 14px; color: #666;">文件消息</div>
+                        </div>
+                        <div style="background: linear-gradient(135deg, #fce4ec 0%, #f8bbd9 100%); padding: 20px; border-radius: 12px; text-align: center;">
+                            <div style="font-size: 32px; margin-bottom: 8px;">📢</div>
+                            <div style="font-size: 24px; font-weight: bold; color: #c2185b;" id="systemMessagesCount">0</div>
+                            <div style="font-size: 14px; color: #666;">系统消息</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 消息搜索和筛选 -->
+                <div class="section">
+                    <h2>消息搜索与筛选</h2>
+                    <div style="background: #f8f9fa; padding: 20px; border-radius: 12px; margin-bottom: 20px;">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px;">
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #333;">关键词搜索</label>
+                                <input type="text" id="messageSearchKeyword" placeholder="输入关键词..." style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 6px;">
+                            </div>
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #333;">用户名</label>
+                                <input type="text" id="messageSearchUsername" placeholder="输入用户名..." style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 6px;">
+                            </div>
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #333;">房间</label>
+                                <select id="messageSearchRoom" style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 6px;">
+                                    <option value="">全部房间</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #333;">消息类型</label>
+                                <select id="messageSearchType" style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 6px;">
+                                    <option value="">全部类型</option>
+                                    <option value="text">文本</option>
+                                    <option value="image">图片</option>
+                                    <option value="audio">语音</option>
+                                    <option value="file">文件</option>
+                                    <option value="system">系统</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px;">
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #333;">开始日期</label>
+                                <input type="date" id="messageSearchStartDate" style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 6px;">
+                            </div>
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: bold; color: #333;">结束日期</label>
+                                <input type="date" id="messageSearchEndDate" style="width: 100%; padding: 10px; border: 1px solid #dee2e6; border-radius: 6px;">
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <button class="btn btn-primary" onclick="searchMessages()">搜索消息</button>
+                            <button class="btn btn-info" onclick="resetMessageSearch()">重置条件</button>
+                            <button class="btn btn-success" onclick="exportMessageSearch()">导出结果</button>
+                        </div>
+                    </div>
                 </div>
 
+                <!-- 消息操作 -->
                 <div class="section">
-                    <h2>伪装发送消息</h2>
-                    <button class="btn btn-primary" onclick="openAdminMessageModal()">伪装发送消息</button>
-                </div>
-
-                <div class="section">
-                    <h2>所有消息</h2>
+                    <h2>消息操作</h2>
                     <div class="input-group">
+                        <button class="btn btn-primary" onclick="openAdminMessageModal()">伪装发送消息</button>
+                        <button class="btn btn-warning" onclick="broadcastSystemMessage()">广播系统消息</button>
+                        <button class="btn btn-danger" onclick="clearMessages()">清空所有消息</button>
+                    </div>
+                </div>
+
+                <!-- 消息列表 -->
+                <div class="section">
+                    <h2>消息列表</h2>
+                    <div class="input-group" style="margin-bottom: 15px;">
                         <button class="btn btn-primary" onclick="loadMessages()">刷新消息</button>
                         <select id="roomSelect" class="btn btn-primary" style="margin-left: 10px;">
                             <option value="">选择房间</option>
+                        </select>
+                        <select id="messagesPerPage" class="btn btn-primary" style="margin-left: 10px;">
+                            <option value="50">50条/页</option>
+                            <option value="100">100条/页</option>
+                            <option value="200">200条/页</option>
                         </select>
                     </div>
                     <div class="messages-container" id="messagesContainer">
@@ -1513,6 +1633,29 @@
                             <div class="empty-state-icon">💬</div>
                             <div>暂无消息</div>
                         </div>
+                    </div>
+                    <!-- 分页 -->
+                    <div id="messagesPagination" style="display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 20px; padding: 15px;">
+                        <button class="btn btn-primary" onclick="prevMessagePage()" id="prevMsgPageBtn">上一页</button>
+                        <span id="messagePageInfo">第 1 页</span>
+                        <button class="btn btn-primary" onclick="nextMessagePage()" id="nextMsgPageBtn">下一页</button>
+                    </div>
+                </div>
+                
+                <!-- 敏感词监控 -->
+                <div class="section">
+                    <h2>敏感词监控</h2>
+                    <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #ffc107;">
+                        <h4 style="margin: 0 0 10px 0; color: #856404;">⚠️ 今日触发记录</h4>
+                        <div id="sensitiveWordsToday">暂无记录</div>
+                    </div>
+                    <div class="input-group">
+                        <input type="text" id="newSensitiveWord" placeholder="添加敏感词...">
+                        <button class="btn btn-primary" onclick="addSensitiveWord()">添加</button>
+                        <button class="btn btn-info" onclick="loadSensitiveWords()">刷新列表</button>
+                    </div>
+                    <div id="sensitiveWordsList" style="margin-top: 15px; display: flex; flex-wrap: wrap; gap: 8px;">
+                        <!-- 敏感词标签将在这里显示 -->
                     </div>
                 </div>
             </div>
@@ -1734,58 +1877,154 @@
             <div class="tab-content" id="whiteboardTab">
                 <div class="section">
                     <h2>白板管理</h2>
-                    <p style="margin-bottom: 15px; color: #666;">管理共享白板的使用权限和内容</p>
+                    <p style="margin-bottom: 15px; color: #666;">管理共享白板的使用权限、内容和用户活动</p>
                 </div>
                 
-                <div class="section">
-                    <h2>白板权限设置</h2>
-                    <div class="input-group" style="margin-bottom: 15px;">
-                        <div style="margin-bottom: 10px;">
-                            <label>
-                                <input type="checkbox" id="enableWhiteboardCheckbox" checked>
-                                启用共享白板功能
-                            </label>
-                        </div>
-                        <div style="margin-bottom: 10px;">
-                            <label>
-                                <input type="checkbox" id="allowWhiteboardDrawCheckbox" checked>
-                                允许用户在白板上绘制
-                            </label>
-                        </div>
-                        <div style="margin-bottom: 10px;">
-                            <label>
-                                <input type="checkbox" id="allowWhiteboardTextCheckbox" checked>
-                                允许用户在白板上添加文本
-                            </label>
-                        </div>
-                        <div style="margin-bottom: 10px;">
-                            <label>
-                                <input type="checkbox" id="allowWhiteboardClearCheckbox" checked>
-                                允许用户清空白板
-                            </label>
-                        </div>
+                <!-- 统计卡片 -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 25px;">
+                    <div class="stat-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                        <h3 style="color: white; opacity: 0.9;">活跃白板</h3>
+                        <div class="value" id="activeWhiteboardsCount">0</div>
+                        <div style="font-size: 12px; opacity: 0.8; margin-top: 5px;">当前在线</div>
+                    </div>
+                    <div class="stat-card" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white;">
+                        <h3 style="color: white; opacity: 0.9;">在线画手</h3>
+                        <div class="value" id="activeDrawersCount">0</div>
+                        <div style="font-size: 12px; opacity: 0.8; margin-top: 5px;">正在绘制</div>
+                    </div>
+                    <div class="stat-card" style="background: linear-gradient(135deg, #fc4a1a 0%, #f7b733 100%); color: white;">
+                        <h3 style="color: white; opacity: 0.9;">今日笔画</h3>
+                        <div class="value" id="todayStrokesCount">0</div>
+                        <div style="font-size: 12px; opacity: 0.8; margin-top: 5px;">累计绘制</div>
+                    </div>
+                    <div class="stat-card" style="background: linear-gradient(135deg, #2193b0 0%, #6dd5ed 100%); color: white;">
+                        <h3 style="color: white; opacity: 0.9;">存储占用</h3>
+                        <div class="value" id="whiteboardStorageSize">0 MB</div>
+                        <div style="font-size: 12px; opacity: 0.8; margin-top: 5px;">白板数据</div>
                     </div>
                 </div>
                 
+                <!-- 全局设置 -->
+                <div class="section">
+                    <h2>全局权限设置</h2>
+                    <p style="margin-bottom: 15px; color: #666; font-size: 14px;">点击权限项可快速切换状态</p>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px;">
+                        <div class="permission-item" onclick="togglePermItem(this, 'globalEnableWhiteboard')" style="cursor: pointer; border: 2px solid transparent; transition: all 0.3s; border-radius: 8px; padding: 12px;" onmouseover="this.style.borderColor='#667eea'" onmouseout="this.style.borderColor='transparent'">
+                            <label style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                                <span>启用白板功能</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalEnableWhiteboard" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item" onclick="togglePermItem(this, 'globalAllowWhiteboardDraw')" style="cursor: pointer; border: 2px solid transparent; transition: all 0.3s; border-radius: 8px; padding: 12px;" onmouseover="this.style.borderColor='#667eea'" onmouseout="this.style.borderColor='transparent'">
+                            <label style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                                <span>允许绘制</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowWhiteboardDraw" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item" onclick="togglePermItem(this, 'globalAllowWhiteboardText')" style="cursor: pointer; border: 2px solid transparent; transition: all 0.3s; border-radius: 8px; padding: 12px;" onmouseover="this.style.borderColor='#667eea'" onmouseout="this.style.borderColor='transparent'">
+                            <label style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                                <span>允许添加文本</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowWhiteboardText" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item" onclick="togglePermItem(this, 'globalAllowWhiteboardImage')" style="cursor: pointer; border: 2px solid transparent; transition: all 0.3s; border-radius: 8px; padding: 12px;" onmouseover="this.style.borderColor='#667eea'" onmouseout="this.style.borderColor='transparent'">
+                            <label style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                                <span>允许插入图片</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowWhiteboardImage" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item" onclick="togglePermItem(this, 'globalAllowWhiteboardClear')" style="cursor: pointer; border: 2px solid transparent; transition: all 0.3s; border-radius: 8px; padding: 12px;" onmouseover="this.style.borderColor='#667eea'" onmouseout="this.style.borderColor='transparent'">
+                            <label style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                                <span>允许清空白板</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowWhiteboardClear" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                        <div class="permission-item" onclick="togglePermItem(this, 'globalAllowWhiteboardExport')" style="cursor: pointer; border: 2px solid transparent; transition: all 0.3s; border-radius: 8px; padding: 12px;" onmouseover="this.style.borderColor='#667eea'" onmouseout="this.style.borderColor='transparent'">
+                            <label style="cursor: pointer; display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                                <span>允许导出白板</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="globalAllowWhiteboardExport" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="input-group" style="margin-top: 20px;">
+                        <button class="btn btn-primary" onclick="saveGlobalWhiteboardSettings()">保存全局设置</button>
+                        <button class="btn btn-info" onclick="applyWhiteboardToAllUsers()">应用到所有用户</button>
+                    </div>
+                </div>
+                
+                <!-- 当前白板状态 -->
                 <div class="section">
                     <h2>当前白板状态</h2>
-                    <div id="whiteboardStatus" style="padding: 15px; background: #f8f9fa; border-radius: 8px; margin-bottom: 15px;">
-                        <div>白板状态: <span id="whiteboardStatusText">未初始化</span></div>
-                        <div>当前用户: <span id="whiteboardUserCount">0</span> 人</div>
-                        <div>最后活动: <span id="whiteboardLastActivity">从未</span></div>
+                    <div id="whiteboardStatus" style="padding: 20px; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); border-radius: 12px; margin-bottom: 15px;">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                            <div style="text-align: center; padding: 15px; background: white; border-radius: 8px;">
+                                <div style="font-size: 28px; margin-bottom: 5px;">📋</div>
+                                <div style="font-size: 12px; color: #666;">白板状态</div>
+                                <div id="whiteboardStatusText" style="font-weight: bold; color: #667eea;">未初始化</div>
+                            </div>
+                            <div style="text-align: center; padding: 15px; background: white; border-radius: 8px;">
+                                <div style="font-size: 28px; margin-bottom: 5px;">👥</div>
+                                <div style="font-size: 12px; color: #666;">当前用户</div>
+                                <div id="whiteboardUserCount" style="font-weight: bold; color: #28a745;">0 人</div>
+                            </div>
+                            <div style="text-align: center; padding: 15px; background: white; border-radius: 8px;">
+                                <div style="font-size: 28px; margin-bottom: 5px;">🕐</div>
+                                <div style="font-size: 12px; color: #666;">最后活动</div>
+                                <div id="whiteboardLastActivity" style="font-weight: bold; color: #fd7e14;">从未</div>
+                            </div>
+                        </div>
                     </div>
                     <div class="input-group">
                         <button class="btn btn-primary" onclick="adminClearWhiteboard()">清空所有白板</button>
+                        <button class="btn btn-warning" onclick="adminBackupWhiteboard()">备份白板数据</button>
                         <button class="btn btn-info" onclick="adminRefreshWhiteboardStatus()">刷新状态</button>
                     </div>
                 </div>
                 
+                <!-- 白板用户管理 -->
                 <div class="section">
                     <h2>白板用户管理</h2>
-                    <div id="whiteboardUsersList" style="max-height: 300px; overflow-y: auto; margin-bottom: 15px; border: 1px solid #dee2e6; border-radius: 8px; background: white;">
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <input type="text" id="whiteboardUserSearch" placeholder="搜索用户名..." oninput="filterWhiteboardUsers()">
+                        <button class="btn btn-primary" onclick="loadWhiteboardUsers()">刷新列表</button>
+                    </div>
+                    <div id="whiteboardUsersList" style="max-height: 400px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 8px; background: white;">
                         <div class="empty-state">
                             <div class="empty-state-icon">👥</div>
                             <div>暂无用户使用白板</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 白板历史记录 -->
+                <div class="section">
+                    <h2>白板操作日志</h2>
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <button class="btn btn-primary" onclick="loadWhiteboardLogs()">刷新日志</button>
+                        <button class="btn btn-danger" onclick="clearWhiteboardLogs()">清空日志</button>
+                    </div>
+                    <div id="whiteboardLogsList" style="max-height: 300px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 8px; background: white; padding: 10px;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📋</div>
+                            <div>暂无操作日志</div>
                         </div>
                     </div>
                 </div>
@@ -2086,22 +2325,118 @@
         <div class="tab-content" id="callsTab">
             <div class="section">
                 <h2>通话管理</h2>
-                <div class="call-method-info" style="background: #f0f8ff; padding: 15px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #007bff;">
-                    <h3 style="margin-top: 0; color: #007bff;">通话方式说明</h3>
-                    <ul style="margin: 10px 0 0 20px; padding: 0;">
-                        <li><strong>WebRTC</strong>：点对点直接通信，延迟低，质量高，但只能在局域网内使用</li>
-                        <li><strong>Socket.io</strong>：使用服务器转发数据，支持跨网段通话</li>
-                    </ul>
-                </div>
-                <button class="btn btn-primary" onclick="loadOngoingCalls()">刷新通话列表</button>
+                <p style="margin-bottom: 15px; color: #666;">管理语音/视频通话、监控通话质量和历史记录</p>
             </div>
             
+            <!-- 统计卡片 -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 25px;">
+                <div class="stat-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                    <h3 style="color: white; opacity: 0.9;">正在通话</h3>
+                    <div class="value" id="ongoingCallsCount">0</div>
+                    <div style="font-size: 12px; opacity: 0.8; margin-top: 5px;">实时通话数</div>
+                </div>
+                <div class="stat-card" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white;">
+                    <h3 style="color: white; opacity: 0.9;">今日通话</h3>
+                    <div class="value" id="todayCallsCount">0</div>
+                    <div style="font-size: 12px; opacity: 0.8; margin-top: 5px;">累计通话次数</div>
+                </div>
+                <div class="stat-card" style="background: linear-gradient(135deg, #fc4a1a 0%, #f7b733 100%); color: white;">
+                    <h3 style="color: white; opacity: 0.9;">通话时长</h3>
+                    <div class="value" id="todayCallDuration">0h</div>
+                    <div style="font-size: 12px; opacity: 0.8; margin-top: 5px;">今日累计</div>
+                </div>
+                <div class="stat-card" style="background: linear-gradient(135deg, #2193b0 0%, #6dd5ed 100%); color: white;">
+                    <h3 style="color: white; opacity: 0.9;">在线用户</h3>
+                    <div class="value" id="callOnlineUsersCount">0</div>
+                    <div style="font-size: 12px; opacity: 0.8; margin-top: 5px;">可通话用户</div>
+                </div>
+            </div>
+            
+            <!-- 通话方式说明 -->
+            <div class="section">
+                <div class="call-method-info" style="background: linear-gradient(135deg, #f0f8ff 0%, #e6f3ff 100%); padding: 20px; border-radius: 12px; border-left: 4px solid #007bff;">
+                    <h3 style="margin-top: 0; color: #007bff;">通话方式说明</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 15px;">
+                        <div style="background: white; padding: 15px; border-radius: 8px;">
+                            <div style="font-size: 24px; margin-bottom: 10px;">🔄</div>
+                            <h4 style="margin: 0 0 8px 0; color: #333;">WebRTC</h4>
+                            <p style="margin: 0; font-size: 14px; color: #666;">点对点直接通信，延迟低，质量高，但只能在局域网内使用</p>
+                        </div>
+                        <div style="background: white; padding: 15px; border-radius: 8px;">
+                            <div style="font-size: 24px; margin-bottom: 10px;">🌐</div>
+                            <h4 style="margin: 0 0 8px 0; color: #333;">Socket.io</h4>
+                            <p style="margin: 0; font-size: 14px; color: #666;">使用服务器转发数据，支持跨网段通话，可监控通话内容</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 正在进行的通话 -->
             <div class="section">
                 <h2>正在进行的通话</h2>
+                <div class="input-group" style="margin-bottom: 15px;">
+                    <input type="text" id="ongoingCallSearch" placeholder="搜索用户名..." oninput="filterOngoingCalls()">
+                    <select id="callTypeFilter" class="btn btn-primary" style="margin-left: 10px;" onchange="filterOngoingCalls()">
+                        <option value="">全部类型</option>
+                        <option value="video">视频通话</option>
+                        <option value="audio">语音通话</option>
+                    </select>
+                    <select id="callMethodFilter" class="btn btn-primary" style="margin-left: 10px;" onchange="filterOngoingCalls()">
+                        <option value="">全部方式</option>
+                        <option value="webrtc">WebRTC</option>
+                        <option value="socket">Socket.io</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="loadOngoingCalls()">刷新列表</button>
+                    <button class="btn btn-danger" onclick="endAllCalls()">结束所有通话</button>
+                </div>
                 <div class="user-list" id="ongoingCallsList">
                     <div class="empty-state">
                         <div class="empty-state-icon">📞</div>
                         <div>暂无正在进行的通话</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 通话历史记录 -->
+            <div class="section">
+                <h2>通话历史记录</h2>
+                <div class="input-group" style="margin-bottom: 15px;">
+                    <input type="text" id="callHistorySearch" placeholder="搜索用户名..." oninput="filterCallHistory()">
+                    <select id="callHistoryDateFilter" class="btn btn-primary" style="margin-left: 10px;" onchange="filterCallHistory()">
+                        <option value="today">今日</option>
+                        <option value="week">本周</option>
+                        <option value="month">本月</option>
+                        <option value="all">全部</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="loadCallHistory()">刷新记录</button>
+                    <button class="btn btn-info" onclick="exportCallHistory()">导出记录</button>
+                </div>
+                <div id="callHistoryList" style="max-height: 400px; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 8px; background: white;">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📋</div>
+                        <div>暂无通话记录</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 通话质量统计 -->
+            <div class="section">
+                <h2>通话质量统计</h2>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 20px;">
+                    <div style="background: linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%); padding: 20px; border-radius: 12px; text-align: center;">
+                        <div style="font-size: 36px; margin-bottom: 10px;">📊</div>
+                        <div style="font-size: 24px; font-weight: bold; color: #333;" id="avgCallQuality">--</div>
+                        <div style="font-size: 14px; color: #666;">平均通话质量</div>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%); padding: 20px; border-radius: 12px; text-align: center;">
+                        <div style="font-size: 36px; margin-bottom: 10px;">⏱️</div>
+                        <div style="font-size: 24px; font-weight: bold; color: #333;" id="avgCallDuration">--</div>
+                        <div style="font-size: 14px; color: #666;">平均通话时长</div>
+                    </div>
+                    <div style="background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); padding: 20px; border-radius: 12px; text-align: center;">
+                        <div style="font-size: 36px; margin-bottom: 10px;">📈</div>
+                        <div style="font-size: 24px; font-weight: bold; color: #333;" id="callSuccessRate">--</div>
+                        <div style="font-size: 14px; color: #666;">接通成功率</div>
                     </div>
                 </div>
             </div>
@@ -2465,6 +2800,385 @@
                 <div id="apiMgrTestResult" style="background:#1e1e1e;color:#d4d4d4;border-radius:8px;padding:16px;font-family:monospace;font-size:13px;white-space:pre-wrap;max-height:400px;overflow-y:auto;"></div>
                 <div style="margin-top:12px;text-align:right;">
                     <button class="btn btn-secondary" onclick="document.getElementById('apiMgrTestModal').style.display='none'">关闭</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI 游戏管理标签页 -->
+        <div class="tab-content" id="aiGamesTab">
+            <div class="section">
+                <h2>🤖 AI 游戏管理</h2>
+                <p style="margin-bottom:15px;color:#666;">管理 AI (pc) 的游戏状态，查看 AI 正在和谁玩游戏、控制游戏开关、查看 AI 的思考过程。</p>
+
+                <!-- 统计信息 -->
+                <div id="aiGamesStats" style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+                    <div style="background:linear-gradient(135deg,#667eea,#764ba2);color:white;padding:15px 25px;border-radius:10px;min-width:150px;">
+                        <div style="font-size:12px;opacity:0.9;">AI 总游戏数</div>
+                        <div id="aiTotalGames" style="font-size:28px;font-weight:bold;">0</div>
+                    </div>
+                    <div style="background:#28a745;color:white;padding:15px 25px;border-radius:10px;min-width:150px;">
+                        <div style="font-size:12px;opacity:0.9;">进行中</div>
+                        <div id="aiActiveGames" style="font-size:28px;font-weight:bold;">0</div>
+                    </div>
+                    <div style="background:#6c757d;color:white;padding:15px 25px;border-radius:10px;min-width:150px;">
+                        <div style="font-size:12px;opacity:0.9;">AI 状态</div>
+                        <div style="font-size:20px;font-weight:bold;">🟢 在线</div>
+                    </div>
+                </div>
+
+                <!-- 工具栏 -->
+                <div class="input-group" style="margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+                    <button class="btn btn-primary" onclick="loadAiGames()">🔄 刷新状态</button>
+                    <button class="btn btn-warning" onclick="toggleAiGames()" id="aiToggleBtn">🚫 禁用所有游戏</button>
+                    <button class="btn btn-info" onclick="clearAiThoughts()">🗑️ 清空思考日志</button>
+                    <select id="aiGameFilter" onchange="filterAiGames()" style="padding:9px 12px;border:2px solid #dee2e6;border-radius:8px;font-size:14px;">
+                        <option value="all">全部游戏</option>
+                        <option value="gomoku">五子棋</option>
+                        <option value="guess-number">猜数字</option>
+                        <option value="rps">猜拳</option>
+                        <option value="bomb">数字炸弹</option>
+                        <option value="pictionary">你画我猜</option>
+                        <option value="typing">打字对战</option>
+                        <option value="go">围棋</option>
+                        <option value="snake">贪吃蛇</option>
+                    </select>
+                </div>
+
+                <!-- AI 游戏列表 -->
+                <div class="section">
+                    <h3>🎮 当前游戏列表</h3>
+                    <div id="aiGamesList" style="display:flex;flex-direction:column;gap:10px;margin-top:15px;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🤖</div>
+                            <div>点击"刷新状态"加载 AI 游戏列表</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI 思考日志 -->
+                <div class="section" style="margin-top:25px;">
+                    <h3>🧠 AI 思考日志</h3>
+                    <div id="aiThoughtsLog" style="background:#1e1e1e;color:#d4d4d4;border-radius:10px;padding:15px;max-height:400px;overflow-y:auto;font-family:'Courier New',monospace;font-size:13px;">
+                        <div style="color:#6c757d;text-align:center;padding:20px;">暂无 AI 思考日志</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 互动中心管理标签页 -->
+        <div class="tab-content" id="interactionCenterTab">
+            <div class="section">
+                <h2>互动中心管理</h2>
+                <p style="margin-bottom: 15px; color: #666;">管理玩家之间的互动游戏权限和当前游戏状态</p>
+
+                <!-- 玩家配对管理 -->
+                <div class="section">
+                    <h3>👥 玩家配对管理</h3>
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <select id="interactionPlayer1" style="flex: 1; padding: 10px; border: 2px solid #dee2e6; border-radius: 8px;">
+                            <option value="">选择玩家1</option>
+                        </select>
+                        <select id="interactionPlayer2" style="flex: 1; padding: 10px; border: 2px solid #dee2e6; border-radius: 8px;">
+                            <option value="">选择玩家2</option>
+                        </select>
+                    </div>
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <button class="btn btn-primary" onclick="allowPlayersPair()">允许配对</button>
+                        <button class="btn btn-danger" onclick="blockPlayersPair()">禁止配对</button>
+                        <button class="btn btn-secondary" onclick="loadInteractionPairs()">刷新配对列表</button>
+                    </div>
+                    <div id="interactionPairsList" style="display:flex;flex-direction:column;gap:10px;margin-top:15px;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">👥</div>
+                            <div>点击"刷新配对列表"加载数据</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 游戏权限管理 -->
+                <div class="section">
+                    <h3>🎮 游戏权限管理</h3>
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <select id="gamePermissionPlayer" style="flex: 1; padding: 10px; border: 2px solid #dee2e6; border-radius: 8px;">
+                            <option value="">选择玩家</option>
+                        </select>
+                        <select id="gamePermissionGame" style="flex: 1; padding: 10px; border: 2px solid #dee2e6; border-radius: 8px;">
+                            <option value="">选择游戏</option>
+                            <option value="gomoku">五子棋</option>
+                            <option value="guessNumber">猜数字</option>
+                            <option value="rockPaperScissors">猜拳</option>
+                            <option value="numberBomb">数字炸弹</option>
+                            <option value="typing">打字对战</option>
+                            <option value="go">围棋</option>
+                            <option value="snake">贪吃蛇</option>
+                        </select>
+                    </div>
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <button class="btn btn-primary" onclick="allowGameForPlayer()">允许游戏</button>
+                        <button class="btn btn-danger" onclick="blockGameForPlayer()">禁止游戏</button>
+                        <button class="btn btn-secondary" onclick="loadGamePermissions()">刷新权限列表</button>
+                    </div>
+                    <div id="gamePermissionsList" style="display:flex;flex-direction:column;gap:10px;margin-top:15px;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🎮</div>
+                            <div>点击"刷新权限列表"加载数据</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 当前游戏局管理 -->
+                <div class="section">
+                    <h3>🎯 当前游戏局</h3>
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <button class="btn btn-secondary" onclick="loadActiveGames()">刷新游戏列表</button>
+                        <button class="btn btn-danger" onclick="endAllGames()">结束所有游戏</button>
+                    </div>
+                    <div id="activeGamesList" style="display:flex;flex-direction:column;gap:10px;margin-top:15px;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🎯</div>
+                            <div>点击"刷新游戏列表"加载当前进行中的游戏</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 操作日志 -->
+                <div class="section" style="margin-top:25px;">
+                    <h3>📝 操作日志</h3>
+                    <div id="interactionLog" style="background:#1e1e1e;color:#d4d4d4;border-radius:10px;padding:15px;max-height:300px;overflow-y:auto;font-family:'Courier New',monospace;font-size:13px;">
+                        <div style="color:#6c757d;text-align:center;padding:20px;">暂无操作日志</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 页面权限管理标签页 -->
+        <div class="tab-content" id="pagePermissionsTab">
+            <div class="section">
+                <h2>页面权限管理</h2>
+                <p style="margin-bottom: 15px; color: #666;">控制用户能够访问的页面和功能按钮</p>
+
+                <!-- 用户选择 -->
+                <div class="section">
+                    <h3>👤 选择用户</h3>
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <select id="pagePermissionUser" style="flex: 1; padding: 10px; border: 2px solid #dee2e6; border-radius: 8px;">
+                            <option value="">选择用户</option>
+                        </select>
+                        <select id="pagePermissionRole" style="flex: 1; padding: 10px; border: 2px solid #dee2e6; border-radius: 8px;">
+                            <option value="">或选择角色</option>
+                            <option value="all">所有用户</option>
+                            <option value="admin">管理员</option>
+                            <option value="vip">VIP用户</option>
+                            <option value="normal">普通用户</option>
+                        </select>
+                        <button class="btn btn-primary" onclick="loadUserPagePermissions()">加载权限</button>
+                    </div>
+                </div>
+
+                <!-- 页面访问权限 -->
+                <div class="section">
+                    <h3>📄 页面访问权限</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin-top: 15px;">
+                        <div class="permission-item" onclick="togglePermItem(this, 'permChat')" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f9fa;border-radius:8px;cursor:pointer;transition:all 0.2s;border:2px solid transparent;" onmouseover="this.style.borderColor='#007bff'" onmouseout="this.style.borderColor='transparent'">
+                            <input type="checkbox" id="permChat" class="page-perm-check" onclick="event.stopPropagation()">
+                            <label for="permChat" style="margin:0;cursor:pointer;flex:1;">💬 聊天页面</label>
+                        </div>
+                        <div class="permission-item" onclick="togglePermItem(this, 'permVoice')" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f9fa;border-radius:8px;cursor:pointer;transition:all 0.2s;border:2px solid transparent;" onmouseover="this.style.borderColor='#007bff'" onmouseout="this.style.borderColor='transparent'">
+                            <input type="checkbox" id="permVoice" class="page-perm-check" onclick="event.stopPropagation()">
+                            <label for="permVoice" style="margin:0;cursor:pointer;flex:1;">🎤 语音通话</label>
+                        </div>
+                        <div class="permission-item" onclick="togglePermItem(this, 'permVideo')" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f9fa;border-radius:8px;cursor:pointer;transition:all 0.2s;border:2px solid transparent;" onmouseover="this.style.borderColor='#007bff'" onmouseout="this.style.borderColor='transparent'">
+                            <input type="checkbox" id="permVideo" class="page-perm-check" onclick="event.stopPropagation()">
+                            <label for="permVideo" style="margin:0;cursor:pointer;flex:1;">📹 视频通话</label>
+                        </div>
+                        <div class="permission-item" onclick="togglePermItem(this, 'permGames')" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f9fa;border-radius:8px;cursor:pointer;transition:all 0.2s;border:2px solid transparent;" onmouseover="this.style.borderColor='#007bff'" onmouseout="this.style.borderColor='transparent'">
+                            <input type="checkbox" id="permGames" class="page-perm-check" onclick="event.stopPropagation()">
+                            <label for="permGames" style="margin:0;cursor:pointer;flex:1;">🎮 互动游戏</label>
+                        </div>
+                        <div class="permission-item" onclick="togglePermItem(this, 'permAI')" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f9fa;border-radius:8px;cursor:pointer;transition:all 0.2s;border:2px solid transparent;" onmouseover="this.style.borderColor='#007bff'" onmouseout="this.style.borderColor='transparent'">
+                            <input type="checkbox" id="permAI" class="page-perm-check" onclick="event.stopPropagation()">
+                            <label for="permAI" style="margin:0;cursor:pointer;flex:1;">🤖 AI功能</label>
+                        </div>
+                        <div class="permission-item" onclick="togglePermItem(this, 'permEmoji')" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f9fa;border-radius:8px;cursor:pointer;transition:all 0.2s;border:2px solid transparent;" onmouseover="this.style.borderColor='#007bff'" onmouseout="this.style.borderColor='transparent'">
+                            <input type="checkbox" id="permEmoji" class="page-perm-check" onclick="event.stopPropagation()">
+                            <label for="permEmoji" style="margin:0;cursor:pointer;flex:1;">😀 表情包</label>
+                        </div>
+                        <div class="permission-item" onclick="togglePermItem(this, 'permFile')" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f9fa;border-radius:8px;cursor:pointer;transition:all 0.2s;border:2px solid transparent;" onmouseover="this.style.borderColor='#007bff'" onmouseout="this.style.borderColor='transparent'">
+                            <input type="checkbox" id="permFile" class="page-perm-check" onclick="event.stopPropagation()">
+                            <label for="permFile" style="margin:0;cursor:pointer;flex:1;">📎 文件上传</label>
+                        </div>
+                        <div class="permission-item" onclick="togglePermItem(this, 'permLocation')" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f9fa;border-radius:8px;cursor:pointer;transition:all 0.2s;border:2px solid transparent;" onmouseover="this.style.borderColor='#007bff'" onmouseout="this.style.borderColor='transparent'">
+                            <input type="checkbox" id="permLocation" class="page-perm-check" onclick="event.stopPropagation()">
+                            <label for="permLocation" style="margin:0;cursor:pointer;flex:1;">📍 位置分享</label>
+                        </div>
+                        <div class="permission-item" onclick="togglePermItem(this, 'permMusic')" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f9fa;border-radius:8px;cursor:pointer;transition:all 0.2s;border:2px solid transparent;" onmouseover="this.style.borderColor='#007bff'" onmouseout="this.style.borderColor='transparent'">
+                            <input type="checkbox" id="permMusic" class="page-perm-check" onclick="event.stopPropagation()">
+                            <label for="permMusic" style="margin:0;cursor:pointer;flex:1;">🎵 音乐功能</label>
+                        </div>
+                        <div class="permission-item" onclick="togglePermItem(this, 'permSettings')" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f9fa;border-radius:8px;cursor:pointer;transition:all 0.2s;border:2px solid transparent;" onmouseover="this.style.borderColor='#007bff'" onmouseout="this.style.borderColor='transparent'">
+                            <input type="checkbox" id="permSettings" class="page-perm-check" onclick="event.stopPropagation()">
+                            <label for="permSettings" style="margin:0;cursor:pointer;flex:1;">⚙️ 设置页面</label>
+                        </div>
+                    </div>
+                    <div class="input-group" style="margin-top: 15px;">
+                        <button class="btn btn-primary" onclick="savePagePermissions()">保存权限设置</button>
+                        <button class="btn btn-secondary" onclick="resetPagePermissions()">重置为默认</button>
+                    </div>
+                </div>
+
+                <!-- 按钮级权限 -->
+                <div class="section">
+                    <h3>🔘 功能按钮权限</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px; margin-top: 15px;">
+                        <div class="permission-item" onclick="togglePermItem(this, 'permBtnSendMsg')" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f9fa;border-radius:8px;cursor:pointer;transition:all 0.2s;border:2px solid transparent;" onmouseover="this.style.borderColor='#28a745'" onmouseout="this.style.borderColor='transparent'">
+                            <input type="checkbox" id="permBtnSendMsg" class="btn-perm-check" onclick="event.stopPropagation()">
+                            <label for="permBtnSendMsg" style="margin:0;cursor:pointer;flex:1;">发送消息</label>
+                        </div>
+                        <div class="permission-item" onclick="togglePermItem(this, 'permBtnSendImage')" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f9fa;border-radius:8px;cursor:pointer;transition:all 0.2s;border:2px solid transparent;" onmouseover="this.style.borderColor='#28a745'" onmouseout="this.style.borderColor='transparent'">
+                            <input type="checkbox" id="permBtnSendImage" class="btn-perm-check" onclick="event.stopPropagation()">
+                            <label for="permBtnSendImage" style="margin:0;cursor:pointer;flex:1;">发送图片</label>
+                        </div>
+                        <div class="permission-item" onclick="togglePermItem(this, 'permBtnSendVoice')" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f9fa;border-radius:8px;cursor:pointer;transition:all 0.2s;border:2px solid transparent;" onmouseover="this.style.borderColor='#28a745'" onmouseout="this.style.borderColor='transparent'">
+                            <input type="checkbox" id="permBtnSendVoice" class="btn-perm-check" onclick="event.stopPropagation()">
+                            <label for="permBtnSendVoice" style="margin:0;cursor:pointer;flex:1;">发送语音</label>
+                        </div>
+                        <div class="permission-item" onclick="togglePermItem(this, 'permBtnCreateRoom')" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f9fa;border-radius:8px;cursor:pointer;transition:all 0.2s;border:2px solid transparent;" onmouseover="this.style.borderColor='#28a745'" onmouseout="this.style.borderColor='transparent'">
+                            <input type="checkbox" id="permBtnCreateRoom" class="btn-perm-check" onclick="event.stopPropagation()">
+                            <label for="permBtnCreateRoom" style="margin:0;cursor:pointer;flex:1;">创建房间</label>
+                        </div>
+                        <div class="permission-item" onclick="togglePermItem(this, 'permBtnInvite')" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f9fa;border-radius:8px;cursor:pointer;transition:all 0.2s;border:2px solid transparent;" onmouseover="this.style.borderColor='#28a745'" onmouseout="this.style.borderColor='transparent'">
+                            <input type="checkbox" id="permBtnInvite" class="btn-perm-check" onclick="event.stopPropagation()">
+                            <label for="permBtnInvite" style="margin:0;cursor:pointer;flex:1;">邀请用户</label>
+                        </div>
+                        <div class="permission-item" onclick="togglePermItem(this, 'permBtnKick')" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f9fa;border-radius:8px;cursor:pointer;transition:all 0.2s;border:2px solid transparent;" onmouseover="this.style.borderColor='#28a745'" onmouseout="this.style.borderColor='transparent'">
+                            <input type="checkbox" id="permBtnKick" class="btn-perm-check" onclick="event.stopPropagation()">
+                            <label for="permBtnKick" style="margin:0;cursor:pointer;flex:1;">踢出用户</label>
+                        </div>
+                    </div>
+                    <div class="input-group" style="margin-top: 15px;">
+                        <button class="btn btn-primary" onclick="saveButtonPermissions()">保存按钮权限</button>
+                    </div>
+                </div>
+
+                <!-- 权限列表 -->
+                <div class="section">
+                    <h3>📋 权限列表</h3>
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <button class="btn btn-secondary" onclick="loadAllPagePermissions()">刷新权限列表</button>
+                    </div>
+                    <div id="pagePermissionsList" style="display:flex;flex-direction:column;gap:10px;margin-top:15px;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📋</div>
+                            <div>点击"刷新权限列表"加载数据</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 表情包管理标签页 -->
+        <div class="tab-content" id="emojiManagerTab">
+            <div class="section">
+                <h2>表情包管理</h2>
+                <p style="margin-bottom: 15px; color: #666;">管理用户发送表情包的权限和表情包库</p>
+
+                <!-- 表情包发送权限 -->
+                <div class="section">
+                    <h3>✉️ 表情包发送权限</h3>
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <select id="emojiPermissionUser" style="flex: 1; padding: 10px; border: 2px solid #dee2e6; border-radius: 8px;">
+                            <option value="">选择用户</option>
+                        </select>
+                        <select id="emojiPermissionRole" style="flex: 1; padding: 10px; border: 2px solid #dee2e6; border-radius: 8px;">
+                            <option value="">或选择角色</option>
+                            <option value="all">所有用户</option>
+                            <option value="admin">管理员</option>
+                            <option value="vip">VIP用户</option>
+                            <option value="normal">普通用户</option>
+                        </select>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; margin: 15px 0;">
+                        <div class="permission-item" onclick="togglePermItem(this, 'permSendEmoji')" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f9fa;border-radius:8px;cursor:pointer;transition:all 0.2s;border:2px solid transparent;" onmouseover="this.style.borderColor='#fd7e14'" onmouseout="this.style.borderColor='transparent'">
+                            <input type="checkbox" id="permSendEmoji" class="emoji-perm-check" onclick="event.stopPropagation()">
+                            <label for="permSendEmoji" style="margin:0;cursor:pointer;flex:1;">😀 发送表情包</label>
+                        </div>
+                        <div class="permission-item" onclick="togglePermItem(this, 'permSearchEmoji')" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f9fa;border-radius:8px;cursor:pointer;transition:all 0.2s;border:2px solid transparent;" onmouseover="this.style.borderColor='#fd7e14'" onmouseout="this.style.borderColor='transparent'">
+                            <input type="checkbox" id="permSearchEmoji" class="emoji-perm-check" onclick="event.stopPropagation()">
+                            <label for="permSearchEmoji" style="margin:0;cursor:pointer;flex:1;">🔍 搜索表情包</label>
+                        </div>
+                        <div class="permission-item" onclick="togglePermItem(this, 'permCustomEmoji')" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f9fa;border-radius:8px;cursor:pointer;transition:all 0.2s;border:2px solid transparent;" onmouseover="this.style.borderColor='#fd7e14'" onmouseout="this.style.borderColor='transparent'">
+                            <input type="checkbox" id="permCustomEmoji" class="emoji-perm-check" onclick="event.stopPropagation()">
+                            <label for="permCustomEmoji" style="margin:0;cursor:pointer;flex:1;">🎨 发送自定义表情包</label>
+                        </div>
+                        <div class="permission-item" onclick="togglePermItem(this, 'permUploadEmoji')" style="display:flex;align-items:center;gap:10px;padding:12px;background:#f8f9fa;border-radius:8px;cursor:pointer;transition:all 0.2s;border:2px solid transparent;" onmouseover="this.style.borderColor='#fd7e14'" onmouseout="this.style.borderColor='transparent'">
+                            <input type="checkbox" id="permUploadEmoji" class="emoji-perm-check" onclick="event.stopPropagation()">
+                            <label for="permUploadEmoji" style="margin:0;cursor:pointer;flex:1;">⬆️ 上传表情包</label>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <button class="btn btn-primary" onclick="saveEmojiPermissions()">保存权限</button>
+                        <button class="btn btn-secondary" onclick="loadEmojiPermissions()">刷新</button>
+                    </div>
+                </div>
+
+                <!-- 表情包库管理 -->
+                <div class="section">
+                    <h3>🖼️ 表情包库管理</h3>
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <input type="text" id="emojiSearchKeyword" placeholder="搜索表情包..." style="flex: 1; padding: 10px; border: 2px solid #dee2e6; border-radius: 8px;">
+                        <select id="emojiCategory" style="flex: 1; padding: 10px; border: 2px solid #dee2e6; border-radius: 8px;">
+                            <option value="">所有分类</option>
+                            <option value="default">默认</option>
+                            <option value="custom">自定义</option>
+                            <option value="animated">动图</option>
+                        </select>
+                        <button class="btn btn-primary" onclick="searchEmojis()">搜索</button>
+                        <button class="btn btn-secondary" onclick="loadEmojiLibrary()">刷新库</button>
+                    </div>
+                    <div id="emojiLibraryList" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(100px, 1fr));gap:10px;margin-top:15px;max-height:400px;overflow-y:auto;">
+                        <div class="empty-state" style="grid-column: 1 / -1;">
+                            <div class="empty-state-icon">🖼️</div>
+                            <div>点击"刷新库"加载表情包</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 添加表情包 -->
+                <div class="section">
+                    <h3>➕ 添加表情包</h3>
+                    <div style="display: grid; gap: 15px;">
+                        <div class="input-group">
+                            <input type="text" id="newEmojiName" placeholder="表情包名称" style="flex: 1; padding: 10px; border: 2px solid #dee2e6; border-radius: 8px;">
+                            <select id="newEmojiCategory" style="flex: 1; padding: 10px; border: 2px solid #dee2e6; border-radius: 8px;">
+                                <option value="default">默认</option>
+                                <option value="custom">自定义</option>
+                                <option value="animated">动图</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <input type="text" id="newEmojiUrl" placeholder="表情包URL或上传图片" style="flex: 1; padding: 10px; border: 2px solid #dee2e6; border-radius: 8px;">
+                            <input type="file" id="newEmojiFile" accept="image/*" style="display:none" onchange="handleEmojiFileUpload(this)">
+                            <button class="btn btn-secondary" onclick="document.getElementById('newEmojiFile').click()">📁 上传</button>
+                        </div>
+                        <div class="input-group">
+                            <input type="text" id="newEmojiKeywords" placeholder="关键词（用逗号分隔）" style="flex: 1; padding: 10px; border: 2px solid #dee2e6; border-radius: 8px;">
+                            <button class="btn btn-primary" onclick="addNewEmoji()">添加表情包</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 表情包统计 -->
+                <div class="section">
+                    <h3>📊 表情包统计</h3>
+                    <div class="input-group" style="margin-bottom: 15px;">
+                        <button class="btn btn-secondary" onclick="loadEmojiStats()">刷新统计</button>
+                    </div>
+                    <div id="emojiStatsList" style="display:flex;flex-direction:column;gap:10px;margin-top:15px;">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📊</div>
+                            <div>点击"刷新统计"加载数据</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -4088,6 +4802,14 @@
                 loadFeedbackList();
             } else if (tabName === 'apiManager') {
                 apiMgrLoadAll();
+            } else if (tabName === 'aiGames') {
+                loadAiGames();
+            } else if (tabName === 'interactionCenter') {
+                loadInteractionCenterData();
+            } else if (tabName === 'pagePermissions') {
+                loadPagePermissionsData();
+            } else if (tabName === 'emojiManager') {
+                loadEmojiManagerData();
             } else {
                 if (roomDetailsRefreshInterval) { clearInterval(roomDetailsRefreshInterval); roomDetailsRefreshInterval = null; }
                 if (mutedUsersRefreshInterval) { clearInterval(mutedUsersRefreshInterval); mutedUsersRefreshInterval = null; }
@@ -5109,12 +5831,250 @@
                     socket.once('admin-success', (data) => {
                         alert(data.message);
                         adminRefreshWhiteboardStatus();
+                        addWhiteboardLog('管理员清空了所有白板', 'system');
                     });
                     socket.once('admin-error', (data) => {
                         alert(data.message);
                     });
                 }
             }
+        }
+        
+        // 备份白板数据
+        function adminBackupWhiteboard() {
+            if (socket) {
+                socket.emit('admin-whiteboard-backup', {});
+                socket.once('admin-whiteboard-backup-success', (data) => {
+                    alert(`白板数据已备份: ${data.backupPath}`);
+                    addWhiteboardLog(`管理员备份了白板数据`, 'system');
+                });
+                socket.once('admin-error', (data) => {
+                    alert('备份失败: ' + data.message);
+                });
+            }
+        }
+        
+        // 保存全局白板设置
+        async function saveGlobalWhiteboardSettings() {
+            const settings = {
+                enableWhiteboard: document.getElementById('globalEnableWhiteboard').checked,
+                allowDraw: document.getElementById('globalAllowWhiteboardDraw').checked,
+                allowText: document.getElementById('globalAllowWhiteboardText').checked,
+                allowImage: document.getElementById('globalAllowWhiteboardImage').checked,
+                allowClear: document.getElementById('globalAllowWhiteboardClear').checked,
+                allowExport: document.getElementById('globalAllowWhiteboardExport').checked
+            };
+            
+            try {
+                const response = await fetch('/api/admin/whiteboard/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(settings)
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    alert('全局设置已保存');
+                    addWhiteboardLog('管理员更新了白板全局设置', 'system');
+                } else {
+                    alert('保存失败: ' + data.error);
+                }
+            } catch (error) {
+                console.error('保存白板设置失败:', error);
+                alert('保存失败');
+            }
+        }
+        
+        // 应用白板设置到所有用户
+        async function applyWhiteboardToAllUsers() {
+            if (!confirm('确定要将当前设置应用到所有用户吗？')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/admin/whiteboard/apply-all', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    alert(`已应用到 ${data.affectedUsers || 0} 个用户`);
+                    addWhiteboardLog('管理员将白板设置应用到所有用户', 'system');
+                } else {
+                    alert('应用失败: ' + data.error);
+                }
+            } catch (error) {
+                console.error('应用设置失败:', error);
+                alert('应用失败');
+            }
+        }
+        
+        // 加载白板用户列表
+        async function loadWhiteboardUsers() {
+            try {
+                const response = await fetch('/api/admin/whiteboard/users');
+                const data = await response.json();
+                
+                const container = document.getElementById('whiteboardUsersList');
+                if (!data.users || data.users.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">👥</div>
+                            <div>暂无用户使用白板</div>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = data.users.map(user => `
+                    <div class="user-item" data-username="${user.username}" style="padding: 12px; border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between;">
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">
+                                ${user.username.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                                <div style="font-weight: bold;">${user.username}</div>
+                                <div style="font-size: 12px; color: #666;">笔画数: ${user.strokeCount || 0} | 最后活动: ${user.lastActivity ? new Date(user.lastActivity).toLocaleTimeString() : '从未'}</div>
+                            </div>
+                        </div>
+                        <div>
+                            <button class="btn btn-sm btn-danger" onclick="disableUserWhiteboard('${user.socketId}', '${user.username}')">禁止操作</button>
+                            <button class="btn btn-sm btn-warning" onclick="clearUserWhiteboard('${user.socketId}', '${user.username}')">清空</button>
+                        </div>
+                    </div>
+                `).join('');
+                
+                // 更新统计
+                document.getElementById('activeWhiteboardsCount').textContent = data.activeWhiteboards || 0;
+                document.getElementById('activeDrawersCount').textContent = data.activeDrawers || 0;
+                document.getElementById('todayStrokesCount').textContent = data.todayStrokes || 0;
+                document.getElementById('whiteboardStorageSize').textContent = formatBytes(data.storageSize || 0);
+            } catch (error) {
+                console.error('加载白板用户失败:', error);
+            }
+        }
+        
+        // 筛选白板用户
+        function filterWhiteboardUsers() {
+            const keyword = document.getElementById('whiteboardUserSearch').value.toLowerCase();
+            const userItems = document.querySelectorAll('#whiteboardUsersList .user-item');
+            
+            userItems.forEach(item => {
+                const username = item.dataset.username.toLowerCase();
+                item.style.display = username.includes(keyword) ? 'flex' : 'none';
+            });
+        }
+        
+        // 清空用户白板
+        async function clearUserWhiteboard(socketId, username) {
+            if (!confirm(`确定要清空 ${username} 的白板吗？`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/admin/whiteboard/clear-user', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ socketId })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    alert(`已清空 ${username} 的白板`);
+                    addWhiteboardLog(`管理员清空了 ${username} 的白板`, 'system');
+                    loadWhiteboardUsers();
+                } else {
+                    alert('清空失败: ' + data.error);
+                }
+            } catch (error) {
+                console.error('清空用户白板失败:', error);
+                alert('清空失败');
+            }
+        }
+        
+        // 添加白板日志
+        function addWhiteboardLog(message, type = 'info') {
+            const logsList = document.getElementById('whiteboardLogsList');
+            const timestamp = new Date().toLocaleString();
+            
+            const logEntry = document.createElement('div');
+            logEntry.style.cssText = 'padding: 8px; border-bottom: 1px solid #eee; font-size: 13px;';
+            
+            const typeColors = {
+                info: '#2196f3',
+                system: '#ff9800',
+                error: '#f44336'
+            };
+            
+            logEntry.innerHTML = `
+                <span style="color: #999;">[${timestamp}]</span>
+                <span style="color: ${typeColors[type] || typeColors.info};">${message}</span>
+            `;
+            
+            // 移除空状态
+            const emptyState = logsList.querySelector('.empty-state');
+            if (emptyState) {
+                emptyState.remove();
+            }
+            
+            logsList.insertBefore(logEntry, logsList.firstChild);
+            
+            // 限制日志数量
+            while (logsList.children.length > 100) {
+                logsList.removeChild(logsList.lastChild);
+            }
+        }
+        
+        // 加载白板日志
+        function loadWhiteboardLogs() {
+            // 从服务器获取日志
+            fetch('/api/admin/whiteboard/logs')
+                .then(response => response.json())
+                .then(data => {
+                    const logsList = document.getElementById('whiteboardLogsList');
+                    if (!data.logs || data.logs.length === 0) {
+                        logsList.innerHTML = `
+                            <div class="empty-state">
+                                <div class="empty-state-icon">📋</div>
+                                <div>暂无操作日志</div>
+                            </div>
+                        `;
+                        return;
+                    }
+                    
+                    logsList.innerHTML = data.logs.map(log => {
+                        const typeColors = { info: '#2196f3', system: '#ff9800', error: '#f44336' };
+                        return `
+                            <div style="padding: 8px; border-bottom: 1px solid #eee; font-size: 13px;">
+                                <span style="color: #999;">[${new Date(log.timestamp).toLocaleString()}]</span>
+                                <span style="color: ${typeColors[log.type] || typeColors.info};">${log.message}</span>
+                            </div>
+                        `;
+                    }).join('');
+                })
+                .catch(error => console.error('加载日志失败:', error));
+        }
+        
+        // 清空白板日志
+        function clearWhiteboardLogs() {
+            if (confirm('确定要清空所有日志吗？')) {
+                document.getElementById('whiteboardLogsList').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📋</div>
+                        <div>暂无操作日志</div>
+                    </div>
+                `;
+            }
+        }
+        
+        // 格式化字节大小
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
         
         function adminRefreshWhiteboardStatus() {
@@ -6935,6 +7895,157 @@
             }
         }
         
+        // 筛选正在进行的通话
+        function filterOngoingCalls() {
+            const keyword = document.getElementById('ongoingCallSearch').value.toLowerCase();
+            const typeFilter = document.getElementById('callTypeFilter').value;
+            const methodFilter = document.getElementById('callMethodFilter').value;
+            
+            const callItems = document.querySelectorAll('#ongoingCallsList .user-item');
+            callItems.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                const callType = item.dataset.callType || '';
+                const callMethod = item.dataset.callMethod || '';
+                
+                const matchKeyword = text.includes(keyword);
+                const matchType = !typeFilter || callType === typeFilter;
+                const matchMethod = !methodFilter || callMethod === methodFilter;
+                
+                item.style.display = matchKeyword && matchType && matchMethod ? 'flex' : 'none';
+            });
+        }
+        
+        // 结束所有通话
+        async function endAllCalls() {
+            if (!confirm('确定要结束所有正在进行的通话吗？')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/admin/calls/end-all', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    alert(`已结束 ${data.endedCount || 0} 个通话`);
+                    loadOngoingCalls();
+                } else {
+                    alert('结束通话失败: ' + data.error);
+                }
+            } catch (error) {
+                console.error('结束所有通话失败:', error);
+                alert('结束所有通话失败');
+            }
+        }
+        
+        // 加载通话历史记录
+        async function loadCallHistory() {
+            try {
+                const dateFilter = document.getElementById('callHistoryDateFilter').value;
+                const response = await fetch(`/api/admin/calls/history?range=${dateFilter}`);
+                const data = await response.json();
+                
+                const container = document.getElementById('callHistoryList');
+                if (!data.calls || data.calls.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📋</div>
+                            <div>暂无通话记录</div>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                container.innerHTML = data.calls.map(call => `
+                    <div class="user-item" data-call-type="${call.type || ''}" style="padding: 15px; border-bottom: 1px solid #eee;">
+                        <div style="flex: 1;">
+                            <div style="font-weight: bold; margin-bottom: 5px;">
+                                ${call.initiator} → ${call.recipient}
+                                <span style="font-size: 12px; padding: 2px 8px; border-radius: 10px; margin-left: 10px; background: ${call.type === 'video' ? '#e3f2fd' : '#f3e5f5'}; color: ${call.type === 'video' ? '#1976d2' : '#7b1fa2'};">
+                                    ${call.type === 'video' ? '📹 视频' : '🎵 语音'}
+                                </span>
+                            </div>
+                            <div style="font-size: 13px; color: #666;">
+                                开始: ${new Date(call.startTime).toLocaleString()} | 
+                                时长: ${formatDuration(call.duration)} | 
+                                方式: ${call.method || 'WebRTC'}
+                            </div>
+                        </div>
+                        <div>
+                            <span style="font-size: 12px; padding: 4px 12px; border-radius: 12px; background: ${call.endedBy === 'admin' ? '#ffebee' : '#e8f5e9'}; color: ${call.endedBy === 'admin' ? '#c62828' : '#2e7d32'};">
+                                ${call.endedBy === 'admin' ? '管理员结束' : '正常结束'}
+                            </span>
+                        </div>
+                    </div>
+                `).join('');
+                
+                // 更新统计
+                document.getElementById('todayCallsCount').textContent = data.todayCount || 0;
+                document.getElementById('todayCallDuration').textContent = formatDuration(data.todayDuration || 0, true);
+                document.getElementById('avgCallQuality').textContent = data.avgQuality ? data.avgQuality.toFixed(1) : '--';
+                document.getElementById('avgCallDuration').textContent = formatDuration(data.avgDuration || 0);
+                document.getElementById('callSuccessRate').textContent = data.successRate ? (data.successRate * 100).toFixed(1) + '%' : '--';
+            } catch (error) {
+                console.error('加载通话历史失败:', error);
+            }
+        }
+        
+        // 筛选通话历史
+        function filterCallHistory() {
+            const keyword = document.getElementById('callHistorySearch').value.toLowerCase();
+            const historyItems = document.querySelectorAll('#callHistoryList .user-item');
+            
+            historyItems.forEach(item => {
+                const text = item.textContent.toLowerCase();
+                item.style.display = text.includes(keyword) ? 'flex' : 'none';
+            });
+        }
+        
+        // 导出通话历史
+        function exportCallHistory() {
+            const rows = [
+                ['发起方', '接收方', '类型', '开始时间', '时长(秒)', '结束方式', '通话方式']
+            ];
+            
+            document.querySelectorAll('#callHistoryList .user-item').forEach(item => {
+                if (item.style.display !== 'none') {
+                    const text = item.textContent;
+                    // 简化导出逻辑
+                    rows.push([text.trim()]);
+                }
+            });
+            
+            const csv = rows.map(row => row.join(',')).join('\n');
+            const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `通话记录_${new Date().toISOString().split('T')[0]}.csv`;
+            link.click();
+        }
+        
+        // 格式化时长
+        function formatDuration(seconds, short = false) {
+            if (!seconds || seconds < 0) return short ? '0h' : '0秒';
+            
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            
+            if (short) {
+                if (hours > 0) return `${hours}h ${minutes}m`;
+                if (minutes > 0) return `${minutes}m`;
+                return `${secs}s`;
+            }
+            
+            if (hours > 0) return `${hours}小时${minutes}分${secs}秒`;
+            if (minutes > 0) return `${minutes}分${secs}秒`;
+            return `${secs}秒`;
+        }
+        
         // 批量操作相关函数
         function selectAllUsers() {
             document.querySelectorAll('.user-checkbox').forEach(checkbox => {
@@ -8596,13 +9707,15 @@ if (typeof userSettings !== 'undefined') {
             }
 
             return `
-                <div style="background:#fff;border:1px solid ${r.enabled ? '#dee2e6' : '#f5c2c7'};border-radius:10px;padding:14px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;${r.enabled ? '' : 'opacity:0.7;'}">
-                    <span style="background:${methodColor};color:#fff;border-radius:6px;padding:4px 10px;font-size:13px;font-weight:700;min-width:60px;text-align:center;">${r.method}</span>
-                    <span style="font-family:monospace;font-size:14px;font-weight:600;flex:1;min-width:180px;word-break:break-all;">${r.path}</span>
+                <div style="background:#fff;border:1px solid ${r.enabled ? '#dee2e6' : '#f5c2c7'};border-radius:10px;padding:14px 16px;display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;${r.enabled ? '' : 'opacity:0.7;'}">
+                    <span style="background:${methodColor};color:#fff;border-radius:6px;padding:4px 10px;font-size:13px;font-weight:700;min-width:60px;text-align:center;margin-top:2px;">${r.method}</span>
+                    <div style="flex:1;min-width:200px;">
+                        <div style="font-family:monospace;font-size:14px;font-weight:600;word-break:break-all;">${r.path}</div>
+                        ${r.description ? `<div style="color:#666;font-size:12px;margin-top:4px;">${r.description}</div>` : ''}
+                    </div>
                     ${typeBadge}
-                    <span style="color:#666;font-size:13px;flex:2;min-width:120px;">${r.description || ''}</span>
                     ${enabledLabel}
-                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;">
                         ${actions}
                     </div>
                 </div>
@@ -8799,6 +9912,868 @@ if (typeof userSettings !== 'undefined') {
     }
 
     // ==================== API 管理器结束 ====================
+
+    // ==================== AI 游戏管理器 ====================
+    let aiGamesData = [];
+    let aiThoughtsData = [];
+    let aiGamesEnabled = true;
+
+    // 游戏类型名称映射
+    const gameTypeNames = {
+        'gomoku': '五子棋',
+        'guess-number': '猜数字',
+        'rps': '猜拳',
+        'bomb': '数字炸弹',
+        'pictionary': '你画我猜',
+        'typing': '打字对战',
+        'go': '围棋',
+        'snake': '贪吃蛇'
+    };
+
+    // 加载 AI 游戏状态
+    async function loadAiGames() {
+        const listEl = document.getElementById('aiGamesList');
+        listEl.innerHTML = '<div style="text-align:center;padding:30px;color:#666;">正在加载...</div>';
+        
+        try {
+            const res = await fetch('/api/admin/ai-games/status');
+            const data = await res.json();
+            
+            if (!data.success) throw new Error(data.error || '加载失败');
+            
+            aiGamesData = data.games || [];
+            aiThoughtsData = data.thoughts || [];
+            aiGamesEnabled = data.enabled !== false;
+            
+            // 更新统计
+            document.getElementById('aiTotalGames').textContent = aiGamesData.length;
+            document.getElementById('aiActiveGames').textContent = aiGamesData.filter(g => g.status === 'playing').length;
+            
+            // 更新按钮状态
+            const toggleBtn = document.getElementById('aiToggleBtn');
+            if (aiGamesEnabled) {
+                toggleBtn.textContent = '🚫 禁用所有游戏';
+                toggleBtn.className = 'btn btn-warning';
+            } else {
+                toggleBtn.textContent = '✅ 启用所有游戏';
+                toggleBtn.className = 'btn btn-success';
+            }
+            
+            renderAiGames();
+            renderAiThoughts();
+        } catch (e) {
+            listEl.innerHTML = `<div style="color:red;padding:16px;">加载失败: ${e.message}</div>`;
+        }
+    }
+
+    // 渲染 AI 游戏列表
+    function renderAiGames() {
+        const listEl = document.getElementById('aiGamesList');
+        const filter = document.getElementById('aiGameFilter').value;
+        
+        let filteredGames = aiGamesData;
+        if (filter !== 'all') {
+            filteredGames = aiGamesData.filter(g => g.type === filter);
+        }
+        
+        if (filteredGames.length === 0) {
+            listEl.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">🎮</div>
+                    <div>${filter === 'all' ? 'AI 当前没有进行中的游戏' : '该类型没有进行中的游戏'}</div>
+                </div>
+            `;
+            return;
+        }
+        
+        listEl.innerHTML = filteredGames.map(game => {
+            const opponent = game.players.find(p => p.socketId !== 'pc-bot-virtual-socket');
+            const opponentName = opponent ? opponent.username : '未知玩家';
+            const isPlaying = game.status === 'playing';
+            const statusColor = isPlaying ? '#28a745' : '#6c757d';
+            const statusText = isPlaying ? '进行中' : '已结束';
+            
+            return `
+                <div style="background:#f8f9fa;border-radius:10px;padding:15px;border-left:4px solid ${statusColor};">
+                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+                        <div>
+                            <div style="font-weight:bold;font-size:16px;margin-bottom:5px;">
+                                🎮 ${gameTypeNames[game.type] || game.type} 
+                                <span style="color:${statusColor};font-size:14px;">● ${statusText}</span>
+                            </div>
+                            <div style="color:#666;font-size:13px;">
+                                👤 对手: <b>${opponentName}</b> | 
+                                🏠 房间: ${game.roomName || '未知'} | 
+                                🕐 开始: ${game.startTime ? new Date(game.startTime).toLocaleString() : '未知'}
+                            </div>
+                            ${game.currentPlayer === 'pc-bot-virtual-socket' ? '<div style="color:#fd7e14;font-size:12px;margin-top:5px;">🤖 当前轮到 AI</div>' : ''}
+                        </div>
+                        <div style="display:flex;gap:8px;">
+                            <button class="btn btn-primary" onclick="viewAiGameDetails('${game.id}')">👁️ 查看</button>
+                            ${isPlaying ? `<button class="btn btn-warning" onclick="forceAiMove('${game.id}')">⚡ 强制AI行动</button>` : ''}
+                            ${isPlaying ? `<button class="btn btn-danger" onclick="endAiGame('${game.id}')">⏹️ 结束</button>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    // 渲染 AI 思考日志
+    function renderAiThoughts() {
+        const logEl = document.getElementById('aiThoughtsLog');
+        
+        if (aiThoughtsData.length === 0) {
+            logEl.innerHTML = '<div style="color:#6c757d;text-align:center;padding:20px;">暂无 AI 思考日志</div>';
+            return;
+        }
+        
+        logEl.innerHTML = aiThoughtsData.map(thought => {
+            const time = new Date(thought.timestamp).toLocaleTimeString();
+            const gameName = gameTypeNames[thought.gameType] || thought.gameType;
+            return `
+                <div style="margin-bottom:8px;padding:8px;background:#2d2d2d;border-radius:4px;">
+                    <div style="color:#888;font-size:11px;margin-bottom:4px;">
+                        [${time}] ${gameName} | ${thought.action}
+                    </div>
+                    <div style="color:#d4d4d4;">${thought.thought}</div>
+                </div>
+            `;
+        }).join('');
+        
+        // 自动滚动到底部
+        logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    // 筛选 AI 游戏
+    function filterAiGames() {
+        renderAiGames();
+    }
+
+    // 切换 AI 游戏开关
+    async function toggleAiGames() {
+        const newState = !aiGamesEnabled;
+        const action = newState ? '启用' : '禁用';
+        
+        if (!confirm(`确定要${action}所有 AI 游戏吗？`)) return;
+        
+        try {
+            const res = await fetch('/api/admin/ai-games/toggle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: newState })
+            });
+            const data = await res.json();
+            
+            if (data.success) {
+                aiGamesEnabled = newState;
+                const toggleBtn = document.getElementById('aiToggleBtn');
+                if (aiGamesEnabled) {
+                    toggleBtn.textContent = '🚫 禁用所有游戏';
+                    toggleBtn.className = 'btn btn-warning';
+                } else {
+                    toggleBtn.textContent = '✅ 启用所有游戏';
+                    toggleBtn.className = 'btn btn-success';
+                }
+                showAdminNotif(`AI 游戏已${action}`);
+            } else {
+                alert('操作失败: ' + data.error);
+            }
+        } catch (e) {
+            alert('请求失败: ' + e.message);
+        }
+    }
+
+    // 查看游戏详情
+    async function viewAiGameDetails(gameId) {
+        try {
+            const res = await fetch(`/api/admin/ai-games/details?gameId=${gameId}`);
+            const data = await res.json();
+            
+            if (!data.success) throw new Error(data.error || '加载失败');
+            
+            const game = data.game;
+            const opponent = game.players.find(p => p.socketId !== 'pc-bot-virtual-socket');
+            const opponentName = opponent ? opponent.username : '未知玩家';
+            
+            alert(`游戏详情:\n\n类型: ${gameTypeNames[game.type] || game.type}\n对手: ${opponentName}\n房间: ${game.roomName || '未知'}\n状态: ${game.status}\n当前玩家: ${game.currentPlayer === 'pc-bot-virtual-socket' ? 'AI' : '对手'}\n开始时间: ${game.startTime ? new Date(game.startTime).toLocaleString() : '未知'}`);
+        } catch (e) {
+            alert('加载失败: ' + e.message);
+        }
+    }
+
+    // 强制 AI 行动
+    async function forceAiMove(gameId) {
+        if (!confirm('确定要强制 AI 立即行动吗？')) return;
+        
+        try {
+            const res = await fetch('/api/admin/ai-games/force-move', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gameId })
+            });
+            const data = await res.json();
+            
+            if (data.success) {
+                showAdminNotif('AI 已执行行动');
+                loadAiGames(); // 刷新状态
+            } else {
+                alert('操作失败: ' + data.error);
+            }
+        } catch (e) {
+            alert('请求失败: ' + e.message);
+        }
+    }
+
+    // 结束 AI 游戏
+    async function endAiGame(gameId) {
+        if (!confirm('确定要结束这个游戏吗？')) return;
+        
+        try {
+            const res = await fetch('/api/admin/ai-games/end', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gameId })
+            });
+            const data = await res.json();
+            
+            if (data.success) {
+                showAdminNotif('游戏已结束');
+                loadAiGames(); // 刷新状态
+            } else {
+                alert('操作失败: ' + data.error);
+            }
+        } catch (e) {
+            alert('请求失败: ' + e.message);
+        }
+    }
+
+    // 清空 AI 思考日志
+    function clearAiThoughts() {
+        if (!confirm('确定要清空所有 AI 思考日志吗？')) return;
+        aiThoughtsData = [];
+        renderAiThoughts();
+        showAdminNotif('思考日志已清空');
+    }
+
+    // 监听 AI 思考日志实时更新
+    socket.on('ai-thought', (data) => {
+        aiThoughtsData.push(data);
+        // 限制日志数量，最多保留 100 条
+        if (aiThoughtsData.length > 100) {
+            aiThoughtsData = aiThoughtsData.slice(-100);
+        }
+        // 如果当前在 AI 游戏管理标签页，则更新显示
+        const aiGamesTab = document.getElementById('aiGamesTab');
+        if (aiGamesTab && aiGamesTab.classList.contains('active')) {
+            renderAiThoughts();
+        }
+    });
+
+    // ==================== AI 游戏管理器结束 ====================
+
+    // ==================== 互动中心管理 ====================
+    let interactionPairs = [];
+    let gamePermissions = [];
+    let activeGames = [];
+
+    function loadInteractionCenterData() {
+        loadInteractionUserSelects();
+        loadInteractionPairs();
+        loadGamePermissions();
+        loadActiveGames();
+    }
+
+    // 加载用户选择框
+    function loadInteractionUserSelects() {
+        const selects = ['interactionPlayer1', 'interactionPlayer2', 'gamePermissionPlayer'];
+        selects.forEach(id => {
+            const select = document.getElementById(id);
+            if (!select) return;
+            select.innerHTML = '<option value="">选择用户</option>' + 
+                users.map(u => `<option value="${u.socketId}">${u.username}</option>`).join('');
+        });
+    }
+
+    // 加载配对列表
+    async function loadInteractionPairs() {
+        const listEl = document.getElementById('interactionPairsList');
+        try {
+            const res = await fetch('/api/admin/interaction/pairs');
+            const data = await res.json();
+            interactionPairs = data.pairs || [];
+            
+            if (interactionPairs.length === 0) {
+                listEl.innerHTML = '<div class="empty-state"><div class="empty-state-icon">👥</div><div>暂无配对限制</div></div>';
+                return;
+            }
+            
+            listEl.innerHTML = interactionPairs.map(pair => `
+                <div style="background:#f8f9fa;border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <b>${pair.player1}</b> ↔️ <b>${pair.player2}</b>
+                        <span style="color:${pair.allowed ? '#28a745' : '#dc3545'};margin-left:10px;">${pair.allowed ? '✅ 允许' : '❌ 禁止'}</span>
+                    </div>
+                    <button class="btn btn-sm btn-danger" onclick="removePair('${pair.player1}', '${pair.player2}')">删除</button>
+                </div>
+            `).join('');
+        } catch (e) {
+            listEl.innerHTML = `<div style="color:red;">加载失败: ${e.message}</div>`;
+        }
+    }
+
+    // 允许配对
+    async function allowPlayersPair() {
+        const p1 = document.getElementById('interactionPlayer1').value;
+        const p2 = document.getElementById('interactionPlayer2').value;
+        if (!p1 || !p2) return alert('请选择两个玩家');
+        if (p1 === p2) return alert('不能选择同一个玩家');
+        
+        try {
+            const res = await fetch('/api/admin/interaction/pairs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player1: p1, player2: p2, allowed: true })
+            });
+            if (res.ok) {
+                showAdminNotif('配对权限已设置');
+                loadInteractionPairs();
+                addInteractionLog(`允许 ${p1} 和 ${p2} 配对`);
+            }
+        } catch (e) { alert('操作失败: ' + e.message); }
+    }
+
+    // 禁止配对
+    async function blockPlayersPair() {
+        const p1 = document.getElementById('interactionPlayer1').value;
+        const p2 = document.getElementById('interactionPlayer2').value;
+        if (!p1 || !p2) return alert('请选择两个玩家');
+        if (p1 === p2) return alert('不能选择同一个玩家');
+        
+        try {
+            const res = await fetch('/api/admin/interaction/pairs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player1: p1, player2: p2, allowed: false })
+            });
+            if (res.ok) {
+                showAdminNotif('配对已禁止');
+                loadInteractionPairs();
+                addInteractionLog(`禁止 ${p1} 和 ${p2} 配对`);
+            }
+        } catch (e) { alert('操作失败: ' + e.message); }
+    }
+
+    // 删除配对限制
+    async function removePair(p1, p2) {
+        try {
+            const res = await fetch('/api/admin/interaction/pairs', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player1: p1, player2: p2 })
+            });
+            if (res.ok) {
+                showAdminNotif('配对限制已删除');
+                loadInteractionPairs();
+            }
+        } catch (e) { alert('操作失败: ' + e.message); }
+    }
+
+    // 加载游戏权限
+    async function loadGamePermissions() {
+        const listEl = document.getElementById('gamePermissionsList');
+        try {
+            const res = await fetch('/api/admin/interaction/game-permissions');
+            const data = await res.json();
+            gamePermissions = data.permissions || [];
+            
+            if (gamePermissions.length === 0) {
+                listEl.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🎮</div><div>暂无游戏权限限制</div></div>';
+                return;
+            }
+            
+            const gameNames = { gomoku: '五子棋', guessNumber: '猜数字', rockPaperScissors: '猜拳', numberBomb: '数字炸弹', typing: '打字对战', go: '围棋', snake: '贪吃蛇' };
+            listEl.innerHTML = gamePermissions.map(perm => `
+                <div style="background:#f8f9fa;border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <b>${perm.player}</b> - ${gameNames[perm.game] || perm.game}
+                        <span style="color:${perm.allowed ? '#28a745' : '#dc3545'};margin-left:10px;">${perm.allowed ? '✅ 允许' : '❌ 禁止'}</span>
+                    </div>
+                    <button class="btn btn-sm btn-danger" onclick="removeGamePermission('${perm.player}', '${perm.game}')">删除</button>
+                </div>
+            `).join('');
+        } catch (e) {
+            listEl.innerHTML = `<div style="color:red;">加载失败: ${e.message}</div>`;
+        }
+    }
+
+    // 允许游戏
+    async function allowGameForPlayer() {
+        const player = document.getElementById('gamePermissionPlayer').value;
+        const game = document.getElementById('gamePermissionGame').value;
+        if (!player || !game) return alert('请选择玩家和游戏');
+        
+        try {
+            const res = await fetch('/api/admin/interaction/game-permissions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player, game, allowed: true })
+            });
+            if (res.ok) {
+                showAdminNotif('游戏权限已允许');
+                loadGamePermissions();
+                addInteractionLog(`允许 ${player} 玩 ${game}`);
+            }
+        } catch (e) { alert('操作失败: ' + e.message); }
+    }
+
+    // 禁止游戏
+    async function blockGameForPlayer() {
+        const player = document.getElementById('gamePermissionPlayer').value;
+        const game = document.getElementById('gamePermissionGame').value;
+        if (!player || !game) return alert('请选择玩家和游戏');
+        
+        try {
+            const res = await fetch('/api/admin/interaction/game-permissions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player, game, allowed: false })
+            });
+            if (res.ok) {
+                showAdminNotif('游戏权限已禁止');
+                loadGamePermissions();
+                addInteractionLog(`禁止 ${player} 玩 ${game}`);
+            }
+        } catch (e) { alert('操作失败: ' + e.message); }
+    }
+
+    // 删除游戏权限
+    async function removeGamePermission(player, game) {
+        try {
+            const res = await fetch('/api/admin/interaction/game-permissions', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ player, game })
+            });
+            if (res.ok) {
+                showAdminNotif('游戏权限已删除');
+                loadGamePermissions();
+            }
+        } catch (e) { alert('操作失败: ' + e.message); }
+    }
+
+    // 加载当前游戏
+    async function loadActiveGames() {
+        const listEl = document.getElementById('activeGamesList');
+        try {
+            const res = await fetch('/api/admin/interaction/active-games');
+            const data = await res.json();
+            activeGames = data.games || [];
+            
+            if (activeGames.length === 0) {
+                listEl.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🎯</div><div>暂无进行中的游戏</div></div>';
+                return;
+            }
+            
+            const gameNames = { gomoku: '五子棋', guessNumber: '猜数字', rps: '猜拳', bomb: '数字炸弹', typing: '打字对战', go: '围棋', snake: '贪吃蛇' };
+            listEl.innerHTML = activeGames.map(game => `
+                <div style="background:#f8f9fa;border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <b>${gameNames[game.type] || game.type}</b> 
+                        <span style="color:#666;">| ${game.players.join(', ')}</span>
+                        <span style="color:#28a745;margin-left:10px;">进行中</span>
+                    </div>
+                    <button class="btn btn-sm btn-danger" onclick="endGame('${game.id}')">结束游戏</button>
+                </div>
+            `).join('');
+        } catch (e) {
+            listEl.innerHTML = `<div style="color:red;">加载失败: ${e.message}</div>`;
+        }
+    }
+
+    // 结束游戏
+    async function endGame(gameId) {
+        if (!confirm('确定要结束这个游戏吗？')) return;
+        try {
+            const res = await fetch('/api/admin/interaction/end-game', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gameId })
+            });
+            if (res.ok) {
+                showAdminNotif('游戏已结束');
+                loadActiveGames();
+                addInteractionLog(`结束游戏 ${gameId}`);
+            }
+        } catch (e) { alert('操作失败: ' + e.message); }
+    }
+
+    // 结束所有游戏
+    async function endAllGames() {
+        if (!confirm('确定要结束所有游戏吗？')) return;
+        try {
+            const res = await fetch('/api/admin/interaction/end-all-games', { method: 'POST' });
+            if (res.ok) {
+                showAdminNotif('所有游戏已结束');
+                loadActiveGames();
+                addInteractionLog('结束所有游戏');
+            }
+        } catch (e) { alert('操作失败: ' + e.message); }
+    }
+
+    // 添加操作日志
+    function addInteractionLog(message) {
+        const logEl = document.getElementById('interactionLog');
+        const time = new Date().toLocaleTimeString();
+        const entry = document.createElement('div');
+        entry.style.cssText = 'margin-bottom:6px;padding:6px;background:#2d2d2d;border-radius:4px;';
+        entry.innerHTML = `<span style="color:#888;">[${time}]</span> ${message}`;
+        
+        if (logEl.children.length === 1 && logEl.children[0].style.textAlign === 'center') {
+            logEl.innerHTML = '';
+        }
+        logEl.appendChild(entry);
+        logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    // ==================== 互动中心管理结束 ====================
+
+    // ==================== 权限项点击切换函数 ====================
+    function togglePermItem(element, checkboxId) {
+        const checkbox = document.getElementById(checkboxId);
+        if (checkbox) {
+            checkbox.checked = !checkbox.checked;
+            // 添加点击动画效果
+            element.style.transform = 'scale(0.98)';
+            setTimeout(() => {
+                element.style.transform = 'scale(1)';
+            }, 100);
+        }
+    }
+    // ==================== 权限项点击切换函数结束 ====================
+
+    // ==================== 页面权限管理 ====================
+    let pagePermissionsData = {};
+
+    function loadPagePermissionsData() {
+        loadPagePermissionUserSelect();
+        loadAllPagePermissions();
+    }
+
+    function loadPagePermissionUserSelect() {
+        const select = document.getElementById('pagePermissionUser');
+        if (!select) return;
+        select.innerHTML = '<option value="">选择用户</option>' + 
+            users.map(u => `<option value="${u.socketId}">${u.username}</option>`).join('');
+    }
+
+    // 加载用户页面权限
+    async function loadUserPagePermissions() {
+        const user = document.getElementById('pagePermissionUser').value;
+        const role = document.getElementById('pagePermissionRole').value;
+        if (!user && !role) return alert('请选择用户或角色');
+        
+        try {
+            const res = await fetch(`/api/admin/page-permissions?user=${user}&role=${role}`);
+            const data = await res.json();
+            const perms = data.permissions || {};
+            
+            // 设置复选框
+            document.getElementById('permChat').checked = perms.chat !== false;
+            document.getElementById('permVoice').checked = perms.voice !== false;
+            document.getElementById('permVideo').checked = perms.video !== false;
+            document.getElementById('permGames').checked = perms.games !== false;
+            document.getElementById('permAI').checked = perms.ai !== false;
+            document.getElementById('permEmoji').checked = perms.emoji !== false;
+            document.getElementById('permFile').checked = perms.file !== false;
+            document.getElementById('permLocation').checked = perms.location !== false;
+            document.getElementById('permMusic').checked = perms.music !== false;
+            document.getElementById('permSettings').checked = perms.settings !== false;
+            
+            // 按钮权限
+            document.getElementById('permBtnSendMsg').checked = perms.btnSendMsg !== false;
+            document.getElementById('permBtnSendImage').checked = perms.btnSendImage !== false;
+            document.getElementById('permBtnSendVoice').checked = perms.btnSendVoice !== false;
+            document.getElementById('permBtnCreateRoom').checked = perms.btnCreateRoom !== false;
+            document.getElementById('permBtnInvite').checked = perms.btnInvite !== false;
+            document.getElementById('permBtnKick').checked = perms.btnKick !== false;
+        } catch (e) { alert('加载失败: ' + e.message); }
+    }
+
+    // 保存页面权限
+    async function savePagePermissions() {
+        const user = document.getElementById('pagePermissionUser').value;
+        const role = document.getElementById('pagePermissionRole').value;
+        
+        const perms = {
+            chat: document.getElementById('permChat').checked,
+            voice: document.getElementById('permVoice').checked,
+            video: document.getElementById('permVideo').checked,
+            games: document.getElementById('permGames').checked,
+            ai: document.getElementById('permAI').checked,
+            emoji: document.getElementById('permEmoji').checked,
+            file: document.getElementById('permFile').checked,
+            location: document.getElementById('permLocation').checked,
+            music: document.getElementById('permMusic').checked,
+            settings: document.getElementById('permSettings').checked
+        };
+        
+        try {
+            const res = await fetch('/api/admin/page-permissions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user, role, permissions: perms })
+            });
+            if (res.ok) {
+                showAdminNotif('页面权限已保存');
+                loadAllPagePermissions();
+            }
+        } catch (e) { alert('保存失败: ' + e.message); }
+    }
+
+    // 保存按钮权限
+    async function saveButtonPermissions() {
+        const user = document.getElementById('pagePermissionUser').value;
+        const role = document.getElementById('pagePermissionRole').value;
+        
+        const perms = {
+            btnSendMsg: document.getElementById('permBtnSendMsg').checked,
+            btnSendImage: document.getElementById('permBtnSendImage').checked,
+            btnSendVoice: document.getElementById('permBtnSendVoice').checked,
+            btnCreateRoom: document.getElementById('permBtnCreateRoom').checked,
+            btnInvite: document.getElementById('permBtnInvite').checked,
+            btnKick: document.getElementById('permBtnKick').checked
+        };
+        
+        try {
+            const res = await fetch('/api/admin/page-permissions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user, role, permissions: perms })
+            });
+            if (res.ok) {
+                showAdminNotif('按钮权限已保存');
+                loadAllPagePermissions();
+            }
+        } catch (e) { alert('保存失败: ' + e.message); }
+    }
+
+    // 重置权限
+    async function resetPagePermissions() {
+        if (!confirm('确定要重置为默认权限吗？')) return;
+        document.querySelectorAll('.page-perm-check, .btn-perm-check').forEach(cb => cb.checked = true);
+        await savePagePermissions();
+        await saveButtonPermissions();
+        showAdminNotif('权限已重置为默认');
+    }
+
+    // 加载所有权限
+    async function loadAllPagePermissions() {
+        const listEl = document.getElementById('pagePermissionsList');
+        try {
+            const res = await fetch('/api/admin/page-permissions/all');
+            const data = await res.json();
+            const perms = data.permissions || [];
+            
+            if (perms.length === 0) {
+                listEl.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📋</div><div>暂无自定义权限设置</div></div>';
+                return;
+            }
+            
+            listEl.innerHTML = perms.map(p => `
+                <div style="background:#f8f9fa;border-radius:8px;padding:12px;">
+                    <b>${p.user || p.role}</b>
+                    <div style="color:#666;font-size:12px;margin-top:5px;">
+                        ${Object.entries(p.permissions).filter(([k,v]) => !v).map(([k]) => `❌ ${k}`).join(', ') || '全部允许'}
+                    </div>
+                </div>
+            `).join('');
+        } catch (e) {
+            listEl.innerHTML = `<div style="color:red;">加载失败: ${e.message}</div>`;
+        }
+    }
+
+    // ==================== 页面权限管理结束 ====================
+
+    // ==================== 表情包管理 ====================
+    let emojiLibrary = [];
+    let emojiStats = [];
+
+    function loadEmojiManagerData() {
+        loadEmojiPermissionUserSelect();
+        loadEmojiLibrary();
+        loadEmojiStats();
+    }
+
+    function loadEmojiPermissionUserSelect() {
+        const select = document.getElementById('emojiPermissionUser');
+        if (!select) return;
+        select.innerHTML = '<option value="">选择用户</option>' + 
+            users.map(u => `<option value="${u.socketId}">${u.username}</option>`).join('');
+    }
+
+    // 加载表情包权限
+    async function loadEmojiPermissions() {
+        const user = document.getElementById('emojiPermissionUser').value;
+        const role = document.getElementById('emojiPermissionRole').value;
+        if (!user && !role) return alert('请选择用户或角色');
+        
+        try {
+            const res = await fetch(`/api/admin/emoji-permissions?user=${user}&role=${role}`);
+            const data = await res.json();
+            const perms = data.permissions || {};
+            
+            document.getElementById('permSendEmoji').checked = perms.send !== false;
+            document.getElementById('permSearchEmoji').checked = perms.search !== false;
+            document.getElementById('permCustomEmoji').checked = perms.custom !== false;
+            document.getElementById('permUploadEmoji').checked = perms.upload !== false;
+        } catch (e) { alert('加载失败: ' + e.message); }
+    }
+
+    // 保存表情包权限
+    async function saveEmojiPermissions() {
+        const user = document.getElementById('emojiPermissionUser').value;
+        const role = document.getElementById('emojiPermissionRole').value;
+        
+        const perms = {
+            send: document.getElementById('permSendEmoji').checked,
+            search: document.getElementById('permSearchEmoji').checked,
+            custom: document.getElementById('permCustomEmoji').checked,
+            upload: document.getElementById('permUploadEmoji').checked
+        };
+        
+        try {
+            const res = await fetch('/api/admin/emoji-permissions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user, role, permissions: perms })
+            });
+            if (res.ok) showAdminNotif('表情包权限已保存');
+        } catch (e) { alert('保存失败: ' + e.message); }
+    }
+
+    // 加载表情包库
+    async function loadEmojiLibrary() {
+        const listEl = document.getElementById('emojiLibraryList');
+        try {
+            const res = await fetch('/api/admin/emoji-library');
+            const data = await res.json();
+            emojiLibrary = data.emojis || [];
+            renderEmojiLibrary();
+        } catch (e) {
+            listEl.innerHTML = `<div style="color:red;grid-column:1/-1;">加载失败: ${e.message}</div>`;
+        }
+    }
+
+    // 渲染表情包库
+    function renderEmojiLibrary() {
+        const listEl = document.getElementById('emojiLibraryList');
+        const keyword = document.getElementById('emojiSearchKeyword').value.toLowerCase();
+        const category = document.getElementById('emojiCategory').value;
+        
+        let filtered = emojiLibrary;
+        if (keyword) filtered = filtered.filter(e => e.name.toLowerCase().includes(keyword) || (e.keywords && e.keywords.includes(keyword)));
+        if (category) filtered = filtered.filter(e => e.category === category);
+        
+        if (filtered.length === 0) {
+            listEl.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><div class="empty-state-icon">🖼️</div><div>未找到表情包</div></div>';
+            return;
+        }
+        
+        listEl.innerHTML = filtered.map(emoji => `
+            <div style="background:#f8f9fa;border-radius:8px;padding:10px;text-align:center;position:relative;">
+                <img src="${emoji.url}" style="width:60px;height:60px;object-fit:contain;" alt="${emoji.name}">
+                <div style="font-size:12px;color:#666;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${emoji.name}</div>
+                <button onclick="deleteEmoji('${emoji.id}')" style="position:absolute;top:5px;right:5px;background:#dc3545;color:white;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:10px;">×</button>
+            </div>
+        `).join('');
+    }
+
+    // 搜索表情包
+    function searchEmojis() {
+        renderEmojiLibrary();
+    }
+
+    // 删除表情包
+    async function deleteEmoji(emojiId) {
+        if (!confirm('确定要删除这个表情包吗？')) return;
+        try {
+            const res = await fetch(`/api/admin/emoji-library/${emojiId}`, { method: 'DELETE' });
+            if (res.ok) {
+                showAdminNotif('表情包已删除');
+                loadEmojiLibrary();
+            }
+        } catch (e) { alert('删除失败: ' + e.message); }
+    }
+
+    // 处理表情包文件上传
+    function handleEmojiFileUpload(input) {
+        const file = input.files[0];
+        if (!file) return;
+        
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('newEmojiUrl').value = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    // 添加新表情包
+    async function addNewEmoji() {
+        const name = document.getElementById('newEmojiName').value.trim();
+        const category = document.getElementById('newEmojiCategory').value;
+        const url = document.getElementById('newEmojiUrl').value.trim();
+        const keywords = document.getElementById('newEmojiKeywords').value.split(',').map(k => k.trim()).filter(k => k);
+        
+        if (!name || !url) return alert('请填写名称和URL');
+        
+        try {
+            const res = await fetch('/api/admin/emoji-library', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, category, url, keywords })
+            });
+            if (res.ok) {
+                showAdminNotif('表情包已添加');
+                document.getElementById('newEmojiName').value = '';
+                document.getElementById('newEmojiUrl').value = '';
+                document.getElementById('newEmojiKeywords').value = '';
+                loadEmojiLibrary();
+            }
+        } catch (e) { alert('添加失败: ' + e.message); }
+    }
+
+    // 加载表情包统计
+    async function loadEmojiStats() {
+        const listEl = document.getElementById('emojiStatsList');
+        try {
+            const res = await fetch('/api/admin/emoji-stats');
+            const data = await res.json();
+            emojiStats = data.stats || [];
+            
+            if (emojiStats.length === 0) {
+                listEl.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📊</div><div>暂无统计数据</div></div>';
+                return;
+            }
+            
+            listEl.innerHTML = emojiStats.map(stat => `
+                <div style="background:#f8f9fa;border-radius:8px;padding:12px;display:flex;justify-content:space-between;align-items:center;">
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <img src="${stat.url}" style="width:40px;height:40px;object-fit:contain;" alt="${stat.name}">
+                        <div>
+                            <b>${stat.name}</b>
+                            <div style="color:#666;font-size:12px;">使用次数: ${stat.usageCount}</div>
+                        </div>
+                    </div>
+                    <div style="color:#28a745;font-weight:bold;">#${stat.rank}</div>
+                </div>
+            `).join('');
+        } catch (e) {
+            listEl.innerHTML = `<div style="color:red;">加载失败: ${e.message}</div>`;
+        }
+    }
+
+    // ==================== 表情包管理结束 ====================
     </script>
 </body>
 </html>

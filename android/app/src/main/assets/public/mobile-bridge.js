@@ -49,7 +49,7 @@
     function applySafeAreaInsets() {
         // 为容器添加 padding 以避免内容被状态栏/底部指示器遮挡
         document.documentElement.style.setProperty('--safe-area-top', `${ChatRoomMobile.safeArea.top}px`);
-        document.documentElement.style.setProperty('safe-area-bottom', `${ChatRoomMobile.safeArea.bottom}px`);
+        document.documentElement.style.setProperty('--safe-area-bottom', `${ChatRoomMobile.safeArea.bottom}px`);
         
         const container = document.querySelector('.container');
         if (container) {
