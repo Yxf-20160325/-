@@ -1123,8 +1123,8 @@
         }
 
         #joinBtn {
-            width: 100%;
-            padding: 12px 30px;
+            flex-shrink: 0;
+            padding: 12px 24px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border: none;
@@ -1132,6 +1132,7 @@
             font-size: 14px;
             cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
+            min-height: 44px;
         }
 
         #joinBtn:hover {
@@ -1157,11 +1158,12 @@
         /* 登录表单样式 */
         #loginForm {
             display: flex;
-            flex-direction: column;
+            flex-direction: row;
             gap: 10px;
+            align-items: center;
         }
 
-        /* 修复 Android WebView 点击问题 */
+            /* 修复 Android WebView 点击问题 */
         #joinBtn {
             -webkit-tap-highlight-color: transparent;
             touch-action: manipulation;
@@ -1171,9 +1173,13 @@
             /* 确保按钮在 Android WebView 中可点击 */
             cursor: pointer;
             pointer-events: auto;
+            position: relative;
+            z-index: 1000;
         }
 
         #usernameInput {
+            flex: 1;
+            min-width: 0;
             -webkit-tap-highlight-color: transparent;
             touch-action: manipulation;
             /* 确保输入框在 Android WebView 中可点击 */
@@ -1843,17 +1849,26 @@
 
             #loginForm {
                 width: 100%;
+                display: flex;
+                flex-direction: row;
+                gap: 10px;
+                align-items: center;
             }
 
             #usernameInput {
+                flex: 1;
                 font-size: 16px; /* 防止 iOS 缩放 */
                 padding: 12px 15px;
+                min-height: 44px;
             }
 
             #joinBtn {
-                padding: 14px 30px;
+                flex-shrink: 0;
+                padding: 12px 20px;
                 font-size: 16px;
                 min-height: 48px; /* 确保可点击区域足够大 */
+                position: relative;
+                z-index: 1000;
             }
             
             .header h1 {
