@@ -6710,6 +6710,24 @@
                 // 显示连接成功通知
                 showNotification('连接成功', '已成功连接到聊天服务器', '✅');
                 
+                // 检查是否有保存的登录信息，自动加入房间
+                try {
+                    const savedUsername = localStorage.getItem('lastUsername');
+                    const savedRoom = localStorage.getItem('lastRoom');
+                    
+                    if (savedUsername && savedRoom && typeof username !== 'undefined' && username === savedUsername) {
+                        console.log('自动重新加入房间:', savedRoom, '用户:', savedUsername);
+                        // 延迟一点确保其他监听器已注册
+                        setTimeout(() => {
+                            if (socket && socket.connected) {
+                                socket.emit('join', { username: savedUsername, roomName: savedRoom });
+                            }
+                        }, 300);
+                    }
+                } catch (e) {
+                    console.warn('检查自动登录信息失败:', e);
+                }
+                
                 // 在连接成功后注册核心事件监听器
                 if (typeof registerCoreEventListeners === 'function') {
                     registerCoreEventListeners();
@@ -6907,7 +6925,23 @@
                 console.log('Socket重新连接成功，尝试次数:', attemptNumber);
                 // 显示重连成功通知
                 showNotification('连接恢复', '已重新连接到聊天服务器', '✅');
-                // 不再自动重新加入房间，用户需要手动操作
+                
+                // 自动重新加入房间并同步消息
+                try {
+                    const savedUsername = localStorage.getItem('lastUsername');
+                    const savedRoom = localStorage.getItem('lastRoom');
+                    
+                    if (savedUsername && savedRoom) {
+                        console.log('自动重新加入房间:', savedRoom, '用户:', savedUsername);
+                        setTimeout(() => {
+                            if (socket && socket.connected) {
+                                socket.emit('join', { username: savedUsername, roomName: savedRoom });
+                            }
+                        }, 300);
+                    }
+                } catch (e) {
+                    console.warn('自动重新加入失败:', e);
+                }
             });
 
             socket.on('reconnect_attempt', (attemptNumber) => {
@@ -16565,6 +16599,24 @@ io.on('connection', (socket) => {
                     }
                 };
                 
+                // ICE连接状态监听 - 处理5G/4G网络下的连接问题
+                this.peerConnection.oniceconnectionstatechange = () => {
+                    const state = this.peerConnection.iceConnectionState;
+                    console.log('ICE连接状态:', state);
+                    
+                    if (state === 'failed' || state === 'disconnected') {
+                        console.warn('ICE连接失败/断开，尝试重新连接...');
+                        // 尝试重启ICE
+                        if (this.peerConnection.restartIce) {
+                            this.peerConnection.restartIce();
+                        }
+                    }
+                    
+                    if (state === 'checking') {
+                        console.log('正在建立连接，请稍候...');
+                    }
+                };
+                
                 // 监听远程媒体流 - 超级增强版ontrack事件处理，确保拨通方能看到对方
                 this.peerConnection.ontrack = (event) => {
                     console.log('收到远程媒体流轨道:', event.track.kind, event.track.id, '流:', event.streams.length);
@@ -19198,6 +19250,14 @@ io.on('connection', (socket) => {
                         
                         // 从URL获取房间名，默认使用'main'
                         const roomName = getRoomFromUrl() || 'main';
+                        
+                        // 保存用户名和房间到localStorage，用于自动重连
+                        try {
+                            localStorage.setItem('lastUsername', username);
+                            localStorage.setItem('lastRoom', roomName);
+                        } catch (e) {
+                            console.warn('无法保存登录信息到localStorage:', e);
+                        }
                         
                         // 如果不是默认房间，提示用户输入密码（如果需要）
                         if (roomName !== 'main') {
