@@ -3219,7 +3219,20 @@ const io = new Server(server, {
         origin: true,
         methods: ["GET", "POST"],
         credentials: true,
-        allowedHeaders: ["Content-Type", "Authorization"]
+        allowedHeaders: [
+            "Content-Type",
+            "Authorization",
+            "X-Requested-With",
+            "X-CSRF-Token",
+            "Accept",
+            "Accept-Language",
+            "Content-Language",
+            "Cache-Control",
+            "Origin",
+            "Referer",
+            "User-Agent",
+            "X-Client-Info"
+        ]
     },
     
     // 传输方式配置
