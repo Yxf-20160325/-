@@ -69,8 +69,8 @@
         }
 
         .container {
-            width: 95%;
-            max-width: 900px;
+            width: 98%;
+            max-width: 1400px;
             height: 95vh;
             max-height: 100vh;
             background: white;
@@ -86,19 +86,20 @@
         .header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: #fff;
-            padding: 20px;
+            padding: 10px 20px;
             text-align: center;
             border-bottom: 1px solid #e9ecef;
+            flex-shrink: 0;
         }
 
         .header h1 {
-            font-size: 24px;
-            margin-bottom: 5px;
+            font-size: 18px;
+            margin-bottom: 2px;
         }
 
         .header .online-count {
-            font-size: 14px;
-            color: #888;
+            font-size: 12px;
+            color: rgba(255,255,255,0.8);
         }
         
         .header-actions {
@@ -109,18 +110,18 @@
         }
         
         .header-btn {
-            background: #f0f0f0;
+            background: rgba(255,255,255,0.2);
             border: none;
             border-radius: 50%;
-            width: 40px;
-            height: 40px;
+            width: 32px;
+            height: 32px;
             cursor: pointer;
-            font-size: 18px;
+            font-size: 16px;
             transition: all 0.2s;
         }
         
         .header-btn:hover {
-            background: #e0e0e0;
+            background: rgba(255,255,255,0.3);
             transform: scale(1.1);
         }
         
@@ -1825,8 +1826,29 @@
             .action-buttons {
                 order: -1;
                 width: 100%;
-                justify-content: space-around;
+                justify-content: space-between;
                 margin-bottom: 10px;
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                padding-bottom: 5px;
+            }
+            
+            .action-buttons::-webkit-scrollbar {
+                height: 4px;
+            }
+            
+            .action-buttons::-webkit-scrollbar-track {
+                background: #f1f1f1;
+                border-radius: 2px;
+            }
+            
+            .action-buttons::-webkit-scrollbar-thumb {
+                background: #888;
+                border-radius: 2px;
+            }
+            
+            .action-buttons::-webkit-scrollbar-thumb:hover {
+                background: #555;
             }
             
             #sendBtn {
@@ -3113,7 +3135,7 @@
             #newPluginDescription {
                 padding: 12px;
                 font-size: 16px; /* 防止iOS自动缩放 */
-                -webkit-appearance: none;
+                appearance: none;
             }
 
             /* 插件代码编辑器 */
@@ -3989,6 +4011,21 @@
                                 <input type="checkbox" id="vibrateNotificationCheckbox" checked>
                                 来消息时震动
                             </label>
+                        </div>
+                        <div style="margin-top: 10px;">
+                            <label>
+                                <input type="checkbox" id="joinNotificationCheckbox" checked>
+                                用户加入通知
+                            </label>
+                        </div>
+                        <div style="margin-top: 15px; padding: 10px; background: #e9ecef; border-radius: 5px;">
+                            <p style="margin-bottom: 10px; font-size: 13px; color: #666;">
+                                <strong>iOS 推送通知：</strong>开启后将收到用户加入的系统通知推送
+                            </p>
+                            <button id="enablePushNotificationBtn" class="btn" style="padding: 8px 16px; background: #667eea; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                                启用推送通知
+                            </button>
+                            <p id="notificationStatus" style="margin-top: 8px; font-size: 12px; color: #666;"></p>
                         </div>
                         <div style="margin-top: 10px;">
                             <label>
@@ -6046,6 +6083,10 @@
         // 全局变量：记录用户交互激活状态
         let userInteractionActivated = false;
         
+        // 推送通知相关变量
+        let pushNotificationEnabled = false;
+        let serviceWorkerRegistration = null;
+        
         // 启用通知按钮
         function createEnableNotificationsButton() {
             const existingButton = document.getElementById('enableNotificationsBtn');
@@ -6496,6 +6537,126 @@
                 };
                 return xhr;
             };
+        }
+        
+        // ── 推送通知功能 ──
+        
+        // 初始化推送通知
+        async function initPushNotifications() {
+            // 检查浏览器是否支持通知
+            if (!('Notification' in window)) {
+                console.log('此浏览器不支持通知功能');
+                return;
+            }
+            
+            // 注册 Service Worker
+            if ('serviceWorker' in navigator) {
+                try {
+                    serviceWorkerRegistration = await navigator.serviceWorker.register('/sw.js');
+                    console.log('Service Worker 注册成功');
+                    
+                    // 监听来自 Service Worker 的消息
+                    navigator.serviceWorker.addEventListener('message', (event) => {
+                        console.log('收到 Service Worker 消息:', event.data);
+                    });
+                } catch (error) {
+                    console.error('Service Worker 注册失败:', error);
+                }
+            }
+            
+            // 检查当前通知权限状态
+            updateNotificationPermissionStatus();
+        }
+        
+        // 更新通知权限状态显示
+        function updateNotificationPermissionStatus() {
+            if (Notification.permission === 'granted') {
+                pushNotificationEnabled = true;
+            } else if (Notification.permission === 'denied') {
+                pushNotificationEnabled = false;
+            } else {
+                pushNotificationEnabled = false;
+            }
+        }
+        
+        // 请求通知权限
+        async function requestNotificationPermission() {
+            if (!('Notification' in window)) {
+                showNotification('此浏览器不支持通知功能', 'error');
+                return false;
+            }
+            
+            if (Notification.permission === 'granted') {
+                showNotification('通知权限已开启', 'success');
+                pushNotificationEnabled = true;
+                return true;
+            }
+            
+            if (Notification.permission === 'denied') {
+                showNotification('通知权限已被拒绝，请在浏览器设置中开启', 'error');
+                return false;
+            }
+            
+            try {
+                const permission = await Notification.requestPermission();
+                if (permission === 'granted') {
+                    showNotification('通知权限已开启', 'success');
+                    pushNotificationEnabled = true;
+                    
+                    // iOS Safari 需要用户交互后才能显示通知
+                    if (isIOSDevice()) {
+                        showNotification('iOS设备请在设置中开启通知', 'info');
+                    }
+                    return true;
+                } else {
+                    showNotification('通知权限被拒绝', 'error');
+                    pushNotificationEnabled = false;
+                    return false;
+                }
+            } catch (error) {
+                console.error('请求通知权限失败:', error);
+                showNotification('请求通知权限失败', 'error');
+                return false;
+            }
+        }
+        
+        // 检测是否为 iOS 设备
+        function isIOSDevice() {
+            return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        }
+        
+        // 显示系统通知（支持 iOS 和 Android）
+        function showPushNotification(title, options = {}) {
+            // 检查是否启用通知
+            if (!pushNotificationEnabled && Notification.permission !== 'granted') {
+                return;
+            }
+            
+            // iOS Safari 要求在用户交互后调用通知
+            if (isIOSDevice() && !userInteractionActivated) {
+                console.log('iOS设备需要用户交互后才能显示通知');
+                return;
+            }
+            
+            const defaultOptions = {
+                body: '',
+                icon: '/icon.png',
+                badge: '/badge.png',
+                tag: 'chatroom-notification',
+                requireInteraction: false,
+                silent: false
+            };
+            
+            const notificationOptions = { ...defaultOptions, ...options };
+            
+            // 使用 Service Worker 显示通知（推荐方式）
+            if (serviceWorkerRegistration) {
+                serviceWorkerRegistration.showNotification(title, notificationOptions);
+            } 
+            // 降级：使用普通 Notification API
+            else if (Notification.permission === 'granted') {
+                new Notification(title, notificationOptions);
+            }
         }
         
         // 初始化Socket连接
@@ -8088,6 +8249,19 @@
                     // 确保userCountSpan已定义
                     if (userCountSpan) {
                         userCountSpan.textContent = data.userCount;
+                    }
+                    
+                    // 发送推送通知（仅当其他用户加入时）
+                    if (data.username !== username) {
+                        // 检查用户是否开启了用户加入通知
+                        const joinNotificationEnabled = window.userSettings?.joinNotification !== false;
+                        if (joinNotificationEnabled) {
+                            showPushNotification('新成员加入', {
+                                body: `${data.username} 加入了聊天室`,
+                                tag: 'user-joined',
+                                requireInteraction: false
+                            });
+                        }
                     }
                     
                     // 更新当前用户的权限
@@ -11616,6 +11790,8 @@
             soundNotification: true, // 默认开启声音通知
             mentionNotification: true, // 默认开启@提及通知
             vibrateNotification: true, // 默认开启震动通知
+            joinNotification: true, // 默认开启用户加入通知
+            pushNotification: false, // 推送通知权限状态
             // 语言设置
             interfaceLanguage: 'zh', // 界面语言：zh, en
             autoDetectLanguage: true, // 是否自动检测浏览器语言
@@ -11720,6 +11896,47 @@
             const vibrateNotificationCheckbox = document.getElementById('vibrateNotificationCheckbox');
             if (vibrateNotificationCheckbox) {
                 vibrateNotificationCheckbox.checked = window.userSettings.vibrateNotification;
+            }
+            
+            // 初始化用户加入通知复选框
+            const joinNotificationCheckbox = document.getElementById('joinNotificationCheckbox');
+            if (joinNotificationCheckbox) {
+                joinNotificationCheckbox.checked = window.userSettings.joinNotification !== false;
+            }
+            
+            // 初始化推送通知按钮和状态
+            const enablePushBtn = document.getElementById('enablePushNotificationBtn');
+            const notificationStatus = document.getElementById('notificationStatus');
+            if (enablePushBtn && notificationStatus) {
+                updateNotificationStatusDisplay(notificationStatus);
+                enablePushBtn.addEventListener('click', async () => {
+                    const granted = await requestNotificationPermission();
+                    if (granted) {
+                        updateNotificationStatusDisplay(notificationStatus);
+                    }
+                });
+            }
+            
+            // 更新通知状态显示
+            function updateNotificationStatusDisplay(statusEl) {
+                if (!('Notification' in window)) {
+                    statusEl.textContent = '您的浏览器不支持通知功能';
+                    statusEl.style.color = '#dc3545';
+                    enablePushBtn.style.display = 'none';
+                } else if (Notification.permission === 'granted') {
+                    statusEl.textContent = '推送通知已启用 ✓';
+                    statusEl.style.color = '#28a745';
+                    enablePushBtn.textContent = '已启用';
+                    enablePushBtn.disabled = true;
+                } else if (Notification.permission === 'denied') {
+                    statusEl.textContent = '通知权限已被拒绝，请在浏览器设置中开启';
+                    statusEl.style.color = '#dc3545';
+                    enablePushBtn.textContent = '权限被拒绝';
+                    enablePushBtn.disabled = true;
+                } else {
+                    statusEl.textContent = '点击按钮开启推送通知';
+                    statusEl.style.color = '#666';
+                }
             }
             
             // 初始化本地视频镜像设置
@@ -13002,6 +13219,15 @@ io.on('connection', (socket) => {
                 window.userSettings.vibrateNotification = vibrateNotificationCheckbox.checked;
             }
             
+            // 保存用户加入通知设置
+            const joinNotificationCheckbox = document.getElementById('joinNotificationCheckbox');
+            if (joinNotificationCheckbox) {
+                window.userSettings.joinNotification = joinNotificationCheckbox.checked;
+            }
+            
+            // 保存推送通知权限状态
+            window.userSettings.pushNotification = Notification.permission === 'granted';
+            
             // 保存本地视频镜像设置
             const mirrorVideoCheckbox = document.getElementById('mirrorVideoCheckbox');
             if (mirrorVideoCheckbox) {
@@ -13470,22 +13696,41 @@ io.on('connection', (socket) => {
                 this.peerConnection = null;
                 this.iceServers = {
                     iceServers: [
-                        // STUN服务器用于发现公网IP和端口
+                        // STUN服务器
                         { urls: 'stun:stun.l.google.com:19302' },
                         { urls: 'stun:stun1.l.google.com:19302' },
                         { urls: 'stun:stun2.l.google.com:19302' },
                         { urls: 'stun:stun3.l.google.com:19302' },
                         { urls: 'stun:stun4.l.google.com:19302' },
-                        // TURN服务器用于穿透严格NAT，提供中继服务
-                        { 
-                            urls: 'turn:turn.l.google.com:19305', 
-                            username: 'webrtc', 
+                        { urls: 'stun:stun.miwifi.com:3478' },
+                        { urls: 'stun:stun.qq.com:3478' },
+                        // Metered.ca 免费TURN服务器（支持移动网络）
+                        {
+                            urls: 'turn:a-turn.metered.ca:80',
+                            username: 'metered',
+                            credential: 'metered'
+                        },
+                        {
+                            urls: 'turn:a-turn.metered.ca:443',
+                            username: 'metered',
+                            credential: 'metered'
+                        },
+                        // Google TURN服务器
+                        {
+                            urls: 'turn:turn.l.google.com:19305',
+                            username: 'webrtc',
                             credential: 'webrtc'
                         },
-                        { 
-                            urls: 'turn:turnserver.example.com:3478', 
-                            username: 'demo', 
-                            credential: 'demo123'
+                        // 备用TURN服务器
+                        {
+                            urls: 'turn:openrelay.metered.ca:80',
+                            username: 'openrelay',
+                            credential: 'openrelay'
+                        },
+                        {
+                            urls: 'turn:openrelay.metered.ca:443',
+                            username: 'openrelay',
+                            credential: 'openrelay'
                         }
                     ]
                 };
@@ -16290,7 +16535,15 @@ io.on('connection', (socket) => {
             // 创建WebRTC PeerConnection
             createPeerConnection() {
                 console.log('创建新的PeerConnection');
-                this.peerConnection = new RTCPeerConnection(this.iceServers);
+                // 针对移动网络优化的配置
+                const rtcConfig = {
+                    iceServers: this.iceServers.iceServers,
+                    iceTransportPolicy: 'all',  // 使用所有类型的候选（包括relay）
+                    iceCandidatePoolSize: 10,   // 增加候选池大小
+                    bundlePolicy: 'max-bundle',
+                    rtcpMuxPolicy: 'require'
+                };
+                this.peerConnection = new RTCPeerConnection(rtcConfig);
                 
                 // 立即尝试添加本地媒体流，如果还没有，设置定时器重试
                 this.ensureLocalStreamAdded();
@@ -18770,6 +19023,17 @@ io.on('connection', (socket) => {
                     }
                 });
             });
+            
+            // 初始化推送通知
+            initPushNotifications();
+            
+            // 监听用户交互事件（iOS Safari 需要）
+            document.addEventListener('click', () => {
+                userInteractionActivated = true;
+            }, { once: true });
+            document.addEventListener('touchstart', () => {
+                userInteractionActivated = true;
+            }, { once: true });
             
             // 初始化Socket连接
             console.log('所有元素初始化完成，开始初始化Socket连接');

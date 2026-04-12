@@ -4104,15 +4104,9 @@ io.on('connection', (socket) => {
     // 获取用户IP
     const userIP = socket.handshake.address;
     
-    // 添加调试日志
-    console.log(`[连接] 用户连接: ${socket.id}`);
-    console.log(`[连接] 客户端IP: ${userIP}`);
-    console.log(`[连接] 传输方式: ${socket.conn.transport.name}`);
-    console.log(`[连接] User-Agent: ${socket.handshake.headers['user-agent']}`);
-    
     // 监听传输方式升级
     socket.conn.on('upgrade', () => {
-        console.log(`[升级] ${socket.id} 传输方式从 polling 升级为 ${socket.conn.transport.name}`);
+        // 静默处理传输方式升级
     });
     
     // 检查IP是否被封禁
@@ -4137,7 +4131,6 @@ io.on('connection', (socket) => {
     
     // 记录连接
     ipConnSet.add(socket.id);
-    console.log(`用户连接: ${socket.id} (IP: ${userIP}), 当前IP连接数: ${ipConnSet.size}`);
 
     socket.on('join', (data) => {
         // 速率限制
