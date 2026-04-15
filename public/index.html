@@ -254,6 +254,55 @@
             margin-bottom: 2px;
         }
 
+        /* 通知权限引导横幅 */
+        #notificationPromptBanner {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            padding: 10px 16px;
+            display: none;
+            align-items: center;
+            gap: 12px;
+            font-size: 14px;
+            color: #fff;
+            cursor: pointer;
+        }
+        #notificationPromptBanner.show {
+            display: flex;
+        }
+        #notificationPromptBanner .banner-icon {
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+        #notificationPromptBanner .banner-text {
+            flex: 1;
+        }
+        #notificationPromptBanner .banner-text strong {
+            display: block;
+            margin-bottom: 2px;
+        }
+        #notificationPromptBanner .banner-btn {
+            background: rgba(255,255,255,0.25);
+            border: 1px solid rgba(255,255,255,0.5);
+            color: #fff;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            cursor: pointer;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        #notificationPromptBanner .banner-btn:hover {
+            background: rgba(255,255,255,0.4);
+        }
+        #notificationPromptBanner .banner-close {
+            background: none;
+            border: none;
+            color: rgba(255,255,255,0.7);
+            cursor: pointer;
+            font-size: 16px;
+            padding: 0 4px;
+            flex-shrink: 0;
+        }
+
         .batch-actions {
             position: fixed;
             bottom: 100px;
@@ -3640,6 +3689,16 @@
         </div>
 
         <div class="chat-container">
+            <!-- 通知权限引导横幅 -->
+            <div id="notificationPromptBanner" onclick="handleNotificationPromptClick()">
+                <span class="banner-icon">🔔</span>
+                <div class="banner-text">
+                    <strong>开启消息通知</strong>
+                    有人加入时自动提醒，不错过任何动态
+                </div>
+                <button class="banner-btn" onclick="event.stopPropagation(); handleNotificationPromptClick()">开启通知</button>
+                <button class="banner-close" onclick="event.stopPropagation(); dismissNotificationBanner()">✕</button>
+            </div>
             <!-- 房间公告栏 -->
             <div id="announcementBar" class="announcement-bar" style="display: none;">
                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -6624,6 +6683,51 @@
         function isIOSDevice() {
             return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
         }
+
+        // ── 通知权限引导横幅 ──
+        let notificationBannerDismissed = false;
+
+        function showNotificationPromptBanner() {
+            if (notificationBannerDismissed) return;
+            // 仅在未授权时提示
+            if (Notification.permission === 'granted') return;
+            const banner = document.getElementById('notificationPromptBanner');
+            if (!banner) return;
+            banner.classList.add('show');
+            // 10秒无操作自动消失
+            setTimeout(() => {
+                const b = document.getElementById('notificationPromptBanner');
+                if (b && b.classList.contains('show')) {
+                    b.style.animation = 'slideDown 0.3s ease reverse';
+                    setTimeout(() => {
+                        if (b) b.classList.remove('show');
+                    }, 300);
+                }
+            }, 10000);
+        }
+
+        function dismissNotificationBanner() {
+            notificationBannerDismissed = true;
+            const banner = document.getElementById('notificationPromptBanner');
+            if (banner) {
+                banner.style.animation = 'slideDown 0.3s ease reverse';
+                setTimeout(() => {
+                    if (banner) banner.classList.remove('show');
+                }, 300);
+            }
+        }
+
+        async function handleNotificationPromptClick() {
+            const granted = await requestNotificationPermission();
+            dismissNotificationBanner();
+            if (granted) {
+                // 发送一条测试通知
+                showPushNotification('通知已开启', {
+                    body: '您将在有人加入聊天室时收到提醒',
+                    tag: 'notification-enabled'
+                });
+            }
+        }
         
         // 显示系统通知（支持 iOS 和 Android）
         function showPushNotification(title, options = {}) {
@@ -8321,6 +8425,9 @@
                                 if (messageInput) {
                                     messageInput.focus();
                                 }
+
+                                // 显示通知权限引导横幅
+                                showNotificationPromptBanner();
                                 
                                 // 启用音频和图片按钮
                                 const audioBtn = document.getElementById('audioBtn');
@@ -8346,9 +8453,6 @@
                                 
                                 // 保存页面状态
                                 savePageState();
-                                
-                                // 启动截屏检测
-                                startScreenshotOnJoin();
                             }
                         }
                     }
@@ -8366,15 +8470,6 @@
                     if (userCountSpan) {
                         userCountSpan.textContent = data.userCount;
                     }
-                    // 当前用户离开时停止截屏检测
-                    if (data.username === username) {
-                        stopScreenshotOnLeave();
-                    }
-                });
-                
-                // 监听截屏通知广播
-                socket.on('screenshot-broadcast', (data) => {
-                    addSystemMessage(`📸 ${data.username} 在聊天中截取了屏幕`);
                 });
                 
                 // ── 公告功能 ──
@@ -13744,6 +13839,7 @@ io.on('connection', (socket) => {
                         { urls: 'stun:stun4.l.google.com:19302' },
                         { urls: 'stun:stun.miwifi.com:3478' },
                         { urls: 'stun:stun.qq.com:3478' },
+                        { urls: 'stun:stun1.freeswitch.org:3478' },
                         // Metered.ca 免费TURN服务器（支持移动网络）
                         {
                             urls: 'turn:a-turn.metered.ca:80',
@@ -13761,6 +13857,7 @@ io.on('connection', (socket) => {
                             username: 'webrtc',
                             credential: 'webrtc'
                         },
+                        // Twilio TURN（需要真实账号凭证，占位条目已移除）
                         // 备用TURN服务器
                         {
                             urls: 'turn:openrelay.metered.ca:80',
@@ -13774,6 +13871,9 @@ io.on('connection', (socket) => {
                         }
                     ]
                 };
+                // ICE 连接超时定时器（用于远距离打洞失败时自动切换中继）
+                this.iceCheckTimer = null;
+                this.iceCheckStartTime = null;
                 this.socketMediaBuffer = [];
                 this.pendingIceCandidates = null;
                 this.pendingOffer = null;
@@ -16592,6 +16692,31 @@ io.on('connection', (socket) => {
                 this.streamCheckInterval = setInterval(() => {
                     this.ensureLocalStreamAdded();
                 }, 2000);
+
+                // ── ICE 连接超时监控（远距离打洞失败时自动切中继） ──
+                this.iceCheckStartTime = Date.now();
+                if (this.iceCheckTimer) clearInterval(this.iceCheckTimer);
+                this.iceCheckTimer = setInterval(() => {
+                    if (!this.peerConnection) {
+                        clearInterval(this.iceCheckTimer);
+                        return;
+                    }
+                    const state = this.peerConnection.iceConnectionState;
+                    // connected/completed → 成功，清除定时器
+                    if (state === 'connected' || state === 'completed') {
+                        console.log('ICE 连接成功，清除超时定时器');
+                        clearInterval(this.iceCheckTimer);
+                        this.iceCheckTimer = null;
+                        return;
+                    }
+                    // 超过 20 秒仍未连接 → 强制切换 socket.io 中继
+                    if (Date.now() - this.iceCheckStartTime > 20000) {
+                        console.warn('ICE 连接超时（20s），切换到 socket.io 中继模式');
+                        clearInterval(this.iceCheckTimer);
+                        this.iceCheckTimer = null;
+                        this.switchToRelayMode();
+                    }
+                }, 1000);
                 
                 // 监听ICE候选
                 this.peerConnection.onicecandidate = (event) => {
@@ -16612,9 +16737,21 @@ io.on('connection', (socket) => {
                     
                     if (state === 'failed' || state === 'disconnected') {
                         console.warn('ICE连接失败/断开，尝试重新连接...');
-                        // 尝试重启ICE
-                        if (this.peerConnection.restartIce) {
-                            this.peerConnection.restartIce();
+                        // 清除超时定时器（已失败，不再等待）
+                        if (this.iceCheckTimer) {
+                            clearInterval(this.iceCheckTimer);
+                            this.iceCheckTimer = null;
+                        }
+                        // 尝试重启ICE，重试1次后若仍失败则切中继
+                        if (!this._iceRestartedForRelay) {
+                            this._iceRestartedForRelay = true;
+                            if (this.peerConnection.restartIce) {
+                                this.peerConnection.restartIce();
+                            }
+                        } else {
+                            // 第二次失败，直接切 socket.io 中继
+                            this._iceRestartedForRelay = false;
+                            this.switchToRelayMode();
                         }
                     }
                     
@@ -16725,6 +16862,46 @@ io.on('connection', (socket) => {
                 });
             }
             
+            // ── 切换到 socket.io 中继模式（WebRTC 打洞失败时兜底） ──
+            switchToRelayMode() {
+                if (!this.isInCall || this.currentCallMethod === 'socket.io') return;
+                console.warn('正在切换到 socket.io 中继模式...');
+                
+                // 关闭 WebRTC peer connection
+                if (this.peerConnection) {
+                    this.peerConnection.close();
+                    this.peerConnection = null;
+                }
+                if (this.iceCheckTimer) {
+                    clearInterval(this.iceCheckTimer);
+                    this.iceCheckTimer = null;
+                }
+                
+                // 切换为 socket.io 中继模式
+                this.currentCallMethod = 'socket.io';
+                this._iceRestartedForRelay = false;
+                
+                // 通知对方切换中继模式
+                if (this.socket && this.currentCallTargetSocketId) {
+                    this.socket.emit('call-media', {
+                        targetSocketId: this.currentCallTargetSocketId,
+                        callId: this.currentCallId,
+                        type: 'switch-to-relay'
+                    });
+                }
+                
+                showNotification('直连失败，已自动切换到中继模式（画面可能略有延迟）', 'warning');
+                
+                // 重新初始化本地媒体流（socket.io 模式）
+                if (this.localStream) {
+                    this.initMediaSource();
+                    this.startSocketMediaStream();
+                } else {
+                    // 如果没有本地流，重新获取
+                    this.initMediaStream();
+                }
+            }
+
             // 创建并发送offer
             createAndSendOffer() {
                 if (!this.peerConnection) {
@@ -19402,68 +19579,25 @@ io.on('connection', (socket) => {
         
         // 监听输入框变化，自动保存草稿
         messageInput.addEventListener('input', saveDraft);
-        
-        // ── 截屏检测 ──
-        let lastClipboardText = '';
-        let screenshotDetectionInterval = null;
-        
-        function startScreenshotDetection() {
-            if (screenshotDetectionInterval) return;
-            // 定期检测剪贴板变化
-            screenshotDetectionInterval = setInterval(async () => {
-                try {
-                    // 使用 Clipboard API 检测剪贴板中的图片
-                    if (navigator.clipboard && navigator.clipboard.read) {
-                        const items = await navigator.clipboard.read();
-                        for (const item of items) {
-                            const imageType = item.types.find(t => t.startsWith('image/'));
-                            if (imageType) {
-                                const blob = await item.getType(imageType);
-                                // 检测到截屏（剪贴板中有图片）
-                                console.log('[截屏检测] 检测到剪贴板中的图片');
-                                
-                                // 发送截屏通知
-                                if (socket && socket.connected && currentRoom) {
-                                    socket.emit('screenshot-notice', {
-                                        roomName: currentRoom
-                                    });
-                                }
-                                break;
-                            }
-                        }
-                    }
-                } catch (err) {
-                    // 忽略权限错误和其他错误
-                }
-            }, 3000); // 每3秒检测一次
-        }
-        
-        function stopScreenshotDetection() {
-            if (screenshotDetectionInterval) {
-                clearInterval(screenshotDetectionInterval);
-                screenshotDetectionInterval = null;
-            }
-        }
-        
-        // 用户激活时开始检测，页面隐藏时停止
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') {
-                startScreenshotDetection();
-            } else {
-                stopScreenshotDetection();
-            }
+
+        // ── Ctrl+V 粘贴图片/文件 ──────────────────────────────────
+        messageInput.addEventListener('paste', (e) => {
+            const items = e.clipboardData && e.clipboardData.items;
+            if (!items) return;
+            const fileItems = Array.from(items).filter(i => i.kind === 'file');
+            if (fileItems.length === 0) return;          // 纯文本粘贴不拦截
+            e.preventDefault();                          // 阻止默认行为
+            fileItems.forEach(item => {
+                const file = item.getAsFile();
+                if (!file) return;
+                // 复用 imageInput change 逻辑：用 DataTransfer 注入文件
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                imageInput.files = dt.files;
+                imageInput.dispatchEvent(new Event('change'));
+            });
         });
-        
-        // 进入房间后开始检测
-        function startScreenshotOnJoin() {
-            startScreenshotDetection();
-        }
-        
-        // 离开房间时停止检测
-        function stopScreenshotOnLeave() {
-            stopScreenshotDetection();
-        }
-        
+
         // 页面加载时恢复草稿
         restoreDraft();
         
@@ -22909,7 +23043,24 @@ io.on('connection', (socket) => {
                 privateChatSendBtn.click();
             }
         });
-        
+
+        // 私聊输入框支持 Ctrl+V 粘贴图片/文件
+        privateChatInput.addEventListener('paste', (e) => {
+            const items = e.clipboardData && e.clipboardData.items;
+            if (!items) return;
+            const fileItems = Array.from(items).filter(i => i.kind === 'file');
+            if (fileItems.length === 0) return;
+            e.preventDefault();
+            fileItems.forEach(item => {
+                const file = item.getAsFile();
+                if (!file) return;
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                privateChatImageInput.files = dt.files;
+                privateChatImageInput.dispatchEvent(new Event('change'));
+            });
+        });
+
         // 私聊发送图片
         privateChatImageBtn.addEventListener('click', () => {
             privateChatImageInput.click();

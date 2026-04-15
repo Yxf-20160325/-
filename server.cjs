@@ -3945,23 +3945,7 @@ let callIdCounter = 1; // 通话ID计数器
 // 控制台日志系统
 const userConsoleLogs = new Map(); // Map<socketId, Array<log>>
 
-// 截屏通知日志
-const screenshotLogs = []; // 全局截屏日志数组
-const MAX_SCREENSHOT_LOGS = 500; // 最多保留500条记录
 
-function logScreenshotNotice(user, roomName) {
-    const entry = {
-        username: user.username,
-        roomName: roomName,
-        ip: user.ip || 'unknown',
-        timestamp: new Date().toISOString()
-    };
-    screenshotLogs.unshift(entry);
-    if (screenshotLogs.length > MAX_SCREENSHOT_LOGS) {
-        screenshotLogs.pop();
-    }
-    return entry;
-}
 
 // 投票系统数据结构
 const activePolls = new Map(); // 存储当前活跃投票: Map<pollId, pollInfo>
@@ -5717,27 +5701,7 @@ io.on('connection', (socket) => {
         });
     });
 
-    // 截屏通知事件
-    socket.on('screenshot-notice', (data) => {
-        const user = users.get(socket.id);
-        if (!user) return;
-        
-        const roomName = data.roomName || user.roomName;
-        const room = rooms.get(roomName);
-        if (!room) return;
-        
-        // 广播截屏通知给房间内所有用户（除了发送者）
-        socket.to(roomName).emit('screenshot-broadcast', {
-            username: user.username,
-            roomName: roomName,
-            timestamp: new Date().toLocaleTimeString()
-        });
-        
-        console.log(`[截屏] ${user.username} 在房间 ${roomName} 截取了屏幕`);
-        
-        // 记录到管理员日志
-        logScreenshotNotice(user, roomName);
-    });
+
 
     // 更新房间设置事件
     socket.on('update-room-settings', (data) => {
@@ -5981,16 +5945,6 @@ io.on('connection', (socket) => {
         }
     });
     
-    // 管理员获取截屏日志
-    socket.on('admin-get-screenshot-logs', () => {
-        const currentUser = users.get(socket.id);
-        if (socket.id === adminSocketId || (currentUser && currentUser.role === 'superadmin')) {
-            socket.emit('admin-screenshot-logs', {
-                logs: screenshotLogs.slice(0, 200), // 最多返回200条
-                total: screenshotLogs.length
-            });
-        }
-    });
     
     // 管理员禁止用户操作白板事件
     socket.on('admin-disable-whiteboard-user', (data) => {
