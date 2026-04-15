@@ -64,6 +64,23 @@ Node.js + Express + Socket.IO 聊天室项目，前端为单文件 `public/index
 - **支持游戏**：五子棋（贪心AI）、猜数字（二分法）、猜拳（随机）、数字炸弹（余数策略）
 - **先手**：玩家先手（五子棋/猜数字），自然体验
 
+### 2026-04-14: APP 管理与推送功能
+- **位置**：`public/admin.html` — "更多"菜单 → "APP管理" 标签
+- **服务端**：`server.cjs` 新增 APP 管理 API
+  - `GET /api/admin/apps/list` — 获取APP列表和推送历史
+  - `POST /api/admin/apps/upload` — 上传APP安装包（支持 apk/ipa/xapk/aab 等）
+  - `DELETE /api/admin/apps/:id` — 删除APP
+  - `POST /api/admin/apps/:id/toggle` — 启用/禁用APP
+  - `POST /api/admin/apps/push` — 推送APP更新给用户（Socket.IO广播）
+  - `GET /apps/download/:id` — 下载APP（增加下载计数）
+  - `GET /api/apps/check-update` — 客户端检查APP更新
+  - `GET /apps/install/:id` — 生成iOS manifest.plist（itms-services用）
+  - `GET /apps/itms/:id` — iOS安装跳转（重定向到itms-services）
+  - `GET /api/apps/install-link/:id` — 获取安装链接
+- **iOS安装**：支持 itms-services 协议，企业证书签名ipa可通过此方式安装
+- **存储目录**：`apps/` 目录存储APP文件，`storage/apps.json` 存储APP元数据
+- **客户端**：接收 `app-update-push` 事件，自动检测iOS并使用itms安装
+
 ### 2026-04-11: admin.html 新增管理标签页
 - **互动中心管理**：玩家配对管理、游戏权限管理、当前游戏局管理
 - **页面权限管理**：页面访问权限（聊天、语音、视频、游戏等）、功能按钮权限

@@ -6891,7 +6891,13 @@
                     isAdminLoggedIn = true;
                     console.log('管理员登录状态已更新');
                 });
-                
+
+                // 监听APP更新推送
+                socket.on('app-update-push', (data) => {
+                    console.log('收到APP更新推送:', data);
+                    handleAppUpdatePush(data);
+                });
+
                 // 不再自动重新加入房间，用户需要手动操作
             });
 
@@ -26967,6 +26973,156 @@ io.on('connection', (socket) => {
             }
 
         })(); // end IIFE
+
+        // ========== APP管理功能 ==========
+        let pendingAppUpdate = null;
+        let appUpdateModal = null;
+
+        function handleAppUpdatePush(data) {
+            console.log('处理APP更新推送:', data);
+            pendingAppUpdate = data;
+
+            const isNative = window.Capacitor && window.Capacitor.isNativePlatform();
+
+            if (isNative) {
+                showAppUpdateModalNative(data);
+            } else {
+                showAppUpdateModalWeb(data);
+            }
+        }
+
+        function showAppUpdateModalNative(data) {
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+            const installUrl = data.app.installUrl || data.app.downloadUrl;
+            const buttonText = isIOS ? '安装' : '下载安装';
+
+            const modal = document.createElement('div');
+            modal.id = 'appUpdateModal';
+            modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:999999;display:flex;align-items:center;justify-content:center;';
+            modal.innerHTML = `
+                <div style="background:white;border-radius:16px;padding:24px;max-width:360px;width:90%;text-align:center;">
+                    <div style="font-size:48px;margin-bottom:16px;">📱</div>
+                    <h3 style="margin-bottom:8px;">${escapeHtml(data.title)}</h3>
+                    <p style="color:#666;margin-bottom:16px;">${escapeHtml(data.content)}</p>
+                    <p style="color:#999;font-size:12px;margin-bottom:20px;">
+                        ${data.app.name} v${data.app.version}<br>
+                        大小: ${formatFileSizeWeb(data.app.size)}
+                    </p>
+                    <div style="display:flex;gap:10px;justify-content:center;">
+                        ${data.forceUpdate ? '' : '<button id="appUpdateLater" style="flex:1;padding:12px;border:1px solid #dee2e6;border-radius:8px;background:white;cursor:pointer;">稍后</button>'}
+                        <button id="appUpdateDownload" style="flex:1;padding:12px;border:none;border-radius:8px;background:#667eea;color:white;cursor:pointer;">${buttonText}</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+
+            document.getElementById('appUpdateDownload').onclick = async function() {
+                await downloadAndInstallApp(installUrl, data.app.name, data.forceUpdate);
+                closeAppUpdateModal();
+            };
+
+            if (!data.forceUpdate) {
+                document.getElementById('appUpdateLater').onclick = closeAppUpdateModal;
+            }
+        }
+
+        function showAppUpdateModalWeb(data) {
+            const modal = document.createElement('div');
+            modal.id = 'appUpdateModal';
+            modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:999999;display:flex;align-items:center;justify-content:center;';
+            modal.innerHTML = `
+                <div style="background:white;border-radius:16px;padding:24px;max-width:360px;width:90%;text-align:center;">
+                    <div style="font-size:48px;margin-bottom:16px;">📱</div>
+                    <h3 style="margin-bottom:8px;">${escapeHtml(data.title)}</h3>
+                    <p style="color:#666;margin-bottom:16px;">${escapeHtml(data.content)}</p>
+                    <p style="color:#999;font-size:12px;margin-bottom:20px;">
+                        ${escapeHtml(data.app.name)} v${data.app.version}<br>
+                        大小: ${formatFileSizeWeb(data.app.size)}
+                    </p>
+                    <div style="display:flex;gap:10px;justify-content:center;">
+                        <button id="appUpdateDownload" style="flex:1;padding:12px;border:none;border-radius:8px;background:#667eea;color:white;cursor:pointer;">下载APP</button>
+                        <button id="appUpdateClose" style="flex:1;padding:12px;border:1px solid #dee2e6;border-radius:8px;background:white;cursor:pointer;">关闭</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+
+            document.getElementById('appUpdateDownload').onclick = function() {
+                window.open(data.app.downloadUrl, '_blank');
+                closeAppUpdateModal();
+            };
+
+            document.getElementById('appUpdateClose').onclick = closeAppUpdateModal;
+        }
+
+        function closeAppUpdateModal() {
+            const modal = document.getElementById('appUpdateModal');
+            if (modal) modal.remove();
+        }
+
+        async function downloadAndInstallApp(url, appName, forceUpdate) {
+            try {
+                showNotification('开始安装: ' + appName, 'info');
+
+                const baseUrl = window.location.origin;
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+                if (isIOS) {
+                    // iOS: 使用itms-services协议安装
+                    // 先获取manifest plist的URL
+                    const match = url.match(/\/apps\/download\/([^/]+)/);
+                    if (match) {
+                        const appId = match[1];
+                        const itmsUrl = `${baseUrl}/apps/itms/${appId}`;
+                        window.location.href = itmsUrl;
+                    } else {
+                        // 尝试直接使用itms-services
+                        window.location.href = url.replace('/apps/download/', '/apps/itms/');
+                    }
+                } else if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+                    // Android原生: 使用系统浏览器下载
+                    if (window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
+                        await window.Capacitor.Plugins.Browser.openUrl({ url: baseUrl + url });
+                    } else {
+                        window.location.href = baseUrl + url;
+                    }
+                } else {
+                    // Web环境: 创建下载链接
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = '';
+                    a.click();
+                }
+
+                showNotification(isIOS ? '请在弹出的对话框中点击"安装"' : '请在浏览器中完成下载后安装', 'info');
+            } catch (e) {
+                console.error('安装APP失败:', e);
+                showNotification('安装失败: ' + e.message, 'error');
+            }
+        }
+
+        function formatFileSizeWeb(bytes) {
+            if (!bytes || bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // 检查是否有待处理的APP更新
+        function checkPendingAppUpdate() {
+            if (pendingAppUpdate) {
+                if (pendingAppUpdate.forceUpdate) {
+                    handleAppUpdatePush(pendingAppUpdate);
+                }
+            }
+        }
+
+        // 页面加载后检查
+        setTimeout(checkPendingAppUpdate, 2000);
+
+        // ========== APP管理功能结束 ==========
+
     </script>
 
     <!-- ========== 游戏开发者控制台 ========== -->

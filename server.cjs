@@ -3169,6 +3169,410 @@ app.get('/api/files/*/content', (req, res) => {
     }
 });
 
+// APP 管理 API 配置
+const APP_DIR = path.join(__dirname, 'apps');
+const MAX_APP_SIZE = 500 * 1024 * 1024; // 500MB 最大APP大小
+
+// XML转义函数
+function escapeXml(str) {
+    if (!str) return '';
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+}
+
+// 确保 apps 目录存在
+if (!fs.existsSync(APP_DIR)) {
+    fs.mkdirSync(APP_DIR, { recursive: true });
+}
+
+// APP 数据文件路径
+const APPS_DATA_FILE = path.join(__dirname, 'storage', 'apps.json');
+
+// 加载APP列表
+function loadAppsData() {
+    try {
+        if (fs.existsSync(APPS_DATA_FILE)) {
+            return JSON.parse(fs.readFileSync(APPS_DATA_FILE, 'utf8'));
+        }
+    } catch (error) {
+        console.error('加载APP数据失败:', error);
+    }
+    return { apps: [], pushHistory: [] };
+}
+
+// 保存APP列表
+function saveAppsData(data) {
+    try {
+        const dir = path.dirname(APPS_DATA_FILE);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(APPS_DATA_FILE, JSON.stringify(data, null, 2));
+    } catch (error) {
+        console.error('保存APP数据失败:', error);
+    }
+}
+
+// APP 管理 API - 获取APP列表
+app.get('/api/admin/apps/list', (req, res) => {
+    try {
+        const data = loadAppsData();
+        // 添加完整URL
+        const apps = data.apps.map(app => ({
+            ...app,
+            downloadUrl: `/apps/download/${app.id}`
+        }));
+        res.json({ success: true, apps, pushHistory: data.pushHistory || [] });
+    } catch (error) {
+        console.error('获取APP列表失败:', error);
+        res.status(500).json({ success: false, error: '获取APP列表失败' });
+    }
+});
+
+// APP 管理 API - 上传APP
+app.post('/api/admin/apps/upload', (req, res) => {
+    try {
+        const formidable = require('formidable');
+        const form = formidable({
+            uploadDir: APP_DIR,
+            keepExtensions: true,
+            maxFileSize: MAX_APP_SIZE
+        });
+
+        form.parse(req, (err, fields, files) => {
+            if (err) {
+                return res.status(400).json({ success: false, error: '文件上传失败: ' + err.message });
+            }
+
+            const file = files.appFile && files.appFile[0];
+            if (!file) {
+                return res.status(400).json({ success: false, error: '请选择要上传的APP文件' });
+            }
+
+            const { name, version, description, packageName } = fields;
+            if (!name || !version) {
+                // 删除上传的文件
+                fs.unlinkSync(file.filepath);
+                return res.status(400).json({ success: false, error: 'APP名称和版本号不能为空' });
+            }
+
+            const appId = Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
+            const ext = path.extname(file.originalFilename || file.newFilename);
+            const newFilename = `${appId}${ext}`;
+            const newPath = path.join(APP_DIR, newFilename);
+
+            // 重命名文件
+            fs.renameSync(file.filepath, newPath);
+
+            const appData = {
+                id: appId,
+                name: name[0] || name,
+                version: version[0] || version,
+                description: (packageName ? (packageName[0] || packageName) + '\n' : '') + (description[0] || description || ''),
+                filename: newFilename,
+                originalName: file.originalFilename || file.newFilename,
+                size: file.size,
+                uploadTime: new Date().toISOString(),
+                downloadCount: 0,
+                isActive: true
+            };
+
+            const data = loadAppsData();
+            data.apps.push(appData);
+            saveAppsData(data);
+
+            res.json({ success: true, app: appData });
+        });
+    } catch (error) {
+        console.error('上传APP失败:', error);
+        res.status(500).json({ success: false, error: '上传APP失败' });
+    }
+});
+
+// APP 管理 API - 删除APP
+app.delete('/api/admin/apps/:id', (req, res) => {
+    try {
+        const { id } = req.params;
+        const data = loadAppsData();
+        const appIndex = data.apps.findIndex(a => a.id === id);
+
+        if (appIndex === -1) {
+            return res.status(404).json({ success: false, error: 'APP不存在' });
+        }
+
+        const app = data.apps[appIndex];
+        const filePath = path.join(APP_DIR, app.filename);
+
+        // 删除文件
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+        }
+
+        // 从列表中移除
+        data.apps.splice(appIndex, 1);
+        saveAppsData(data);
+
+        res.json({ success: true, message: 'APP删除成功' });
+    } catch (error) {
+        console.error('删除APP失败:', error);
+        res.status(500).json({ success: false, error: '删除APP失败' });
+    }
+});
+
+// APP 管理 API - 推送APP更新
+app.post('/api/admin/apps/push', express.json(), (req, res) => {
+    try {
+        const { appId, title, content, target, probability, specificUsers, forceUpdate } = req.body;
+
+        if (!appId) {
+            return res.status(400).json({ success: false, error: 'APP ID不能为空' });
+        }
+
+        const data = loadAppsData();
+        const app = data.apps.find(a => a.id === appId);
+
+        if (!app) {
+            return res.status(404).json({ success: false, error: 'APP不存在' });
+        }
+
+        // 构建推送消息
+        const pushMessage = {
+            type: 'app_update',
+            app: {
+                id: app.id,
+                name: app.name,
+                version: app.version,
+                description: app.description,
+                downloadUrl: `/apps/download/${app.id}`,
+                size: app.size
+            },
+            title: title || `${app.name} 有新版本`,
+            content: content || `版本 ${app.version} 可用`,
+            forceUpdate: forceUpdate || false,
+            pushTime: new Date().toISOString()
+        };
+
+        // 通过Socket.IO广播给所有在线用户
+        io.emit('app-update-push', pushMessage);
+
+        // 记录推送历史
+        data.pushHistory = data.pushHistory || [];
+        data.pushHistory.unshift({
+            appId,
+            appName: app.name,
+            appVersion: app.version,
+            title: pushMessage.title,
+            content: pushMessage.content,
+            target: target || 'all',
+            probability: probability,
+            specificUsers: specificUsers,
+            forceUpdate: forceUpdate,
+            pushTime: pushMessage.pushTime,
+            pushedBy: 'admin'
+        });
+
+        // 只保留最近100条记录
+        if (data.pushHistory.length > 100) {
+            data.pushHistory = data.pushHistory.slice(0, 100);
+        }
+
+        saveAppsData(data);
+
+        res.json({ success: true, message: '推送成功', pushRecord: data.pushHistory[0] });
+    } catch (error) {
+        console.error('推送APP失败:', error);
+        res.status(500).json({ success: false, error: '推送APP失败' });
+    }
+});
+
+// APP 管理 API - 设置APP状态
+app.post('/api/admin/apps/:id/toggle', express.json(), (req, res) => {
+    try {
+        const { id } = req.params;
+        const { isActive } = req.body;
+
+        const data = loadAppsData();
+        const app = data.apps.find(a => a.id === id);
+
+        if (!app) {
+            return res.status(404).json({ success: false, error: 'APP不存在' });
+        }
+
+        app.isActive = isActive !== undefined ? isActive : !app.isActive;
+        saveAppsData(data);
+
+        res.json({ success: true, app });
+    } catch (error) {
+        console.error('更新APP状态失败:', error);
+        res.status(500).json({ success: false, error: '更新APP状态失败' });
+    }
+});
+
+// APP 下载API（增加下载计数）
+app.get('/apps/download/:id', (req, res) => {
+    try {
+        const { id } = req.params;
+        const data = loadAppsData();
+        const app = data.apps.find(a => a.id === id);
+
+        if (!app || !app.isActive) {
+            return res.status(404).send('APP不存在或已禁用');
+        }
+
+        const filePath = path.join(APP_DIR, app.filename);
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).send('APP文件不存在');
+        }
+
+        // 增加下载计数
+        app.downloadCount = (app.downloadCount || 0) + 1;
+        saveAppsData(data);
+
+        // 发送文件
+        res.download(filePath, app.originalName);
+    } catch (error) {
+        console.error('下载APP失败:', error);
+        res.status(500).send('下载APP失败');
+    }
+});
+
+// 客户端检查APP更新API
+app.get('/api/apps/check-update', (req, res) => {
+    try {
+        const data = loadAppsData();
+        const activeApps = data.apps.filter(a => a.isActive);
+
+        res.json({
+            success: true,
+            apps: activeApps.map(app => ({
+                id: app.id,
+                name: app.name,
+                version: app.version,
+                description: app.description,
+                downloadUrl: `/apps/download/${app.id}`,
+                installUrl: `/apps/install/${app.id}`,
+                size: app.size,
+                uploadTime: app.uploadTime
+            }))
+        });
+    } catch (error) {
+        console.error('检查APP更新失败:', error);
+        res.status(500).json({ success: false, error: '检查APP更新失败' });
+    }
+});
+
+// iOS APP安装API（生成manifest.plist并重定向到itms-services）
+app.get('/apps/install/:id', (req, res) => {
+    try {
+        const { id } = req.params;
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const data = loadAppsData();
+        const app = data.apps.find(a => a.id === id);
+
+        if (!app || !app.isActive) {
+            return res.status(404).send('APP不存在或已禁用');
+        }
+
+        const filePath = path.join(APP_DIR, app.filename);
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).send('APP文件不存在');
+        }
+
+        // 增加下载计数
+        app.downloadCount = (app.downloadCount || 0) + 1;
+        saveAppsData(data);
+
+        // 生成manifest.plist
+        const manifest = {
+            'assets': [{
+                'kind': 'software-package',
+                'url': `${baseUrl}/apps/download/${app.id}`
+            }],
+            'metadata': {
+                'bundle-identifier': app.bundleId || 'com.chatroom.app',
+                'bundle-version': app.version,
+                'kind': 'software',
+                'title': app.name,
+                'subtitle': app.description || ''
+            }
+        };
+
+        // 设置响应头为XML格式
+        res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+        res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>items</key>
+    <array>
+        <dict>
+            <key>assets</key>
+            <array>
+                <dict>
+                    <key>kind</key>
+                    <string>software-package</string>
+                    <key>url</key>
+                    <string>${baseUrl}/apps/download/${app.id}</string>
+                </dict>
+            </array>
+            <key>metadata</key>
+            <dict>
+                <key>bundle-identifier</key>
+                <string>${app.bundleId || 'com.chatroom.app'}</string>
+                <key>bundle-version</key>
+                <string>${app.version}</string>
+                <key>kind</key>
+                <string>software</string>
+                <key>title</key>
+                <string>${escapeXml(app.name)}</string>
+                <key>subtitle</key>
+                <string>${escapeXml(app.description || '')}</string>
+            </dict>
+        </dict>
+    </array>
+</dict>
+</plist>`);
+    } catch (error) {
+        console.error('生成manifest.plist失败:', error);
+        res.status(500).send('生成安装文件失败');
+    }
+});
+
+// iOS itms-services 安装跳转API
+app.get('/apps/itms/:id', (req, res) => {
+    try {
+        const { id } = req.params;
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+        // 重定向到itms-services协议
+        res.redirect(`itms-services://?action=download-manifest&url=${encodeURIComponent(baseUrl + '/apps/install/' + id)}`);
+    } catch (error) {
+        console.error('itms-services跳转失败:', error);
+        res.status(500).send('安装失败');
+    }
+});
+
+// 获取APP的itms-services安装链接
+app.get('/api/apps/install-link/:id', (req, res) => {
+    try {
+        const { id } = req.params;
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+        res.json({
+            success: true,
+            installUrl: `${baseUrl}/apps/itms/${id}`,
+            manifestUrl: `${baseUrl}/apps/install/${id}`
+        });
+    } catch (error) {
+        console.error('获取安装链接失败:', error);
+        res.status(500).json({ success: false, error: '获取安装链接失败' });
+    }
+});
+
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 

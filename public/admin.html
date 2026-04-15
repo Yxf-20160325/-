@@ -1430,6 +1430,7 @@
                     <button class="tab" onclick="switchTab('interactionCenter')">互动中心</button>
                     <button class="tab" onclick="switchTab('pagePermissions')">页面权限</button>
                     <button class="tab" onclick="switchTab('emojiManager')">表情包管理</button>
+                    <button class="tab" onclick="switchTab('appManager')">APP管理</button>
                 </div>
             </div>
 
@@ -3182,7 +3183,123 @@
                 </div>
             </div>
         </div>
-        
+
+        <!-- APP管理标签页 -->
+        <div class="tab-content" id="appManagerTab">
+            <div class="section">
+                <h2>APP管理</h2>
+                <p style="margin-bottom: 15px; color: #666;">管理APP安装包，推送APP更新或安装链接给用户</p>
+
+                <!-- 统计信息 -->
+                <div id="appMgrStats" style="display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;">
+                    <div style="background: linear-gradient(135deg, #667eea, #764ba2); color: white; padding: 15px 25px; border-radius: 10px; min-width: 150px;">
+                        <div style="font-size: 12px; opacity: 0.9;">APP总数</div>
+                        <div id="appTotalCount" style="font-size: 28px; font-weight: bold;">0</div>
+                    </div>
+                    <div style="background: #28a745; color: white; padding: 15px 25px; border-radius: 10px; min-width: 150px;">
+                        <div style="font-size: 12px; opacity: 0.9;">已激活</div>
+                        <div id="appActiveCount" style="font-size: 28px; font-weight: bold;">0</div>
+                    </div>
+                    <div style="background: #6c757d; color: white; padding: 15px 25px; border-radius: 10px; min-width: 150px;">
+                        <div style="font-size: 12px; opacity: 0.9;">总下载量</div>
+                        <div id="appTotalDownloads" style="font-size: 28px; font-weight: bold;">0</div>
+                    </div>
+                </div>
+
+                <!-- 工具栏 -->
+                <div class="input-group" style="margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
+                    <button class="btn btn-primary" onclick="appMgrLoadAll()">刷新列表</button>
+                    <button class="btn btn-success" onclick="appMgrShowUpload()">上传APP</button>
+                    <input type="text" id="appMgrSearch" placeholder="搜索APP名称..." oninput="appMgrFilter()" style="flex: 1; min-width: 200px; padding: 9px 12px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 14px;">
+                </div>
+
+                <!-- APP列表 -->
+                <div id="appMgrList" style="display: flex; flex-direction: column; gap: 12px;">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📱</div>
+                        <div>点击"刷新列表"加载APP</div>
+                    </div>
+                </div>
+
+                <!-- 推送历史 -->
+                <div class="section" style="margin-top: 30px;">
+                    <h3>推送历史</h3>
+                    <div id="appPushHistory" style="max-height: 300px; overflow-y: auto;">
+                        <div class="empty-state">
+                            <div>暂无推送记录</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 上传APP模态框 -->
+        <div class="modal" id="appMgrUploadModal" style="display: none;">
+            <div class="modal-content" style="max-width: 500px;">
+                <h3>上传APP</h3>
+                <form id="appMgrUploadForm">
+                    <div class="input-group" style="margin-bottom: 12px;">
+                        <label>APP名称 <span style="color: red;">*</span></label>
+                        <input type="text" id="appMgrName" placeholder="例如：聊天室APP" required style="padding: 10px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 14px; width: 100%; box-sizing: border-box;">
+                    </div>
+                    <div class="input-group" style="margin-bottom: 12px;">
+                        <label>版本号 <span style="color: red;">*</span></label>
+                        <input type="text" id="appMgrVersion" placeholder="例如：v1.0.0" required style="padding: 10px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 14px; width: 100%; box-sizing: border-box;">
+                    </div>
+                    <div class="input-group" style="margin-bottom: 12px;">
+                        <label>包名（可选）</label>
+                        <input type="text" id="appMgrPackageName" placeholder="例如：com.example.app" style="padding: 10px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 14px; width: 100%; box-sizing: border-box;">
+                    </div>
+                    <div class="input-group" style="margin-bottom: 12px;">
+                        <label>描述（可选）</label>
+                        <textarea id="appMgrDescription" placeholder="APP描述或更新说明" rows="3" style="padding: 10px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 14px; width: 100%; box-sizing: border-box; resize: vertical;"></textarea>
+                    </div>
+                    <div class="input-group" style="margin-bottom: 12px;">
+                        <label>选择文件 <span style="color: red;">*</span>（支持 apk/ipa/xapk/apk 等格式，最大500MB）</label>
+                        <input type="file" id="appMgrFile" accept=".apk,.ipa,.xapk,.aab,.app,.pkg" required style="padding: 10px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 14px; width: 100%; box-sizing: border-box;">
+                    </div>
+                    <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px;">
+                        <button type="button" class="btn btn-secondary" onclick="appMgrCloseUpload()">取消</button>
+                        <button type="submit" class="btn btn-primary">上传</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- 推送APP模态框 -->
+        <div class="modal" id="appMgrPushModal" style="display: none;">
+            <div class="modal-content" style="max-width: 500px;">
+                <h3>推送APP</h3>
+                <input type="hidden" id="appMgrPushAppId">
+                <div id="appMgrPushAppInfo" style="background: #f8f9fa; padding: 12px; border-radius: 8px; margin-bottom: 16px;"></div>
+                <div class="input-group" style="margin-bottom: 12px;">
+                    <label>推送标题</label>
+                    <input type="text" id="appMgrPushTitle" placeholder="推送标题" style="padding: 10px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 14px; width: 100%; box-sizing: border-box;">
+                </div>
+                <div class="input-group" style="margin-bottom: 12px;">
+                    <label>推送内容</label>
+                    <textarea id="appMgrPushContent" placeholder="推送内容" rows="3" style="padding: 10px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 14px; width: 100%; box-sizing: border-box; resize: vertical;"></textarea>
+                </div>
+                <div class="input-group" style="margin-bottom: 12px;">
+                    <label>推送目标</label>
+                    <select id="appMgrPushTarget" style="padding: 10px; border: 2px solid #dee2e6; border-radius: 8px; font-size: 14px; width: 100%; box-sizing: border-box;">
+                        <option value="all">全体用户</option>
+                        <option value="online">当前在线用户</option>
+                    </select>
+                </div>
+                <div class="input-group" style="margin-bottom: 12px;">
+                    <label>
+                        <input type="checkbox" id="appMgrPushForce"> 强制安装
+                    </label>
+                    <span style="color: #666; font-size: 12px; margin-left: 8px;">勾选后用户必须安装才能继续使用</span>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px;">
+                    <button type="button" class="btn btn-secondary" onclick="appMgrClosePush()">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="appMgrDoPush()">推送</button>
+                </div>
+            </div>
+        </div>
+
         <div class="tab-content" id="consoleTab">
             <div class="section">
                 <h2>JavaScript控制台</h2>
@@ -10774,6 +10891,224 @@ if (typeof userSettings !== 'undefined') {
     }
 
     // ==================== 表情包管理结束 ====================
+
+    // ==================== APP管理 ====================
+    let appMgrCurrentApps = [];
+
+    function appMgrLoadAll() {
+        fetch('/api/admin/apps/list')
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    appMgrCurrentApps = data.apps;
+                    appMgrRenderList(data.apps);
+                    appMgrUpdateStats(data.apps);
+                    appMgrRenderPushHistory(data.pushHistory || []);
+                } else {
+                    alert('加载失败: ' + data.error);
+                }
+            })
+            .catch(e => alert('加载失败: ' + e.message));
+    }
+
+    function appMgrUpdateStats(apps) {
+        const total = apps.length;
+        const active = apps.filter(a => a.isActive).length;
+        const downloads = apps.reduce((sum, a) => sum + (a.downloadCount || 0), 0);
+        document.getElementById('appTotalCount').textContent = total;
+        document.getElementById('appActiveCount').textContent = active;
+        document.getElementById('appTotalDownloads').textContent = downloads;
+    }
+
+    function appMgrRenderList(apps) {
+        const listEl = document.getElementById('appMgrList');
+        const search = (document.getElementById('appMgrSearch')?.value || '').toLowerCase();
+        const filtered = apps.filter(a =>
+            a.name.toLowerCase().includes(search) ||
+            a.version.toLowerCase().includes(search)
+        );
+
+        if (filtered.length === 0) {
+            listEl.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📱</div><div>暂无APP' + (search ? '（无匹配结果）' : '') + '</div></div>';
+            return;
+        }
+
+        listEl.innerHTML = filtered.map(app => `
+            <div style="background:#f8f9fa;border-radius:10px;padding:16px;${!app.isActive ? 'opacity:0.6;' : ''}">
+                <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px;">
+                    <div>
+                        <b style="font-size:16px;">${escapeHtml(app.name)}</b>
+                        <span style="background:${app.isActive ? '#28a745' : '#dc3545'};color:white;padding:2px 8px;border-radius:10px;font-size:12px;margin-left:8px;">${app.isActive ? '已激活' : '已禁用'}</span>
+                    </div>
+                    <div style="display:flex;gap:6px;">
+                        <button class="btn btn-sm btn-primary" onclick="appMgrShowPush('${app.id}')" ${!app.isActive ? 'disabled' : ''}>推送</button>
+                        <button class="btn btn-sm btn-warning" onclick="appMgrToggleActive('${app.id}')">${app.isActive ? '禁用' : '启用'}</button>
+                        <button class="btn btn-sm btn-danger" onclick="appMgrDelete('${app.id}')">删除</button>
+                    </div>
+                </div>
+                <div style="color:#666;font-size:13px;">
+                    <div><b>版本:</b> ${escapeHtml(app.version)} | <b>大小:</b> ${formatFileSize(app.size)} | <b>下载:</b> ${app.downloadCount || 0}</div>
+                    <div style="margin-top:4px;"><b>上传时间:</b> ${new Date(app.uploadTime).toLocaleString()}</div>
+                    ${app.description ? `<div style="margin-top:4px;"><b>描述:</b> ${escapeHtml(app.description)}</div>` : ''}
+                    <div style="margin-top:6px;">
+                        <a href="${app.downloadUrl}" target="_blank" class="btn btn-sm btn-info">下载文件</a>
+                        <a href="/apps/itms/${app.id}" class="btn btn-sm btn-success" style="margin-left:4px;">iOS安装</a>
+                        <button onclick="appMgrCopyInstallLink('${app.id}')" class="btn btn-sm btn-secondary" style="margin-left:4px;">复制安装链接</button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function appMgrFilter() {
+        appMgrRenderList(appMgrCurrentApps);
+    }
+
+    function appMgrShowUpload() {
+        document.getElementById('appMgrUploadModal').style.display = 'block';
+    }
+
+    function appMgrCloseUpload() {
+        document.getElementById('appMgrUploadModal').style.display = 'none';
+        document.getElementById('appMgrUploadForm').reset();
+    }
+
+    document.getElementById('appMgrUploadForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData();
+        formData.append('name', document.getElementById('appMgrName').value);
+        formData.append('version', document.getElementById('appMgrVersion').value);
+        formData.append('packageName', document.getElementById('appMgrPackageName').value);
+        formData.append('description', document.getElementById('appMgrDescription').value);
+        const fileInput = document.getElementById('appMgrFile');
+        if (fileInput.files.length > 0) {
+            formData.append('appFile', fileInput.files[0]);
+        }
+
+        try {
+            const response = await fetch('/api/admin/apps/upload', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+            if (data.success) {
+                alert('上传成功');
+                appMgrCloseUpload();
+                appMgrLoadAll();
+            } else {
+                alert('上传失败: ' + data.error);
+            }
+        } catch (e) {
+            alert('上传失败: ' + e.message);
+        }
+    });
+
+    function appMgrDelete(id) {
+        if (!confirm('确定要删除这个APP吗？')) return;
+        fetch('/api/admin/apps/' + id, { method: 'DELETE' })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    alert('删除成功');
+                    appMgrLoadAll();
+                } else {
+                    alert('删除失败: ' + data.error);
+                }
+            })
+            .catch(e => alert('删除失败: ' + e.message));
+    }
+
+    function appMgrToggleActive(id) {
+        fetch('/api/admin/apps/' + id + '/toggle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    appMgrLoadAll();
+                } else {
+                    alert('操作失败: ' + data.error);
+                }
+            })
+            .catch(e => alert('操作失败: ' + e.message));
+    }
+
+    function appMgrCopyInstallLink(id) {
+        const link = window.location.origin + '/apps/itms/' + id;
+        navigator.clipboard.writeText(link).then(() => {
+            alert('安装链接已复制: ' + link);
+        }).catch(() => {
+            prompt('请复制以下安装链接:', link);
+        });
+    }
+
+    function appMgrShowPush(id) {
+        const app = appMgrCurrentApps.find(a => a.id === id);
+        if (!app) return;
+        document.getElementById('appMgrPushAppId').value = id;
+        document.getElementById('appMgrPushAppInfo').innerHTML = `
+            <b>${escapeHtml(app.name)}</b> v${escapeHtml(app.version)}<br>
+            <span style="color:#666;">${formatFileSize(app.size)}</span>
+        `;
+        document.getElementById('appMgrPushTitle').value = app.name + ' 有新版本';
+        document.getElementById('appMgrPushContent').value = '版本 ' + app.version + ' 可用，点击下载安装';
+        document.getElementById('appMgrPushModal').style.display = 'block';
+    }
+
+    function appMgrClosePush() {
+        document.getElementById('appMgrPushModal').style.display = 'none';
+    }
+
+    function appMgrDoPush() {
+        const appId = document.getElementById('appMgrPushAppId').value;
+        const title = document.getElementById('appMgrPushTitle').value;
+        const content = document.getElementById('appMgrPushContent').value;
+        const target = document.getElementById('appMgrPushTarget').value;
+        const forceUpdate = document.getElementById('appMgrPushForce').checked;
+
+        fetch('/api/admin/apps/push', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ appId, title, content, target, forceUpdate })
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    alert('推送成功');
+                    appMgrClosePush();
+                    appMgrLoadAll();
+                } else {
+                    alert('推送失败: ' + data.error);
+                }
+            })
+            .catch(e => alert('推送失败: ' + e.message));
+    }
+
+    function appMgrRenderPushHistory(history) {
+        const el = document.getElementById('appPushHistory');
+        if (!history || history.length === 0) {
+            el.innerHTML = '<div class="empty-state"><div>暂无推送记录</div></div>';
+            return;
+        }
+        el.innerHTML = history.map(h => `
+            <div style="background:#f8f9fa;border-radius:8px;padding:12px;margin-bottom:8px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <b>${escapeHtml(h.title)}</b>
+                    <span style="color:#666;font-size:12px;">${new Date(h.pushTime).toLocaleString()}</span>
+                </div>
+                <div style="color:#666;font-size:13px;margin-top:4px;">${escapeHtml(h.content)}</div>
+                <div style="color:#999;font-size:12px;margin-top:4px;">
+                    APP: ${escapeHtml(h.appName)} v${escapeHtml(h.appVersion)} |
+                    目标: ${h.target === 'all' ? '全体' : h.target} |
+                    ${h.forceUpdate ? '强制安装' : '可选安装'}
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // ==================== APP管理结束 ====================
     </script>
 </body>
 </html>
