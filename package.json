@@ -17,6 +17,7 @@
     "build": "echo 'Web 应用无需构建，直接使用 public 目录'"
   },
   "dependencies": {
+    "@playwright/cli": "^0.1.8",
     "axios": "^1.6.0",
     "bcryptjs": "^2.4.3",
     "cap": "^0.2.1",
@@ -36,5 +37,17 @@
     "@capacitor/ios": "^8.2.0",
     "@capacitor/splash-screen": "^8.0.1",
     "@capacitor/status-bar": "^8.0.2"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Yxf-20160325/-.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Yxf-20160325/-/issues"
+  },
+  "homepage": "https://github.com/Yxf-20160325/-#readme"
 }

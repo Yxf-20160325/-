@@ -405,8 +405,13 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '30mb' }), async
     }
 });
 
-// 其他路由使用json解析器
-app.use(express.json({ limit: '30mb' }));
+// 其他路由使用json解析器（跳过 multipart/form-data 以避免与 formidable 冲突）
+app.use((req, res, next) => {
+    if (req.headers['content-type'] && req.headers['content-type'].startsWith('multipart/form-data')) {
+        return next(); // 跳过 JSON 解析，让 formidable 处理
+    }
+    return express.json({ limit: '30mb' })(req, res, next);
+});
 
 // 应用API速率限制中间件到所有API端点
 app.use('/api/', apiRateLimitMiddleware);

@@ -3620,7 +3620,7 @@
     <!-- Capacitor 核心 SDK（由 Capacitor 自动注入，这里做 polyfill） -->
     <div class="container">
         <div class="header">
-            <h1>聊天室</h1>
+            <h1 id="chatRoomTitle" onclick="handleTitleClick()" style="cursor:default;user-select:none;">聊天室</h1>
             <div class="header-actions">
                 <div class="online-count">在线人数: <span id="userCount">0</span></div>
                 <button class="header-btn" id="usersBtn" title="用户列表">👥</button>
@@ -5656,8 +5656,47 @@
         </div>
     </div>
 
-    <!-- Socket.IO 客户端：优先从本地服务器加载，失败时自动回退到 CDN -->
-    <script src="/socket.io/socket.io.js" onerror="this.onerror=null;this.src='https://cdn.socket.io/4.7.5/socket.io.min.js'"></script>
+    <!-- Socket.IO 客户端：Capacitor 环境优先 CDN，Web 环境优先本地服务器 -->
+    <script>
+        (function() {
+            var isCapacitor = window.Capacitor && Capacitor.isNativePlatform();
+            var s = document.createElement('script');
+            if (isCapacitor) {
+                // 原生环境：直接从 CDN 加载
+                s.src = 'https://cdn.socket.io/4.7.5/socket.io.min.js';
+                s.onerror = function() {
+                    s.onerror = null;
+                    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js';
+                    document.head.appendChild(s);
+                };
+            } else {
+                // Web 环境：优先本地服务器，失败回退 CDN
+                s.src = '/socket.io/socket.io.js';
+                s.onerror = function() {
+                    s.onerror = null;
+                    s.src = 'https://cdn.socket.io/4.7.5/socket.io.min.js';
+                    document.head.appendChild(s);
+                };
+            }
+            s.onload = function() { window.__socketIoLoaded = true; };
+            document.head.appendChild(s);
+        })();
+    </script>
+    <script>
+        // 确保 socket.io 加载完成后再继续（防止后续脚本引用 io 时报错）
+        function waitForSocketIo(callback) {
+            if (window.io) { callback(); return; }
+            var checkCount = 0;
+            var interval = setInterval(function() {
+                checkCount++;
+                if (window.io) { clearInterval(interval); callback(); return; }
+                if (checkCount > 100) { // 5秒超时
+                    clearInterval(interval);
+                    console.error('[ChatRoom] Socket.IO 加载超时，请检查网络连接');
+                }
+            }, 50);
+        }
+    </script>
     <script>
         // DOM 加载辅助函数 - 确保回调在 DOM 加载完成后执行
         // 解决 document.addEventListener('DOMContentLoaded') 在页面已加载时不触发的问题
@@ -5677,6 +5716,205 @@
         // 调试菜单相关变量
         let isAdminAuthenticated = false;
         const ADMIN_PASSWORD = 'admin123'; // 管理员密码，可修改
+
+        // ====== App 控制台日志显示器（点击标题10次触发，仅原生App环境） ======
+        let _titleClickCount = 0;
+        let _titleClickTimer = null;
+
+        function handleTitleClick() {
+            // 仅在原生 App 环境下生效
+            const isNative = window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+            if (!isNative) return;
+
+            _titleClickCount++;
+            clearTimeout(_titleClickTimer);
+
+            if (_titleClickCount >= 10) {
+                _titleClickCount = 0;
+                toggleAppConsole();
+                return;
+            }
+
+            // 2秒内没凑够10次则重置
+            _titleClickTimer = setTimeout(() => { _titleClickCount = 0; }, 2000);
+        }
+
+        // 控制台日志面板
+        let _consolePanel = null;
+        let _consoleLogs = [];
+        let _consoleHooked = false;
+        const _MAX_CONSOLE_LOGS = 500;
+
+        function _hookConsole() {
+            if (_consoleHooked) return;
+            _consoleHooked = true;
+            const _orig = { log: console.log, warn: console.warn, error: console.error, info: console.info };
+            ['log', 'warn', 'error', 'info'].forEach(level => {
+                console[level] = function(...args) {
+                    _orig[level].apply(console, args);
+                    const msg = args.map(a => {
+                        try { return typeof a === 'object' ? JSON.stringify(a) : String(a); } catch(e) { return String(a); }
+                    }).join(' ');
+                    _consoleLogs.push({ level, msg, time: new Date().toLocaleTimeString() });
+                    if (_consoleLogs.length > _MAX_CONSOLE_LOGS) _consoleLogs.shift();
+                    _renderConsoleLog({ level, msg, time: _consoleLogs[_consoleLogs.length - 1].time });
+                };
+            });
+            // 捕获全局错误
+            window.addEventListener('error', function(e) {
+                const msg = (e.message || '') + (e.filename ? ' @ ' + e.filename + ':' + e.lineno : '');
+                _consoleLogs.push({ level: 'error', msg, time: new Date().toLocaleTimeString() });
+                if (_consoleLogs.length > _MAX_CONSOLE_LOGS) _consoleLogs.shift();
+                _renderConsoleLog({ level: 'error', msg, time: _consoleLogs[_consoleLogs.length - 1].time });
+            });
+            window.addEventListener('unhandledrejection', function(e) {
+                const msg = 'UnhandledRejection: ' + (e.reason ? String(e.reason) : 'unknown');
+                _consoleLogs.push({ level: 'error', msg, time: new Date().toLocaleTimeString() });
+                if (_consoleLogs.length > _MAX_CONSOLE_LOGS) _consoleLogs.shift();
+                _renderConsoleLog({ level: 'error', msg, time: _consoleLogs[_consoleLogs.length - 1].time });
+            });
+        }
+
+        function _renderConsoleLog(entry) {
+            if (!_consolePanel) return;
+            const list = _consolePanel.querySelector('#_consoleLogList');
+            if (!list) return;
+            const item = document.createElement('div');
+            item.style.cssText = 'padding:3px 6px;border-bottom:1px solid rgba(255,255,255,0.06);font-size:11px;word-break:break-all;white-space:pre-wrap;line-height:1.4;';
+            const colors = { log: '#e0e0e0', warn: '#ffd54f', error: '#ef5350', info: '#64b5f6' };
+            item.style.color = colors[entry.level] || '#e0e0e0';
+            item.textContent = '[' + entry.time + '][' + entry.level.toUpperCase() + '] ' + entry.msg;
+            list.appendChild(item);
+            // 自动滚动到底部
+            const autoScroll = _consolePanel.querySelector('#_consoleAutoScroll');
+            if (!autoScroll || autoScroll.checked) {
+                list.scrollTop = list.scrollHeight;
+            }
+        }
+
+        function toggleAppConsole() {
+            _hookConsole();
+            if (_consolePanel && _consolePanel.style.display !== 'none') {
+                _consolePanel.style.display = 'none';
+                return;
+            }
+            if (!_consolePanel) {
+                _consolePanel = document.createElement('div');
+                _consolePanel.id = '_appConsolePanel';
+                _consolePanel.style.cssText = [
+                    'position:fixed;bottom:0;left:0;right:0;height:50vh;',
+                    'background:rgba(18,18,18,0.97);',
+                    'z-index:99999;',
+                    'display:flex;flex-direction:column;',
+                    'border-top:2px solid #667eea;',
+                    'box-shadow:0 -4px 20px rgba(0,0,0,0.5);',
+                    'font-family:monospace;'
+                ].join('');
+
+                // 顶部工具栏
+                const toolbar = document.createElement('div');
+                toolbar.style.cssText = 'display:flex;align-items:center;padding:6px 10px;background:#1e1e1e;flex-shrink:0;gap:8px;border-bottom:1px solid #333;';
+                toolbar.innerHTML = [
+                    '<span style="color:#667eea;font-weight:bold;font-size:13px;flex:1;">📋 控制台日志</span>',
+                    '<label style="color:#aaa;font-size:11px;display:flex;align-items:center;gap:3px;cursor:pointer;">',
+                    '  <input type="checkbox" id="_consoleAutoScroll" checked style="width:12px;height:12px;"> 自动滚动',
+                    '</label>',
+                    '<button id="_consoleClearBtn" style="padding:2px 8px;background:#333;color:#aaa;border:1px solid #555;border-radius:4px;font-size:11px;cursor:pointer;">清空</button>',
+                    '<button id="_consoleCopyBtn" style="padding:2px 8px;background:#333;color:#aaa;border:1px solid #555;border-radius:4px;font-size:11px;cursor:pointer;">复制</button>',
+                    '<button id="_consoleCloseBtn" style="padding:2px 8px;background:#dc3545;color:#fff;border:none;border-radius:4px;font-size:11px;cursor:pointer;">✕ 关闭</button>'
+                ].join('');
+
+                // 筛选栏
+                const filterBar = document.createElement('div');
+                filterBar.style.cssText = 'display:flex;align-items:center;padding:4px 10px;background:#1a1a1a;flex-shrink:0;gap:6px;border-bottom:1px solid #333;';
+                filterBar.innerHTML = [
+                    '<span style="color:#888;font-size:11px;">筛选:</span>',
+                    '<button class="_cFilter _cFilterActive" data-level="all" style="padding:1px 7px;border-radius:3px;border:1px solid #667eea;background:#667eea22;color:#667eea;font-size:10px;cursor:pointer;">全部</button>',
+                    '<button class="_cFilter" data-level="log" style="padding:1px 7px;border-radius:3px;border:1px solid #555;background:transparent;color:#aaa;font-size:10px;cursor:pointer;">LOG</button>',
+                    '<button class="_cFilter" data-level="info" style="padding:1px 7px;border-radius:3px;border:1px solid #555;background:transparent;color:#64b5f6;font-size:10px;cursor:pointer;">INFO</button>',
+                    '<button class="_cFilter" data-level="warn" style="padding:1px 7px;border-radius:3px;border:1px solid #555;background:transparent;color:#ffd54f;font-size:10px;cursor:pointer;">WARN</button>',
+                    '<button class="_cFilter" data-level="error" style="padding:1px 7px;border-radius:3px;border:1px solid #555;background:transparent;color:#ef5350;font-size:10px;cursor:pointer;">ERROR</button>',
+                    '<input id="_consoleSearch" placeholder="搜索..." style="flex:1;background:#2a2a2a;border:1px solid #444;border-radius:3px;padding:2px 6px;color:#ddd;font-size:11px;outline:none;" />'
+                ].join('');
+
+                // 日志列表
+                const list = document.createElement('div');
+                list.id = '_consoleLogList';
+                list.style.cssText = 'flex:1;overflow-y:auto;padding:4px 0;';
+
+                _consolePanel.appendChild(toolbar);
+                _consolePanel.appendChild(filterBar);
+                _consolePanel.appendChild(list);
+                document.body.appendChild(_consolePanel);
+
+                // 事件绑定
+                _consolePanel.querySelector('#_consoleCloseBtn').addEventListener('click', () => {
+                    _consolePanel.style.display = 'none';
+                });
+                _consolePanel.querySelector('#_consoleClearBtn').addEventListener('click', () => {
+                    _consoleLogs = [];
+                    list.innerHTML = '';
+                });
+                _consolePanel.querySelector('#_consoleCopyBtn').addEventListener('click', () => {
+                    const text = _consoleLogs.map(e => '[' + e.time + '][' + e.level.toUpperCase() + '] ' + e.msg).join('\n');
+                    if (navigator.clipboard) {
+                        navigator.clipboard.writeText(text).then(() => showNotification('日志已复制到剪贴板', 'success'));
+                    } else {
+                        const ta = document.createElement('textarea');
+                        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+                        document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+                        document.body.removeChild(ta);
+                        showNotification('日志已复制到剪贴板', 'success');
+                    }
+                });
+
+                // 筛选按钮
+                let _currentFilter = 'all';
+                filterBar.querySelectorAll('._cFilter').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        _currentFilter = btn.dataset.level;
+                        filterBar.querySelectorAll('._cFilter').forEach(b => {
+                            b.style.background = 'transparent';
+                            b.style.borderColor = '#555';
+                            b.classList.remove('_cFilterActive');
+                        });
+                        btn.style.background = '#667eea22';
+                        btn.style.borderColor = '#667eea';
+                        btn.classList.add('_cFilterActive');
+                        _reRenderLogs();
+                    });
+                });
+
+                // 搜索框
+                let _searchText = '';
+                _consolePanel.querySelector('#_consoleSearch').addEventListener('input', function() {
+                    _searchText = this.value.toLowerCase();
+                    _reRenderLogs();
+                });
+
+                function _reRenderLogs() {
+                    list.innerHTML = '';
+                    _consoleLogs.forEach(entry => {
+                        if (_currentFilter !== 'all' && entry.level !== _currentFilter) return;
+                        if (_searchText && !entry.msg.toLowerCase().includes(_searchText)) return;
+                        _renderConsoleLog(entry);
+                    });
+                }
+                // 绑定到面板作用域
+                _consolePanel._reRenderLogs = _reRenderLogs;
+            }
+
+            _consolePanel.style.display = 'flex';
+
+            // 渲染历史日志
+            const list = _consolePanel.querySelector('#_consoleLogList');
+            list.innerHTML = '';
+            _consoleLogs.forEach(entry => _renderConsoleLog(entry));
+            list.scrollTop = list.scrollHeight;
+
+            console.info('[AppConsole] 控制台日志显示器已打开，共 ' + _consoleLogs.length + ' 条历史记录');
+        }
+        // ====== End App 控制台日志显示器 ======
 
         // 打开调试菜单
         function openDebugMenuModal() {
@@ -19054,7 +19292,7 @@ io.on('connection', (socket) => {
                             // 连接已断开，尝试重新连接
                             console.log('页面重新激活，Socket连接已断开，尝试重新连接');
                             // 重新初始化Socket连接
-                            initSocket();
+                            if (typeof io !== 'undefined') initSocket();
                             // 不再自动重新加入房间，用户需要手动操作
                         } else {
                             // 连接正常，确保在正确的房间
@@ -19063,7 +19301,7 @@ io.on('connection', (socket) => {
                     } else {
                         // Socket未初始化，重新初始化
                         console.log('页面重新激活，Socket未初始化，重新初始化');
-                        initSocket();
+                        if (typeof io !== 'undefined') initSocket();
                         // 不再自动加入房间，用户需要手动操作
                     }
                 }
@@ -19270,9 +19508,15 @@ io.on('connection', (socket) => {
                 userInteractionActivated = true;
             }, { once: true });
             
-            // 初始化Socket连接
+            // 初始化Socket连接（等待 Socket.IO SDK 加载完成）
             console.log('所有元素初始化完成，开始初始化Socket连接');
-            initSocket();
+            if (typeof waitForSocketIo === 'function') {
+                waitForSocketIo(function() {
+                    initSocket();
+                });
+            } else {
+                initSocket();
+            }
             
             // 不再自动加入房间，用户需要手动操作
 
