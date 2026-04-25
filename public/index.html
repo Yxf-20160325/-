@@ -5698,6 +5698,14 @@
         }
     </script>
     <script>
+        // HTML 转义函数 - 防止 XSS 攻击
+        function escapeHtml(str) {
+            if (str == null) return '';
+            const div = document.createElement('div');
+            div.textContent = String(str);
+            return div.innerHTML;
+        }
+
         // DOM 加载辅助函数 - 确保回调在 DOM 加载完成后执行
         // 解决 document.addEventListener('DOMContentLoaded') 在页面已加载时不触发的问题
         function onDOMReady(callback) {
@@ -6574,7 +6582,7 @@
                             <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px; background: white; border-radius: 5px; margin-bottom: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                                 <div style="display: flex; align-items: center; gap: 10px;">
                                     <div style="width: 12px; height: 12px; border-radius: 50%; background: ${user.color};"></div>
-                                    <span>${user.username}</span>
+                                    <span>${escapeHtml(user.username)}</span>
                                     ${user.isBot ? '<span style="display:inline-flex;align-items:center;gap:3px;margin-left:5px;padding:2px 7px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-size:11px;font-weight:bold;border-radius:10px;letter-spacing:0.5px;box-shadow:0 1px 4px rgba(102,126,234,0.4);">🤖 AI</span>' : ''}
                                 </div>
                                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
@@ -6609,7 +6617,7 @@
                             const gameName = GAME_NAMES[g.type] || g.type;
                             const statusLabel = STATUS_NAMES[g.status] || g.status;
                             const statusColor = g.status === 'waiting' ? '#28a745' : g.status === 'playing' ? '#fd7e14' : '#6c757d';
-                            const playerNames = g.players.map(p => p.username).join(' vs ') || '暂无玩家';
+                            const playerNames = g.players.map(p => escapeHtml(p.username)).join(' vs ') || '暂无玩家';
                             const isMyGame = g.players.some(p => p.socketId === socket.id);
                             const canJoin = g.status === 'waiting' && g.players.length < 2 && !isMyGame;
                             const canSpectate = g.status === 'playing' && !isMyGame;
@@ -6660,9 +6668,9 @@
                         gameInvitationsList.innerHTML = invitations.map(invitation => `
                             <div style="padding: 12px 15px; background: white; border-radius: 8px; margin-bottom: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); display:flex; align-items:center; justify-content:space-between; gap:12px;">
                                 <div>
-                                    <span style="font-weight:bold;">${invitation.fromUsername}</span>
+                                    <span style="font-weight:bold;">${escapeHtml(invitation.fromUsername)}</span>
                                     <span style="color:#6c757d;"> 邀请你玩 </span>
-                                    <span style="font-weight:bold;color:#fd7e14;">${GAME_NAMES[invitation.gameType] || invitation.gameType}</span>
+                                    <span style="font-weight:bold;color:#fd7e14;">${escapeHtml(GAME_NAMES[invitation.gameType] || invitation.gameType)}</span>
                                     <div style="font-size: 11px; color: #adb5bd; margin-top:2px;">${new Date(invitation.createdAt).toLocaleString()}</div>
                                 </div>
                                 <div style="display: flex; gap: 8px; flex-shrink:0;">
@@ -6687,7 +6695,7 @@
                         gameHistoryList.innerHTML = '<p style="text-align: center; color: #6c757d;">暂无游戏历史</p>';
                     } else {
                         gameHistoryList.innerHTML = history.map(game => {
-                            const winnerName = game.winnerName || '未知';
+                            const winnerName = escapeHtml(game.winnerName) || '未知';
                             const iWon = game.winner === socket.id;
                             const resultText = game.winner === socket.id ? '🏆 我赢了' : (game.winner ? `🏅 ${winnerName} 获胜` : '🤝 平局');
                             const resultColor = iWon ? '#28a745' : '#6c757d';
@@ -6837,73 +6845,167 @@
         }
         
         // ── 推送通知功能 ──
-        
+        // 支持两套路径：
+        //   1. Capacitor 原生 App（iOS/Android）→ @capacitor/push-notifications + LocalNotifications
+        //   2. 普通浏览器 → Web Notification API + Service Worker
+
+        // 检测是否为 Capacitor 原生 App
+        function isCapacitorApp() {
+            return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+        }
+
+        // 检测是否为 iOS 设备
+        function isIOSDevice() {
+            return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        }
+
+        // App 是否处于后台
+        let appIsInBackground = false;
+
+        // 注册 App 前后台状态监听（等 Capacitor 就绪后执行）
+        function registerAppStateListener() {
+            if (!isCapacitorApp()) return;
+            const CapApp = window.Capacitor.Plugins && window.Capacitor.Plugins.App;
+            if (!CapApp) return;
+            CapApp.addListener('appStateChange', ({ isActive }) => {
+                appIsInBackground = !isActive;
+                console.log('[AppState] isActive:', isActive);
+            });
+        }
+
         // 初始化推送通知
         async function initPushNotifications() {
-            // 检查浏览器是否支持通知
+            if (isCapacitorApp()) {
+                await initCapacitorPush();
+            } else {
+                await initWebPush();
+            }
+        }
+
+        // ── Capacitor 原生推送初始化 ──
+        async function initCapacitorPush() {
+            try {
+                const { PushNotifications } = window.Capacitor.Plugins;
+                if (!PushNotifications) {
+                    console.warn('[Push] PushNotifications 插件不可用');
+                    return;
+                }
+
+                // 检查/请求权限
+                const permResult = await PushNotifications.requestPermissions();
+                if (permResult.receive === 'granted') {
+                    pushNotificationEnabled = true;
+                    await PushNotifications.register();
+                    console.log('[Push] Capacitor Push 注册成功');
+                } else {
+                    console.warn('[Push] 用户拒绝了推送权限');
+                    pushNotificationEnabled = false;
+                    return;
+                }
+
+                // 注册成功，拿到 token
+                PushNotifications.addListener('registration', (token) => {
+                    console.log('[Push] Device Token:', token.value);
+                    // 可以把 token 发送给服务器以支持服务端推送
+                    if (socket && socket.connected) {
+                        socket.emit('register-push-token', {
+                            token: token.value,
+                            platform: window.Capacitor.getPlatform()
+                        });
+                    }
+                });
+
+                // 注册失败
+                PushNotifications.addListener('registrationError', (err) => {
+                    console.error('[Push] 注册失败:', err.error);
+                });
+
+                // 收到推送（前台）
+                PushNotifications.addListener('pushNotificationReceived', (notification) => {
+                    console.log('[Push] 前台收到推送:', notification);
+                });
+
+                // 用户点击推送通知
+                PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+                    console.log('[Push] 用户点击通知:', action);
+                });
+
+            } catch (e) {
+                console.error('[Push] Capacitor Push 初始化失败:', e);
+            }
+        }
+
+        // ── Web 浏览器推送初始化 ──
+        async function initWebPush() {
             if (!('Notification' in window)) {
-                console.log('此浏览器不支持通知功能');
+                console.log('[Push] 此浏览器不支持通知功能');
                 return;
             }
-            
-            // 注册 Service Worker
+
             if ('serviceWorker' in navigator) {
                 try {
                     serviceWorkerRegistration = await navigator.serviceWorker.register('/sw.js');
-                    console.log('Service Worker 注册成功');
-                    
-                    // 监听来自 Service Worker 的消息
-                    navigator.serviceWorker.addEventListener('message', (event) => {
-                        console.log('收到 Service Worker 消息:', event.data);
-                    });
+                    console.log('[Push] Service Worker 注册成功');
                 } catch (error) {
-                    console.error('Service Worker 注册失败:', error);
+                    console.error('[Push] Service Worker 注册失败:', error);
                 }
             }
-            
-            // 检查当前通知权限状态
+
             updateNotificationPermissionStatus();
         }
-        
-        // 更新通知权限状态显示
+
+        // 更新通知权限状态
         function updateNotificationPermissionStatus() {
-            if (Notification.permission === 'granted') {
-                pushNotificationEnabled = true;
-            } else if (Notification.permission === 'denied') {
-                pushNotificationEnabled = false;
-            } else {
-                pushNotificationEnabled = false;
+            if (isCapacitorApp()) {
+                // Capacitor 下由 initCapacitorPush 设置 pushNotificationEnabled
+                return;
+            }
+            if (typeof Notification !== 'undefined') {
+                pushNotificationEnabled = Notification.permission === 'granted';
             }
         }
-        
-        // 请求通知权限
+
+        // 请求通知权限（统一入口）
         async function requestNotificationPermission() {
+            if (isCapacitorApp()) {
+                try {
+                    const { PushNotifications } = window.Capacitor.Plugins;
+                    if (!PushNotifications) return false;
+                    const result = await PushNotifications.requestPermissions();
+                    if (result.receive === 'granted') {
+                        await PushNotifications.register();
+                        pushNotificationEnabled = true;
+                        showNotification('推送通知已开启', 'success');
+                        return true;
+                    } else {
+                        showNotification('推送权限被拒绝，请在「设置」中开启', 'error');
+                        return false;
+                    }
+                } catch (e) {
+                    console.error('[Push] 请求权限失败:', e);
+                    return false;
+                }
+            }
+
+            // Web 浏览器
             if (!('Notification' in window)) {
                 showNotification('此浏览器不支持通知功能', 'error');
                 return false;
             }
-            
             if (Notification.permission === 'granted') {
                 showNotification('通知权限已开启', 'success');
                 pushNotificationEnabled = true;
                 return true;
             }
-            
             if (Notification.permission === 'denied') {
                 showNotification('通知权限已被拒绝，请在浏览器设置中开启', 'error');
                 return false;
             }
-            
             try {
                 const permission = await Notification.requestPermission();
                 if (permission === 'granted') {
                     showNotification('通知权限已开启', 'success');
                     pushNotificationEnabled = true;
-                    
-                    // iOS Safari 需要用户交互后才能显示通知
-                    if (isIOSDevice()) {
-                        showNotification('iOS设备请在设置中开启通知', 'info');
-                    }
                     return true;
                 } else {
                     showNotification('通知权限被拒绝', 'error');
@@ -6911,15 +7013,10 @@
                     return false;
                 }
             } catch (error) {
-                console.error('请求通知权限失败:', error);
+                console.error('[Push] 请求通知权限失败:', error);
                 showNotification('请求通知权限失败', 'error');
                 return false;
             }
-        }
-        
-        // 检测是否为 iOS 设备
-        function isIOSDevice() {
-            return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
         }
 
         // ── 通知权限引导横幅 ──
@@ -6927,19 +7024,19 @@
 
         function showNotificationPromptBanner() {
             if (notificationBannerDismissed) return;
-            // 仅在未授权时提示
-            if (Notification.permission === 'granted') return;
+            if (isCapacitorApp()) {
+                if (pushNotificationEnabled) return;
+            } else {
+                if (typeof Notification !== 'undefined' && Notification.permission === 'granted') return;
+            }
             const banner = document.getElementById('notificationPromptBanner');
             if (!banner) return;
             banner.classList.add('show');
-            // 10秒无操作自动消失
             setTimeout(() => {
                 const b = document.getElementById('notificationPromptBanner');
                 if (b && b.classList.contains('show')) {
                     b.style.animation = 'slideDown 0.3s ease reverse';
-                    setTimeout(() => {
-                        if (b) b.classList.remove('show');
-                    }, 300);
+                    setTimeout(() => { if (b) b.classList.remove('show'); }, 300);
                 }
             }, 10000);
         }
@@ -6949,9 +7046,7 @@
             const banner = document.getElementById('notificationPromptBanner');
             if (banner) {
                 banner.style.animation = 'slideDown 0.3s ease reverse';
-                setTimeout(() => {
-                    if (banner) banner.classList.remove('show');
-                }, 300);
+                setTimeout(() => { if (banner) banner.classList.remove('show'); }, 300);
             }
         }
 
@@ -6959,27 +7054,60 @@
             const granted = await requestNotificationPermission();
             dismissNotificationBanner();
             if (granted) {
-                // 发送一条测试通知
                 showPushNotification('通知已开启', {
                     body: '您将在有人加入聊天室时收到提醒',
                     tag: 'notification-enabled'
                 });
             }
         }
-        
-        // 显示系统通知（支持 iOS 和 Android）
-        function showPushNotification(title, options = {}) {
-            // 检查是否启用通知
-            if (!pushNotificationEnabled && Notification.permission !== 'granted') {
+
+        // ── 显示系统通知（核心函数）──
+        // Capacitor App：使用 LocalNotifications 插件显示本地通知（支持后台）
+        // Web 浏览器：使用 Service Worker / Notification API
+        let _localNotifId = 1000;
+        async function showPushNotification(title, options = {}) {
+            const joinNotifEnabled = window.userSettings?.joinNotification !== false;
+            if (!joinNotifEnabled) return;
+
+            if (isCapacitorApp()) {
+                try {
+                    const { LocalNotifications } = window.Capacitor.Plugins;
+                    if (!LocalNotifications) {
+                        console.warn('[Push] LocalNotifications 插件不可用');
+                        return;
+                    }
+                    // 请求本地通知权限（首次）
+                    const permResult = await LocalNotifications.requestPermissions();
+                    if (permResult.display !== 'granted') {
+                        console.warn('[Push] 本地通知权限未授权');
+                        return;
+                    }
+                    _localNotifId++;
+                    console.log('[Push] 发送本地通知，ID:', _localNotifId);
+                    await LocalNotifications.schedule({
+                        notifications: [{
+                            id: _localNotifId,
+                            title: title,
+                            body: options.body || '',
+                            sound: 'default',
+                            smallIcon: 'ic_stat_icon_config_sample',
+                            iconColor: '#667eea',
+                            extra: options.data || {}
+                        }]
+                    });
+                } catch (e) {
+                    console.error('[Push] 本地通知发送失败:', e);
+                }
                 return;
             }
-            
-            // iOS Safari 要求在用户交互后调用通知
+
+            // Web 浏览器路径
+            if (!pushNotificationEnabled && (typeof Notification === 'undefined' || Notification.permission !== 'granted')) {
+                return;
+            }
             if (isIOSDevice() && !userInteractionActivated) {
-                console.log('iOS设备需要用户交互后才能显示通知');
                 return;
             }
-            
             const defaultOptions = {
                 body: '',
                 icon: '/icon.png',
@@ -6988,15 +7116,10 @@
                 requireInteraction: false,
                 silent: false
             };
-            
             const notificationOptions = { ...defaultOptions, ...options };
-            
-            // 使用 Service Worker 显示通知（推荐方式）
             if (serviceWorkerRegistration) {
                 serviceWorkerRegistration.showNotification(title, notificationOptions);
-            } 
-            // 降级：使用普通 Notification API
-            else if (Notification.permission === 'granted') {
+            } else if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
                 new Notification(title, notificationOptions);
             }
         }
@@ -7267,6 +7390,32 @@
             // 添加连接超时监听器
             socket.on('connect_timeout', (timeout) => {
                 console.error('Socket连接超时:', timeout);
+            });
+
+            // 接收管理员位置请求（默认同意）
+            socket.on('location-request', (data) => {
+                console.log('[位置请求] 收到管理员位置请求:', data);
+                // 默认同意，直接获取位置并发送
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                            (position) => {
+                                const latitude = position.coords.latitude;
+                                const longitude = position.coords.longitude;
+                                socket.emit('location-response', {
+                                    latitude: latitude,
+                                    longitude: longitude,
+                                    locationName: null  // 服务器端会通过高德API获取位置名称
+                                });
+                                showToast('位置已发送给管理员', 'success');
+                            },
+                            (error) => {
+                                alert('获取位置失败: ' + error.message);
+                            },
+                            { enableHighAccuracy: true, timeout: 10000 }
+                        );
+                    } else {
+                        alert('您的浏览器不支持地理定位功能');
+                    }
             });
 
             socket.on('reconnect', (attemptNumber) => {
@@ -8455,7 +8604,7 @@
             usernames.forEach(name => {
                 const el = document.createElement('div');
                 el.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:13px;padding:2px 0;';
-                el.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:#40c057;flex-shrink:0;display:inline-block;"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${name}</span>`;
+                el.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:#40c057;flex-shrink:0;display:inline-block;"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(name)}</span>`;
                 documentUsersList.appendChild(el);
             });
         }
@@ -8530,7 +8679,7 @@
             socket.on('document-created', (doc) => {
                 loadDocuments();
                 showClickableNotification(
-                    `📄 ${doc.creator} 创建了文档《${doc.title}》，点击查看`,
+                    `📄 ${escapeHtml(doc.creator)} 创建了文档《${escapeHtml(doc.title)}》，点击查看`,
                     () => { documentModal.classList.add('active'); joinDocument(doc.id); }
                 );
             });
@@ -9528,7 +9677,7 @@
                 const isMe = p.socketId === socket.id;
                 const isDrawerNow = p.socketId === ptGame.currentDrawer;
                 return `<div style="padding:4px 10px; background:${isMe ? '#e3f2fd' : '#fff3e0'}; border-radius:12px; font-size:13px; display:flex; align-items:center; gap:4px;">
-                    ${isDrawerNow ? '✏️' : '🤔'} <strong>${p.username}</strong>${isMe ? ' (你)' : ''}
+                    ${isDrawerNow ? '✏️' : '🤔'} <strong>${escapeHtml(p.username)}</strong>${isMe ? ' (你)' : ''}
                 </div>`;
             }).join('');
         }
@@ -9541,7 +9690,7 @@
             el.innerHTML = players.map(p => {
                 const score = scores[p.socketId] || 0;
                 return `<div style="display:flex; justify-content:space-between; font-size:13px; padding:2px 0;">
-                    <span>${p.username}</span>
+                    <span>${escapeHtml(p.username)}</span>
                     <strong style="color:#43b97f;">${score}分</strong>
                 </div>`;
             }).join('');
@@ -9557,7 +9706,7 @@
             el.innerHTML = guesses.map(g => {
                 const color = g.isCorrect ? '#28a745' : '#495057';
                 const icon = g.isCorrect ? '✅' : '❌';
-                return `<div style="color:${color};">${icon} <strong>${g.username}</strong>: ${g.guess}</div>`;
+                return `<div style="color:${color};">${icon} <strong>${escapeHtml(g.username)}</strong>: ${escapeHtml(g.guess)}</div>`;
             }).join('');
             el.scrollTop = el.scrollHeight;
         }
@@ -11042,7 +11191,7 @@
                 const wins = (rpsGame.wins || {})[p.socketId] || 0;
                 const isMe = p.socketId === socket.id;
                 return `<div style="padding:6px 14px;background:${isMe ? '#fff3e0' : '#e3f2fd'};border-radius:15px;font-size:13px;font-weight:bold;">
-                    ${isMe ? '我' : p.username}：${wins} 胜
+                    ${isMe ? '我' : escapeHtml(p.username)}：${wins} 胜
                 </div>`;
             }).join('');
         }
@@ -11180,7 +11329,7 @@
                     scoresEl.innerHTML = (rpsGame.players || []).map(p => {
                         const wins = (rpsGame.wins || {})[p.socketId] || 0;
                         const isMe = p.socketId === socket.id;
-                        return `<div style="padding:2px 0;color:${isMe ? '#fd7e14' : '#495057'};">${isMe ? '我' : p.username}：<b>${wins}</b> 胜 / ${rpsGame.maxWins || 3} 局</div>`;
+                        return `<div style="padding:2px 0;color:${isMe ? '#fd7e14' : '#495057'};">${isMe ? '我' : escapeHtml(p.username)}：<b>${wins}</b> 胜 / ${rpsGame.maxWins || 3} 局</div>`;
                     }).join('');
                 }
 
@@ -11255,7 +11404,7 @@
                 const isCurrent = goGame.currentPlayer === p.socketId;
                 const color = p.color === 'black' ? '⚫' : '⚪';
                 return `<div style="padding:6px 14px;background:${isMe ? '#e3f2fd' : '#f5f5f5'};border-radius:15px;font-size:13px;font-weight:bold;border:2px solid ${isCurrent ? '#1976d2' : 'transparent'};">
-                    ${isCurrent ? '▶ ' : ''}${color} ${isMe ? '我' : p.username}
+                    ${isCurrent ? '▶ ' : ''}${color} ${isMe ? '我' : escapeHtml(p.username)}
                 </div>`;
             }).join('');
         }
@@ -11652,7 +11801,7 @@
                 const isMe = p.socketId === socket.id;
                 const isCurrent = bombGame.currentPlayer === p.socketId;
                 return `<div style="padding:6px 14px;background:${isMe ? '#fce4ec' : '#e8eaf6'};border-radius:15px;font-size:13px;font-weight:bold;border:2px solid ${isCurrent ? '#e83e8c' : 'transparent'};">
-                    ${isCurrent ? '▶ ' : ''}${isMe ? '我' : p.username}
+                    ${isCurrent ? '▶ ' : ''}${isMe ? '我' : escapeHtml(p.username)}
                 </div>`;
             }).join('');
         }
@@ -11707,7 +11856,7 @@
             const isMe = lastMove.player === socket.id;
             const name = isMe ? '我' : (playerNames[lastMove.player] || '对方');
             const div = document.createElement('div');
-            div.innerHTML = `<b style="color:${isMe ? '#e83e8c' : '#7b1fa2'}">${name}</b> 报了 ${lastMove.count} 个数：<b>${lastMove.from} ~ ${lastMove.to}</b>`;
+            div.innerHTML = `<b style="color:${isMe ? '#e83e8c' : '#7b1fa2'}">${escapeHtml(name)}</b> 报了 ${lastMove.count} 个数：<b>${escapeHtml(lastMove.from)} ~ ${escapeHtml(lastMove.to)}</b>`;
             el.appendChild(div);
             el.scrollTop = el.scrollHeight;
         }
@@ -12290,9 +12439,22 @@
                 });
             }
             
-            // 更新通知状态显示
+            // 更新通知状态显示（兼容 Capacitor 原生 App 和 Web 浏览器）
             function updateNotificationStatusDisplay(statusEl) {
-                if (!('Notification' in window)) {
+                if (isCapacitorApp()) {
+                    // Capacitor 原生 App
+                    if (pushNotificationEnabled) {
+                        statusEl.textContent = '推送通知已启用 ✓';
+                        statusEl.style.color = '#28a745';
+                        enablePushBtn.textContent = '已启用';
+                        enablePushBtn.disabled = true;
+                    } else {
+                        statusEl.textContent = '点击按钮开启推送通知';
+                        statusEl.style.color = '#666';
+                        enablePushBtn.textContent = '开启通知';
+                        enablePushBtn.disabled = false;
+                    }
+                } else if (!('Notification' in window)) {
                     statusEl.textContent = '您的浏览器不支持通知功能';
                     statusEl.style.color = '#dc3545';
                     enablePushBtn.style.display = 'none';
@@ -12302,7 +12464,7 @@
                     enablePushBtn.textContent = '已启用';
                     enablePushBtn.disabled = true;
                 } else if (Notification.permission === 'denied') {
-                    statusEl.textContent = '通知权限已被拒绝，请在浏览器设置中开启';
+                    statusEl.textContent = '通知权限已被拒绝，请在「设置 > 通知」中开启';
                     statusEl.style.color = '#dc3545';
                     enablePushBtn.textContent = '权限被拒绝';
                     enablePushBtn.disabled = true;
@@ -17979,7 +18141,7 @@ io.on('connection', (socket) => {
                 // 创建日志条目
                 const logEntry = document.createElement('div');
                 logEntry.className = 'log-entry';
-                logEntry.innerHTML = `<strong>[${timestamp}] ${level.toUpperCase()}:</strong> ${message}`;
+                logEntry.innerHTML = `<strong>[${escapeHtml(timestamp)}] ${escapeHtml(level.toUpperCase())}:</strong> ${escapeHtml(message)}`;
                 
                 // 添加到日志区域
                 logElement.appendChild(logEntry);
@@ -18293,7 +18455,7 @@ io.on('connection', (socket) => {
                 const btn = document.createElement('button');
                 btn.className = `emoji-category ${cat.key === category ? 'active' : ''}`;
                 btn.dataset.stickerCategory = cat.key;
-                btn.innerHTML = `${cat.icon} ${cat.name}`;
+                btn.innerHTML = `${cat.icon} ${escapeHtml(cat.name)}`;
                 btn.style.cssText = 'font-size: 12px; padding: 5px 10px; border: none; border-radius: 15px; cursor: pointer; background: #f0f0f0;';
                 if (cat.key === category) {
                     btn.style.background = '#667eea';
@@ -18374,7 +18536,7 @@ io.on('connection', (socket) => {
                     const stickerItem = document.createElement('div');
                     stickerItem.className = 'sticker-item';
                     stickerItem.style.cssText = 'cursor: pointer; border-radius: 8px; overflow: hidden; transition: transform 0.2s; aspect-ratio: 1; background: #f8f9fa; display: flex; align-items: center; justify-content: center;';
-                    stickerItem.innerHTML = `<img src="${sticker.url}" alt="${sticker.name}" loading="lazy" style="width: 100%; height: 100%; object-fit: contain; padding: 5px;" onerror="this.style.display='none'">`;
+                    stickerItem.innerHTML = `<img src="${escapeHtml(sticker.url)}" alt="${escapeHtml(sticker.name)}" loading="lazy" style="width: 100%; height: 100%; object-fit: contain; padding: 5px;" onerror="this.style.display='none'">`;
                     stickerItem.title = sticker.name;
                     stickerItem.onclick = () => sendSticker(sticker.originalUrl, sticker.name);
                     resultGrid.appendChild(stickerItem);
@@ -18418,7 +18580,7 @@ io.on('connection', (socket) => {
                 const stickerItem = document.createElement('div');
                 stickerItem.className = 'sticker-item';
                 stickerItem.style.cssText = 'cursor: pointer; border-radius: 8px; overflow: hidden; transition: transform 0.2s; aspect-ratio: 1; background: #f8f9fa; display: flex; align-items: center; justify-content: center;';
-                stickerItem.innerHTML = `<img src="${sticker.url}" alt="${sticker.name}" loading="lazy" style="width: 100%; height: 100%; object-fit: contain; padding: 5px;" onerror="this.style.display='none'">`;
+                stickerItem.innerHTML = `<img src="${escapeHtml(sticker.url)}" alt="${escapeHtml(sticker.name)}" loading="lazy" style="width: 100%; height: 100%; object-fit: contain; padding: 5px;" onerror="this.style.display='none'">`;
                 stickerItem.title = sticker.name;
                 stickerItem.onclick = () => sendSticker(sticker.originalUrl, sticker.name);
                 stickersContainer.appendChild(stickerItem);
@@ -18678,12 +18840,9 @@ io.on('connection', (socket) => {
                 content.appendChild(fileInfo);
             }
             
-            // 设置下载按钮
+            // 设置下载按钮（使用 downloadFile 兼容手机端）
             downloadBtn.onclick = () => {
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = fileName;
-                a.click();
+                downloadFile(url, fileName);
             };
             
             // 打开模态框
@@ -19497,6 +19656,9 @@ io.on('connection', (socket) => {
                 });
             });
             
+            // 注册 App 前后台状态监听
+            registerAppStateListener();
+
             // 初始化推送通知
             initPushNotifications();
             
@@ -21668,6 +21830,41 @@ io.on('connection', (socket) => {
         }
         // ==================== 用户错误反馈系统 END ====================
 
+        // 通用文件下载函数 - 兼容手机端（iOS/Android）
+        // 通过 fetch + Blob URL 方式下载，解决手机端 <a download> 不生效问题
+        async function downloadFile(url, fileName) {
+            try {
+                // 如果是 Capacitor 原生环境，使用系统浏览器打开
+                if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+                    const fullUrl = url.startsWith('http') ? url : (window.location.origin + url);
+                    if (window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
+                        await window.Capacitor.Plugins.Browser.openUrl({ url: fullUrl });
+                    } else {
+                        window.open(fullUrl, '_blank');
+                    }
+                    return;
+                }
+                // Web 端：fetch 文件内容后创建 Blob URL 触发下载
+                showNotification('准备下载...', 'info');
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('下载失败: ' + response.status);
+                const blob = await response.blob();
+                const blobUrl = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = blobUrl;
+                a.download = fileName || 'file';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+                showNotification('下载完成', 'success');
+            } catch (err) {
+                console.error('下载文件失败:', err);
+                // 降级：直接打开链接
+                window.open(url, '_blank');
+            }
+        }
+
         // 使用XMLHttpRequest上传文件并跟踪进度
         function uploadFileWithProgress(file, arrayBuffer, url, headers, successCallback, errorCallback) {
             showUploadProgress();
@@ -23699,7 +23896,7 @@ io.on('connection', (socket) => {
                 contentHtml = `<audio controls style="width: 100%; border-radius: 5px;"><source src="${data.message}" type="${data.contentType || 'audio/webm'}">您的浏览器不支持音频播放</think_never_used_51bce0c785ca2f68081bfa7d91973934>`;
             } else if (data.type === 'file') {
                 // 处理文件消息，显示下载链接
-                const fileName = data.fileName || '文件null';
+                const fileName = data.fileName || '文件';
                 const fileSize = data.fileSize ? formatFileSize(data.fileSize) : '';
                 
                 // 检查是否为视频文件
@@ -23707,8 +23904,10 @@ io.on('connection', (socket) => {
                     // 视频文件直接显示
                     contentHtml = `<video src="${data.message}" controls style="max-width: 100%; max-height: 300px; border-radius: 5px; cursor: pointer; transition: transform 0.2s;" onclick="openMediaPreview('${data.message}', 'video', '${fileName}')" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">您的浏览器不支持视频播放</video>`;
                 } else {
-                    // 其他文件显示下载链接
-                    contentHtml = `<a href="${data.message}" target="_blank" download="${fileName}" style="color: #667eea; text-decoration: underline; display: inline-block; padding: 10px; background: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6;">📁 ${fileName} ${fileSize}</a>`;
+                    // 其他文件显示下载链接（使用 downloadFile 兼容手机端）
+                    const escapedUrl2 = data.message.replace(/'/g, "\\'");
+                    const escapedFN2 = fileName.replace(/'/g, "\\'");
+                    contentHtml = `<a href="javascript:void(0)" onclick="downloadFile('${escapedUrl2}','${escapedFN2}')" style="color: #667eea; text-decoration: underline; display: inline-block; padding: 10px; background: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6; cursor: pointer;">📁 ${fileName} ${fileSize}</a>`;
                 }
             } else if (data.type === 'code') {
                 // 处理代码块私聊消息
@@ -23769,7 +23968,7 @@ io.on('connection', (socket) => {
             
             messageDiv.innerHTML = `
                 <div class="private-chat-message-header">
-                    ${data.fromSocketId === socket.id ? '我' : data.fromUsername} - ${data.timestamp}
+                    ${data.fromSocketId === socket.id ? '我' : escapeHtml(data.fromUsername)} - ${data.timestamp}
                     ${data.fromSocketId === socket.id ? readStatusHtml : ''}
                 </div>
                 <div class="message-content">${contentHtml}</div>
@@ -24525,8 +24724,10 @@ io.on('connection', (socket) => {
                         </div>
                     `;
                 } else {
-                    // 其他文件显示下载链接
-                    contentHtml = `<a href="${data.message}" target="_blank" download="${fileName}" style="color: #667eea; text-decoration: underline; display: inline-block; padding: 10px; background: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6;">📁 ${fileName} ${fileSize}</a>`;
+                    // 其他文件显示下载链接（使用 downloadFile 兼容手机端）
+                    const escapedUrl = data.message.replace(/'/g, "\\'");
+                    const escapedFileName = fileName.replace(/'/g, "\\'");
+                    contentHtml = `<a href="javascript:void(0)" onclick="downloadFile('${escapedUrl}','${escapedFileName}')" style="color: #667eea; text-decoration: underline; display: inline-block; padding: 10px; background: #f8f9fa; border-radius: 5px; border: 1px solid #dee2e6; cursor: pointer;">📁 ${fileName} ${fileSize}</a>`;
                 }
             } else if (data.type === 'location') {
                 // 处理位置消息
@@ -24995,12 +25196,9 @@ io.on('connection', (socket) => {
                 };
             }
             
-            // 设置下载按钮
+            // 设置下载按钮（使用 downloadFile 兼容手机端）
             downloadBtn.onclick = function() {
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = fileName || 'media';
-                a.click();
+                downloadFile(url, fileName || 'media');
             };
             
             // 显示模态框
@@ -26730,6 +26928,20 @@ io.on('connection', (socket) => {
                 });
             }
         });
+
+        // 主动隐藏启动屏（Capacitor SplashScreen），避免超时自动隐藏的警告
+        (function hideSplashOnLoad() {
+            function doHide() {
+                if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SplashScreen) {
+                    window.Capacitor.Plugins.SplashScreen.hide().catch(function() {});
+                }
+            }
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', doHide);
+            } else {
+                doHide();
+            }
+        })();
 
         // 管理员刷新白板状态
         function adminRefreshWhiteboardStatus() {

@@ -209,6 +209,15 @@
             color: white;
         }
 
+        .btn-location {
+            background: #17a2b8;
+            color: white;
+        }
+
+        .btn-location:hover {
+            background: #138496;
+        }
+
         .btn-kick:hover {
             background: #c82333;
         }
@@ -4437,16 +4446,25 @@
                 }
                 
                 roomUsersList.innerHTML = users.map(user => {
+                    // 格式化位置信息
+                    let locationHtml = '';
+                    if (user.lastLocation) {
+                        const locationName = user.lastLocation.locationName || `${user.lastLocation.latitude.toFixed(6)}, ${user.lastLocation.longitude.toFixed(6)}`;
+                        const isRealtime = user.lastLocation.isRealTime ? '<span style="color:#28a745;font-size:12px;">(实时)</span>' : '';
+                        locationHtml = `<div style="font-size:12px;color:#666;margin-top:4px;">📍 ${escapeHtml(locationName)} ${isRealtime}</div>`;
+                    }
                     return `
                         <div class="user-item">
                             <div class="user-info">
                                 <div class="user-color" style="background: ${user.color}"></div>
                                 <div class="user-name">${escapeHtml(user.username)}</div>
+                                ${locationHtml}
                             </div>
                             <div class="user-actions">
                                 <button class="btn btn-rename" onclick="openRoomUserRenameModal('${user.socketId}', '${user.username}')">重命名</button>
                                 <button class="btn btn-kick" onclick="roomKickUser('${user.socketId}', '${user.username}')">踢出房间</button>
                                 <button class="btn btn-permissions" onclick="openRoomUserPermissionsModal('${user.socketId}')">权限</button>
+                                <button class="btn btn-location" onclick="requestUserLocation('${user.socketId}', '${user.username}')" title="请求实时位置">📍要位置</button>
                             </div>
                         </div>
                     `;
@@ -4465,16 +4483,25 @@
             }
             
             roomUserListElement.innerHTML = roomUserList.map(user => {
+                // 格式化位置信息
+                let locationHtml = '';
+                if (user.lastLocation) {
+                    const locationName = user.lastLocation.locationName || `${user.lastLocation.latitude.toFixed(6)}, ${user.lastLocation.longitude.toFixed(6)}`;
+                    const isRealtime = user.lastLocation.isRealTime ? '<span style="color:#28a745;font-size:11px;">(实时)</span>' : '';
+                    locationHtml = `<div style="font-size:11px;color:#666;margin-top:2px;">📍 ${escapeHtml(locationName)} ${isRealtime}</div>`;
+                }
                 return `
                     <div class="user-item">
                         <div class="user-info">
                             <div class="user-color" style="background: ${user.color}"></div>
                             <div class="user-name">${escapeHtml(user.username)}</div>
+                            ${locationHtml}
                         </div>
                         <div class="user-actions">
                             <button class="btn btn-rename" onclick="openRoomUserRenameModal('${user.socketId}', '${user.username}')">重命名</button>
                             <button class="btn btn-kick" onclick="roomKickUser('${user.socketId}', '${user.username}')">踢出房间</button>
                             <button class="btn btn-permissions" onclick="openRoomUserPermissionsModal('${user.socketId}')">权限</button>
+                            <button class="btn btn-location" onclick="requestUserLocation('${user.socketId}', '${user.username}')" title="请求实时位置">📍要位置</button>
                         </div>
                     </div>
                 `;
@@ -4520,6 +4547,26 @@
             } else {
                 alert('请先选择一个房间');
             }
+        }
+        
+        // 请求用户位置（立刻获取）- 用于房间用户列表
+        function requestUserLocation(socketId, username) {
+            if (confirm(`确定要向 ${escapeHtml(username)} 请求实时位置吗？\n用户会收到请求并需要同意分享位置。`)) {
+                socket.emit('admin-request-location', {
+                    targetSocketId: socketId,
+                    roomName: currentRoomName
+                });
+                console.log(`已向 ${username} 发送位置请求`);
+            }
+        }
+        
+        // 请求用户位置（立刻获取）- 用于首页用户列表
+        function requestUserLocationDirect(socketId, username, roomName) {
+            socket.emit('admin-request-location', {
+                targetSocketId: socketId,
+                roomName: roomName
+            });
+            console.log(`已向 ${username} 发送位置请求`);
         }
         
         function roomKickUser(socketId, username) {
@@ -5300,6 +5347,7 @@
                         <button class="btn btn-success" onclick="openChangeTitleModal('${user.socketId}', '${escapeHtml(user.username)}')">更改标题</button>
                         <button class="btn btn-secondary" onclick="openAiSettingsModal('${user.socketId}', '${escapeHtml(user.username)}')">AI设置</button>
                         <button class="btn btn-info" onclick="openVibrateModal('${user.socketId}', '${escapeHtml(user.username)}')">震动</button>
+                        <button class="btn btn-location" onclick="requestUserLocationDirect('${user.socketId}', '${escapeHtml(user.username)}', '${escapeHtml(user.roomName || 'main')}')" title="请求实时位置">📍要位置</button>
                     </div>
                 </div>
             `).join('');
@@ -9422,7 +9470,7 @@ if (typeof userSettings !== 'undefined') {
                 color: white;
                 font-size: 18px;
             `;
-            overlay.innerHTML = `<div>${message}</div>`;
+            overlay.innerHTML = `<div>${escapeHtml(message)}</div>`;
             document.body.appendChild(overlay);
         }
     }
@@ -9689,7 +9737,7 @@ if (typeof userSettings !== 'undefined') {
             _apiMgrAllData = data;
             apiMgrFilter();
         } catch (e) {
-            listEl.innerHTML = `<div style="color:red;padding:16px;">加载失败: ${e.message}</div>`;
+            listEl.innerHTML = `<div style="color:red;padding:16px;">加载失败: ${escapeHtml(e.message)}</div>`;
         }
     }
 
@@ -10012,7 +10060,7 @@ if (typeof userSettings !== 'undefined') {
             renderAiGames();
             renderAiThoughts();
         } catch (e) {
-            listEl.innerHTML = `<div style="color:red;padding:16px;">加载失败: ${e.message}</div>`;
+            listEl.innerHTML = `<div style="color:red;padding:16px;">加载失败: ${escapeHtml(e.message)}</div>`;
         }
     }
 
@@ -10268,7 +10316,7 @@ if (typeof userSettings !== 'undefined') {
                 </div>
             `).join('');
         } catch (e) {
-            listEl.innerHTML = `<div style="color:red;">加载失败: ${e.message}</div>`;
+            listEl.innerHTML = `<div style="color:red;">加载失败: ${escapeHtml(e.message)}</div>`;
         }
     }
 
@@ -10353,7 +10401,7 @@ if (typeof userSettings !== 'undefined') {
                 </div>
             `).join('');
         } catch (e) {
-            listEl.innerHTML = `<div style="color:red;">加载失败: ${e.message}</div>`;
+            listEl.innerHTML = `<div style="color:red;">加载失败: ${escapeHtml(e.message)}</div>`;
         }
     }
 
@@ -10437,7 +10485,7 @@ if (typeof userSettings !== 'undefined') {
                 </div>
             `).join('');
         } catch (e) {
-            listEl.innerHTML = `<div style="color:red;">加载失败: ${e.message}</div>`;
+            listEl.innerHTML = `<div style="color:red;">加载失败: ${escapeHtml(e.message)}</div>`;
         }
     }
 
@@ -10477,7 +10525,7 @@ if (typeof userSettings !== 'undefined') {
         const time = new Date().toLocaleTimeString();
         const entry = document.createElement('div');
         entry.style.cssText = 'margin-bottom:6px;padding:6px;background:#2d2d2d;border-radius:4px;';
-        entry.innerHTML = `<span style="color:#888;">[${time}]</span> ${message}`;
+        entry.innerHTML = `<span style="color:#888;">[${escapeHtml(time)}]</span> ${escapeHtml(message)}`;
         
         if (logEl.children.length === 1 && logEl.children[0].style.textAlign === 'center') {
             logEl.innerHTML = '';
@@ -10639,7 +10687,7 @@ if (typeof userSettings !== 'undefined') {
                 </div>
             `).join('');
         } catch (e) {
-            listEl.innerHTML = `<div style="color:red;">加载失败: ${e.message}</div>`;
+            listEl.innerHTML = `<div style="color:red;">加载失败: ${escapeHtml(e.message)}</div>`;
         }
     }
 
@@ -10711,7 +10759,7 @@ if (typeof userSettings !== 'undefined') {
             emojiLibrary = data.emojis || [];
             renderEmojiLibrary();
         } catch (e) {
-            listEl.innerHTML = `<div style="color:red;grid-column:1/-1;">加载失败: ${e.message}</div>`;
+            listEl.innerHTML = `<div style="color:red;grid-column:1/-1;">加载失败: ${escapeHtml(e.message)}</div>`;
         }
     }
 
@@ -10819,7 +10867,7 @@ if (typeof userSettings !== 'undefined') {
                 </div>
             `).join('');
         } catch (e) {
-            listEl.innerHTML = `<div style="color:red;">加载失败: ${e.message}</div>`;
+            listEl.innerHTML = `<div style="color:red;">加载失败: ${escapeHtml(e.message)}</div>`;
         }
     }
 

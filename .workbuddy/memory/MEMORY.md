@@ -8,6 +8,21 @@ Node.js + Express + Socket.IO 聊天室项目，前端为单文件 `public/index
 
 ## 已修复的 Bug
 
+### 2026-04-20: XSS 跨站脚本漏洞修复
+- **原因**：index.html 和 admin.html 中大量 innerHTML 使用未转义的用户输入
+- **修复**：对所有用户可控数据添加 `escapeHtml()` 转义，包括：
+  - 用户名 (username)
+  - 游戏名称 (gameType)
+  - 玩家名称 (playerNames)
+  - 文档名称 (title)
+  - 贴纸名称 (name)
+  - 错误消息 (message)
+  - 聊天日志 (log)
+
+### 2026-04-20: multipart/form-data 与 express.json 中间件冲突
+- **原因**：全局 express.json() 在 formidable 之前处理文件上传请求
+- **修复**：添加条件判断，跳过 multipart/form-data 类型请求的 JSON 解析
+
 ### 2026-04-03: CodeMirror rust.min.js defineSimpleMode 错误
 - **原因**：CodeMirror 5.65.16 移除了 `defineSimpleMode` API
 - **修复**：移除 `public/index.html` 中的 rust.min.js 引用
@@ -87,6 +102,21 @@ Node.js + Express + Socket.IO 聊天室项目，前端为单文件 `public/index
 - **表情包管理**：发送/搜索/自定义表情包权限、表情包库管理、表情包统计
 - **服务端 API**：新增 `/api/admin/interaction/*`、`/api/admin/page-permissions/*`、`/api/admin/emoji-*` 系列接口
 
+### 2026-04-22: admin.html 显示用户位置
+- **服务端**：`server.cjs` 的 `admin-get-room-users` 事件返回用户最近发送的位置消息
+- **前端**：`admin.html` 用户列表显示用户位置信息（位置名称、坐标、是否实时共享）
+- **数据来源**：从房间历史消息中查找 `type: 'location'` 的消息，取每个用户最新的位置
+
+### 2026-04-25: 手机端无法下载文件
+- **原因**：`<a download>` 属性在手机端（iOS Safari / Android WebView）不支持，点击会直接在浏览器内打开而非下载；`/uploads` 静态服务也没有 `Content-Disposition: attachment` 头
+- **修复**：新增 `downloadFile(url, fileName)` 函数（fetch + Blob URL 方式），Capacitor 原生端走系统浏览器；替换 index.html 中所有文件下载链接（公共聊天室、私聊、两处媒体预览弹窗）改用此函数
+- **同步修复**：私聊文件默认名 `'文件null'` 改为 `'文件'`
+
+### 2026-04-22: admin.html 直接请求用户位置（立刻）
+- **功能**：管理员点击"📍要位置"按钮，向指定用户请求实时位置
+- **流程**：admin.html → `admin-request-location` → server.cjs → `location-request` → index.html用户
+- **用户端**：收到请求弹窗，用户同意后发送 `location-response` 事件
+- **服务端**：接收响应后调用高德API获取位置名称，广播给房间内所有人
 
 - `substr()` 大量使用（已废弃，建议替换为 `substring()` 或 `slice()`）
 - `public/index.html` 体积过大（约25000行），建议拆分模块

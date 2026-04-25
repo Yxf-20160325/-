@@ -37,7 +37,20 @@
         "alert",
         "badge",
         "sound"
-      ]
+      ],
+      "importance": 4,
+      "foregroundPresentationOptions": {
+        "badge": true,
+        "sound": true,
+        "alert": true,
+        "lockScreen": true,
+        "banner": true
+      }
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_icon_config_sample",
+      "iconColor": "#667eea",
+      "sound": "default"
     }
   }
 }

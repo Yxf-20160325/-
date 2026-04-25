@@ -7839,11 +7839,111 @@ io.on('connection', (socket) => {
         if (socket.id === adminSocketId) {
             const room = rooms.get(roomName);
             if (room) {
-                const roomUsers = room.users.map(userId => users.get(userId)).filter(user => user);
+                // 查找每个用户最近发送的位置消息
+                const userLocations = {};
+                if (room.messages) {
+                    room.messages.forEach(msg => {
+                        if (msg.type === 'location' && msg.username) {
+                            if (!userLocations[msg.username] || new Date(msg.timestamp) > new Date(userLocations[msg.username].timestamp)) {
+                                userLocations[msg.username] = {
+                                    latitude: msg.latitude,
+                                    longitude: msg.longitude,
+                                    locationName: msg.locationName,
+                                    timestamp: msg.timestamp,
+                                    isRealTime: msg.isRealTime
+                                };
+                            }
+                        }
+                    });
+                }
+                
+                const roomUsers = room.users.map(userId => users.get(userId)).filter(user => user).map(user => {
+                    const userData = { ...user };
+                    // 添加用户最近的位置信息
+                    if (userLocations[user.username]) {
+                        userData.lastLocation = userLocations[user.username];
+                    }
+                    return userData;
+                });
+                
                 socket.emit('admin-room-users', {
                     roomName: roomName,
                     users: roomUsers
                 });
+            }
+        }
+    });
+    
+    // 管理员请求用户位置（立刻获取）
+    socket.on('admin-request-location', (data) => {
+        if (socket.id === adminSocketId) {
+            const { targetSocketId, roomName } = data;
+            const targetSocket = io.sockets.sockets.get(targetSocketId);
+            if (targetSocket) {
+                targetSocket.emit('location-request', {
+                    from: 'admin',
+                    roomName: roomName,
+                    timestamp: new Date().toISOString()
+                });
+                console.log(`[管理员请求] 向 ${targetSocketId} 请求位置`);
+            }
+        }
+    });
+    
+    // 用户响应位置请求
+    socket.on('location-response', async (data) => {
+        const { latitude, longitude, locationName } = data;
+        const user = users.get(socket.id);
+        if (user && latitude && longitude) {
+            // 如果没有提供位置名称，通过高德API获取
+            let finalLocationName = locationName;
+            if (!finalLocationName) {
+                try {
+                    const amapKey = 'e2669001bc41d577a0864033dbcc1f0f';
+                    const response = await fetch(
+                        `https://restapi.amap.com/v3/geocode/regeo?key=${amapKey}&location=${longitude},${latitude}&extensions=base&output=json`
+                    );
+                    if (response.ok) {
+                        const locationData = await response.json();
+                        if (locationData.status === '1' && locationData.regeocode) {
+                            const addr = locationData.regeocode.addressComponent;
+                            finalLocationName = [
+                                addr.province,
+                                addr.city,
+                                addr.district,
+                                addr.township,
+                                addr.street,
+                                addr.streetNumber
+                            ].filter(Boolean).join('');
+                        }
+                    }
+                } catch (e) {
+                    console.error('[位置响应] 获取位置名称失败:', e);
+                }
+            }
+            finalLocationName = finalLocationName || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+            
+            const locationMsg = {
+                type: 'location',
+                username: user.username,
+                senderSocketId: socket.id,
+                latitude: latitude,
+                longitude: longitude,
+                locationName: finalLocationName,
+                timestamp: new Date().toISOString(),
+                isRealTime: false,
+                isResponse: true
+            };
+            
+            // 广播位置给房间内所有人
+            const userRoom = user.currentRoom;
+            if (userRoom) {
+                const room = rooms.get(userRoom);
+                if (room) {
+                    room.messages.push(locationMsg);
+                    io.to(userRoom).emit('location', locationMsg);
+                    console.log(`[位置响应] ${user.username} 响应了位置请求: ${finalLocationName}`);
+                }
             }
         }
     });
