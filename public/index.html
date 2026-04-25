@@ -21831,20 +21831,35 @@ io.on('connection', (socket) => {
         // ==================== 用户错误反馈系统 END ====================
 
         // 通用文件下载函数 - 兼容手机端（iOS/Android）
-        // 通过 fetch + Blob URL 方式下载，解决手机端 <a download> 不生效问题
+        // iOS Safari / Capacitor WebView 不支持 <a download>，统一走服务端强制下载路由
         async function downloadFile(url, fileName) {
             try {
-                // 如果是 Capacitor 原生环境，使用系统浏览器打开
-                if (window.Capacitor && window.Capacitor.isNativePlatform()) {
-                    const fullUrl = url.startsWith('http') ? url : (window.location.origin + url);
-                    if (window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
-                        await window.Capacitor.Plugins.Browser.openUrl({ url: fullUrl });
-                    } else {
-                        window.open(fullUrl, '_blank');
+                // 从 URL 中提取文件名（/uploads/xxx.pdf → xxx.pdf）
+                const buildDownloadUrl = (rawUrl, name) => {
+                    // 只处理 /uploads/ 路径的文件，其他路径直接用原 URL
+                    const match = rawUrl.match(/\/uploads\/([^?#]+)/);
+                    if (match) {
+                        const encoded = encodeURIComponent(name || match[1]);
+                        return `/download/${match[1]}?name=${encoded}`;
                     }
+                    return rawUrl;
+                };
+
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                const isCapacitor = window.Capacitor && window.Capacitor.isNativePlatform();
+
+                if (isIOS || isCapacitor) {
+                    // iOS / Capacitor：跳转到带 Content-Disposition: attachment 的服务端路由
+                    // 浏览器会弹出"下载/保存"提示；Capacitor WebView 会触发系统下载管理器
+                    const dlUrl = buildDownloadUrl(url, fileName);
+                    const fullUrl = dlUrl.startsWith('http') ? dlUrl : (window.location.origin + dlUrl);
+                    showNotification('正在准备下载...', 'info');
+                    window.location.href = fullUrl;
                     return;
                 }
-                // Web 端：fetch 文件内容后创建 Blob URL 触发下载
+
+                // PC / Android 浏览器：fetch + Blob URL 方式
                 showNotification('准备下载...', 'info');
                 const response = await fetch(url);
                 if (!response.ok) throw new Error('下载失败: ' + response.status);

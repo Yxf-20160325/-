@@ -1793,6 +1793,24 @@ app.post('/api/admin/api-manager/test', express.json(), async (req, res) => {
 // 静态文件服务 - 提供上传的文件
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// 强制下载路由 - 解决 iOS Safari / WebView 无法通过 <a download> 下载文件的问题
+// 用法：/download/文件名  或  /download?url=/uploads/xxx&name=文件名
+app.get('/download/:filename', (req, res) => {
+    const filename = req.params.filename;
+    // 防路径穿越
+    const safeFilename = path.basename(filename);
+    const filePath = path.join(__dirname, 'uploads', safeFilename);
+    if (!require('fs').existsSync(filePath)) {
+        return res.status(404).json({ error: '文件不存在' });
+    }
+    const displayName = req.query.name ? decodeURIComponent(req.query.name) : safeFilename;
+    // 对文件名做 RFC 5987 编码，兼容中文文件名
+    const encodedName = encodeURIComponent(displayName).replace(/'/g, '%27').replace(/\(/g, '%28').replace(/\)/g, '%29');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedName}`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.sendFile(filePath);
+});
+
 // 图片上传接口 - 单独配置raw解析器
 app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), async (req, res) => {
     try {
