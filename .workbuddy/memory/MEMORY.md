@@ -109,8 +109,12 @@ Node.js + Express + Socket.IO 聊天室项目，前端为单文件 `public/index
 
 ### 2026-04-25: 手机端无法下载文件
 - **原因**：`<a download>` 属性在手机端（iOS Safari / Android WebView）不支持，点击会直接在浏览器内打开而非下载；`/uploads` 静态服务也没有 `Content-Disposition: attachment` 头
-- **修复**：新增 `downloadFile(url, fileName)` 函数（fetch + Blob URL 方式），Capacitor 原生端走系统浏览器；替换 index.html 中所有文件下载链接（公共聊天室、私聊、两处媒体预览弹窗）改用此函数
+- **修复**：新增 `downloadFile(url, fileName)` 函数（服务端 `/download/` 路由 + iOS 直接跳转），Capacitor 原生端用 `APP_SERVER_URL` 拼接完整 URL；替换 index.html 中所有文件下载链接改用此函数
 - **同步修复**：私聊文件默认名 `'文件null'` 改为 `'文件'`
+
+### 2026-04-25: iOS 上传文件 NetworkError
+- **原因**：CORS `allowedHeaders` 缺少 `X-Filename`/`X-Path` 等自定义头，Capacitor 跨域预检被拒
+- **修复**：CORS allowedHeaders 补全所有自定义头；XHR 拦截器继承原始原型链；全局 JSON 中间件只处理 application/json
 
 ### 2026-04-22: admin.html 直接请求用户位置（立刻）
 - **功能**：管理员点击"📍要位置"按钮，向指定用户请求实时位置

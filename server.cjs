@@ -164,10 +164,14 @@ function isBuiltinApiDisabled(method, reqPath) {
 const app = express();
 app.use(cors({
     origin: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'X-Content-Type-Options', 'X-Requested-With'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+        'Content-Type', 'X-Content-Type-Options', 'X-Requested-With',
+        'X-Filename', 'X-Path', 'X-CSRF-Token', 'X-Internal-Request',
+        'Authorization', 'Accept', 'Accept-Language'
+    ],
     credentials: true,
-    exposedHeaders: ['Content-Type', 'X-Content-Type-Options']
+    exposedHeaders: ['Content-Type', 'X-Content-Type-Options', 'Content-Disposition']
 }));
 
 // ── 安全响应头 ────────────────────────────────────────────────
@@ -405,10 +409,17 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '30mb' }), async
     }
 });
 
-// 其他路由使用json解析器（跳过 multipart/form-data 以避免与 formidable 冲突）
+// 其他路由使用json解析器（跳过 multipart/form-data 和非 JSON 类型以避免与文件上传冲突）
 app.use((req, res, next) => {
-    if (req.headers['content-type'] && req.headers['content-type'].startsWith('multipart/form-data')) {
-        return next(); // 跳过 JSON 解析，让 formidable 处理
+    const ct = req.headers['content-type'] || '';
+    // 跳过 multipart/form-data（让 formidable 处理）
+    if (ct.startsWith('multipart/form-data')) {
+        return next();
+    }
+    // 跳过非 JSON 类型（如 application/octet-stream、image/*、audio/* 等），这些是文件上传
+    // express.json() 只处理 application/json 类型
+    if (ct && !ct.includes('application/json')) {
+        return next();
     }
     return express.json({ limit: '30mb' })(req, res, next);
 });
@@ -3658,7 +3669,10 @@ const io = new Server(server, {
             "Origin",
             "Referer",
             "User-Agent",
-            "X-Client-Info"
+            "X-Client-Info",
+            "X-Filename",
+            "X-Path",
+            "X-Internal-Request"
         ]
     },
     

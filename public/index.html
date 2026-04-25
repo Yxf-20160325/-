@@ -6830,7 +6830,8 @@
             
             // 保存原始 XMLHttpRequest
             const OriginalXHR = window.XMLHttpRequest;
-            window.XMLHttpRequest = function() {
+            // 继承原型链，确保 upload、onprogress 等特性在 iOS WKWebView 中正常工作
+            function PatchedXHR() {
                 const xhr = new OriginalXHR();
                 const originalOpen = xhr.open.bind(xhr);
                 xhr.open = function(method, url, async, user, password) {
@@ -6841,7 +6842,14 @@
                     return originalOpen(method, url, async, user, password);
                 };
                 return xhr;
-            };
+            }
+            PatchedXHR.prototype = OriginalXHR.prototype;
+            PatchedXHR.UNSENT = OriginalXHR.UNSENT;
+            PatchedXHR.OPENED = OriginalXHR.OPENED;
+            PatchedXHR.HEADERS_RECEIVED = OriginalXHR.HEADERS_RECEIVED;
+            PatchedXHR.LOADING = OriginalXHR.LOADING;
+            PatchedXHR.DONE = OriginalXHR.DONE;
+            window.XMLHttpRequest = PatchedXHR;
         }
         
         // ── 推送通知功能 ──
@@ -21853,7 +21861,10 @@ io.on('connection', (socket) => {
                     // iOS / Capacitor：跳转到带 Content-Disposition: attachment 的服务端路由
                     // 浏览器会弹出"下载/保存"提示；Capacitor WebView 会触发系统下载管理器
                     const dlUrl = buildDownloadUrl(url, fileName);
-                    const fullUrl = dlUrl.startsWith('http') ? dlUrl : (window.location.origin + dlUrl);
+                    // Capacitor 环境下 window.location.origin 是 capacitor://localhost，必须用服务器地址
+                    const baseOrigin = (typeof isNativeApp !== 'undefined' && isNativeApp && typeof APP_SERVER_URL !== 'undefined')
+                        ? APP_SERVER_URL : window.location.origin;
+                    const fullUrl = dlUrl.startsWith('http') ? dlUrl : (baseOrigin + dlUrl);
                     showNotification('正在准备下载...', 'info');
                     window.location.href = fullUrl;
                     return;
