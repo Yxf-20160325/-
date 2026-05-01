@@ -1,0 +1,14 @@
+- generic [ref=e1]:
+  - main [ref=e2]:
+    - iframe [active] [ref=e16]:
+      
+  - contentinfo "Apple Footer" [ref=e17]:
+    - generic [ref=e19]:
+      - heading "Apple Footer" [level=2] [ref=e20]
+      - generic [ref=e21]:
+        - generic [ref=e22]: Copyright © 2026 Apple Inc. 保留所有权利。
+        - generic [ref=e23]:
+          - link "隐私政策" [ref=e24] [cursor=pointer]:
+            - /url: "https://www.apple.com/cn/privacy/privacy-policy/ "
+          - link "使用条款" [ref=e25] [cursor=pointer]:
+            - /url: https://www.apple.com/cn/legal/terms/site.html

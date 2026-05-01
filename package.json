@@ -1,0 +1,55 @@
+{
+  "name": "chatroom",
+  "version": "1.0.0",
+  "description": "跨网段聊天室 - 支持 Web 和移动端 App",
+  "main": "server.cjs",
+  "scripts": {
+    "start": "node server.cjs",
+    "install-clamav": "apt-get install clamav clamav-daemon || echo '请手动安装ClamAV: https://www.clamav.net/downloads'",
+    "cap:sync": "npx cap sync",
+    "cap:android": "npx cap add android && npx cap sync android",
+    "cap:open:android": "npx cap open android",
+    "cap:open:ios": "npx cap open ios",
+    "cap:update": "npx cap update",
+    "android:build": "npx cap sync android && cd android && gradlew assembleDebug",
+    "android:release": "npx cap sync android && cd android && gradlew assembleRelease",
+    "build": "echo 'Web 应用无需构建，直接使用 public 目录'"
+  },
+  "dependencies": {
+    "@playwright/cli": "^0.1.8",
+    "axios": "^1.6.0",
+    "bcryptjs": "^2.4.3",
+    "cap": "^0.2.1",
+    "capacitor": "^0.5.6",
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "form-data": "^4.0.0",
+    "iconv-lite": "^0.7.2",
+    "multer": "^1.4.5-lts.1",
+    "socket.io": "^4.7.2"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.3.0",
+    "@capacitor/app": "^8.1.0",
+    "@capacitor/cli": "^8.2.0",
+    "@capacitor/core": "^8.2.0",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.2.0",
+    "@capacitor/local-notifications": "^8.0.2",
+    "@capacitor/push-notifications": "^8.0.3",
+    "@capacitor/splash-screen": "^8.0.1",
+    "@capacitor/status-bar": "^8.0.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Yxf-20160325/~"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Yxf-20160325/~/issues"
+  },
+  "homepage": "https://github.com/Yxf-20160325/~#readme"
+}

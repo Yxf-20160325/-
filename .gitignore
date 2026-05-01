@@ -1,0 +1,14 @@
+node_modules/
+uploads/
+storage/
+viruses/
+android/.idea/
+android/build/
+android/app/build/
+ios/App.xcodeproj/
+ios/App.xcworkspace/
+ios/build/
+*.log
+*.ipa
+*副本*
+replay_pid*.log

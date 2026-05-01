@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ChatRoom</string>
+    <string name="title_activity_main">ChatRoom</string>
+    <string name="package_name">com.chatroom.app</string>
+    <string name="custom_url_scheme">com.chatroom.app</string>
+</resources>

@@ -1,0 +1,56 @@
+{
+  "appId": "com.miniyuanxiaofang.1776262181",
+  "appName": "ChatRoom",
+  "webDir": "public",
+  "server": {
+    "url": null,
+    "cleartext": true,
+    "allowNavigation": [
+      "*"
+    ]
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "backgroundColor": "#667eea",
+      "showSpinner": true,
+      "androidScaleType": "CENTER_CROP",
+      "spinnerColor": "#ffffff"
+    },
+    "StatusBar": {
+      "style": "LIGHT",
+      "backgroundColor": "#667eea"
+    },
+    "Keyboard": {
+      "resize": "native",
+      "resizeOnFullScreen": true,
+      "android": {
+        "resize": "native"
+      }
+    },
+    "WebView": {
+      "overrideUserAgent": null,
+      "allowFileAccess": true
+    },
+    "PushNotifications": {
+      "presentationOptions": [
+        "alert",
+        "badge",
+        "sound"
+      ],
+      "importance": 4,
+      "foregroundPresentationOptions": {
+        "badge": true,
+        "sound": true,
+        "alert": true,
+        "lockScreen": true,
+        "banner": true
+      }
+    },
+    "LocalNotifications": {
+      "smallIcon": "ic_stat_icon_config_sample",
+      "iconColor": "#667eea",
+      "sound": "default"
+    }
+  }
+}
