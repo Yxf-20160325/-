@@ -45,6 +45,6 @@ echo 请访问以下地址查看构建进度：
 echo   https://github.com/Yxf-20160325/-/actions
 echo.
 echo APK 构建完成后可在这里下载：
-echo   https://github.com/Yxf-20160325/-/releases/tag/apk-latest
+echo   https://github.com/Yxf-20160325/chatroom-app/releases/tag/apk-latest
 echo.
 pause
