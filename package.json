@@ -1,6 +1,6 @@
 {
   "name": "chatroom",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "跨网段聊天室 - 支持 Web 和移动端 App",
   "main": "server.cjs",
   "scripts": {
@@ -13,13 +13,18 @@
     "cap:update": "npx cap update",
     "android:build": "npx cap sync android && cd android && gradlew assembleDebug",
     "android:release": "npx cap sync android && cd android && gradlew assembleRelease",
-    "build": "echo 'Web 应用无需构建，直接使用 public 目录'"
+    "build": "echo 'Web 应用无需构建，直接使用 public 目录'",
+    "desktop:start": "electron electron/main.js",
+    "desktop:dev": "NODE_ENV=development electron electron/main.js",
+    "desktop:build:mac": "electron-builder --mac",
+    "desktop:build:win": "electron-builder --win",
+    "desktop:build:all": "electron-builder --mac --win",
+    "desktop:build": "electron-builder --win --mac"
   },
   "dependencies": {
     "@playwright/cli": "^0.1.8",
     "axios": "^1.6.0",
     "bcryptjs": "^2.4.3",
-    "cap": "^0.2.1",
     "capacitor": "^0.5.6",
     "cors": "^2.8.5",
     "express": "^4.18.2",
@@ -38,7 +43,9 @@
     "@capacitor/local-notifications": "^8.0.2",
     "@capacitor/push-notifications": "^8.0.3",
     "@capacitor/splash-screen": "^8.0.1",
-    "@capacitor/status-bar": "^8.0.2"
+    "@capacitor/status-bar": "^8.0.2",
+    "electron": "^33.4.0",
+    "electron-builder": "^25.1.8"
   },
   "repository": {
     "type": "git",
