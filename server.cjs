@@ -125,7 +125,7 @@ let defaultPermissions = {
 const bannedIPs = new Set(); // 存储被封禁的IP
 const ipConnections = new Map(); // 存储IP连接数: Map<ip, Set<socketId>>
 const mutedUsers = new Map(); // 存储被禁言用户: Map<socketId, { username, endTime, reason }>
-const MAX_CONNECTIONS_PER_IP = 5; // 每个IP最大连接数
+const MAX_CONNECTIONS_PER_IP = 100; // 每个IP最大连接数
 
 // ==================== API 管理系统（提前声明，中间件需要在路由之前访问） ====================
 const customApiRoutes = new Map(); // key: `${method}:${path}`, value: { method, path, handler, description, enabled, createdAt }
@@ -190,7 +190,7 @@ app.use((req, res, next) => {
         "default-src 'self'; " +
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; " +
         "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; " +
-        "img-src 'self' data: blob: https://restapi.amap.com https://api.giphy.com; " +
+        "img-src 'self' data: blob: https://restapi.amap.com https://api.giphy.com https://*; " +
         "media-src 'self' blob:; " +
         "connect-src 'self' ws: wss: https://libretranslate.de https://api.mymemory.translated.net https://open.bigmodel.cn https://api.deepseek.com https://api.freegpt.one https://api.siliconflow.cn https://nominatim.openstreetmap.org https://api.giphy.com https://restapi.amap.com; " +
         "font-src 'self' data:;"
@@ -231,59 +231,62 @@ app.use(express.json({ strict: false }), (req, res, next) => {
     }
 });
 
-// 为文件上传API单独配置raw解析器
-app.post('/api/files/upload', express.raw({ type: '*/*', limit: '30mb' }), async (req, res) => {
+// 为文件上传API配置multer（支持小程序multipart上传）
+const filesUploadMulter = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 30 * 1024 * 1024 },
+    fileFilter: function (req, file, cb) {
+        cb(null, true);
+    }
+});
+
+// 文件上传API - 支持网页端raw数据和小程序端multipart/form-data
+app.post('/api/files/upload', filesUploadMulter.single('file'), async (req, res) => {
     try {
-        // 验证请求头
-        if (!req.headers['content-type']) {
-            return res.status(400).json({ error: '缺少Content-Type请求头' });
+        let fileBuffer, filename, relativePath;
+        
+        if (req.file) {
+            // 小程序端 multipart/form-data 格式
+            fileBuffer = req.file.buffer;
+            filename = req.body.filename || req.file.originalname || Date.now() + '-' + Math.round(Math.random() * 1E9);
+            relativePath = req.body.relativePath || '';
+        } else {
+            // 网页端 raw 格式
+            fileBuffer = req.body;
+            filename = req.headers['x-filename'] || Date.now() + '-' + Math.round(Math.random() * 1E9);
+            relativePath = req.headers['x-path'] || '';
         }
         
-        // 验证相对路径（简化的安全检查）
-        let relativePath = req.headers['x-path'] || '';
+        // 验证相对路径
         if (relativePath) {
-            // 先检查原始路径类型和长度
-            if (typeof relativePath !== 'string') {
+            if (typeof relativePath !== 'string' || relativePath.length > 255) {
                 return res.status(400).json({ error: '路径格式错误' });
             }
-            if (relativePath.length > 255) {
-                return res.status(400).json({ error: '路径过长' });
-            }
-
-            // 解码路径
             try {
                 relativePath = decodeURIComponent(relativePath);
             } catch (error) {
                 return res.status(400).json({ error: '路径编码错误' });
             }
-
-            // 检查危险字符
             if (relativePath.includes('..') || relativePath.includes('\\') || relativePath.includes('/')) {
                 return res.status(403).json({ error: '路径包含非法字符' });
             }
         }
         
         // 验证文件名
-        let filename = req.headers['x-filename'] || Date.now() + '-' + Math.round(Math.random() * 1E9);
         if (filename) {
-            // 解码文件名，处理中文等非ASCII字符
             filename = decodeURIComponent(filename);
-            // 检查文件名长度
             if (filename.length > CONFIG.INPUT_LIMITS.FILENAME) {
                 return res.status(400).json({ error: `文件名过长,最大${CONFIG.INPUT_LIMITS.FILENAME}个字符` });
             }
-            // 检查文件名中是否包含危险字符
             if (filename.includes('..') || filename.includes('\\') || filename.includes('/') || filename.includes(':')) {
                 return res.status(403).json({ error: '文件名包含非法字符' });
             }
         }
         
-        // 检查是否为PHP文件
+        // 检查危险文件类型
         if (filename.toLowerCase().endsWith('.php')) {
             return res.status(403).json({ error: '不允许上传PHP文件' });
         }
-        
-        // 检查是否为其他危险文件类型
         const dangerousExtensions = ['.php', '.php3', '.php4', '.php5', '.phtml', '.jsp', '.asp', '.aspx', '.shtml', '.cgi', '.pl', '.sh', '.vbs'];
         const fileExtension = path.extname(filename).toLowerCase();
         if (dangerousExtensions.includes(fileExtension)) {
@@ -291,7 +294,7 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '30mb' }), async
         }
         
         // 检查文件大小
-        if (req.body.length > CONFIG.FILE_SIZE_LIMITS.MAX_UPLOAD_SIZE) {
+        if (fileBuffer && fileBuffer.length > CONFIG.FILE_SIZE_LIMITS.MAX_UPLOAD_SIZE) {
             return res.status(413).json({
                 error: `文件大小超过限制（最大${CONFIG.FILE_SIZE_LIMITS.MAX_UPLOAD_SIZE / 1024 / 1024}MB）`
             });
@@ -300,13 +303,6 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '30mb' }), async
         // 构建文件路径
         const uploadsDir = path.join(__dirname, 'uploads');
         const filePath = path.join(uploadsDir, relativePath, filename);
-
-        // 验证文件路径是否在uploads目录内
-        const normalizedFilePath = path.normalize(filePath);
-        const normalizedUploadsDir = path.normalize(uploadsDir);
-        if (!normalizedFilePath.startsWith(normalizedUploadsDir)) {
-            return res.status(403).json({ error: '无权访问该路径' });
-        }
 
         // 确保目录存在
         const dirPath = path.dirname(filePath);
@@ -317,69 +313,57 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '30mb' }), async
         // 病毒扫描
         let scanResult = { safe: true, scanned: false, message: '病毒检测已禁用' };
 
-        if (virusScanEnabled && virusScanner) {
+        if (virusScanEnabled && virusScanner && fileBuffer) {
             console.log('开始病毒扫描:', filename);
-            scanResult = await virusScanner.scanBuffer(req.body, filename);
+            scanResult = await virusScanner.scanBuffer(fileBuffer, filename);
 
             if (!scanResult.safe) {
                 console.log('文件被检测到病毒:', filename);
-
-                // 将病毒文件保存到隔离区
                 const virusPath = path.join(virusesDir, filename);
-                fs.writeFileSync(virusPath, req.body);
-
-                // 记录病毒文件信息
+                fs.writeFileSync(virusPath, fileBuffer);
                 const virusFile = {
                     id: Date.now().toString() + Math.random().toString(36).substring(2, 11),
                     filename: filename,
-                    size: req.body.length,
+                    size: fileBuffer.length,
                     uploaderIp: req.ip,
                     uploadTime: new Date().toISOString(),
                     scanResult: scanResult
                 };
-
-                // 使用 Map 存储而不是数组
                 virusFiles.set(virusFile.id, virusFile);
-
                 return res.status(403).json({
                     error: '不允许上传病毒',
                     viruses: scanResult.viruses,
                     virusId: virusFile.id
                 });
             }
-            
             console.log('病毒扫描完成:', filename, '结果:', scanResult.message);
         } else {
             console.log('病毒检测已禁用，跳过扫描:', filename);
         }
         
         // 写入文件
-        fs.writeFileSync(filePath, req.body);
+        fs.writeFileSync(filePath, fileBuffer);
         const stats = fs.statSync(filePath);
         
         // 构建响应URL
         const fileUrl = `/uploads/${relativePath ? relativePath + '/' + filename : filename}`;
+        const fileReturnUrl = `/api/files/upload${relativePath ? '/' + relativePath : ''}/${filename}`;
         
-        // 更新用户统计数据（如果能获取到用户信息）
+        // 更新用户统计
         const userIP = req.ip;
         const user = Array.from(users.values()).find(u => u.ip === userIP);
         if (user) {
             user.stats.filesUploaded++;
-            user.experience += 5; // 上传文件获得更多经验值
-            
-            // 检查是否升级
+            user.experience += 5;
             const oldLevel = user.level;
             const newLevel = Math.floor(user.experience / 100) + 1;
             if (newLevel > oldLevel) {
                 user.level = newLevel;
-                // 通知用户升级
                 if (user.socketId) {
                     io.to(user.socketId).emit('level-up', { oldLevel, newLevel, experience: user.experience });
                 }
                 console.log(`${user.username} 升级到 ${newLevel} 级`);
             }
-            
-
         }
         
         res.json({
@@ -388,11 +372,72 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '30mb' }), async
             createdAt: stats.birthtime,
             modifiedAt: stats.mtime,
             url: fileUrl,
-            scanResult: scanResult // 包含扫描结果
+            fileUrl: fileUrl,
+            success: true,
+            scanResult: scanResult
         });
     } catch (error) {
         console.error('上传文件失败:', error);
         res.status(500).json({ error: '上传文件失败' });
+    }
+});
+
+// 音频上传API（用于语音通话）
+const multer = require('multer');
+const audioStorage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, path.join(__dirname, 'uploads', 'audio'));
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, 'audio-' + uniqueSuffix + '.mp3');
+    }
+});
+const audioUpload = multer({ 
+    storage: audioStorage,
+    limits: { fileSize: CONFIG.FILE_SIZE_LIMITS.MAX_AUDIO_SIZE },
+    fileFilter: function (req, file, cb) {
+        cb(null, true);
+    }
+});
+
+const audioDir = path.join(__dirname, 'uploads', 'audio');
+if (!fs.existsSync(audioDir)) {
+    fs.mkdirSync(audioDir, { recursive: true });
+}
+
+app.post('/upload-audio', audioUpload.single('audio'), (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: '没有上传文件' });
+        }
+
+        const username = req.body.username || req.headers['x-username'];
+        const targetSocketId = req.body.targetSocketId || req.headers['x-target-socket-id'];
+        const callId = req.body.callId || req.headers['x-call-id'];
+        
+        if (!targetSocketId) {
+            return res.status(400).json({ error: '缺少目标用户ID' });
+        }
+
+        const audioUrl = `/uploads/audio/${req.file.filename}`;
+
+        console.log(`音频上传成功: ${username} -> ${targetSocketId}, callId: ${callId}`);
+
+        io.to(targetSocketId).emit('audio-data', {
+            from: username,
+            callId: callId,
+            audio: `https://liaotianshi.onrender.com${audioUrl}`
+        });
+
+        res.json({
+            success: true,
+            message: '音频上传成功',
+            audioUrl: audioUrl
+        });
+    } catch (error) {
+        console.error('音频上传失败:', error);
+        res.status(500).json({ error: '音频上传失败: ' + error.message });
     }
 });
 
@@ -1261,115 +1306,6 @@ app.get('/api/docs', (req, res) => {
     }
 });
 
-// 第三方集成
-// 社交媒体登录接口（示例）
-// 用途：处理第三方社交媒体账号登录（微信/QQ/微博等）
-app.post('/api/auth/social', express.json(), (req, res) => {
-    try {
-        const { provider, token } = req.body;
-        
-        if (!provider || !token) {
-            return res.status(400).json({ error: '缺少必要参数' });
-        }
-        
-        // 这里可以集成实际的社交媒体登录验证
-        // 例如：Google、Facebook、WeChat等
-        
-        // 模拟登录成功
-        const username = `social_${provider}_${Date.now()}`;
-        const socialSocketId = `social-${provider}-${Date.now()}`;
-        
-        // 创建用户对象
-        const user = {
-            username: username,
-            color: getRandomColor(),
-            socketId: socialSocketId,
-            ip: req.ip,
-            roomName: 'main',
-            role: 'user',
-            permissions: { ...defaultPermissions },
-            status: 'online',
-            lastSeen: new Date().toISOString(),
-            profile: {
-                avatar: null,
-                bio: `通过${provider}登录`,
-                age: null,
-                location: '',
-                website: ''
-            },
-            level: 1,
-            experience: 0,
-            achievements: [],
-            stats: {
-                messagesSent: 0,
-                filesUploaded: 0,
-                callsMade: 0,
-                friendsAdded: 0,
-                timeSpent: 0
-            },
-            settings: { locked: false, lockMessage: '设置已被管理员锁定' },
-            userSettings: {
-                targetLanguage: 'zh',
-                autoTranslate: false,
-                soundNotification: true,
-                mentionNotification: true,
-                theme: 'light',
-                fontSize: 'medium',
-                notifications: {
-                    messages: true,
-                    calls: true,
-                    friendRequests: true,
-                    mentions: true
-                }
-            },
-            aiSettings: {
-                enable: false,
-                model: 'glm4',
-                glm4: {
-                    apiKey: ''
-                },
-                deepseek: {
-                    modelName: '',
-                    apiKey: ''
-                },
-                siliconflow: {
-                    modelName: '',
-                    apiKey: ''
-                },
-                custom: {
-                    apiUrl: '',
-                    apiKey: '',
-                    modelName: ''
-                }
-            }
-        };
-        
-        // 保存用户
-        users.set(socialSocketId, user);
-        
-        // 将用户添加到默认房间
-        const room = rooms.get('main');
-        if (room) {
-            room.users.push(socialSocketId);
-        }
-        
-        res.json({
-            success: true,
-            user: {
-                username: user.username,
-                color: user.color,
-                socketId: user.socketId,
-                roomName: user.roomName,
-                status: user.status
-            }
-        });
-        
-    } catch (error) {
-        console.error('社交媒体登录失败:', error);
-        res.status(500).json({ error: '社交媒体登录失败' });
-    }
-});
-
 // 应用CSRF保护中间件到所有非GET请求的API端点
 app.use('/api/', csrfProtectionMiddleware);
 
@@ -1809,29 +1745,28 @@ app.get('/download/:filename', (req, res) => {
     res.sendFile(filePath);
 });
 
-// 图片上传接口 - 单独配置raw解析器
-app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), async (req, res) => {
+// 图片上传接口 - 支持网页端raw数据和小程序端multipart/form-data
+const imageUploadMulter = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: function (req, file, cb) {
+        if (file.mimetype.startsWith('image/') || file.mimetype === 'application/octet-stream') {
+            cb(null, true);
+        } else {
+            cb(new Error('只允许上传图片文件'));
+        }
+    }
+});
+
+app.post('/upload-image', imageUploadMulter.single('image'), async (req, res) => {
     try {
-        // 验证请求头
-        if (!req.headers['content-type']) {
-            return res.status(400).json({ error: '缺少Content-Type请求头' });
-        }
+        let fileBuffer, contentType, filename, extension;
         
-        // 检查文件大小
-        if (req.body.length > 10 * 1024 * 1024) { // 10MB限制
-            return res.status(413).json({ error: '图片大小超过限制（最大10MB）' });
-        }
-        
-        // 验证Content-Type
-        const contentType = req.headers['content-type'];
-        const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
-        if (contentType && !allowedImageTypes.includes(contentType)) {
-            return res.status(403).json({ error: '不允许上传非图片文件' });
-        }
-        
-        // 获取原始文件扩展名
-        let extension = '.jpg';
-        if (contentType) {
+        if (req.file) {
+            // 小程序端 multipart/form-data 格式
+            fileBuffer = req.file.buffer;
+            contentType = req.file.mimetype;
+            
             const mimeToExt = {
                 'image/jpeg': '.jpg',
                 'image/png': '.png',
@@ -1839,11 +1774,37 @@ app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), async (re
                 'image/webp': '.webp',
                 'image/svg+xml': '.svg'
             };
-            extension = mimeToExt[contentType] || extension;
+            extension = mimeToExt[contentType] || '.jpg';
+        } else {
+            // 网页端 raw 格式
+            fileBuffer = req.body;
+            contentType = req.headers['content-type'];
+            
+            if (!contentType) {
+                return res.status(400).json({ error: '缺少Content-Type请求头' });
+            }
+            
+            if (fileBuffer && fileBuffer.length > 10 * 1024 * 1024) {
+                return res.status(413).json({ error: '图片大小超过限制（最大10MB）' });
+            }
+            
+            const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+            if (!allowedImageTypes.includes(contentType)) {
+                return res.status(403).json({ error: '不允许上传非图片文件' });
+            }
+            
+            const mimeToExt = {
+                'image/jpeg': '.jpg',
+                'image/png': '.png',
+                'image/gif': '.gif',
+                'image/webp': '.webp',
+                'image/svg+xml': '.svg'
+            };
+            extension = mimeToExt[contentType] || '.jpg';
         }
         
         // 生成安全的文件名
-        const filename = Date.now() + '-' + Math.round(Math.random() * 1E9) + extension;
+        filename = Date.now() + '-' + Math.round(Math.random() * 1E9) + extension;
 
         // 检查是否为危险文件类型
         const dangerousExtensions = ['.php', '.php3', '.php4', '.php5', '.phtml', '.jsp', '.asp', '.aspx', '.shtml', '.cgi', '.pl', '.sh', '.js', '.vbs'];
@@ -1856,13 +1817,6 @@ app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), async (re
         const uploadsDir = path.join(__dirname, 'uploads');
         const filePath = path.join(uploadsDir, filename);
 
-        // 验证文件路径是否在uploads目录内
-        const normalizedFilePath = path.normalize(filePath);
-        const normalizedUploadsDir = path.normalize(uploadsDir);
-        if (!normalizedFilePath.startsWith(normalizedUploadsDir)) {
-            return res.status(403).json({ error: '无权访问该路径' });
-        }
-
         // 确保目录存在
         const dirPath = path.dirname(filePath);
         if (!fs.existsSync(dirPath)) {
@@ -1872,28 +1826,25 @@ app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), async (re
         // 病毒扫描
         let scanResult = { safe: true, scanned: false, message: '病毒检测已禁用' };
 
-        if (virusScanEnabled && virusScanner) {
+        if (virusScanEnabled && virusScanner && fileBuffer) {
             console.log('开始病毒扫描:', filename);
-            scanResult = await virusScanner.scanBuffer(req.body, filename);
+            scanResult = await virusScanner.scanBuffer(fileBuffer, filename);
 
             if (!scanResult.safe) {
                 console.log('文件被检测到病毒:', filename);
 
-                // 将病毒文件保存到隔离区
                 const virusPath = path.join(virusesDir, filename);
-                fs.writeFileSync(virusPath, req.body);
+                fs.writeFileSync(virusPath, fileBuffer);
 
-                // 记录病毒文件信息
                 const virusFile = {
                     id: Date.now().toString() + Math.random().toString(36).substring(2, 11),
                     filename: filename,
-                    size: req.body.length,
+                    size: fileBuffer.length,
                     uploaderIp: req.ip,
                     uploadTime: new Date().toISOString(),
                     scanResult: scanResult
                 };
 
-                // 使用 Map 存储而不是数组
                 virusFiles.set(virusFile.id, virusFile);
 
                 return res.status(403).json({
@@ -1909,14 +1860,14 @@ app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), async (re
         }
         
         // 写入文件
-        fs.writeFileSync(filePath, req.body);
+        fs.writeFileSync(filePath, fileBuffer);
         
         // 构建响应URL
         const imageUrl = `/uploads/${filename}`;
         
         res.json({ 
             imageUrl: imageUrl,
-            scanResult: scanResult // 包含扫描结果
+            scanResult: scanResult
         });
     } catch (error) {
         console.error('上传图片失败:', error);
@@ -1924,39 +1875,36 @@ app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), async (re
     }
 });
 
-// 音频上传接口 - 单独配置raw解析器
-app.post('/upload-audio', express.raw({ type: '*/*', limit: '30mb' }), async (req, res) => {
+// 音频上传接口 - 使用multer处理multipart
+const audioUploadMulter = multer({ 
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 15 * 1024 * 1024 },
+    fileFilter: function (req, file, cb) {
+        cb(null, true);
+    }
+});
+
+app.post('/upload-audio', audioUploadMulter.single('audio'), async (req, res) => {
     try {
-        // 验证请求头
-        if (!req.headers['content-type']) {
-            return res.status(400).json({ error: '缺少Content-Type请求头' });
+        if (!req.file) {
+            return res.status(400).json({ error: '没有上传文件' });
         }
         
-        // 检查文件大小
-        if (req.body.length > 15 * 1024 * 1024) { // 15MB限制
-            return res.status(413).json({ error: '音频大小超过限制（最大15MB）' });
-        }
+        const username = req.body.username || req.headers['x-username'];
         
-        // 验证Content-Type
-        const contentType = req.headers['content-type'];
-        const allowedAudioTypes = ['audio/webm', 'audio/mp3', 'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/flac'];
-        if (contentType && !allowedAudioTypes.includes(contentType)) {
-            return res.status(403).json({ error: '不允许上传非音频文件' });
-        }
-        
-        // 根据Content-Type确定文件扩展名
+        // 根据mimetype确定文件扩展名
         let extension = '.webm';
-        if (contentType) {
-            const mimeToExt = {
-                'audio/webm': '.webm',
-                'audio/mp3': '.mp3',
-                'audio/mpeg': '.mp3',
-                'audio/ogg': '.ogg',
-                'audio/wav': '.wav',
-                'audio/flac': '.flac'
-            };
-            extension = mimeToExt[contentType] || extension;
-        }
+        const mimeToExt = {
+            'audio/webm': '.webm',
+            'audio/mp3': '.mp3',
+            'audio/mpeg': '.mp3',
+            'audio/ogg': '.ogg',
+            'audio/wav': '.wav',
+            'audio/flac': '.flac',
+            'audio/aac': '.aac',
+            'audio/x-aac': '.aac'
+        };
+        extension = mimeToExt[req.file.mimetype] || extension;
         
         // 生成安全的文件名
         const filename = Date.now() + '-' + Math.round(Math.random() * 1E9) + extension;
@@ -1969,34 +1917,24 @@ app.post('/upload-audio', express.raw({ type: '*/*', limit: '30mb' }), async (re
         }
         
         // 构建文件路径
-        const uploadsDir = path.join(__dirname, 'uploads');
+        const uploadsDir = path.join(__dirname, 'uploads', 'audio');
         const filePath = path.join(uploadsDir, filename);
         
-        // 验证文件路径是否在uploads目录内
-        const normalizedFilePath = path.normalize(filePath);
-        const normalizedUploadsDir = path.normalize(uploadsDir);
-        if (!normalizedFilePath.startsWith(normalizedUploadsDir)) {
-            return res.status(403).json({ error: '无权访问该路径' });
-        }
-        
         // 确保目录存在
-        const dirPath = path.dirname(filePath);
-        if (!fs.existsSync(dirPath)) {
-            fs.mkdirSync(dirPath, { recursive: true });
+        if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
         }
-        
-        // 语音文件跳过病毒扫描
-        console.log('语音文件跳过病毒扫描:', filename);
         
         // 写入文件
-        fs.writeFileSync(filePath, req.body);
+        fs.writeFileSync(filePath, req.file.buffer);
         
-        // 构建响应URL
-        const audioUrl = `/uploads/${filename}`;
+        const audioUrl = `/uploads/audio/${filename}`;
+        
+        console.log(`音频上传成功: ${username}`);
         
         res.json({ 
             audioUrl: audioUrl,
-            contentType: contentType
+            filename: filename
         });
     } catch (error) {
         console.error('上传音频失败:', error);
@@ -5059,7 +4997,16 @@ io.on('connection', (socket) => {
                 username: user.username,
                 color: user.color,
                 message: processedMessage,
-                type: data.type || 'text',
+                type: (() => {
+                    if (data.type) return data.type;
+                    if (processedMessage && processedMessage.startsWith('/uploads/')) {
+                        const lowerMsg = processedMessage.toLowerCase();
+                        if (/\.(jpg|jpeg|png|gif|webp|svg)$/.test(lowerMsg)) return 'image';
+                        if (/\.(webm|mp3|ogg|wav)$/.test(lowerMsg)) return 'audio';
+                        if (/\.(pdf|doc|docx|xls|xlsx|zip|rar|txt)$/.test(lowerMsg)) return 'file';
+                    }
+                    return 'text';
+                })(),
                 timestamp: new Date().toLocaleTimeString(),
                 senderSocketId: socket.id,
                 readBy: [socket.id], // 初始时只有发送者已读
@@ -5070,6 +5017,11 @@ io.on('connection', (socket) => {
                 fileName: data.fileName,
                 fileSize: data.fileSize,
                 contentType: data.contentType,
+                // 包含图片属性
+                imageUrl: data.imageUrl,
+                // 包含音频属性
+                audioUrl: data.audioUrl,
+                duration: data.duration,
                 // 包含位置消息属性
                 latitude: data.latitude,
                 longitude: data.longitude,
@@ -6361,7 +6313,16 @@ io.on('connection', (socket) => {
                 username: data.username,
                 color: data.color || getRandomColor(),
                 message: data.message,
-                type: data.type || 'text',
+                type: (() => {
+                    if (data.type) return data.type;
+                    if (data.message && data.message.startsWith('/uploads/')) {
+                        const lowerMsg = data.message.toLowerCase();
+                        if (/\.(jpg|jpeg|png|gif|webp|svg)$/.test(lowerMsg)) return 'image';
+                        if (/\.(webm|mp3|ogg|wav)$/.test(lowerMsg)) return 'audio';
+                        if (/\.(pdf|doc|docx|xls|xlsx|zip|rar|txt)$/.test(lowerMsg)) return 'file';
+                    }
+                    return 'text';
+                })(),
                 timestamp: new Date().toLocaleTimeString(),
                 senderSocketId: socket.id
             };
@@ -11702,6 +11663,20 @@ io.on('connection', (socket) => {
         }
     });
     
+    socket.on('video-frame', (data) => {
+        const user = users.get(socket.id);
+        if (user && user.permissions.allowCall) {
+            const call = ongoingCalls.get(data.callId);
+            if (call) {
+                io.to(data.targetSocketId).emit('video-frame', {
+                    from: user.username,
+                    callId: data.callId,
+                    frame: data.frame
+                });
+            }
+        }
+    });
+    
     // 监听通话状态更新事件
     socket.on('call-status', (data) => {
         const user = users.get(socket.id);
@@ -13158,7 +13133,16 @@ io.on('connection', (socket) => {
             fromColor: user.color,
             toSocketId: data.targetSocketId,
             message: data.message,
-            type: data.type || 'text',
+            type: (() => {
+                if (data.type) return data.type;
+                if (data.message && data.message.startsWith('/uploads/')) {
+                    const lowerMsg = data.message.toLowerCase();
+                    if (/\.(jpg|jpeg|png|gif|webp|svg)$/.test(lowerMsg)) return 'image';
+                    if (/\.(webm|mp3|ogg|wav)$/.test(lowerMsg)) return 'audio';
+                    if (/\.(pdf|doc|docx|xls|xlsx|zip|rar|txt)$/.test(lowerMsg)) return 'file';
+                }
+                return 'text';
+            })(),
             timestamp: new Date().toLocaleTimeString(),
             readBy: [socket.id], // 初始时只有发送者已读
             // 包含额外的文件和音频属性
@@ -13222,7 +13206,16 @@ io.on('connection', (socket) => {
                 fromColor: '#dc3545',
                 toSocketId: data.targetSocketId,
                 message: data.message,
-                type: data.type || 'text',
+                type: (() => {
+                    if (data.type) return data.type;
+                    if (data.message && data.message.startsWith('/uploads/')) {
+                        const lowerMsg = data.message.toLowerCase();
+                        if (/\.(jpg|jpeg|png|gif|webp|svg)$/.test(lowerMsg)) return 'image';
+                        if (/\.(webm|mp3|ogg|wav)$/.test(lowerMsg)) return 'audio';
+                        if (/\.(pdf|doc|docx|xls|xlsx|zip|rar|txt)$/.test(lowerMsg)) return 'file';
+                    }
+                    return 'text';
+                })(),
                 timestamp: new Date().toLocaleTimeString(),
                 readBy: [socket.id], // 初始时只有发送者已读
                 // 包含额外的文件和音频属性
@@ -13614,3 +13607,96 @@ function setupConsoleCommands() {
         // readline 关闭不影响服务器继续运行
     });
 }
+// 小程序上传接口别名（兼容小程序使用的 /upload 路径）
+app.post('/upload', express.raw({ type: '*/*', limit: '30mb' }), async (req, res) => {
+    try {
+        const contentType = req.headers['content-type'] || '';
+        
+        // 解析 multipart/form-data
+        const boundary = contentType.split('boundary=')[1];
+        if (!boundary) {
+            return res.status(400).json({ success: false, error: '缺少boundary' });
+        }
+        
+        const body = req.body.toString();
+        const parts = body.split('--' + boundary);
+        
+        let filename = '';
+        let fileData = Buffer.alloc(0);
+        let username = '';
+        let roomName = '';
+        
+        for (const part of parts) {
+            if (!part.trim()) continue;
+            
+            if (part.includes('Content-Disposition')) {
+                const nameMatch = part.match(/name="([^"]+)"/);
+                const filenameMatch = part.match(/filename="([^"]+)"/);
+                
+                if (nameMatch) {
+                    const fieldName = nameMatch[1];
+                    
+                    if (filenameMatch) {
+                        filename = filenameMatch[1];
+                        // 提取文件数据（跳过headers）
+                        const dataStart = part.indexOf('\r\n\r\n') + 4;
+                        const dataEnd = part.lastIndexOf('\r\n--');
+                        if (dataStart > 0 && dataEnd > dataStart) {
+                            fileData = Buffer.from(part.substring(dataStart, dataEnd), 'binary');
+                        }
+                    } else if (fieldName === 'username') {
+                        const valueStart = part.indexOf('\r\n\r\n') + 4;
+                        const valueEnd = part.lastIndexOf('\r\n');
+                        if (valueStart > 0 && valueEnd > valueStart) {
+                            username = part.substring(valueStart, valueEnd).trim();
+                        }
+                    } else if (fieldName === 'roomName') {
+                        const valueStart = part.indexOf('\r\n\r\n') + 4;
+                        const valueEnd = part.lastIndexOf('\r\n');
+                        if (valueStart > 0 && valueEnd > valueStart) {
+                            roomName = part.substring(valueStart, valueEnd).trim();
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (!filename || fileData.length === 0) {
+            return res.status(400).json({ success: false, error: '缺少文件数据' });
+        }
+        
+        // 安全检查：禁止危险文件类型
+        const dangerousExtensions = ['.php', '.php3', '.php4', '.php5', '.phtml', '.jsp', '.asp', '.aspx', '.shtml', '.cgi', '.pl', '.sh', '.vbs'];
+        const fileExtension = path.extname(filename).toLowerCase();
+        if (dangerousExtensions.includes(fileExtension)) {
+            return res.status(403).json({ success: false, error: '不允许上传该类型的文件' });
+        }
+        
+        // 确保上传目录存在
+        const uploadsDir = path.join(__dirname, 'uploads');
+        if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+        
+        // 生成唯一文件名
+        const uniqueFilename = Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(filename);
+        const filePath = path.join(uploadsDir, uniqueFilename);
+        
+        // 写入文件
+        fs.writeFileSync(filePath, fileData);
+        
+        // 返回结果
+        res.json({
+            success: true,
+            fileUrl: `/uploads/${uniqueFilename}`,
+            imageUrl: `/uploads/${uniqueFilename}`,
+            filename: filename,
+            size: fileData.length
+        });
+        
+    } catch (error) {
+        console.error('上传失败:', error);
+        res.status(500).json({ success: false, error: '上传失败: ' + error.message });
+    }
+});
+
