@@ -263,6 +263,16 @@ app.post('/api/files/upload', filesUploadMulter.single('file'), async (req, res)
             relativePath = req.headers['x-path'] || '';
         }
         
+        // 清理文件名：移除URL参数（如 ?durationTime=xxx）
+        if (filename) {
+            const queryIndex = filename.indexOf('?');
+            if (queryIndex !== -1) {
+                filename = filename.substring(0, queryIndex);
+            }
+            // 移除文件名中可能存在的非法字符（如 =, & 等URL参数字符）
+            filename = filename.replace(/[?=&%]/g, '_');
+        }
+        
         // 验证相对路径
         if (relativePath) {
             if (typeof relativePath !== 'string' || relativePath.length > 255) {
@@ -5249,9 +5259,9 @@ io.on('connection', (socket) => {
                 fileSize: data.fileSize,
                 contentType: data.contentType,
                 // 包含图片属性
-                imageUrl: data.imageUrl,
+                imageUrl: data.imageUrl || (data.type === 'image' && processedMessage && processedMessage.startsWith('/uploads/') ? 'https://liaotianshi.onrender.com' + processedMessage : undefined),
                 // 包含音频属性
-                audioUrl: data.audioUrl,
+                audioUrl: data.audioUrl || (data.type === 'audio' && processedMessage && processedMessage.startsWith('/uploads/') ? 'https://liaotianshi.onrender.com' + processedMessage : undefined),
                 duration: data.duration,
                 // 包含位置消息属性
                 latitude: data.latitude,
@@ -5386,8 +5396,8 @@ io.on('connection', (socket) => {
                     }
                 });
 
-                // 发送给管理员
-                if (adminSocketId) {
+                // 发送给管理员（但要避免重复发送给已经在房间内的管理员）
+                if (adminSocketId && !room.users.includes(adminSocketId)) {
                     sendBatchMessage(adminSocketId, messageData);
                 }
             }
