@@ -5,6 +5,8 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
+const multer = require('multer');
+const axios = require('axios');
 
 // ── 配置常量 ────────────────────────────────────────────────
 const CONFIG = {
@@ -383,7 +385,6 @@ app.post('/api/files/upload', filesUploadMulter.single('file'), async (req, res)
 });
 
 // 音频上传API（用于语音通话）
-const multer = require('multer');
 const audioStorage = multer.diskStorage({
     destination: function (req, file, cb) {
         cb(null, path.join(__dirname, 'uploads', 'audio'));
@@ -555,6 +556,197 @@ function sendPushNotification(socketId, title, body, data = {}) {
 }
 
 // 移动应用接口
+
+// 微信小程序登录API
+app.post('/api/wechat/login', express.json(), async (req, res) => {
+    try {
+        const { code, roomName = 'main', password = null } = req.body;
+        
+        if (!code) {
+            return res.status(400).json({ error: '缺少code参数' });
+        }
+        
+        // 微信小程序AppID和AppSecret（需要用户在微信公众平台获取）
+        const appId = process.env.WECHAT_APPID || 'wx136ff04f12ed97bc';
+        const appSecret = process.env.WECHAT_APPSECRET || '39255a666253b769766c2e48d85bb893';
+        
+        if (appId === 'wxYourAppId' || appSecret === 'yourAppSecret') {
+            console.warn('微信登录未配置，使用模拟模式');
+            // 模拟登录成功，生成一个基于code的用户名
+            const username = 'wxuser_' + code.substring(0, 8) + '_' + Math.random().toString(36).substring(2, 6);
+            return handleWechatLoginSuccess(res, username, roomName, password, {
+                openid: 'mock_openid_' + code,
+                unionid: null,
+                sessionKey: 'mock_session_key'
+            });
+        }
+        
+        // 调用微信API获取session_key和openid
+        const wechatResponse = await axios.get('https://api.weixin.qq.com/sns/jscode2session', {
+            params: {
+                appid: appId,
+                secret: appSecret,
+                js_code: code,
+                grant_type: 'authorization_code'
+            }
+        });
+        
+        const { openid, unionid, session_key: sessionKey, errcode, errmsg } = wechatResponse.data;
+        
+        if (errcode) {
+            console.error('微信登录失败:', errcode, errmsg);
+            return res.status(401).json({ error: errmsg || '微信登录失败' });
+        }
+        
+        // 使用openid作为用户名的一部分
+        const username = 'wx_' + openid.substring(0, 12);
+        
+        handleWechatLoginSuccess(res, username, roomName, password, {
+            openid,
+            unionid,
+            sessionKey
+        });
+        
+    } catch (error) {
+        console.error('微信登录处理失败:', error);
+        res.status(500).json({ error: '登录失败: ' + error.message });
+    }
+});
+
+function handleWechatLoginSuccess(res, username, roomName, password, wechatData) {
+    try {
+        // 检查房间是否存在
+        let room = rooms.get(roomName);
+        if (!room) {
+            return res.status(404).json({ error: '房间不存在' });
+        }
+        
+        // 检查密码是否正确
+        if (room.password && room.password !== password) {
+            return res.status(401).json({ error: '密码错误' });
+        }
+        
+        // 检查房间是否已满
+        if (room.users.length >= room.settings.maxUsers) {
+            return res.status(400).json({ error: '房间已满' });
+        }
+        
+        // 检查用户名是否已存在，如果存在则添加随机后缀
+        let finalUsername = username;
+        let counter = 1;
+        while (Array.from(users.values()).find(user => user.username === finalUsername)) {
+            finalUsername = username + '_' + counter;
+            counter++;
+        }
+        
+        // 生成临时socketId（小程序使用）
+        const socketId = 'wechat-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
+        
+        // 创建用户对象
+        const user = {
+            username: finalUsername,
+            color: getRandomColor(),
+            socketId: socketId,
+            ip: 'wechat',
+            roomName: roomName,
+            role: 'user',
+            permissions: { ...defaultPermissions },
+            status: 'online',
+            lastSeen: new Date().toISOString(),
+            profile: {
+                avatar: null,
+                bio: '',
+                age: null,
+                location: '',
+                website: ''
+            },
+            level: 1,
+            experience: 0,
+            achievements: [],
+            stats: {
+                messagesSent: 0,
+                filesUploaded: 0,
+                callsMade: 0,
+                friendsAdded: 0,
+                timeSpent: 0
+            },
+            settings: { locked: false, lockMessage: '设置已被管理员锁定' },
+            userSettings: {
+                targetLanguage: 'zh',
+                autoTranslate: false,
+                soundNotification: true,
+                mentionNotification: true,
+                theme: 'light',
+                fontSize: 'medium',
+                notifications: {
+                    messages: true,
+                    calls: true,
+                    friendRequests: true,
+                    mentions: true
+                }
+            },
+            aiSettings: {
+                enable: false,
+                model: 'glm4',
+                glm4: { apiKey: '' },
+                deepseek: { modelName: '', apiKey: '' },
+                siliconflow: { modelName: '', apiKey: '' },
+                custom: { apiUrl: '', apiKey: '', modelName: '' }
+            },
+            wechatData: wechatData // 存储微信登录信息
+        };
+        
+        // 为新用户分配70%概率的通话权限
+        if (Math.random() < 0.70) {
+            user.permissions.allowCall = true;
+        }
+        
+        // 保存用户对象
+        users.set(socketId, user);
+        
+        // 将用户添加到房间
+        room.users.push(socketId);
+        
+        // 更新房间统计数据
+        room.stats.currentUsers = room.users.length;
+        room.stats.lastActivity = new Date();
+        
+        // 添加用户历史记录
+        room.history.userHistory.push({
+            type: 'join',
+            username: finalUsername,
+            timestamp: new Date().toISOString()
+        });
+        
+        // 添加事件历史记录
+        room.history.eventHistory.push({
+            type: 'user_join',
+            description: `${finalUsername} 加入了房间`,
+            timestamp: new Date().toISOString(),
+            username: finalUsername
+        });
+        
+        // 获取房间用户列表
+        const roomUsers = room.users.map(userId => users.get(userId)).filter(user => user);
+        
+        res.json({
+            success: true,
+            message: '登录成功',
+            username: finalUsername,
+            roomName: roomName,
+            userCount: room.users.length,
+            users: roomUsers.filter(u => u.permissions.allowViewUsers),
+            wechatData: {
+                openid: wechatData.openid,
+                unionid: wechatData.unionid
+            }
+        });
+        
+    } catch (error) {
+        console.error('处理微信登录成功时出错:', error);
+        res.status(500).json({ error: '登录处理失败: ' + error.message });
+    }
+}
 
 // 移动应用登录
 app.post('/api/mobile/login', express.json(), (req, res) => {
@@ -6812,6 +7004,13 @@ io.on('connection', (socket) => {
                     description: `${user.username} 离开了房间`,
                     timestamp: new Date().toISOString(),
                     username: user.username
+                });
+                
+                // 广播用户离开事件到房间内其他用户
+                socket.to(user.roomName).emit('user_leave', {
+                    username: user.username,
+                    roomName: user.roomName,
+                    userCount: room.users.length
                 });
             }
             
