@@ -129,6 +129,10 @@ const ipConnections = new Map(); // 存储IP连接数: Map<ip, Set<socketId>>
 const mutedUsers = new Map(); // 存储被禁言用户: Map<socketId, { username, endTime, reason }>
 const MAX_CONNECTIONS_PER_IP = 100; // 每个IP最大连接数
 
+// 消息ID去重（防止重复发送）
+const processedMessageIds = new Set(); // 存储已处理的消息ID
+const MAX_PROCESSED_MESSAGES = 10000; // 最大缓存消息ID数量
+
 // ==================== API 管理系统（提前声明，中间件需要在路由之前访问） ====================
 const customApiRoutes = new Map(); // key: `${method}:${path}`, value: { method, path, handler, description, enabled, createdAt }
 const disabledBuiltinApis = new Set(); // 禁用的内置 API 路径集合（存储 Express 路由 pattern，如 GET:/api/users/:id）
@@ -4829,8 +4833,13 @@ io.on('connection', (socket) => {
         // 保存用户对象
         users.set(socket.id, user);
         
-        // 将用户添加到房间
-        room.users.push(socket.id);
+        // 检查用户是否已经在房间中，防止重复加入
+        if (!room.users.includes(socket.id)) {
+            // 将用户添加到房间
+            room.users.push(socket.id);
+        } else {
+            console.log(`用户 ${username} 已经在房间 ${roomName} 中，跳过重复添加`);
+        }
         
         // 让socket加入房间频道
         socket.join(roomName);
@@ -5194,6 +5203,24 @@ io.on('connection', (socket) => {
             } else {
                 // 对于其他消息，生成新的messageId
                 messageId = Date.now() + '-' + Math.random().toString(36).substring(2, 11);
+            }
+            
+            // 检查消息ID是否已处理过（防止重复发送）
+            if (processedMessageIds.has(messageId)) {
+                console.log(`[重复消息] 用户 ${user.username} 发送的消息 ${messageId} 已处理过，忽略`);
+                return;
+            }
+            
+            // 添加到已处理消息ID集合
+            processedMessageIds.add(messageId);
+            
+            // 定期清理过期的消息ID
+            if (processedMessageIds.size > MAX_PROCESSED_MESSAGES) {
+                // 清除一半的旧消息ID
+                const ids = Array.from(processedMessageIds);
+                for (let i = 0; i < ids.length / 2; i++) {
+                    processedMessageIds.delete(ids[i]);
+                }
             }
             
             const messageData = {
