@@ -263,14 +263,24 @@ app.post('/api/files/upload', filesUploadMulter.single('file'), async (req, res)
             relativePath = req.headers['x-path'] || '';
         }
         
-        // 清理文件名：移除URL参数（如 ?durationTime=xxx）
+        // 清理文件名：移除URL参数和非法字符
         if (filename) {
+            // 移除URL查询字符串（如 ?durationTime=xxx）
             const queryIndex = filename.indexOf('?');
             if (queryIndex !== -1) {
                 filename = filename.substring(0, queryIndex);
             }
-            // 移除文件名中可能存在的非法字符（如 =, & 等URL参数字符）
-            filename = filename.replace(/[?=&%]/g, '_');
+            // 移除哈希片段（如 #xxx）
+            const hashIndex = filename.indexOf('#');
+            if (hashIndex !== -1) {
+                filename = filename.substring(0, hashIndex);
+            }
+            // 移除文件名中可能存在的非法字符（包括URL参数字符和控制字符）
+            filename = filename.replace(/[?=&%#<>:"|*\\]/g, '_');
+            // 移除连续的下划线（避免多个非法字符导致多个下划线）
+            filename = filename.replace(/_+/g, '_');
+            // 移除开头和结尾的下划线
+            filename = filename.replace(/^_+|_+$/g, '');
         }
         
         // 验证相对路径
