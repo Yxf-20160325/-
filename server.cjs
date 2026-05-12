@@ -4740,8 +4740,20 @@ io.on('connection', (socket) => {
         // 检查用户名是否已存在
         const existingUser = Array.from(users.values()).find(user => user.username === username);
         if (existingUser) {
-            socket.emit('join-error', { message: '用户名已存在，请选择其他用户名' });
-            return;
+            // 如果是微信登录的用户（socketId以wechat开头），允许重新加入
+            if (existingUser.socketId.startsWith('wechat-')) {
+                console.log(`用户 ${username} 通过WebSocket重新加入，移除旧的微信登录记录`);
+                // 从房间中移除旧用户
+                const oldRoom = rooms.get(existingUser.roomName);
+                if (oldRoom) {
+                    oldRoom.users = oldRoom.users.filter(id => id !== existingUser.socketId);
+                }
+                // 删除旧用户记录
+                users.delete(existingUser.socketId);
+            } else {
+                socket.emit('join-error', { message: '用户名已存在，请选择其他用户名' });
+                return;
+            }
         }
         
         // 设置用户信息
@@ -4939,9 +4951,9 @@ io.on('connection', (socket) => {
         });
 
         socket.on('message', async (data) => {
-        const user = users.get(socket.id);
-        if (user) {
-            // 消息速率限制检查（优化版）
+            const user = users.get(socket.id);
+            if (user) {
+                // 消息速率限制检查（优化版）
             const now = Date.now();
             let rateLimitData = messageRateLimits.get(socket.id);
             
