@@ -3842,12 +3842,12 @@
             <div class="video-box">
                 <video id="localVideo" autoplay playsinline muted></video>
                 <div class="video-label">我</div>
-                <button class="zoom-btn" onclick="toggleVideoZoom(this.parentElement)" title="点击放大后可拖动查看">🔍 放大</button>
+                <button class="zoom-btn" onclick="toggleVideoZoom(this.parentElement)" title="点击放大后可拖动查看，移动端支持双指缩放">🔍 放大</button>
             </div>
             <div class="video-box">
                 <video id="remoteVideo" autoplay playsinline></video>
                 <div class="video-label">对方</div>
-                <button class="zoom-btn" onclick="toggleVideoZoom(this.parentElement)" title="点击放大后可拖动查看">🔍 放大</button>
+                <button class="zoom-btn" onclick="toggleVideoZoom(this.parentElement)" title="点击放大后可拖动查看，移动端支持双指缩放">🔍 放大</button>
             </div>
         </div>
         
@@ -19703,11 +19703,11 @@ io.on('connection', (socket) => {
 
         // 页面恢复可见性时恢复游戏
         function resumeGamesIfNeeded() {
-            if (snakeState && snakeState.paused) {
+            if (typeof snakeState !== 'undefined' && snakeState && snakeState.paused) {
                 snakeState.paused = false;
                 snakeState.loop = setInterval(snakeTick, snakeState.speed);
             }
-            if (typingGame && typingGame.paused && !typingGame.finished) {
+            if (typeof typingGame !== 'undefined' && typingGame && typingGame.paused && !typingGame.finished) {
                 typingGame.paused = false;
                 typingGame.timerInterval = setInterval(() => {
                     if (!typingGame || typingGame.finished) return;
@@ -19717,16 +19717,20 @@ io.on('connection', (socket) => {
                     typingGame.progressTime = elapsed;
                 }, 100);
             }
-            if (tetrisState && tetrisState.paused) {
+            if (typeof tetrisState !== 'undefined' && tetrisState && tetrisState.paused) {
                 tetrisState.paused = false;
-                lastTime = performance.now();
-                tetrisAnimationId = requestAnimationFrame(gameLoop);
+                if (typeof lastTime !== 'undefined') lastTime = performance.now();
+                if (typeof tetrisAnimationId !== 'undefined' && typeof requestAnimationFrame !== 'undefined') {
+                    tetrisAnimationId = requestAnimationFrame(gameLoop);
+                }
             }
-            if (triviaState && triviaState.paused && triviaState.active) {
+            if (typeof triviaState !== 'undefined' && triviaState && triviaState.paused && triviaState.active) {
                 triviaState.paused = false;
-                triviaState.timer = setTimeout(triviaFinish, triviaState.timeLeft);
+                if (typeof triviaFinish !== 'undefined') {
+                    triviaState.timer = setTimeout(triviaFinish, triviaState.timeLeft);
+                }
             }
-            if (reactionState && reactionState.paused && reactionState.active) {
+            if (typeof reactionState !== 'undefined' && reactionState && reactionState.paused && reactionState.active) {
                 reactionState.paused = false;
             }
         }
@@ -24368,9 +24372,11 @@ io.on('connection', (socket) => {
             
             let contentHtml;
             if (data.type === 'image') {
-                contentHtml = `<img src="${data.message}" alt="图片" style="max-width: 100%; max-height: 200px; border-radius: 5px; cursor: pointer; transition: transform 0.2s;" onclick="openMediaPreview('${data.message}', 'image', '${data.fileName || 'image'}')" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">`;
+                const imageUrl = data.imageUrl || data.message;
+                contentHtml = `<img src="${imageUrl}" alt="图片" style="max-width: 100%; max-height: 200px; border-radius: 5px; cursor: pointer; transition: transform 0.2s;" onclick="openMediaPreview('${imageUrl}', 'image', '${data.fileName || 'image'}')" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">`;
             } else if (data.type === 'audio') {
-                contentHtml = `<audio controls style="width: 100%; border-radius: 5px;"><source src="${data.message}" type="${data.contentType || 'audio/webm'}">您的浏览器不支持音频播放</audio>`;
+                contentHtml = `<audio controls style="width: 100%; border-radius: 5px;">const audioUrl = data.audioUrl || data.message;
+                <source src="${audioUrl}" type="${data.contentType || 'audio/webm'}">您的浏览器不支持音频播放</audio>`;
             } else if (data.type === 'file') {
                 // 处理文件消息，显示下载链接
                 const fileName = data.fileName || '文件';
@@ -25166,6 +25172,19 @@ io.on('connection', (socket) => {
         // ===== 消息反应功能结束 =====
 
         function addMessage(data) {
+            // 检查消息是否已存在（去重）
+            const existingMessage = document.querySelector(`[data-message-id="${data.id}"]`);
+            if (existingMessage) {
+                console.log('消息已存在，跳过添加:', data.id);
+                return;
+            }
+            
+            // 检查是否在 allMessages 中已存在
+            if (allMessages.some(msg => msg.id === data.id)) {
+                console.log('消息已在历史记录中，跳过添加:', data.id);
+                return;
+            }
+            
             // 保存消息到历史记录数组
             allMessages.push(data);
             
@@ -25175,9 +25194,11 @@ io.on('connection', (socket) => {
             
             let contentHtml;
             if (data.type === 'image') {
-                contentHtml = `<img src="${data.message}" alt="图片" style="max-width: 100%; max-height: 200px; border-radius: 5px; cursor: pointer; transition: transform 0.2s;" onclick="openMediaPreview('${data.message}', 'image', '${data.fileName || 'image'}')" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">`;
+                const imageUrl = data.imageUrl || data.message;
+                contentHtml = `<img src="${imageUrl}" alt="图片" style="max-width: 100%; max-height: 200px; border-radius: 5px; cursor: pointer; transition: transform 0.2s;" onclick="openMediaPreview('${imageUrl}', 'image', '${data.fileName || 'image'}')" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">`;
             } else if (data.type === 'audio') {
-                contentHtml = `<audio controls style="width: 100%; border-radius: 5px;"><source src="${data.message}" type="${data.contentType || 'audio/webm'}">您的浏览器不支持音频播放</audio>`;
+                contentHtml = `<audio controls style="width: 100%; border-radius: 5px;">const audioUrl = data.audioUrl || data.message;
+                <source src="${audioUrl}" type="${data.contentType || 'audio/webm'}">您的浏览器不支持音频播放</audio>`;
             } else if (data.type === 'file') {
                 // 处理文件消息，显示下载链接
                 const fileName = data.fileName || '文件';
@@ -27026,6 +27047,20 @@ io.on('connection', (socket) => {
         // 开始拖动
         function startVideoDrag(e) {
             e.preventDefault();
+            
+            // 检测是否是双指触摸（用于缩放）
+            if (e.type.includes('touch') && e.touches.length === 2) {
+                // 双指触摸，准备缩放
+                const touch1 = e.touches[0];
+                const touch2 = e.touches[1];
+                lastPinchDistance = Math.hypot(
+                    touch2.clientX - touch1.clientX,
+                    touch2.clientY - touch1.clientY
+                );
+                videoDragState.isDragging = false;
+                return;
+            }
+            
             videoDragState.isDragging = true;
             videoDragState.startX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
             videoDragState.startY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
@@ -27034,7 +27069,15 @@ io.on('connection', (socket) => {
 
         // 拖动中
         function dragVideo(e) {
-            if (!videoDragState.isDragging) return;
+            if (!videoDragState.isDragging) {
+                // 检测是否是双指缩放
+                if (e.type.includes('touch') && e.touches.length === 2) {
+                    e.preventDefault();
+                    handlePinchZoom(e);
+                    return;
+                }
+                return;
+            }
             e.preventDefault();
 
             const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
@@ -27057,7 +27100,13 @@ io.on('connection', (socket) => {
 
         // 结束拖动
         function endVideoDrag(e) {
-            if (!videoDragState.isDragging) return;
+            if (!videoDragState.isDragging) {
+                // 重置双指缩放状态
+                if (e.type.includes('touch')) {
+                    lastPinchDistance = 0;
+                }
+                return;
+            }
             videoDragState.isDragging = false;
             if (videoDragState.videoBox) {
                 videoDragState.videoBox.classList.remove('dragging');
@@ -27080,6 +27129,30 @@ io.on('connection', (socket) => {
                 videoDragState.videoElement.style.transform =
                     `translate(${videoDragState.translateX}px, ${videoDragState.translateY}px) scale(${newScale})`;
             }
+        }
+        
+        // 处理移动端双指缩放
+        function handlePinchZoom(e) {
+            if (e.touches.length !== 2) return;
+            
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            const currentDistance = Math.hypot(
+                touch2.clientX - touch1.clientX,
+                touch2.clientY - touch1.clientY
+            );
+            
+            if (lastPinchDistance > 0) {
+                const scaleDelta = (currentDistance - lastPinchDistance) * 0.01;
+                let newScale = videoDragState.currentScale + scaleDelta;
+                newScale = Math.max(1, Math.min(newScale, 3)); // 限制缩放范围 1-3
+                
+                videoDragState.currentScale = newScale;
+                videoDragState.videoElement.style.transform =
+                    `translate(${videoDragState.translateX}px, ${videoDragState.translateY}px) scale(${newScale})`;
+            }
+            
+            lastPinchDistance = currentDistance;
         }
         
         // 页面加载完成后初始化双击放大功能
