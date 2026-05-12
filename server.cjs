@@ -459,15 +459,16 @@ app.post('/upload-audio', audioUpload.single('audio'), (req, res) => {
 // 其他路由使用json解析器（跳过 multipart/form-data 和非 JSON 类型以避免与文件上传冲突）
 app.use((req, res, next) => {
     const ct = req.headers['content-type'] || '';
-    // 跳过 multipart/form-data（让 formidable 处理）
+    // 跳过 multipart/form-data（让 multer 处理）
     if (ct.startsWith('multipart/form-data')) {
         return next();
     }
-    // 跳过非 JSON 类型（如 application/octet-stream、image/*、audio/* 等），这些是文件上传
-    // express.json() 只处理 application/json 类型
+    // 处理非 JSON 类型（如 application/octet-stream、image/*、audio/* 等），这些是文件上传
+    // 使用 express.raw() 来解析 raw 请求体
     if (ct && !ct.includes('application/json')) {
-        return next();
+        return express.raw({ limit: '30mb' })(req, res, next);
     }
+    // 处理 JSON 类型请求
     return express.json({ limit: '30mb' })(req, res, next);
 });
 
