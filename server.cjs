@@ -399,6 +399,8 @@ app.post('/api/files/upload', filesUploadMulter.single('file'), async (req, res)
             modifiedAt: stats.mtime,
             url: fileUrl,
             fileUrl: fileUrl,
+            imageUrl: fileUrl,
+            audioUrl: fileUrl,
             success: true,
             scanResult: scanResult
         });
