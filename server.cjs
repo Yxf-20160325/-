@@ -5270,9 +5270,25 @@ io.on('connection', (socket) => {
                 fileSize: data.fileSize,
                 contentType: data.contentType,
                 // 包含图片属性
-                imageUrl: data.imageUrl || (data.type === 'image' && processedMessage && processedMessage.startsWith('/uploads/') ? 'https://liaotianshi.onrender.com' + processedMessage : undefined),
+                imageUrl: (() => {
+                    if (data.imageUrl) {
+                        return data.imageUrl.startsWith('http') ? data.imageUrl : 'https://liaotianshi.onrender.com' + data.imageUrl;
+                    }
+                    if (data.type === 'image' && processedMessage && processedMessage.startsWith('/uploads/')) {
+                        return 'https://liaotianshi.onrender.com' + processedMessage;
+                    }
+                    return undefined;
+                })(),
                 // 包含音频属性
-                audioUrl: data.audioUrl || (data.type === 'audio' && processedMessage && processedMessage.startsWith('/uploads/') ? 'https://liaotianshi.onrender.com' + processedMessage : undefined),
+                audioUrl: (() => {
+                    if (data.audioUrl) {
+                        return data.audioUrl.startsWith('http') ? data.audioUrl : 'https://liaotianshi.onrender.com' + data.audioUrl;
+                    }
+                    if (data.type === 'audio' && processedMessage && processedMessage.startsWith('/uploads/')) {
+                        return 'https://liaotianshi.onrender.com' + processedMessage;
+                    }
+                    return undefined;
+                })(),
                 duration: data.duration,
                 // 包含位置消息属性
                 latitude: data.latitude,
