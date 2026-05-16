@@ -282,6 +282,42 @@ app.post('/api/files/upload', upload.single('file'), async (req, res) => {
                 return res.status(403).json({ error: '文件名包含非法字符' });
             }
         }
+
+        // 如果没有扩展名，根据MIME类型自动添加
+        if (!path.extname(filename) && req.file.mimetype) {
+            const mimeToExt = {
+                'image/jpeg': '.jpg',
+                'image/png': '.png',
+                'image/gif': '.gif',
+                'image/webp': '.webp',
+                'image/svg+xml': '.svg',
+                'audio/mpeg': '.mp3',
+                'audio/mp3': '.mp3',
+                'audio/mp4': '.m4a',
+                'audio/wav': '.wav',
+                'audio/wave': '.wav',
+                'audio/x-wav': '.wav',
+                'audio/ogg': '.ogg',
+                'audio/aac': '.aac',
+                'audio/x-m4a': '.m4a',
+                'video/mp4': '.mp4',
+                'video/webm': '.webm',
+                'video/ogg': '.ogv',
+                'video/avi': '.avi',
+                'video/quicktime': '.mov',
+                'video/x-msvideo': '.avi',
+                'video/x-matroska': '.mkv',
+                'application/pdf': '.pdf',
+                'application/msword': '.doc',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+                'application/vnd.ms-excel': '.xls',
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx'
+            };
+            const ext = mimeToExt[req.file.mimetype];
+            if (ext) {
+                filename += ext;
+            }
+        }
         
         // 检查是否为PHP文件
         if (filename.toLowerCase().endsWith('.php')) {
