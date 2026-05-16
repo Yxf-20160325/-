@@ -5,6 +5,12 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
+const multer = require('multer');
+
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 30 * 1024 * 1024 }
+});
 
 // ── 配置常量 ────────────────────────────────────────────────
 const CONFIG = {
@@ -231,12 +237,11 @@ app.use(express.json({ strict: false }), (req, res, next) => {
     }
 });
 
-// 为文件上传API单独配置raw解析器
-app.post('/api/files/upload', express.raw({ type: '*/*', limit: '30mb' }), async (req, res) => {
+// 为文件上传API使用multer解析器
+app.post('/api/files/upload', upload.single('file'), async (req, res) => {
     try {
-        // 验证请求头
-        if (!req.headers['content-type']) {
-            return res.status(400).json({ error: '缺少Content-Type请求头' });
+        if (!req.file) {
+            return res.status(400).json({ error: '没有收到文件' });
         }
         
         // 验证相对路径（简化的安全检查）
@@ -291,7 +296,7 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '30mb' }), async
         }
         
         // 检查文件大小
-        if (req.body.length > CONFIG.FILE_SIZE_LIMITS.MAX_UPLOAD_SIZE) {
+        if (req.file.buffer.length > CONFIG.FILE_SIZE_LIMITS.MAX_UPLOAD_SIZE) {
             return res.status(413).json({
                 error: `文件大小超过限制（最大${CONFIG.FILE_SIZE_LIMITS.MAX_UPLOAD_SIZE / 1024 / 1024}MB）`
             });
@@ -319,20 +324,20 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '30mb' }), async
 
         if (virusScanEnabled && virusScanner) {
             console.log('开始病毒扫描:', filename);
-            scanResult = await virusScanner.scanBuffer(req.body, filename);
+            scanResult = await virusScanner.scanBuffer(req.file.buffer, filename);
 
             if (!scanResult.safe) {
                 console.log('文件被检测到病毒:', filename);
 
                 // 将病毒文件保存到隔离区
                 const virusPath = path.join(virusesDir, filename);
-                fs.writeFileSync(virusPath, req.body);
+                fs.writeFileSync(virusPath, req.file.buffer);
 
                 // 记录病毒文件信息
                 const virusFile = {
                     id: Date.now().toString() + Math.random().toString(36).substring(2, 11),
                     filename: filename,
-                    size: req.body.length,
+                    size: req.file.buffer.length,
                     uploaderIp: req.ip,
                     uploadTime: new Date().toISOString(),
                     scanResult: scanResult
@@ -354,7 +359,7 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '30mb' }), async
         }
         
         // 写入文件
-        fs.writeFileSync(filePath, req.body);
+        fs.writeFileSync(filePath, req.file.buffer);
         const stats = fs.statSync(filePath);
         
         // 构建响应URL
