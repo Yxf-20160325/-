@@ -5,8 +5,6 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
-const multer = require('multer');
-const axios = require('axios');
 
 // ── 配置常量 ────────────────────────────────────────────────
 const CONFIG = {
@@ -34,7 +32,7 @@ const CONFIG = {
     VIRUS_CLEANUP_INTERVAL: 24 * 60 * 60 * 1000  // 每天一次
 };
 
-// ── 日志配置 ────────────────────────────────────────────────
+// ── 日志配置 1=
 const LOG_LEVELS = {
     ERROR: 0,
     WARN: 1,
@@ -127,11 +125,7 @@ let defaultPermissions = {
 const bannedIPs = new Set(); // 存储被封禁的IP
 const ipConnections = new Map(); // 存储IP连接数: Map<ip, Set<socketId>>
 const mutedUsers = new Map(); // 存储被禁言用户: Map<socketId, { username, endTime, reason }>
-const MAX_CONNECTIONS_PER_IP = 100; // 每个IP最大连接数
-
-// 消息ID去重（防止重复发送）
-const processedMessageIds = new Set(); // 存储已处理的消息ID
-const MAX_PROCESSED_MESSAGES = 10000; // 最大缓存消息ID数量
+const MAX_CONNECTIONS_PER_IP = 5; // 每个IP最大连接数
 
 // ==================== API 管理系统（提前声明，中间件需要在路由之前访问） ====================
 const customApiRoutes = new Map(); // key: `${method}:${path}`, value: { method, path, handler, description, enabled, createdAt }
@@ -196,7 +190,7 @@ app.use((req, res, next) => {
         "default-src 'self'; " +
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; " +
         "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; " +
-        "img-src 'self' data: blob: https://restapi.amap.com https://api.giphy.com https://*; " +
+        "img-src 'self' data: blob: https://restapi.amap.com https://api.giphy.com; " +
         "media-src 'self' blob:; " +
         "connect-src 'self' ws: wss: https://libretranslate.de https://api.mymemory.translated.net https://open.bigmodel.cn https://api.deepseek.com https://api.freegpt.one https://api.siliconflow.cn https://nominatim.openstreetmap.org https://api.giphy.com https://restapi.amap.com; " +
         "font-src 'self' data:;"
@@ -237,82 +231,59 @@ app.use(express.json({ strict: false }), (req, res, next) => {
     }
 });
 
-// 为文件上传API配置multer（支持小程序multipart上传）
-const filesUploadMulter = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 30 * 1024 * 1024 },
-    fileFilter: function (req, file, cb) {
-        cb(null, true);
-    }
-});
-
-// 文件上传API - 支持网页端raw数据和小程序端multipart/form-data
-app.post('/api/files/upload', filesUploadMulter.single('file'), async (req, res) => {
+// 为文件上传API单独配置raw解析器
+app.post('/api/files/upload', express.raw({ type: '*/*', limit: '30mb' }), async (req, res) => {
     try {
-        let fileBuffer, filename, relativePath;
-        
-        if (req.file) {
-            // 小程序端 multipart/form-data 格式
-            fileBuffer = req.file.buffer;
-            filename = req.body.filename || req.file.originalname || Date.now() + '-' + Math.round(Math.random() * 1E9);
-            relativePath = req.body.relativePath || '';
-        } else {
-            // 网页端 raw 格式
-            fileBuffer = req.body;
-            filename = req.headers['x-filename'] || Date.now() + '-' + Math.round(Math.random() * 1E9);
-            relativePath = req.headers['x-path'] || '';
+        // 验证请求头
+        if (!req.headers['content-type']) {
+            return res.status(400).json({ error: '缺少Content-Type请求头' });
         }
         
-        // 清理文件名：移除URL参数和非法字符
-        if (filename) {
-            // 移除URL查询字符串（如 ?durationTime=xxx）
-            const queryIndex = filename.indexOf('?');
-            if (queryIndex !== -1) {
-                filename = filename.substring(0, queryIndex);
-            }
-            // 移除哈希片段（如 #xxx）
-            const hashIndex = filename.indexOf('#');
-            if (hashIndex !== -1) {
-                filename = filename.substring(0, hashIndex);
-            }
-            // 移除文件名中可能存在的非法字符（包括URL参数字符和控制字符）
-            filename = filename.replace(/[?=&%#<>:"|*\\]/g, '_');
-            // 移除连续的下划线（避免多个非法字符导致多个下划线）
-            filename = filename.replace(/_+/g, '_');
-            // 移除开头和结尾的下划线
-            filename = filename.replace(/^_+|_+$/g, '');
-        }
-        
-        // 验证相对路径
+        // 验证相对路径（简化的安全检查）
+        let relativePath = req.headers['x-path'] || '';
         if (relativePath) {
-            if (typeof relativePath !== 'string' || relativePath.length > 255) {
+            // 先检查原始路径类型和长度
+            if (typeof relativePath !== 'string') {
                 return res.status(400).json({ error: '路径格式错误' });
             }
+            if (relativePath.length > 255) {
+                return res.status(400).json({ error: '路径过长' });
+            }
+
+            // 解码路径
             try {
                 relativePath = decodeURIComponent(relativePath);
             } catch (error) {
                 return res.status(400).json({ error: '路径编码错误' });
             }
+
+            // 检查危险字符
             if (relativePath.includes('..') || relativePath.includes('\\') || relativePath.includes('/')) {
                 return res.status(403).json({ error: '路径包含非法字符' });
             }
         }
         
         // 验证文件名
+        let filename = req.headers['x-filename'] || Date.now() + '-' + Math.round(Math.random() * 1E9);
         if (filename) {
+            // 解码文件名，处理中文等非ASCII字符
             filename = decodeURIComponent(filename);
+            // 检查文件名长度
             if (filename.length > CONFIG.INPUT_LIMITS.FILENAME) {
                 return res.status(400).json({ error: `文件名过长,最大${CONFIG.INPUT_LIMITS.FILENAME}个字符` });
             }
+            // 检查文件名中是否包含危险字符
             if (filename.includes('..') || filename.includes('\\') || filename.includes('/') || filename.includes(':')) {
                 return res.status(403).json({ error: '文件名包含非法字符' });
             }
         }
         
-        // 检查危险文件类型
+        // 检查是否为PHP文件
         if (filename.toLowerCase().endsWith('.php')) {
             return res.status(403).json({ error: '不允许上传PHP文件' });
         }
+        
+        // 检查是否为其他危险文件类型
         const dangerousExtensions = ['.php', '.php3', '.php4', '.php5', '.phtml', '.jsp', '.asp', '.aspx', '.shtml', '.cgi', '.pl', '.sh', '.vbs'];
         const fileExtension = path.extname(filename).toLowerCase();
         if (dangerousExtensions.includes(fileExtension)) {
@@ -320,7 +291,7 @@ app.post('/api/files/upload', filesUploadMulter.single('file'), async (req, res)
         }
         
         // 检查文件大小
-        if (fileBuffer && fileBuffer.length > CONFIG.FILE_SIZE_LIMITS.MAX_UPLOAD_SIZE) {
+        if (req.body.length > CONFIG.FILE_SIZE_LIMITS.MAX_UPLOAD_SIZE) {
             return res.status(413).json({
                 error: `文件大小超过限制（最大${CONFIG.FILE_SIZE_LIMITS.MAX_UPLOAD_SIZE / 1024 / 1024}MB）`
             });
@@ -329,6 +300,13 @@ app.post('/api/files/upload', filesUploadMulter.single('file'), async (req, res)
         // 构建文件路径
         const uploadsDir = path.join(__dirname, 'uploads');
         const filePath = path.join(uploadsDir, relativePath, filename);
+
+        // 验证文件路径是否在uploads目录内
+        const normalizedFilePath = path.normalize(filePath);
+        const normalizedUploadsDir = path.normalize(uploadsDir);
+        if (!normalizedFilePath.startsWith(normalizedUploadsDir)) {
+            return res.status(403).json({ error: '无权访问该路径' });
+        }
 
         // 确保目录存在
         const dirPath = path.dirname(filePath);
@@ -339,57 +317,69 @@ app.post('/api/files/upload', filesUploadMulter.single('file'), async (req, res)
         // 病毒扫描
         let scanResult = { safe: true, scanned: false, message: '病毒检测已禁用' };
 
-        if (virusScanEnabled && virusScanner && fileBuffer) {
+        if (virusScanEnabled && virusScanner) {
             console.log('开始病毒扫描:', filename);
-            scanResult = await virusScanner.scanBuffer(fileBuffer, filename);
+            scanResult = await virusScanner.scanBuffer(req.body, filename);
 
             if (!scanResult.safe) {
                 console.log('文件被检测到病毒:', filename);
+
+                // 将病毒文件保存到隔离区
                 const virusPath = path.join(virusesDir, filename);
-                fs.writeFileSync(virusPath, fileBuffer);
+                fs.writeFileSync(virusPath, req.body);
+
+                // 记录病毒文件信息
                 const virusFile = {
                     id: Date.now().toString() + Math.random().toString(36).substring(2, 11),
                     filename: filename,
-                    size: fileBuffer.length,
+                    size: req.body.length,
                     uploaderIp: req.ip,
                     uploadTime: new Date().toISOString(),
                     scanResult: scanResult
                 };
+
+                // 使用 Map 存储而不是数组
                 virusFiles.set(virusFile.id, virusFile);
+
                 return res.status(403).json({
                     error: '不允许上传病毒',
                     viruses: scanResult.viruses,
                     virusId: virusFile.id
                 });
             }
+            
             console.log('病毒扫描完成:', filename, '结果:', scanResult.message);
         } else {
             console.log('病毒检测已禁用，跳过扫描:', filename);
         }
         
         // 写入文件
-        fs.writeFileSync(filePath, fileBuffer);
+        fs.writeFileSync(filePath, req.body);
         const stats = fs.statSync(filePath);
         
         // 构建响应URL
         const fileUrl = `/uploads/${relativePath ? relativePath + '/' + filename : filename}`;
-        const fileReturnUrl = `/api/files/upload${relativePath ? '/' + relativePath : ''}/${filename}`;
         
-        // 更新用户统计
+        // 更新用户统计数据（如果能获取到用户信息）
         const userIP = req.ip;
         const user = Array.from(users.values()).find(u => u.ip === userIP);
         if (user) {
             user.stats.filesUploaded++;
-            user.experience += 5;
+            user.experience += 5; // 上传文件获得更多经验值
+            
+            // 检查是否升级
             const oldLevel = user.level;
             const newLevel = Math.floor(user.experience / 100) + 1;
             if (newLevel > oldLevel) {
                 user.level = newLevel;
+                // 通知用户升级
                 if (user.socketId) {
                     io.to(user.socketId).emit('level-up', { oldLevel, newLevel, experience: user.experience });
                 }
                 console.log(`${user.username} 升级到 ${newLevel} 级`);
             }
+            
+
         }
         
         res.json({
@@ -398,11 +388,7 @@ app.post('/api/files/upload', filesUploadMulter.single('file'), async (req, res)
             createdAt: stats.birthtime,
             modifiedAt: stats.mtime,
             url: fileUrl,
-            fileUrl: fileUrl,
-            imageUrl: fileUrl,
-            audioUrl: fileUrl,
-            success: true,
-            scanResult: scanResult
+            scanResult: scanResult // 包含扫描结果
         });
     } catch (error) {
         console.error('上传文件失败:', error);
@@ -410,77 +396,18 @@ app.post('/api/files/upload', filesUploadMulter.single('file'), async (req, res)
     }
 });
 
-// 音频上传API（用于语音通话）
-const audioStorage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        cb(null, path.join(__dirname, 'uploads', 'audio'));
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, 'audio-' + uniqueSuffix + '.mp3');
-    }
-});
-const audioUpload = multer({ 
-    storage: audioStorage,
-    limits: { fileSize: CONFIG.FILE_SIZE_LIMITS.MAX_AUDIO_SIZE },
-    fileFilter: function (req, file, cb) {
-        cb(null, true);
-    }
-});
-
-const audioDir = path.join(__dirname, 'uploads', 'audio');
-if (!fs.existsSync(audioDir)) {
-    fs.mkdirSync(audioDir, { recursive: true });
-}
-
-app.post('/upload-audio', audioUpload.single('audio'), (req, res) => {
-    try {
-        if (!req.file) {
-            return res.status(400).json({ error: '没有上传文件' });
-        }
-
-        const username = req.body.username || req.headers['x-username'];
-        const targetSocketId = req.body.targetSocketId || req.headers['x-target-socket-id'];
-        const callId = req.body.callId || req.headers['x-call-id'];
-        
-        if (!targetSocketId) {
-            return res.status(400).json({ error: '缺少目标用户ID' });
-        }
-
-        const audioUrl = `/uploads/audio/${req.file.filename}`;
-
-        console.log(`音频上传成功: ${username} -> ${targetSocketId}, callId: ${callId}`);
-
-        io.to(targetSocketId).emit('audio-data', {
-            from: username,
-            callId: callId,
-            audio: `https://liaotianshi.onrender.com${audioUrl}`
-        });
-
-        res.json({
-            success: true,
-            message: '音频上传成功',
-            audioUrl: audioUrl
-        });
-    } catch (error) {
-        console.error('音频上传失败:', error);
-        res.status(500).json({ error: '音频上传失败: ' + error.message });
-    }
-});
-
 // 其他路由使用json解析器（跳过 multipart/form-data 和非 JSON 类型以避免与文件上传冲突）
 app.use((req, res, next) => {
     const ct = req.headers['content-type'] || '';
-    // 跳过 multipart/form-data（让 multer 处理）
+    // 跳过 multipart/form-data（让 formidable 处理）
     if (ct.startsWith('multipart/form-data')) {
         return next();
     }
-    // 处理非 JSON 类型（如 application/octet-stream、image/*、audio/* 等），这些是文件上传
-    // 使用 express.raw() 来解析 raw 请求体
+    // 跳过非 JSON 类型（如 application/octet-stream、image/*、audio/* 等），这些是文件上传
+    // express.json() 只处理 application/json 类型
     if (ct && !ct.includes('application/json')) {
-        return express.raw({ limit: '30mb' })(req, res, next);
+        return next();
     }
-    // 处理 JSON 类型请求
     return express.json({ limit: '30mb' })(req, res, next);
 });
 
@@ -583,197 +510,6 @@ function sendPushNotification(socketId, title, body, data = {}) {
 }
 
 // 移动应用接口
-
-// 微信小程序登录API
-app.post('/api/wechat/login', express.json(), async (req, res) => {
-    try {
-        const { code, roomName = 'main', password = null } = req.body;
-        
-        if (!code) {
-            return res.status(400).json({ error: '缺少code参数' });
-        }
-        
-        // 微信小程序AppID和AppSecret（需要用户在微信公众平台获取）
-        const appId = process.env.WECHAT_APPID || 'wx136ff04f12ed97bc';
-        const appSecret = process.env.WECHAT_APPSECRET || '39255a666253b769766c2e48d85bb893';
-        
-        if (appId === 'wxYourAppId' || appSecret === 'yourAppSecret') {
-            console.warn('微信登录未配置，使用模拟模式');
-            // 模拟登录成功，生成一个基于code的用户名
-            const username = 'wxuser_' + code.substring(0, 8) + '_' + Math.random().toString(36).substring(2, 6);
-            return handleWechatLoginSuccess(res, username, roomName, password, {
-                openid: 'mock_openid_' + code,
-                unionid: null,
-                sessionKey: 'mock_session_key'
-            });
-        }
-        
-        // 调用微信API获取session_key和openid
-        const wechatResponse = await axios.get('https://api.weixin.qq.com/sns/jscode2session', {
-            params: {
-                appid: appId,
-                secret: appSecret,
-                js_code: code,
-                grant_type: 'authorization_code'
-            }
-        });
-        
-        const { openid, unionid, session_key: sessionKey, errcode, errmsg } = wechatResponse.data;
-        
-        if (errcode) {
-            console.error('微信登录失败:', errcode, errmsg);
-            return res.status(401).json({ error: errmsg || '微信登录失败' });
-        }
-        
-        // 使用openid作为用户名的一部分
-        const username = 'wx_' + openid.substring(0, 12);
-        
-        handleWechatLoginSuccess(res, username, roomName, password, {
-            openid,
-            unionid,
-            sessionKey
-        });
-        
-    } catch (error) {
-        console.error('微信登录处理失败:', error);
-        res.status(500).json({ error: '登录失败: ' + error.message });
-    }
-});
-
-function handleWechatLoginSuccess(res, username, roomName, password, wechatData) {
-    try {
-        // 检查房间是否存在
-        let room = rooms.get(roomName);
-        if (!room) {
-            return res.status(404).json({ error: '房间不存在' });
-        }
-        
-        // 检查密码是否正确
-        if (room.password && room.password !== password) {
-            return res.status(401).json({ error: '密码错误' });
-        }
-        
-        // 检查房间是否已满
-        if (room.users.length >= room.settings.maxUsers) {
-            return res.status(400).json({ error: '房间已满' });
-        }
-        
-        // 检查用户名是否已存在，如果存在则添加随机后缀
-        let finalUsername = username;
-        let counter = 1;
-        while (Array.from(users.values()).find(user => user.username === finalUsername)) {
-            finalUsername = username + '_' + counter;
-            counter++;
-        }
-        
-        // 生成临时socketId（小程序使用）
-        const socketId = 'wechat-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
-        
-        // 创建用户对象
-        const user = {
-            username: finalUsername,
-            color: getRandomColor(),
-            socketId: socketId,
-            ip: 'wechat',
-            roomName: roomName,
-            role: 'user',
-            permissions: { ...defaultPermissions },
-            status: 'online',
-            lastSeen: new Date().toISOString(),
-            profile: {
-                avatar: null,
-                bio: '',
-                age: null,
-                location: '',
-                website: ''
-            },
-            level: 1,
-            experience: 0,
-            achievements: [],
-            stats: {
-                messagesSent: 0,
-                filesUploaded: 0,
-                callsMade: 0,
-                friendsAdded: 0,
-                timeSpent: 0
-            },
-            settings: { locked: false, lockMessage: '设置已被管理员锁定' },
-            userSettings: {
-                targetLanguage: 'zh',
-                autoTranslate: false,
-                soundNotification: true,
-                mentionNotification: true,
-                theme: 'light',
-                fontSize: 'medium',
-                notifications: {
-                    messages: true,
-                    calls: true,
-                    friendRequests: true,
-                    mentions: true
-                }
-            },
-            aiSettings: {
-                enable: false,
-                model: 'glm4',
-                glm4: { apiKey: '' },
-                deepseek: { modelName: '', apiKey: '' },
-                siliconflow: { modelName: '', apiKey: '' },
-                custom: { apiUrl: '', apiKey: '', modelName: '' }
-            },
-            wechatData: wechatData // 存储微信登录信息
-        };
-        
-        // 为新用户分配70%概率的通话权限
-        if (Math.random() < 0.70) {
-            user.permissions.allowCall = true;
-        }
-        
-        // 保存用户对象
-        users.set(socketId, user);
-        
-        // 将用户添加到房间
-        room.users.push(socketId);
-        
-        // 更新房间统计数据
-        room.stats.currentUsers = room.users.length;
-        room.stats.lastActivity = new Date();
-        
-        // 添加用户历史记录
-        room.history.userHistory.push({
-            type: 'join',
-            username: finalUsername,
-            timestamp: new Date().toISOString()
-        });
-        
-        // 添加事件历史记录
-        room.history.eventHistory.push({
-            type: 'user_join',
-            description: `${finalUsername} 加入了房间`,
-            timestamp: new Date().toISOString(),
-            username: finalUsername
-        });
-        
-        // 获取房间用户列表
-        const roomUsers = room.users.map(userId => users.get(userId)).filter(user => user);
-        
-        res.json({
-            success: true,
-            message: '登录成功',
-            username: finalUsername,
-            roomName: roomName,
-            userCount: room.users.length,
-            users: roomUsers.filter(u => u.permissions.allowViewUsers),
-            wechatData: {
-                openid: wechatData.openid,
-                unionid: wechatData.unionid
-            }
-        });
-        
-    } catch (error) {
-        console.error('处理微信登录成功时出错:', error);
-        res.status(500).json({ error: '登录处理失败: ' + error.message });
-    }
-}
 
 // 移动应用登录
 app.post('/api/mobile/login', express.json(), (req, res) => {
@@ -932,6 +668,7 @@ app.get('/api/mobile/messages', (req, res) => {
         // 如果缓存中没有足够的消息，从房间消息中获取
         if (messages.length < limit) {
             messages = room.messages
+                // @ts-ignore
                 .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
                 .slice(offset, offset + limit);
             
@@ -1964,28 +1701,29 @@ app.get('/download/:filename', (req, res) => {
     res.sendFile(filePath);
 });
 
-// 图片上传接口 - 支持网页端raw数据和小程序端multipart/form-data
-const imageUploadMulter = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 10 * 1024 * 1024 },
-    fileFilter: function (req, file, cb) {
-        if (file.mimetype.startsWith('image/') || file.mimetype === 'application/octet-stream') {
-            cb(null, true);
-        } else {
-            cb(new Error('只允许上传图片文件'));
-        }
-    }
-});
-
-app.post('/upload-image', imageUploadMulter.single('image'), async (req, res) => {
+// 图片上传接口 - 单独配置raw解析器
+app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), async (req, res) => {
     try {
-        let fileBuffer, contentType, filename, extension;
+        // 验证请求头
+        if (!req.headers['content-type']) {
+            return res.status(400).json({ error: '缺少Content-Type请求头' });
+        }
         
-        if (req.file) {
-            // 小程序端 multipart/form-data 格式
-            fileBuffer = req.file.buffer;
-            contentType = req.file.mimetype;
-            
+        // 检查文件大小
+        if (req.body.length > 10 * 1024 * 1024) { // 10MB限制
+            return res.status(413).json({ error: '图片大小超过限制（最大10MB）' });
+        }
+        
+        // 验证Content-Type
+        const contentType = req.headers['content-type'];
+        const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+        if (contentType && !allowedImageTypes.includes(contentType)) {
+            return res.status(403).json({ error: '不允许上传非图片文件' });
+        }
+        
+        // 获取原始文件扩展名
+        let extension = '.jpg';
+        if (contentType) {
             const mimeToExt = {
                 'image/jpeg': '.jpg',
                 'image/png': '.png',
@@ -1993,37 +1731,11 @@ app.post('/upload-image', imageUploadMulter.single('image'), async (req, res) =>
                 'image/webp': '.webp',
                 'image/svg+xml': '.svg'
             };
-            extension = mimeToExt[contentType] || '.jpg';
-        } else {
-            // 网页端 raw 格式
-            fileBuffer = req.body;
-            contentType = req.headers['content-type'];
-            
-            if (!contentType) {
-                return res.status(400).json({ error: '缺少Content-Type请求头' });
-            }
-            
-            if (fileBuffer && fileBuffer.length > 10 * 1024 * 1024) {
-                return res.status(413).json({ error: '图片大小超过限制（最大10MB）' });
-            }
-            
-            const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
-            if (!allowedImageTypes.includes(contentType)) {
-                return res.status(403).json({ error: '不允许上传非图片文件' });
-            }
-            
-            const mimeToExt = {
-                'image/jpeg': '.jpg',
-                'image/png': '.png',
-                'image/gif': '.gif',
-                'image/webp': '.webp',
-                'image/svg+xml': '.svg'
-            };
-            extension = mimeToExt[contentType] || '.jpg';
+            extension = mimeToExt[contentType] || extension;
         }
         
         // 生成安全的文件名
-        filename = Date.now() + '-' + Math.round(Math.random() * 1E9) + extension;
+        const filename = Date.now() + '-' + Math.round(Math.random() * 1E9) + extension;
 
         // 检查是否为危险文件类型
         const dangerousExtensions = ['.php', '.php3', '.php4', '.php5', '.phtml', '.jsp', '.asp', '.aspx', '.shtml', '.cgi', '.pl', '.sh', '.js', '.vbs'];
@@ -2036,6 +1748,13 @@ app.post('/upload-image', imageUploadMulter.single('image'), async (req, res) =>
         const uploadsDir = path.join(__dirname, 'uploads');
         const filePath = path.join(uploadsDir, filename);
 
+        // 验证文件路径是否在uploads目录内
+        const normalizedFilePath = path.normalize(filePath);
+        const normalizedUploadsDir = path.normalize(uploadsDir);
+        if (!normalizedFilePath.startsWith(normalizedUploadsDir)) {
+            return res.status(403).json({ error: '无权访问该路径' });
+        }
+
         // 确保目录存在
         const dirPath = path.dirname(filePath);
         if (!fs.existsSync(dirPath)) {
@@ -2045,25 +1764,28 @@ app.post('/upload-image', imageUploadMulter.single('image'), async (req, res) =>
         // 病毒扫描
         let scanResult = { safe: true, scanned: false, message: '病毒检测已禁用' };
 
-        if (virusScanEnabled && virusScanner && fileBuffer) {
+        if (virusScanEnabled && virusScanner) {
             console.log('开始病毒扫描:', filename);
-            scanResult = await virusScanner.scanBuffer(fileBuffer, filename);
+            scanResult = await virusScanner.scanBuffer(req.body, filename);
 
             if (!scanResult.safe) {
                 console.log('文件被检测到病毒:', filename);
 
+                // 将病毒文件保存到隔离区
                 const virusPath = path.join(virusesDir, filename);
-                fs.writeFileSync(virusPath, fileBuffer);
+                fs.writeFileSync(virusPath, req.body);
 
+                // 记录病毒文件信息
                 const virusFile = {
                     id: Date.now().toString() + Math.random().toString(36).substring(2, 11),
                     filename: filename,
-                    size: fileBuffer.length,
+                    size: req.body.length,
                     uploaderIp: req.ip,
                     uploadTime: new Date().toISOString(),
                     scanResult: scanResult
                 };
 
+                // 使用 Map 存储而不是数组
                 virusFiles.set(virusFile.id, virusFile);
 
                 return res.status(403).json({
@@ -2079,14 +1801,14 @@ app.post('/upload-image', imageUploadMulter.single('image'), async (req, res) =>
         }
         
         // 写入文件
-        fs.writeFileSync(filePath, fileBuffer);
+        fs.writeFileSync(filePath, req.body);
         
         // 构建响应URL
         const imageUrl = `/uploads/${filename}`;
         
         res.json({ 
             imageUrl: imageUrl,
-            scanResult: scanResult
+            scanResult: scanResult // 包含扫描结果
         });
     } catch (error) {
         console.error('上传图片失败:', error);
@@ -2094,36 +1816,39 @@ app.post('/upload-image', imageUploadMulter.single('image'), async (req, res) =>
     }
 });
 
-// 音频上传接口 - 使用multer处理multipart
-const audioUploadMulter = multer({ 
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 15 * 1024 * 1024 },
-    fileFilter: function (req, file, cb) {
-        cb(null, true);
-    }
-});
-
-app.post('/upload-audio', audioUploadMulter.single('audio'), async (req, res) => {
+// 音频上传接口 - 单独配置raw解析器
+app.post('/upload-audio', express.raw({ type: '*/*', limit: '30mb' }), async (req, res) => {
     try {
-        if (!req.file) {
-            return res.status(400).json({ error: '没有上传文件' });
+        // 验证请求头
+        if (!req.headers['content-type']) {
+            return res.status(400).json({ error: '缺少Content-Type请求头' });
         }
         
-        const username = req.body.username || req.headers['x-username'];
+        // 检查文件大小
+        if (req.body.length > 15 * 1024 * 1024) { // 15MB限制
+            return res.status(413).json({ error: '音频大小超过限制（最大15MB）' });
+        }
         
-        // 根据mimetype确定文件扩展名
+        // 验证Content-Type
+        const contentType = req.headers['content-type'];
+        const allowedAudioTypes = ['audio/webm', 'audio/mp3', 'audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/flac'];
+        if (contentType && !allowedAudioTypes.includes(contentType)) {
+            return res.status(403).json({ error: '不允许上传非音频文件' });
+        }
+        
+        // 根据Content-Type确定文件扩展名
         let extension = '.webm';
-        const mimeToExt = {
-            'audio/webm': '.webm',
-            'audio/mp3': '.mp3',
-            'audio/mpeg': '.mp3',
-            'audio/ogg': '.ogg',
-            'audio/wav': '.wav',
-            'audio/flac': '.flac',
-            'audio/aac': '.aac',
-            'audio/x-aac': '.aac'
-        };
-        extension = mimeToExt[req.file.mimetype] || extension;
+        if (contentType) {
+            const mimeToExt = {
+                'audio/webm': '.webm',
+                'audio/mp3': '.mp3',
+                'audio/mpeg': '.mp3',
+                'audio/ogg': '.ogg',
+                'audio/wav': '.wav',
+                'audio/flac': '.flac'
+            };
+            extension = mimeToExt[contentType] || extension;
+        }
         
         // 生成安全的文件名
         const filename = Date.now() + '-' + Math.round(Math.random() * 1E9) + extension;
@@ -2136,24 +1861,34 @@ app.post('/upload-audio', audioUploadMulter.single('audio'), async (req, res) =>
         }
         
         // 构建文件路径
-        const uploadsDir = path.join(__dirname, 'uploads', 'audio');
+        const uploadsDir = path.join(__dirname, 'uploads');
         const filePath = path.join(uploadsDir, filename);
         
-        // 确保目录存在
-        if (!fs.existsSync(uploadsDir)) {
-            fs.mkdirSync(uploadsDir, { recursive: true });
+        // 验证文件路径是否在uploads目录内
+        const normalizedFilePath = path.normalize(filePath);
+        const normalizedUploadsDir = path.normalize(uploadsDir);
+        if (!normalizedFilePath.startsWith(normalizedUploadsDir)) {
+            return res.status(403).json({ error: '无权访问该路径' });
         }
         
+        // 确保目录存在
+        const dirPath = path.dirname(filePath);
+        if (!fs.existsSync(dirPath)) {
+            fs.mkdirSync(dirPath, { recursive: true });
+        }
+        
+        // 语音文件跳过病毒扫描
+        console.log('语音文件跳过病毒扫描:', filename);
+        
         // 写入文件
-        fs.writeFileSync(filePath, req.file.buffer);
+        fs.writeFileSync(filePath, req.body);
         
-        const audioUrl = `/uploads/audio/${filename}`;
-        
-        console.log(`音频上传成功: ${username}`);
+        // 构建响应URL
+        const audioUrl = `/uploads/${filename}`;
         
         res.json({ 
             audioUrl: audioUrl,
-            filename: filename
+            contentType: contentType
         });
     } catch (error) {
         console.error('上传音频失败:', error);
@@ -2368,6 +2103,7 @@ app.post('/api/admin/ai-games/force-move', express.json(), (req, res) => {
                 pcGuessNumber(gameId);
                 break;
             case 'rps':
+                // @ts-ignore
                 pcRpsMove(gameId);
                 break;
             case 'bomb':
@@ -3001,6 +2737,7 @@ app.get('/api/files', (req, res) => {
             files: files.sort((a, b) => {
                 if (a.isDirectory && !b.isDirectory) return -1;
                 if (!a.isDirectory && b.isDirectory) return 1;
+                // @ts-ignore
                 return b.createdAt - a.createdAt;
             }),
             currentPath: relativePath
@@ -3842,6 +3579,7 @@ const io = new Server(server, {
             chunkSize: 1024
         },
         threshold: 1024,
+        // @ts-ignore
         concatenateFlush: true
     }
 });
@@ -4767,20 +4505,8 @@ io.on('connection', (socket) => {
         // 检查用户名是否已存在
         const existingUser = Array.from(users.values()).find(user => user.username === username);
         if (existingUser) {
-            // 如果是微信登录的用户（socketId以wechat开头），允许重新加入
-            if (existingUser.socketId.startsWith('wechat-')) {
-                console.log(`用户 ${username} 通过WebSocket重新加入，移除旧的微信登录记录`);
-                // 从房间中移除旧用户
-                const oldRoom = rooms.get(existingUser.roomName);
-                if (oldRoom) {
-                    oldRoom.users = oldRoom.users.filter(id => id !== existingUser.socketId);
-                }
-                // 删除旧用户记录
-                users.delete(existingUser.socketId);
-            } else {
-                socket.emit('join-error', { message: '用户名已存在，请选择其他用户名' });
-                return;
-            }
+            socket.emit('join-error', { message: '用户名已存在，请选择其他用户名' });
+            return;
         }
         
         // 设置用户信息
@@ -4856,13 +4582,8 @@ io.on('connection', (socket) => {
         // 保存用户对象
         users.set(socket.id, user);
         
-        // 检查用户是否已经在房间中，防止重复加入
-        if (!room.users.includes(socket.id)) {
-            // 将用户添加到房间
-            room.users.push(socket.id);
-        } else {
-            console.log(`用户 ${username} 已经在房间 ${roomName} 中，跳过重复添加`);
-        }
+        // 将用户添加到房间
+        room.users.push(socket.id);
         
         // 让socket加入房间频道
         socket.join(roomName);
@@ -4983,9 +4704,9 @@ io.on('connection', (socket) => {
         });
 
         socket.on('message', async (data) => {
-            const user = users.get(socket.id);
-            if (user) {
-                // 消息速率限制检查（优化版）
+        const user = users.get(socket.id);
+        if (user) {
+            // 消息速率限制检查（优化版）
             const now = Date.now();
             let rateLimitData = messageRateLimits.get(socket.id);
             
@@ -5228,24 +4949,6 @@ io.on('connection', (socket) => {
                 messageId = Date.now() + '-' + Math.random().toString(36).substring(2, 11);
             }
             
-            // 检查消息ID是否已处理过（防止重复发送）
-            if (processedMessageIds.has(messageId)) {
-                console.log(`[重复消息] 用户 ${user.username} 发送的消息 ${messageId} 已处理过，忽略`);
-                return;
-            }
-            
-            // 添加到已处理消息ID集合
-            processedMessageIds.add(messageId);
-            
-            // 定期清理过期的消息ID
-            if (processedMessageIds.size > MAX_PROCESSED_MESSAGES) {
-                // 清除一半的旧消息ID
-                const ids = Array.from(processedMessageIds);
-                for (let i = 0; i < ids.length / 2; i++) {
-                    processedMessageIds.delete(ids[i]);
-                }
-            }
-            
             const messageData = {
                 id: messageId,
                 username: user.username,
@@ -5271,27 +4974,6 @@ io.on('connection', (socket) => {
                 fileName: data.fileName,
                 fileSize: data.fileSize,
                 contentType: data.contentType,
-                // 包含图片属性
-                imageUrl: (() => {
-                    if (data.imageUrl) {
-                        return data.imageUrl.startsWith('http') ? data.imageUrl : 'https://liaotianshi.onrender.com' + data.imageUrl;
-                    }
-                    if (data.type === 'image' && processedMessage && processedMessage.startsWith('/uploads/')) {
-                        return 'https://liaotianshi.onrender.com' + processedMessage;
-                    }
-                    return undefined;
-                })(),
-                // 包含音频属性
-                audioUrl: (() => {
-                    if (data.audioUrl) {
-                        return data.audioUrl.startsWith('http') ? data.audioUrl : 'https://liaotianshi.onrender.com' + data.audioUrl;
-                    }
-                    if (data.type === 'audio' && processedMessage && processedMessage.startsWith('/uploads/')) {
-                        return 'https://liaotianshi.onrender.com' + processedMessage;
-                    }
-                    return undefined;
-                })(),
-                duration: data.duration,
                 // 包含位置消息属性
                 latitude: data.latitude,
                 longitude: data.longitude,
@@ -5303,7 +4985,9 @@ io.on('connection', (socket) => {
                 replyToMessage: data.replyToMessage,
                 replyToUsername: data.replyToUsername,
                 // 代码块语言
-                lang: data.lang
+                lang: data.lang,
+                // 投票数据
+                poll: data.poll
             };
             
             // 检查消息中是否包含@用户名或@{用户名}格式
@@ -5425,8 +5109,8 @@ io.on('connection', (socket) => {
                     }
                 });
 
-                // 发送给管理员（但要避免重复发送给已经在房间内的管理员）
-                if (adminSocketId && !room.users.includes(adminSocketId)) {
+                // 发送给管理员
+                if (adminSocketId) {
                     sendBatchMessage(adminSocketId, messageData);
                 }
             }
@@ -6722,7 +6406,7 @@ io.on('connection', (socket) => {
                 return;
             }
             
-            const { question, options, duration = 5 } = data;
+            const { question, options, duration = 5, allowMultiple = false, isAnonymous = false } = data;
             
             // 验证投票数据
             if (!question || !options || options.length < 2) {
@@ -6746,7 +6430,9 @@ io.on('connection', (socket) => {
                 createdAt: new Date(),
                 endTime: duration > 0 ? Date.now() + (duration * 60 * 1000) : null, // 将分钟转换为毫秒
                 isActive: true,
-                roomName: user.roomName
+                roomName: user.roomName,
+                allowMultiple: allowMultiple,
+                isAnonymous: isAnonymous
             };
             
             // 存储投票
@@ -7082,13 +6768,6 @@ io.on('connection', (socket) => {
                     description: `${user.username} 离开了房间`,
                     timestamp: new Date().toISOString(),
                     username: user.username
-                });
-                
-                // 广播用户离开事件到房间内其他用户
-                socket.to(user.roomName).emit('user_leave', {
-                    username: user.username,
-                    roomName: user.roomName,
-                    userCount: room.users.length
                 });
             }
             
@@ -11940,20 +11619,6 @@ io.on('connection', (socket) => {
         }
     });
     
-    socket.on('video-frame', (data) => {
-        const user = users.get(socket.id);
-        if (user && user.permissions.allowCall) {
-            const call = ongoingCalls.get(data.callId);
-            if (call) {
-                io.to(data.targetSocketId).emit('video-frame', {
-                    from: user.username,
-                    callId: data.callId,
-                    frame: data.frame
-                });
-            }
-        }
-    });
-    
     // 监听通话状态更新事件
     socket.on('call-status', (data) => {
         const user = users.get(socket.id);
@@ -13884,96 +13549,3 @@ function setupConsoleCommands() {
         // readline 关闭不影响服务器继续运行
     });
 }
-// 小程序上传接口别名（兼容小程序使用的 /upload 路径）
-app.post('/upload', express.raw({ type: '*/*', limit: '30mb' }), async (req, res) => {
-    try {
-        const contentType = req.headers['content-type'] || '';
-        
-        // 解析 multipart/form-data
-        const boundary = contentType.split('boundary=')[1];
-        if (!boundary) {
-            return res.status(400).json({ success: false, error: '缺少boundary' });
-        }
-        
-        const body = req.body.toString();
-        const parts = body.split('--' + boundary);
-        
-        let filename = '';
-        let fileData = Buffer.alloc(0);
-        let username = '';
-        let roomName = '';
-        
-        for (const part of parts) {
-            if (!part.trim()) continue;
-            
-            if (part.includes('Content-Disposition')) {
-                const nameMatch = part.match(/name="([^"]+)"/);
-                const filenameMatch = part.match(/filename="([^"]+)"/);
-                
-                if (nameMatch) {
-                    const fieldName = nameMatch[1];
-                    
-                    if (filenameMatch) {
-                        filename = filenameMatch[1];
-                        // 提取文件数据（跳过headers）
-                        const dataStart = part.indexOf('\r\n\r\n') + 4;
-                        const dataEnd = part.lastIndexOf('\r\n--');
-                        if (dataStart > 0 && dataEnd > dataStart) {
-                            fileData = Buffer.from(part.substring(dataStart, dataEnd), 'binary');
-                        }
-                    } else if (fieldName === 'username') {
-                        const valueStart = part.indexOf('\r\n\r\n') + 4;
-                        const valueEnd = part.lastIndexOf('\r\n');
-                        if (valueStart > 0 && valueEnd > valueStart) {
-                            username = part.substring(valueStart, valueEnd).trim();
-                        }
-                    } else if (fieldName === 'roomName') {
-                        const valueStart = part.indexOf('\r\n\r\n') + 4;
-                        const valueEnd = part.lastIndexOf('\r\n');
-                        if (valueStart > 0 && valueEnd > valueStart) {
-                            roomName = part.substring(valueStart, valueEnd).trim();
-                        }
-                    }
-                }
-            }
-        }
-        
-        if (!filename || fileData.length === 0) {
-            return res.status(400).json({ success: false, error: '缺少文件数据' });
-        }
-        
-        // 安全检查：禁止危险文件类型
-        const dangerousExtensions = ['.php', '.php3', '.php4', '.php5', '.phtml', '.jsp', '.asp', '.aspx', '.shtml', '.cgi', '.pl', '.sh', '.vbs'];
-        const fileExtension = path.extname(filename).toLowerCase();
-        if (dangerousExtensions.includes(fileExtension)) {
-            return res.status(403).json({ success: false, error: '不允许上传该类型的文件' });
-        }
-        
-        // 确保上传目录存在
-        const uploadsDir = path.join(__dirname, 'uploads');
-        if (!fs.existsSync(uploadsDir)) {
-            fs.mkdirSync(uploadsDir, { recursive: true });
-        }
-        
-        // 生成唯一文件名
-        const uniqueFilename = Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(filename);
-        const filePath = path.join(uploadsDir, uniqueFilename);
-        
-        // 写入文件
-        fs.writeFileSync(filePath, fileData);
-        
-        // 返回结果
-        res.json({
-            success: true,
-            fileUrl: `/uploads/${uniqueFilename}`,
-            imageUrl: `/uploads/${uniqueFilename}`,
-            filename: filename,
-            size: fileData.length
-        });
-        
-    } catch (error) {
-        console.error('上传失败:', error);
-        res.status(500).json({ success: false, error: '上传失败: ' + error.message });
-    }
-});
-
