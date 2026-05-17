@@ -237,6 +237,57 @@ app.use(express.json({ strict: false }), (req, res, next) => {
     }
 });
 
+// 微信登录API
+app.post('/api/wechat/login', async (req, res) => {
+    try {
+        const { code, roomName, nickName, avatarUrl } = req.body;
+        
+        if (!code) {
+            return res.status(400).json({ success: false, message: '缺少code参数' });
+        }
+        
+        const appid = 'wx136ff04f12ed97bc';
+        const secret = '39255a666253b769766c2e48d85bb893';
+        
+        const https = require('https');
+        const url = `https://api.weixin.qq.com/sns/jscode2session?appid=${appid}&secret=${secret}&js_code=${code}&grant_type=authorization_code`;
+        
+        https.get(url, (resp) => {
+            let data = '';
+            resp.on('data', (chunk) => {
+                data += chunk;
+            });
+            resp.on('end', () => {
+                try {
+                    const wechatData = JSON.parse(data);
+                    if (wechatData.errcode) {
+                        console.error('微信API调用失败:', wechatData.errmsg);
+                        return res.status(400).json({ success: false, message: wechatData.errmsg });
+                    }
+                    
+                    const username = nickName || '用户' + Math.floor(Math.random() * 1000);
+                    
+                    res.json({
+                        success: true,
+                        message: '登录成功',
+                        username: username,
+                        wechatData: wechatData
+                    });
+                } catch (e) {
+                    console.error('解析微信响应失败:', e);
+                    res.status(500).json({ success: false, message: '解析响应失败' });
+                }
+            });
+        }).on('error', (err) => {
+            console.error('微信登录请求失败:', err);
+            res.status(500).json({ success: false, message: '请求微信服务器失败' });
+        });
+    } catch (error) {
+        console.error('微信登录处理失败:', error);
+        res.status(500).json({ success: false, message: '服务器内部错误' });
+    }
+});
+
 // 为文件上传API使用multer解析器
 app.post('/api/files/upload', upload.single('file'), async (req, res) => {
     try {
@@ -1721,8 +1772,29 @@ app.post('/api/admin/api-manager/test', express.json(), async (req, res) => {
 
 // ==================== API 管理系统结束 ====================
 
-// 静态文件服务 - 提供上传的文件
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// 静态文件服务 - 提供上传的文件（带缓存优化）
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+    maxAge: '7d',
+    etag: true,
+    lastModified: true,
+    setHeaders: (res, filePath) => {
+        const ext = path.extname(filePath).toLowerCase();
+        const videoExts = ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm'];
+        const audioExts = ['.mp3', '.wav', '.ogg', '.aac', '.m4a'];
+        const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
+        if (videoExts.includes(ext)) {
+            res.setHeader('Cache-Control', 'public, max-age=604800');
+            res.setHeader('Accept-Ranges', 'bytes');
+        } else if (audioExts.includes(ext)) {
+            res.setHeader('Cache-Control', 'public, max-age=604800');
+            res.setHeader('Accept-Ranges', 'bytes');
+        } else if (imageExts.includes(ext)) {
+            res.setHeader('Cache-Control', 'public, max-age=604800');
+        } else {
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+        }
+    }
+}));
 
 // 强制下载路由 - 解决 iOS Safari / WebView 无法通过 <a download> 下载文件的问题
 // 用法：/download/文件名  或  /download?url=/uploads/xxx&name=文件名
