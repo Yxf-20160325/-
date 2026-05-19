@@ -6435,6 +6435,114 @@ io.on('connection', (socket) => {
             });
         }
     });
+
+    // 存储管理员协助请求
+    const adminHelpRequests = new Map();
+
+    // 用户发送管理员协助请求
+    socket.on('admin_help', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+
+        const requestId = 'help_req_' + Date.now() + '_' + socket.id;
+        const request = {
+            id: requestId,
+            username: user.username,
+            socketId: socket.id,
+            avatarUrl: user.avatarUrl,
+            roomName: user.roomName,
+            timestamp: Date.now()
+        };
+
+        adminHelpRequests.set(requestId, request);
+
+        console.log(`用户 ${user.username} 发送了管理员协助请求`);
+
+        // 通知管理员有新请求
+        if (adminSocketId) {
+            io.to(adminSocketId).emit('admin-help-request', request);
+        }
+    });
+
+    // 管理员获取协助请求列表
+    socket.on('admin-get-help-requests', () => {
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
+            const requests = Array.from(adminHelpRequests.values());
+            socket.emit('admin-help-requests', { requests });
+        }
+    });
+
+    // 管理员清空协助请求
+    socket.on('admin-clear-help-requests', () => {
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
+            adminHelpRequests.clear();
+            socket.emit('admin-clear-help-requests-success');
+        }
+    });
+
+    // 管理员授予开发模式权限
+    socket.on('admin-grant-dev-mode', (data) => {
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
+            const targetUser = Array.from(users.values()).find(u => u.username === data.username);
+            
+            if (targetUser) {
+                // 设置用户权限
+                targetUser.permissions = targetUser.permissions || {};
+                targetUser.permissions.allowAccess = true;
+                targetUser.permissions.features = ['chat', 'file', 'image', 'audio', 'video', 'poll', 'location'];
+                
+                // 发送权限到客户端
+                io.to(targetUser.socketId).emit('admin-permission', {
+                    allowAccess: true,
+                    features: targetUser.permissions.features,
+                    grantDevMode: true
+                });
+
+                // 从请求列表中移除
+                adminHelpRequests.forEach((req, id) => {
+                    if (req.username === data.username) {
+                        adminHelpRequests.delete(id);
+                    }
+                });
+
+                socket.emit('admin-grant-dev-mode-success', { username: data.username });
+                console.log(`管理员授予用户 ${data.username} 开发模式权限`);
+            } else {
+                socket.emit('admin-error', { message: '用户不存在' });
+            }
+        }
+    });
+
+    // 管理员设置用户权限
+    socket.on('admin-set-permissions', (data) => {
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
+            const targetUser = Array.from(users.values()).find(u => u.username === data.username);
+            
+            if (targetUser) {
+                // 设置用户权限
+                targetUser.permissions = data.permissions;
+                
+                // 发送权限到客户端
+                io.to(targetUser.socketId).emit('admin-permission', data.permissions);
+
+                // 从请求列表中移除
+                adminHelpRequests.forEach((req, id) => {
+                    if (req.username === data.username) {
+                        adminHelpRequests.delete(id);
+                    }
+                });
+
+                socket.emit('admin-set-permissions-success', { username: data.username });
+                console.log(`管理员设置用户 ${data.username} 的权限:`, data.permissions);
+            } else {
+                socket.emit('admin-error', { message: '用户不存在' });
+            }
+        }
+    });
     
     // 管理员获取好友扩容申请列表
     socket.on('admin-get-friend-limit-requests', () => {
