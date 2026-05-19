@@ -1316,6 +1316,58 @@
             background: #0f1b30;
             border-color: #1e3a5f;
         }
+
+        #adminHelpBadge {
+            display: inline-block;
+            background: #ff4757;
+            color: #fff;
+            font-size: 11px;
+            padding: 1px 6px;
+            border-radius: 10px;
+            margin-left: 4px;
+            min-width: 18px;
+            text-align: center;
+            vertical-align: middle;
+        }
+        #adminHelpBadge:empty { display: none; }
+
+        .permission-checkbox {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 14px;
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+        }
+        .permission-checkbox:hover {
+            border-color: #667eea;
+            background: #f8f9ff;
+        }
+        .permission-checkbox input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+        .permission-checkbox span {
+            font-size: 13px;
+            color: #333;
+        }
+
+        body.dark-mode .permission-checkbox {
+            background: #16213e;
+            border-color: #1e2d50;
+        }
+        body.dark-mode .permission-checkbox:hover {
+            border-color: #667eea;
+            background: #1a2540;
+        }
+        body.dark-mode .permission-checkbox span {
+            color: #e0e0e0;
+        }
         
         body.dark-mode .call-method-info {
             background: #16213e;
@@ -1436,6 +1488,7 @@
                     <button class="tab" onclick="switchTab('apiManager')">API管理</button>
                     <button class="tab" onclick="switchTab('aiGames')">AI游戏管理</button>
                     <button class="tab" onclick="switchTab('interactionCenter')">互动中心</button>
+                    <button class="tab" onclick="switchTab('adminHelpRequests')"><span id="adminHelpBadge"></span>协助请求</button>
                     <button class="tab" onclick="switchTab('pagePermissions')">页面权限</button>
                     <button class="tab" onclick="switchTab('emojiManager')">表情包管理</button>
                     <button class="tab" onclick="switchTab('appManager')">APP管理</button>
@@ -1883,6 +1936,73 @@
             </div>
         </div>
     </div>
+            <div class="tab-content" id="adminHelpRequestsTab">
+                <div class="section">
+                    <h2>管理员协助请求</h2>
+                    <p style="margin-bottom: 15px; color: #666;">处理用户发送的管理员协助请求，可授权开发模式或设置用户权限</p>
+                    <div class="input-group">
+                        <button class="btn btn-primary" onclick="loadAdminHelpRequests()">刷新请求列表</button>
+                        <button class="btn btn-danger" onclick="clearAllAdminHelpRequests()">清空所有请求</button>
+                    </div>
+                    <div class="requests-container" id="adminHelpRequestsContainer">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📋</div>
+                            <div>暂无协助请求</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <h2>用户权限快速设置</h2>
+                    <div style="background: #f8f9fa; padding: 20px; border-radius: 12px;">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 15px;">
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: bold;">目标用户</label>
+                                <input type="text" id="adminHelpTargetUser" placeholder="输入用户名">
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 10px; font-weight: bold;">功能权限</label>
+                            <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                                <label class="permission-checkbox">
+                                    <input type="checkbox" id="adminHelpChat" checked>
+                                    <span>聊天</span>
+                                </label>
+                                <label class="permission-checkbox">
+                                    <input type="checkbox" id="adminHelpFile" checked>
+                                    <span>文件</span>
+                                </label>
+                                <label class="permission-checkbox">
+                                    <input type="checkbox" id="adminHelpImage" checked>
+                                    <span>图片</span>
+                                </label>
+                                <label class="permission-checkbox">
+                                    <input type="checkbox" id="adminHelpAudio" checked>
+                                    <span>音频</span>
+                                </label>
+                                <label class="permission-checkbox">
+                                    <input type="checkbox" id="adminHelpVideo" checked>
+                                    <span>视频</span>
+                                </label>
+                                <label class="permission-checkbox">
+                                    <input type="checkbox" id="adminHelpPoll" checked>
+                                    <span>投票</span>
+                                </label>
+                                <label class="permission-checkbox">
+                                    <input type="checkbox" id="adminHelpLocation" checked>
+                                    <span>位置</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <button class="btn btn-success" onclick="grantDevModeToUser()">授予开发模式</button>
+                            <button class="btn btn-primary" onclick="setUserPermissions()">设置权限</button>
+                            <button class="btn btn-warning" onclick="denyUserAccess()">拒绝访问</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="tab-content" id="whiteboardTab">
                 <div class="section">
                     <h2>白板管理</h2>
@@ -4877,6 +4997,148 @@
         document.addEventListener('DOMContentLoaded', function() {
             getCsrfToken();
             loadVirusScanStatus();
+        });
+
+        let adminHelpRequests = [];
+
+        function loadAdminHelpRequests() {
+            socket.emit('admin-get-help-requests');
+        }
+
+        function clearAllAdminHelpRequests() {
+            if (confirm('确定要清空所有协助请求吗？')) {
+                socket.emit('admin-clear-help-requests');
+            }
+        }
+
+        function grantDevModeToUser() {
+            const username = document.getElementById('adminHelpTargetUser').value.trim();
+            if (!username) {
+                alert('请输入目标用户名');
+                return;
+            }
+            
+            socket.emit('admin-grant-dev-mode', { username: username });
+        }
+
+        function setUserPermissions() {
+            const username = document.getElementById('adminHelpTargetUser').value.trim();
+            if (!username) {
+                alert('请输入目标用户名');
+                return;
+            }
+
+            const features = [];
+            if (document.getElementById('adminHelpChat').checked) features.push('chat');
+            if (document.getElementById('adminHelpFile').checked) features.push('file');
+            if (document.getElementById('adminHelpImage').checked) features.push('image');
+            if (document.getElementById('adminHelpAudio').checked) features.push('audio');
+            if (document.getElementById('adminHelpVideo').checked) features.push('video');
+            if (document.getElementById('adminHelpPoll').checked) features.push('poll');
+            if (document.getElementById('adminHelpLocation').checked) features.push('location');
+
+            socket.emit('admin-set-permissions', {
+                username: username,
+                permissions: {
+                    allowAccess: true,
+                    features: features
+                }
+            });
+        }
+
+        function denyUserAccess() {
+            const username = document.getElementById('adminHelpTargetUser').value.trim();
+            if (!username) {
+                alert('请输入目标用户名');
+                return;
+            }
+
+            if (confirm(`确定要拒绝用户 "${username}" 的访问吗？`)) {
+                socket.emit('admin-set-permissions', {
+                    username: username,
+                    permissions: {
+                        allowAccess: false,
+                        features: []
+                    }
+                });
+            }
+        }
+
+        function handleHelpRequest(username) {
+            document.getElementById('adminHelpTargetUser').value = username;
+            switchTab('adminHelpRequests');
+        }
+
+        socket.on('admin-help-requests', (data) => {
+            adminHelpRequests = data.requests || [];
+            const container = document.getElementById('adminHelpRequestsContainer');
+            const badge = document.getElementById('adminHelpBadge');
+            
+            badge.textContent = adminHelpRequests.length > 0 ? adminHelpRequests.length : '';
+
+            if (adminHelpRequests.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📋</div>
+                        <div>暂无协助请求</div>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = adminHelpRequests.map(req => `
+                <div class="request-item">
+                    <div class="request-info">
+                        <h4>👤 ${escapeHtml(req.username)}</h4>
+                        <div class="request-reason">请求管理员协助</div>
+                        <div class="request-meta">
+                            <span>📍 房间: ${escapeHtml(req.roomName || 'main')}</span>
+                            <span>🕐 ${new Date(req.timestamp).toLocaleString()}</span>
+                        </div>
+                    </div>
+                    <div class="request-actions">
+                        <button class="btn btn-success btn-sm" onclick="grantDevModeToUserFromRequest('${escapeHtml(req.username)}')">授予开发模式</button>
+                        <button class="btn btn-primary btn-sm" onclick="handleHelpRequest('${escapeHtml(req.username)}')">设置权限</button>
+                        <button class="btn btn-danger btn-sm" onclick="denyUserAccessFromRequest('${escapeHtml(req.username)}')">拒绝</button>
+                    </div>
+                </div>
+            `).join('');
+        });
+
+        function grantDevModeToUserFromRequest(username) {
+            document.getElementById('adminHelpTargetUser').value = username;
+            socket.emit('admin-grant-dev-mode', { username: username });
+        }
+
+        function denyUserAccessFromRequest(username) {
+            if (confirm(`确定要拒绝用户 "${username}" 的访问吗？`)) {
+                socket.emit('admin-set-permissions', {
+                    username: username,
+                    permissions: {
+                        allowAccess: false,
+                        features: []
+                    }
+                });
+            }
+        }
+
+        socket.on('admin-grant-dev-mode-success', (data) => {
+            alert(`已成功授予用户 "${data.username}" 开发模式权限`);
+            loadAdminHelpRequests();
+        });
+
+        socket.on('admin-set-permissions-success', (data) => {
+            alert(`用户 "${data.username}" 的权限已更新`);
+            loadAdminHelpRequests();
+        });
+
+        socket.on('admin-clear-help-requests-success', () => {
+            alert('所有协助请求已清空');
+            loadAdminHelpRequests();
+        });
+
+        socket.on('admin-help-request', (data) => {
+            loadAdminHelpRequests();
         });
 
         // 切换到病毒管理标签页时加载病毒列表和状态
