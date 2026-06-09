@@ -6426,15 +6426,9 @@
                     // 这可以解决某些iOS版本的兼容性问题
                     vibrateFunction.call(navigator, [duration]);
                 } catch (error) {
-                    console.log('震动API调用失败:', error);
-                    // 失败时使用视觉反馈
-                    showVibrationFeedback(duration);
+                    console.error('震动API调用失败:', error);
                 }
-            } else {
-                // 对于不支持震动的设备，使用视觉反馈
-                showVibrationFeedback(duration);
-            }
-        }
+        }}
         
         // 显示震动视觉反馈
         function showVibrationFeedback(duration) {
@@ -15337,9 +15331,10 @@ io.on('connection', (socket) => {
                 // 确保设置为通话中状态
                 this.isInCall = true;
                 
-                // 更新对方的通话状态
-                if (data.fromSocketId) {
-                    this.userCallStatus[data.fromSocketId] = true;
+                // 更新对方的通话状态（兼容 from 和 fromSocketId 两种字段名）
+                const fromId = data.from || data.fromSocketId;
+                if (fromId) {
+                    this.userCallStatus[fromId] = true;
                 }
                 
                 // 更新自己的通话状态
@@ -15399,9 +15394,10 @@ io.on('connection', (socket) => {
             
             // 处理通话结束
             handleCallEnded(data) {
-                // 更新对方的通话状态
-                if (data.fromSocketId) {
-                    this.userCallStatus[data.fromSocketId] = false;
+                // 更新对方的通话状态（兼容 from 和 fromSocketId 两种字段名）
+                const fromId = data.from || data.fromSocketId;
+                if (fromId) {
+                    this.userCallStatus[fromId] = false;
                 }
                 
                 // 更新自己的通话状态
@@ -19703,11 +19699,11 @@ io.on('connection', (socket) => {
 
         // 页面恢复可见性时恢复游戏
         function resumeGamesIfNeeded() {
-            if (typeof snakeState !== 'undefined' && snakeState && snakeState.paused) {
+            if (snakeState && snakeState.paused) {
                 snakeState.paused = false;
                 snakeState.loop = setInterval(snakeTick, snakeState.speed);
             }
-            if (typeof typingGame !== 'undefined' && typingGame && typingGame.paused && !typingGame.finished) {
+            if (typingGame && typingGame.paused && !typingGame.finished) {
                 typingGame.paused = false;
                 typingGame.timerInterval = setInterval(() => {
                     if (!typingGame || typingGame.finished) return;
@@ -19717,20 +19713,16 @@ io.on('connection', (socket) => {
                     typingGame.progressTime = elapsed;
                 }, 100);
             }
-            if (typeof tetrisState !== 'undefined' && tetrisState && tetrisState.paused) {
+            if (tetrisState && tetrisState.paused) {
                 tetrisState.paused = false;
-                if (typeof lastTime !== 'undefined') lastTime = performance.now();
-                if (typeof tetrisAnimationId !== 'undefined' && typeof requestAnimationFrame !== 'undefined') {
-                    tetrisAnimationId = requestAnimationFrame(gameLoop);
-                }
+                lastTime = performance.now();
+                tetrisAnimationId = requestAnimationFrame(gameLoop);
             }
-            if (typeof triviaState !== 'undefined' && triviaState && triviaState.paused && triviaState.active) {
+            if (triviaState && triviaState.paused && triviaState.active) {
                 triviaState.paused = false;
-                if (typeof triviaFinish !== 'undefined') {
-                    triviaState.timer = setTimeout(triviaFinish, triviaState.timeLeft);
-                }
+                triviaState.timer = setTimeout(triviaFinish, triviaState.timeLeft);
             }
-            if (typeof reactionState !== 'undefined' && reactionState && reactionState.paused && reactionState.active) {
+            if (reactionState && reactionState.paused && reactionState.active) {
                 reactionState.paused = false;
             }
         }
@@ -24372,11 +24364,9 @@ io.on('connection', (socket) => {
             
             let contentHtml;
             if (data.type === 'image') {
-                const imageUrl = data.imageUrl || data.message;
-                contentHtml = `<img src="${imageUrl}" alt="图片" style="max-width: 100%; max-height: 200px; border-radius: 5px; cursor: pointer; transition: transform 0.2s;" onclick="openMediaPreview('${imageUrl}', 'image', '${data.fileName || 'image'}')" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">`;
+                contentHtml = `<img src="${data.message}" alt="图片" style="max-width: 100%; max-height: 200px; border-radius: 5px; cursor: pointer; transition: transform 0.2s;" onclick="openMediaPreview('${data.message}', 'image', '${data.fileName || 'image'}')" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">`;
             } else if (data.type === 'audio') {
-                contentHtml = `<audio controls style="width: 100%; border-radius: 5px;">const audioUrl = data.audioUrl || data.message;
-                <source src="${audioUrl}" type="${data.contentType || 'audio/webm'}">您的浏览器不支持音频播放</audio>`;
+                contentHtml = `<audio controls style="width: 100%; border-radius: 5px;"><source src="${data.message}" type="${data.contentType || 'audio/webm'}">您的浏览器不支持音频播放</audio>`;
             } else if (data.type === 'file') {
                 // 处理文件消息，显示下载链接
                 const fileName = data.fileName || '文件';
@@ -25172,19 +25162,6 @@ io.on('connection', (socket) => {
         // ===== 消息反应功能结束 =====
 
         function addMessage(data) {
-            // 检查消息是否已存在（去重）
-            const existingMessage = document.querySelector(`[data-message-id="${data.id}"]`);
-            if (existingMessage) {
-                console.log('消息已存在，跳过添加:', data.id);
-                return;
-            }
-            
-            // 检查是否在 allMessages 中已存在
-            if (allMessages.some(msg => msg.id === data.id)) {
-                console.log('消息已在历史记录中，跳过添加:', data.id);
-                return;
-            }
-            
             // 保存消息到历史记录数组
             allMessages.push(data);
             
@@ -25194,11 +25171,9 @@ io.on('connection', (socket) => {
             
             let contentHtml;
             if (data.type === 'image') {
-                const imageUrl = data.imageUrl || data.message;
-                contentHtml = `<img src="${imageUrl}" alt="图片" style="max-width: 100%; max-height: 200px; border-radius: 5px; cursor: pointer; transition: transform 0.2s;" onclick="openMediaPreview('${imageUrl}', 'image', '${data.fileName || 'image'}')" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">`;
+                contentHtml = `<img src="${data.message}" alt="图片" style="max-width: 100%; max-height: 200px; border-radius: 5px; cursor: pointer; transition: transform 0.2s;" onclick="openMediaPreview('${data.message}', 'image', '${data.fileName || 'image'}')" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">`;
             } else if (data.type === 'audio') {
-                contentHtml = `<audio controls style="width: 100%; border-radius: 5px;">const audioUrl = data.audioUrl || data.message;
-                <source src="${audioUrl}" type="${data.contentType || 'audio/webm'}">您的浏览器不支持音频播放</audio>`;
+                contentHtml = `<audio controls style="width: 100%; border-radius: 5px;"><source src="${data.message}" type="${data.contentType || 'audio/webm'}">您的浏览器不支持音频播放</audio>`;
             } else if (data.type === 'file') {
                 // 处理文件消息，显示下载链接
                 const fileName = data.fileName || '文件';
