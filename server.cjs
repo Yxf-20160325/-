@@ -238,6 +238,180 @@ app.use(express.json({ strict: false }), (req, res, next) => {
     }
 });
 
+const wechatAppid = 'wx136ff04f12ed97bc';
+const wechatSecret = '39255a666253b769766c2e48d85bb893';
+
+let accessToken = '';
+let tokenExpireTime = 0;
+
+async function getAccessToken() {
+    if (accessToken && Date.now() < tokenExpireTime) {
+        return accessToken;
+    }
+    
+    return new Promise((resolve, reject) => {
+        const https = require('https');
+        const url = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${wechatAppid}&secret=${wechatSecret}`;
+        
+        https.get(url, (resp) => {
+            let data = '';
+            resp.on('data', (chunk) => {
+                data += chunk;
+            });
+            resp.on('end', () => {
+                try {
+                    const result = JSON.parse(data);
+                    if (result.errcode) {
+                        console.error('获取access_token失败:', result.errmsg);
+                        reject(result.errmsg);
+                    } else {
+                        accessToken = result.access_token;
+                        tokenExpireTime = Date.now() + (result.expires_in - 100) * 1000;
+                        console.log('获取access_token成功');
+                        resolve(accessToken);
+                    }
+                } catch (e) {
+                    console.error('解析响应失败:', e);
+                    reject(e.message);
+                }
+            });
+        }).on('error', (e) => {
+            console.error('网络请求失败:', e);
+            reject(e.message);
+        });
+    });
+}
+
+async function sendSubscribeMessage(openid, templateId, data) {
+    try {
+        const token = await getAccessToken();
+        const https = require('https');
+        const url = `https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token=${token}`;
+        
+        const postData = JSON.stringify({
+            touser: openid,
+            template_id: templateId,
+            data: data
+        });
+        
+        return new Promise((resolve, reject) => {
+            const options = {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': postData.length
+                }
+            };
+            
+            const req = https.request(url, options, (resp) => {
+                let data = '';
+                resp.on('data', (chunk) => {
+                    data += chunk;
+                });
+                resp.on('end', () => {
+                    try {
+                        const result = JSON.parse(data);
+                        if (result.errcode === 0) {
+                            resolve(result);
+                        } else {
+                            console.error('发送订阅消息失败:', result.errmsg);
+                            reject(result.errmsg);
+                        }
+                    } catch (e) {
+                        console.error('解析响应失败:', e);
+                        reject(e.message);
+                    }
+                });
+            });
+            
+            req.on('error', (e) => {
+                console.error('网络请求失败:', e);
+                reject(e.message);
+            });
+            
+            req.write(postData);
+            req.end();
+        });
+    } catch (e) {
+        console.error('发送订阅消息异常:', e);
+        throw e;
+    }
+}
+
+// 保存用户openid
+const userOpenIds = new Map();
+
+app.post('/api/wechat/save-openid', express.json(), (req, res) => {
+    try {
+        const { username, openid } = req.body;
+        if (username && openid) {
+            userOpenIds.set(username, openid);
+            console.log('保存openid成功:', username, openid);
+            res.json({ success: true, message: '保存成功' });
+        } else {
+            res.json({ success: false, message: '参数错误' });
+        }
+    } catch (e) {
+        console.error('保存openid失败:', e);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 发送订阅消息API
+app.post('/api/wechat/send-subscribe', express.json(), async (req, res) => {
+    try {
+        const { openid, templateId, data } = req.body;
+        if (!openid || !templateId) {
+            return res.json({ success: false, message: '缺少必要参数' });
+        }
+        
+        const result = await sendSubscribeMessage(openid, templateId, data);
+        res.json({ success: true, result: result });
+    } catch (e) {
+        console.error('发送订阅消息失败:', e);
+        res.json({ success: false, error: e.message });
+    }
+});
+
+// 测试订阅消息API
+app.post('/api/wechat/test-subscribe', express.json(), async (req, res) => {
+    try {
+        const { username } = req.body;
+        if (!username) {
+            return res.json({ success: false, message: '缺少用户名参数' });
+        }
+        
+        const openid = userOpenIds.get(username);
+        if (!openid) {
+            return res.json({ success: false, message: `用户 ${username} 没有绑定openid` });
+        }
+        
+        console.log(`[测试订阅] 用户: ${username}, openid: ${openid}`);
+        
+        const templateId = 'wp9n3Cjz_cDMTj5uPXzJ600IvIJjBs5mxjJRgxQtjYA';
+        const templateData = {
+            thing1: { value: '测试消息' },
+            thing2: { value: '这是一条测试订阅消息' },
+            time3: { value: new Date().toLocaleString() }
+        };
+        
+        const result = await sendSubscribeMessage(openid, templateId, templateData);
+        res.json({ success: true, result: result });
+    } catch (e) {
+        console.error('[测试订阅] 失败:', e);
+        res.json({ success: false, error: e.message });
+    }
+});
+
+// 获取用户openid列表API
+app.get('/api/wechat/openids', (req, res) => {
+    const openidList = [];
+    userOpenIds.forEach((openid, username) => {
+        openidList.push({ username, openid });
+    });
+    res.json({ success: true, openids: openidList });
+});
+
 // 微信登录API
 app.post('/api/wechat/login', async (req, res) => {
     try {
@@ -267,6 +441,11 @@ app.post('/api/wechat/login', async (req, res) => {
                     }
                     
                     const username = nickName || '用户' + Math.floor(Math.random() * 1000);
+                    
+                    if (wechatData.openid) {
+                        userOpenIds.set(username, wechatData.openid);
+                        console.log('微信登录，保存openid:', username, wechatData.openid);
+                    }
                     
                     res.json({
                         success: true,
@@ -593,16 +772,62 @@ app.post('/api/push/unsubscribe', express.json(), (req, res) => {
 });
 
 // 发送推送通知
-function sendPushNotification(socketId, title, body, data = {}) {
-    const subscription = pushSubscriptions.get(socketId);
-    if (subscription) {
-        // 这里可以集成实际的推送服务，如 Firebase Cloud Messaging 或 Web Push
-        console.log(`发送推送通知给 ${socketId}: ${title} - ${body}`);
-        // 实际的推送逻辑
+async function sendPushNotification(socketId, title, body, data = {}) {
+    try {
+        const user = users.get(socketId);
+        if (!user) {
+            console.log(`[订阅消息] 找不到用户: ${socketId}`);
+            return;
+        }
+        
+        const openid = userOpenIds.get(user.username);
+        if (!openid) {
+            console.log(`[订阅消息] 用户 ${user.username} 没有绑定openid，无法发送订阅消息`);
+            return;
+        }
+        
+        console.log(`[订阅消息] 准备发送给 ${user.username} (${openid}): ${title} - ${body}`);
+        
+        const templateId = 'wp9n3Cjz_cDMTj5uPXzJ600IvIJjBs5mxjJRgxQtjYA';
+        const templateData = {
+            thing1: { value: title },
+            thing2: { value: body },
+            time3: { value: new Date().toLocaleString() }
+        };
+        
+        const result = await sendSubscribeMessage(openid, templateId, templateData);
+        console.log('[订阅消息] 发送成功，结果:', result);
+    } catch (e) {
+        console.error('[订阅消息] 发送失败:', e);
     }
 }
 
 // 移动应用接口
+
+// 检查房间是否需要密码
+app.post('/api/check-room', express.json(), (req, res) => {
+    try {
+        const { roomName } = req.body;
+        
+        if (!roomName) {
+            return res.status(400).json({ error: '房间名称不能为空' });
+        }
+        
+        const room = rooms.get(roomName);
+        if (!room) {
+            return res.json({ exists: false, requiresPassword: false });
+        }
+        
+        res.json({ 
+            exists: true, 
+            requiresPassword: !!room.password,
+            userCount: room.users?.size || 0
+        });
+    } catch (e) {
+        console.error('检查房间失败:', e);
+        res.status(500).json({ error: '检查房间失败' });
+    }
+});
 
 // 移动应用登录
 app.post('/api/mobile/login', express.json(), (req, res) => {
@@ -814,7 +1039,7 @@ app.post('/api/mobile/send-message', express.json(), (req, res) => {
             color: user.color,
             message: message,
             type: type,
-            timestamp: new Date().toLocaleTimeString(),
+            timestamp: Date.now(),
             senderSocketId: user.socketId,
             readBy: [user.socketId],
             pinned: false,
@@ -5079,7 +5304,7 @@ io.on('connection', (socket) => {
                     }
                     return 'text';
                 })(),
-                timestamp: new Date().toLocaleTimeString(),
+                timestamp: Date.now(),
                 senderSocketId: socket.id,
                 readBy: [socket.id], // 初始时只有发送者已读
                 pinned: false, // 是否置顶
@@ -5128,7 +5353,7 @@ io.on('connection', (socket) => {
                             fromUsername: user.username,
                             fromColor: user.color,
                             message: data.message,
-                            timestamp: new Date().toLocaleTimeString()
+                            timestamp: Date.now()
                         });
                         
                         console.log(`[通知] ${user.username} @了 ${mentionedUser.username}`);
@@ -5210,17 +5435,15 @@ io.on('connection', (socket) => {
                         // 使用批量发送消息
                         sendBatchMessage(userId, messageData);
 
-                        // 检查用户是否在线，如果离线则发送推送通知
-                        if (roomUser.status === 'offline') {
-                            const pushMessage = data.type === 'location'
-                                ? '位置共享更新'
-                                : messageData.message.substring(0, 50) + (messageData.message.length > 50 ? '...' : '');
-                            sendPushNotification(userId, `来自 ${user.username} 的消息`, pushMessage, {
-                                type: 'message',
-                                roomName: room.roomName,
-                                messageId: messageData.id
-                            });
-                        }
+                        // 对所有用户发送订阅消息通知
+                        const pushMessage = data.type === 'location'
+                            ? '位置共享更新'
+                            : messageData.message.substring(0, 50) + (messageData.message.length > 50 ? '...' : '');
+                        sendPushNotification(userId, `来自 ${user.username} 的消息`, pushMessage, {
+                            type: 'message',
+                            roomName: room.roomName,
+                            messageId: messageData.id
+                        });
                     }
                 });
 
@@ -5322,7 +5545,7 @@ io.on('connection', (socket) => {
                 color: user.color,
                 message: '', // 表情包消息的文本为空
                 type: 'sticker',
-                timestamp: new Date().toLocaleTimeString(),
+                timestamp: Date.now(),
                 senderSocketId: socket.id,
                 readBy: [socket.id],
                 pinned: false,
@@ -5469,7 +5692,7 @@ io.on('connection', (socket) => {
                 io.to(message.senderSocketId).emit('message-read', {
                     messageId: message.id,
                     readBy: user.username,
-                    timestamp: new Date().toLocaleTimeString()
+                    timestamp: Date.now()
                 });
             }
             
@@ -6282,7 +6505,7 @@ io.on('connection', (socket) => {
         if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
                 const systemMessageData = {
                     message: message,
-                    timestamp: new Date().toLocaleTimeString()
+                    timestamp: Date.now()
                 };
                 
                 // 只发送给有权限查看消息的用户
@@ -6306,7 +6529,7 @@ io.on('connection', (socket) => {
                 if (room) {
                     const systemMessageData = {
                         message: message,
-                        timestamp: new Date().toLocaleTimeString()
+                        timestamp: Date.now()
                     };
                     
                     // 只发送给房间内有权限查看消息的用户
@@ -6337,7 +6560,7 @@ io.on('connection', (socket) => {
                         color: color || getRandomColor(),
                         message: message,
                         type: type || 'text',
-                        timestamp: new Date().toLocaleTimeString(),
+                        timestamp: Date.now(),
                         senderSocketId: socket.id
                     };
                     
@@ -6359,7 +6582,7 @@ io.on('connection', (socket) => {
                                     color: color || getRandomColor(),
                                     message: message,
                                     type: 'system',
-                                    timestamp: new Date().toLocaleTimeString(),
+                                    timestamp: Date.now(),
                                     senderSocketId: socket.id
                                 });
                             } else {
@@ -6393,7 +6616,7 @@ io.on('connection', (socket) => {
                     }
                     return 'text';
                 })(),
-                timestamp: new Date().toLocaleTimeString(),
+                timestamp: Date.now(),
                 senderSocketId: socket.id
             };
             
@@ -6414,7 +6637,7 @@ io.on('connection', (socket) => {
                             color: data.color || getRandomColor(),
                             message: data.message,
                             type: 'system',
-                            timestamp: new Date().toLocaleTimeString(),
+                            timestamp: Date.now(),
                             senderSocketId: socket.id
                         });
                     } else {
@@ -8899,7 +9122,7 @@ io.on('connection', (socket) => {
                 setTimeout(() => pcGomokuMove(latestGame.id), 800);
             }
         } else {
-            console.log('makeGomokuMove返回null');
+            console.error('makeGomokuMove返回null');
         }
     });
     
@@ -13320,7 +13543,7 @@ io.on('connection', (socket) => {
                 }
                 return 'text';
             })(),
-            timestamp: new Date().toLocaleTimeString(),
+            timestamp: Date.now(),
             readBy: [socket.id], // 初始时只有发送者已读
             // 包含额外的文件和音频属性
             fileName: data.fileName,
@@ -13393,7 +13616,7 @@ io.on('connection', (socket) => {
                     }
                     return 'text';
                 })(),
-                timestamp: new Date().toLocaleTimeString(),
+                timestamp: Date.now(),
                 readBy: [socket.id], // 初始时只有发送者已读
                 // 包含额外的文件和音频属性
                 fileName: data.fileName,
