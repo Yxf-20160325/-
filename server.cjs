@@ -11990,7 +11990,8 @@ io.on('connection', (socket) => {
         const user = users.get(socket.id);
         if (user && user.permissions.allowCall) {
             const targetUser = users.get(data.targetSocketId);
-            if (targetUser) {
+            const targetSocket = io.sockets.sockets.get(data.targetSocketId);
+            if (targetUser && targetSocket) {
                 // 实现通话权限传递：如果发起方有通话权限，而接收方没有，自动为接收方启用通话权限
                 if (!targetUser.permissions.allowCall) {
                     console.log(`${targetUser.username} 没有通话权限，自动获得通话权限`);
@@ -12009,7 +12010,7 @@ io.on('connection', (socket) => {
                 });
                 console.log(`${user.username} 请求与 ${targetUser.username} ${callType === 'video' ? '视频' : '语音'}通话，使用${data.callMethod === 'webrtc' ? 'WebRTC' : 'Socket.io'}方式`);
             } else {
-                socket.emit('permission-denied', { message: '目标用户不存在' });
+                socket.emit('permission-denied', { message: '目标用户不存在或已离线' });
             }
         } else {
             socket.emit('permission-denied', { message: '您没有通话权限' });
@@ -12105,7 +12106,8 @@ io.on('connection', (socket) => {
     // 实时字幕数据转发：本地识别结果发给通话对方显示
     socket.on('subtitle-data', (data) => {
         const user = users.get(socket.id);
-        if (user && data.targetSocketId && io.sockets.sockets.has(data.targetSocketId)) {
+        const targetSocket = io.sockets.sockets.get(data.targetSocketId);
+        if (user && data.targetSocketId && targetSocket) {
             io.to(data.targetSocketId).emit('subtitle-data', {
                 from: socket.id,
                 fromUsername: user.username,
@@ -12120,7 +12122,8 @@ io.on('connection', (socket) => {
         const user = users.get(socket.id);
         if (user && user.permissions.allowCall) {
             // 检查目标用户是否在线，只向在线用户发送媒体流
-            if (io.sockets.sockets.has(data.targetSocketId)) {
+            const targetSocket = io.sockets.sockets.get(data.targetSocketId);
+            if (targetSocket) {
                 io.to(data.targetSocketId).emit('call-media', {
                     from: socket.id,
                     callId: data.callId,
