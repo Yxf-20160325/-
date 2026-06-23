@@ -4793,7 +4793,7 @@ io.on('connection', (socket) => {
             return;
         }
 
-        const { username, roomName = 'main', password = null } = typeof data === 'object' ? data : { username: data };
+        const { username, roomName = 'main', password = null, avatarUrl } = typeof data === 'object' ? data : { username: data };
 
         // 字段长度/类型验证
         const usernameErr = validateField(username, 'username');
@@ -4861,7 +4861,7 @@ io.on('connection', (socket) => {
                 status: 'online', // 在线状态：online, away, busy, offline
                 lastSeen: new Date().toISOString(), // 最后在线时间
                 profile: { // 用户资料
-                    avatar: null, // 头像URL
+                    avatar: avatarUrl || null, // 头像URL
                     bio: '', // 个人简介
                     age: null, // 年龄
                     location: '', // 位置
@@ -4929,7 +4929,13 @@ io.on('connection', (socket) => {
         socket.join(roomName);
         
         // 发送房间内的用户列表和消息
-        let roomUsers = room.users.map(userId => users.get(userId)).filter(user => user);
+        let roomUsers = room.users.map(userId => {
+            const user = users.get(userId);
+            if (user) {
+                return { ...user, avatarUrl: user.profile?.avatar || null };
+            }
+            return null;
+        }).filter(user => user);
         // 确保room.messages存在，如果不存在就初始化它
         if (!room.messages) {
             room.messages = [];
@@ -4964,7 +4970,18 @@ io.on('connection', (socket) => {
         
         function sendBatch(startIndex) {
             const endIndex = Math.min(startIndex + batchSize, totalMessages);
-            const batchMessages = roomMessages.slice(startIndex, endIndex);
+            let batchMessages = roomMessages.slice(startIndex, endIndex);
+            
+            // 为历史消息补充 avatarUrl
+            batchMessages = batchMessages.map(msg => {
+                if (!msg.avatarUrl) {
+                    const sender = Array.from(users.values()).find(u => u.username === msg.username);
+                    if (sender && sender.profile) {
+                        msg.avatarUrl = sender.profile.avatar || null;
+                    }
+                }
+                return msg;
+            });
             
             socket.emit('room-history', {
                 messages: batchMessages,
@@ -5044,6 +5061,7 @@ io.on('connection', (socket) => {
         });
 
         socket.on('message', async (data) => {
+        try {
         const user = users.get(socket.id);
         if (user) {
             // 消息速率限制检查（优化版）
@@ -5190,7 +5208,7 @@ io.on('connection', (socket) => {
                     io.emit('user-permissions-changed', {
                         socketId: socket.id,
                         permissions: user.permissions,
-                        users: Array.from(users.values())
+                        users: Array.from(users.values()).map(u => ({ ...u, avatarUrl: u.profile?.avatar || null }))
                     });
                     
                     console.log(`[权限] 用户 ${user.username} 成功获取通话权限`);
@@ -5212,12 +5230,14 @@ io.on('connection', (socket) => {
                         // 使用单词边界确保只匹配完整的单词
                         // 对于单字或非单词字符，不使用单词边界
                         let regex;
+                        // 转义正则特殊字符，防止 ReDoS
+                        const escapedWord = badWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                         if (badWord.length === 1 || !/^\w+$/.test(badWord)) {
                             // 单字或非单词字符，直接匹配
-                            regex = new RegExp(badWord, 'gi');
+                            regex = new RegExp(escapedWord, 'gi');
                         } else {
                             // 多字单词，使用单词边界
-                            regex = new RegExp('\\b' + badWord + '\\b', 'gi');
+                            regex = new RegExp('\\b' + escapedWord + '\\b', 'gi');
                         }
                         if (regex.test(processedMessage)) {
                             containsSwearWord = true;
@@ -5293,6 +5313,7 @@ io.on('connection', (socket) => {
                 id: messageId,
                 username: user.username,
                 color: user.color,
+                avatarUrl: user.profile?.avatar || null,
                 message: processedMessage,
                 type: (() => {
                     if (data.type) return data.type;
@@ -5369,6 +5390,7 @@ io.on('connection', (socket) => {
             
             // 获取用户所在的房间
             const room = rooms.get(user.roomName);
+            if (!room) return;
             if (room) {
                 // 检查是否是实时位置消息更新
                 if (data.type === 'location' && data.isRealTime && data.realTimeMessageId) {
@@ -5453,10 +5475,14 @@ io.on('connection', (socket) => {
                 }
             }
         }
+        } catch (e) {
+            console.error('[message] handler error:', e);
+        }
     });
 
     // 处理 sendMessage 事件（表情包、投票等特殊消息）
     socket.on('sendMessage', async (data, callback) => {
+        try {
         const user = users.get(socket.id);
         if (!user) {
             if (callback) callback({ error: '用户未登录' });
@@ -5602,6 +5628,10 @@ io.on('connection', (socket) => {
         // 处理其他类型的特殊消息（如投票等）
         // 如果不是已知类型，使用默认处理
         if (callback) callback({ error: '不支持的消息类型' });
+        } catch (e) {
+            console.error('[sendMessage] handler error:', e);
+            if (callback) callback({ error: '内部错误' });
+        }
     });
 
     // 消息置顶事件
@@ -6131,6 +6161,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('admin-login', async (data) => {
+        try {
         // Socket 事件速率限制
         if (checkSocketEventRate(socket.id, 'admin-login', userIP)) {
             socket.emit('admin-login-error', { message: '操作过于频繁，请稍后再试' });
@@ -6174,7 +6205,7 @@ io.on('connection', (socket) => {
             socket.emit('user-joined', {
                 username: '管理员',
                 userCount: users.size,
-                users: Array.from(users.values())
+                users: Array.from(users.values()).map(u => ({ ...u, avatarUrl: u.profile?.avatar || null }))
             });
             
             console.log(`管理员登录成功 (IP: ${userIP})`);
@@ -6184,6 +6215,10 @@ io.on('connection', (socket) => {
             const record = adminLoginAttempts.get(userIP);
             const remaining = ADMIN_LOGIN_MAX_ATTEMPTS - (record ? record.count : 0);
             socket.emit('admin-login-error', { message: `密码错误，还剩 ${Math.max(remaining, 0)} 次机会` });
+        }
+        } catch (e) {
+            console.error('[admin-login] handler error:', e);
+            socket.emit('admin-login-error', { message: '登录处理异常' });
         }
     });
     
@@ -6657,7 +6692,7 @@ io.on('connection', (socket) => {
             socket.emit('user-joined', {
                 username: '管理员',
                 userCount: users.size,
-                users: Array.from(users.values())
+                users: Array.from(users.values()).map(u => ({ ...u, avatarUrl: u.profile?.avatar || null }))
             });
         }
     });
@@ -8324,6 +8359,7 @@ io.on('connection', (socket) => {
     
     // 用户响应位置请求
     socket.on('location-response', async (data) => {
+        try {
         const { latitude, longitude, locationName } = data;
         const user = users.get(socket.id);
         if (user && latitude && longitude) {
@@ -8377,6 +8413,9 @@ io.on('connection', (socket) => {
                     console.log(`[位置响应] ${user.username} 响应了位置请求: ${finalLocationName}`);
                 }
             }
+        }
+        } catch (e) {
+            console.error('[location-response] handler error:', e);
         }
     });
     
@@ -8830,6 +8869,7 @@ io.on('connection', (socket) => {
     });
     
     socket.on('plugin-execute', async (data) => {
+        try {
         const user = users.get(socket.id);
         if (user && data.pluginId && data.command && data.args) {
             const plugin = plugins.get(data.pluginId);
@@ -8837,6 +8877,9 @@ io.on('connection', (socket) => {
                 // 执行插件命令
                 await executePluginCommand(plugin, data.command, data.args, user);
             }
+        }
+        } catch (e) {
+            console.error('[plugin-execute] handler error:', e);
         }
     });
     
