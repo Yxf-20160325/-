@@ -13899,6 +13899,9 @@ socket.on('update-chatroom-notification', (data) => {
             const messageIndex = room.messages.findIndex(msg => msg.id === messageId);
             if (messageIndex > -1) {
                 const message = room.messages[messageIndex];
+                if (!message.readBy) {
+                    message.readBy = [];
+                }
                 if (!message.readBy.includes(socket.id)) {
                     message.readBy.push(socket.id);
                     
@@ -13924,6 +13927,9 @@ socket.on('update-chatroom-notification', (data) => {
             const messageIndex = chatMessages.findIndex(msg => msg.id === messageId);
             if (messageIndex > -1) {
                 const message = chatMessages[messageIndex];
+                if (!message.readBy) {
+                    message.readBy = [];
+                }
                 if (!message.readBy.includes(socket.id)) {
                     message.readBy.push(socket.id);
                     
