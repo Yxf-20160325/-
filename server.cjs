@@ -12072,7 +12072,7 @@ io.on('connection', (socket) => {
                     initiatorUsername: targetUser.username,
                     recipient: socket.id,
                     recipientUsername: user.username,
-                    callType: 'video', // 暂时默认为video，后续可以从数据中获取
+                    callType: data.callType || 'audio',
                     startTime: Date.now(),
                     status: 'active',
                     controls: {
@@ -12086,7 +12086,8 @@ io.on('connection', (socket) => {
             io.to(data.targetSocketId).emit('call-accepted', {
                 from: socket.id,
                 fromUsername: user.username,
-                callId: data.callId
+                callId: data.callId,
+                callType: data.callType || 'audio'
             });
             console.log(`${user.username} 接受了通话请求`);
         } else {
