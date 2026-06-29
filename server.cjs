@@ -13,6 +13,20 @@ const upload = multer({
     limits: { fileSize: 30 * 1024 * 1024 }
 });
 
+// ── 解密函数：Base64 + XOR ──────────────────────────────────
+const XOR_KEY = '11'
+function decryptSecret(encoded, key) {
+    const buf = Buffer.from(encoded, 'base64');
+    const k = Buffer.from(key, 'utf-8');
+    let result = '';
+    for (let i = 0; i < buf.length; i++) {
+        result += String.fromCharCode(buf[i] ^ k[i % k.length]);
+    }
+    return result;
+}
+const APP_SECRET = decryptSecret('AggDBARQBwcHAwQCUwYHCAYHB1IDVAUJVQkEU1MJCAI=', XOR_KEY);
+const WEATHER_API_KEY = decryptSecret('UlMIV1IDAwkFCVMGAghTVFdUAlcBUwJVBFQFVAgDBQk=', XOR_KEY);
+
 // ── 配置常量 ────────────────────────────────────────────────
 const CONFIG = {
     // 文件大小限制
@@ -422,7 +436,7 @@ app.post('/api/wechat/login', async (req, res) => {
         }
         
         const appid = 'wx136ff04f12ed97bc';
-        const secret = '39255a666253b769766c2e48d85bb893';
+        const secret = APP_SECRET;
         
         const https = require('https');
         const url = `https://api.weixin.qq.com/sns/jscode2session?appid=${appid}&secret=${secret}&js_code=${code}&grant_type=authorization_code`;
@@ -4069,7 +4083,7 @@ setInterval(cleanExpiredCache, 15 * 60 * 1000);
 
 // 天气API配置
 const WEATHER_API_URL = 'https://api-proxy-juhe.jenius.cn/simpleWeather/query';
-const WEATHER_API_KEY = 'cb9fc22848b739befe3f0b3d5e4e9248';
+// WEATHER_API_KEY 在文件顶部已通过 decryptSecret 解密
 
 // 天气查询函数
 async function getWeather(city) {
