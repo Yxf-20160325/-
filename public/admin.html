@@ -5448,6 +5448,13 @@
         function confirmRename() {
             const newName = newUsername.value.trim();
             if (newName && selectedSocketId) {
+                // 监听重命名错误
+                const onRenameError = (data) => {
+                    alert('重命名失败: ' + data.message);
+                    socket.off('admin-error', onRenameError);
+                };
+                socket.on('admin-error', onRenameError);
+                
                 if (currentRoomName) {
                     // 如果在房间用户列表中重命名，使用房间内重命名功能
                     socket.emit('admin-room-rename-user', {
@@ -5455,9 +5462,6 @@
                         socketId: selectedSocketId,
                         newName: newName
                     });
-                    
-                    // 重新获取房间用户列表
-                    socket.emit('admin-get-room-users', currentRoomName);
                 } else {
                     // 否则使用全局重命名功能
                     socket.emit('admin-rename-user', {
