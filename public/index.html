@@ -12389,7 +12389,13 @@
                 });
             }
         }
-        let favoritedMessages = JSON.parse(localStorage.getItem('favoritedMessages') || '[]');
+        let favoritedMessages = [];
+        try {
+            favoritedMessages = JSON.parse(localStorage.getItem('favoritedMessages') || '[]');
+        } catch (e) {
+            console.warn('读取 favoritedMessages 失败，已重置:', e);
+            localStorage.removeItem('favoritedMessages');
+        }
         
         // 检查消息是否已收藏
         function isMessageFavorited(messageId) {
@@ -12527,7 +12533,12 @@
             let userSettings = window.userSettings;
             
             if (savedSettings) {
-                userSettings = { ...userSettings, ...JSON.parse(savedSettings) };
+                try {
+                    userSettings = { ...userSettings, ...JSON.parse(savedSettings) };
+                } catch (e) {
+                    console.warn('读取 userSettings 失败，使用默认设置:', e);
+                    localStorage.removeItem('userSettings');
+                }
             }
             
             // 检查是否启用自动检测
@@ -12546,7 +12557,12 @@
             // 从localStorage加载设置
             const savedSettings = localStorage.getItem('userSettings');
             if (savedSettings) {
-                window.userSettings = { ...window.userSettings, ...JSON.parse(savedSettings) };
+                try {
+                    window.userSettings = { ...window.userSettings, ...JSON.parse(savedSettings) };
+                } catch (e) {
+                    console.warn('读取 userSettings 失败，使用默认设置:', e);
+                    localStorage.removeItem('userSettings');
+                }
             }
             
             // 更新UI
@@ -19428,7 +19444,13 @@ io.on('connection', (socket) => {
         // 系统通知功能
         class NotificationSystem {
             constructor() {
-                this.notifications = JSON.parse(localStorage.getItem('notifications') || '[]');
+                try {
+                    this.notifications = JSON.parse(localStorage.getItem('notifications') || '[]');
+                } catch (e) {
+                    console.warn('读取通知数据失败，已重置:', e);
+                    localStorage.removeItem('notifications');
+                    this.notifications = [];
+                }
                 this.maxNotifications = 50;
                 this.init();
             }
@@ -25363,7 +25385,13 @@ io.on('connection', (socket) => {
         // 获取用户头像
         function getUserAvatar(username) {
             // 从localStorage获取用户头像
-            const userAvatars = JSON.parse(localStorage.getItem('userAvatars') || '{}');
+            let userAvatars = {};
+            try {
+                userAvatars = JSON.parse(localStorage.getItem('userAvatars') || '{}');
+            } catch (e) {
+                console.warn('读取头像数据失败，已重置:', e);
+                localStorage.removeItem('userAvatars');
+            }
             if (userAvatars[username]) {
                 return userAvatars[username];
             }
@@ -25468,7 +25496,13 @@ io.on('connection', (socket) => {
         
         // 保存用户头像
         function saveUserAvatar(username, avatarUrl) {
-            const userAvatars = JSON.parse(localStorage.getItem('userAvatars') || '{}');
+            let userAvatars = {};
+            try {
+                userAvatars = JSON.parse(localStorage.getItem('userAvatars') || '{}');
+            } catch (e) {
+                console.warn('保存头像时读取数据失败，已重置:', e);
+                localStorage.removeItem('userAvatars');
+            }
             userAvatars[username] = avatarUrl;
             localStorage.setItem('userAvatars', JSON.stringify(userAvatars));
         }
