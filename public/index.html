@@ -20619,7 +20619,7 @@ io.on('connection', (socket) => {
                 });
                 
                 // 发送消息到服务器
-                socket.emit('message', { message, type: 'text', ...replyData });
+                socket.emit('message', { message, type: 'text', clientMessageId: messageId, ...replyData });
                 messageInput.value = '';
                 cancelReply();
                 clearDraft();
@@ -22697,7 +22697,7 @@ io.on('connection', (socket) => {
                                         
                                         // 发送消息到服务器
                                         socket.emit('message', { 
-                                            id: messageId,
+                                            clientMessageId: messageId,
                                             message: data.audioUrl, 
                                             type: 'audio',
                                             contentType: data.contentType || 'audio/webm'
