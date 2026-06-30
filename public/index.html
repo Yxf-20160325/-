@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -19775,37 +19776,6 @@ io.on('connection', (socket) => {
             }
         }
         
-        // 尝试进入全屏模式
-        function tryEnterFullScreen() {
-            const enterFullScreen = () => {
-                if (document.fullscreenElement) return;
-                
-                if (document.documentElement.requestFullscreen) {
-                    document.documentElement.requestFullscreen().catch(err => {
-                        console.log('全屏请求失败:', err);
-                    });
-                } else if (document.documentElement.webkitRequestFullscreen) {
-                    document.documentElement.webkitRequestFullscreen().catch(err => {
-                        console.log('全屏请求失败:', err);
-                    });
-                } else if (document.documentElement.msRequestFullscreen) {
-                    document.documentElement.msRequestFullscreen().catch(err => {
-                        console.log('全屏请求失败:', err);
-                    });
-                }
-            };
-            
-            // 用户交互时触发全屏
-            const handleFirstInteraction = () => {
-                enterFullScreen();
-                document.removeEventListener('click', handleFirstInteraction);
-                document.removeEventListener('touchstart', handleFirstInteraction);
-            };
-            
-            document.addEventListener('click', handleFirstInteraction);
-            document.addEventListener('touchstart', handleFirstInteraction);
-        }
-        
         // 检查更新功能
         async function checkForUpdates() {
             const statusEl = document.getElementById('updateStatus');
@@ -19930,9 +19900,6 @@ io.on('connection', (socket) => {
             
             // 初始化关于页面
             initAboutPage();
-            
-            // 设置默认全屏
-            tryEnterFullScreen();
             
             // 恢复页面状态
             const restored = restorePageState();
