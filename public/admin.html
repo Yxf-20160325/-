@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -4256,7 +4257,6 @@
                 alert('请输入管理员密码');
                 return;
             }
-            console.log('发送登录请求，密码:', password);
             socket.emit('admin-login', { password: password });
         }
 
@@ -4747,24 +4747,24 @@
                             <div class="file-info">
                                 <div class="file-icon">🦠</div>
                                 <div class="file-details">
-                                    <div class="file-name">${virus.filename}</div>
+                                    <div class="file-name">${escapeHtml(virus.filename)}</div>
                                     <div class="file-meta">
                                         大小: ${(virus.size / 1024).toFixed(2)} KB | 
                                         上传时间: ${new Date(virus.uploadTime).toLocaleString()} | 
-                                        上传IP: ${virus.uploaderIp}
+                                        上传IP: ${escapeHtml(virus.uploaderIp)}
                                     </div>
                                     <div class="file-meta">
-                                        扫描结果: ${virus.scanResult.message} | 
-                                        恶意: ${virus.scanResult.stats?.malicious || 0} | 
-                                        可疑: ${virus.scanResult.stats?.suspicious || 0}
+                                        扫描结果: ${escapeHtml(virus.scanResult?.message || '')} | 
+                                        恶意: ${virus.scanResult?.stats?.malicious || 0} | 
+                                        可疑: ${virus.scanResult?.stats?.suspicious || 0}
                                     </div>
                                 </div>
                             </div>
                             <div class="file-actions">
-                                <button class="btn btn-success btn-sm" onclick="allowVirusFile('${virus.id}', '${virus.filename}')">允许</button>
-                                <button class="btn btn-warning btn-sm" onclick="quarantineVirusFile('${virus.id}', '${virus.filename}')">隔离</button>
-                                <button class="btn btn-danger btn-sm" onclick="deleteVirusFile('${virus.id}', '${virus.filename}')">删除</button>
-                                <button class="btn btn-info btn-sm" onclick="banUserByVirus('${virus.id}', '${virus.uploaderIp}')">封禁IP</button>
+                                <button class="btn btn-success btn-sm" onclick="allowVirusFile('${escapeJsString(virus.id)}', '${escapeJsString(virus.filename)}')">允许</button>
+                                <button class="btn btn-warning btn-sm" onclick="quarantineVirusFile('${escapeJsString(virus.id)}', '${escapeJsString(virus.filename)}')">隔离</button>
+                                <button class="btn btn-danger btn-sm" onclick="deleteVirusFile('${escapeJsString(virus.id)}', '${escapeJsString(virus.filename)}')">删除</button>
+                                <button class="btn btn-info btn-sm" onclick="banUserByVirus('${escapeJsString(virus.id)}', '${escapeJsString(virus.uploaderIp)}')">封禁IP</button>
                             </div>
                         </div>
                     `).join('');
@@ -5397,13 +5397,8 @@
             }
         }
         
-        // HTML 转义
-        function escapeHtml(str) {
-            if (!str) return '';
-            const div = document.createElement('div');
-            div.textContent = str;
-            return div.innerHTML;
-        }
+        // HTML 转义（由下方 escapeHtml 提供，位于 7100 行附近）
+        // 使用方式：escapeHtml(str)
         
         // 管理员登录后启动反馈轮询
         startFeedbackPolling();
@@ -5974,7 +5969,7 @@
                     historyDiv.innerHTML = data.messages.map(msg => `
                         <div class="message-item">
                             <div class="message-header">
-                                <span class="message-sender">${msg.fromUsername}</span>
+                                <span class="message-sender">${escapeHtml(msg.fromUsername)}</span>
                                 <span class="message-time">${msg.timestamp}</span>
                             </div>
                             <div class="message-content">${escapeHtml(msg.message)}</div>
@@ -6333,19 +6328,19 @@
                 }
                 
                 container.innerHTML = data.users.map(user => `
-                    <div class="user-item" data-username="${user.username}" style="padding: 12px; border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between;">
+                    <div class="user-item" data-username="${escapeHtmlAttr(user.username)}" style="padding: 12px; border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between;">
                         <div style="display: flex; align-items: center; gap: 10px;">
                             <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; color: white; font-weight: bold;">
-                                ${user.username.charAt(0).toUpperCase()}
+                                ${escapeHtml(user.username.charAt(0).toUpperCase())}
                             </div>
                             <div>
-                                <div style="font-weight: bold;">${user.username}</div>
+                                <div style="font-weight: bold;">${escapeHtml(user.username)}</div>
                                 <div style="font-size: 12px; color: #666;">笔画数: ${user.strokeCount || 0} | 最后活动: ${user.lastActivity ? new Date(user.lastActivity).toLocaleTimeString() : '从未'}</div>
                             </div>
                         </div>
                         <div>
-                            <button class="btn btn-sm btn-danger" onclick="disableUserWhiteboard('${user.socketId}', '${user.username}')">禁止操作</button>
-                            <button class="btn btn-sm btn-warning" onclick="clearUserWhiteboard('${user.socketId}', '${user.username}')">清空</button>
+                            <button class="btn btn-sm btn-danger" onclick="disableUserWhiteboard('${escapeJsString(user.socketId)}', '${escapeJsString(user.username)}')">禁止操作</button>
+                            <button class="btn btn-sm btn-warning" onclick="clearUserWhiteboard('${escapeJsString(user.socketId)}', '${escapeJsString(user.username)}')">清空</button>
                         </div>
                     </div>
                 `).join('');
@@ -6453,7 +6448,7 @@
                         return `
                             <div style="padding: 8px; border-bottom: 1px solid #eee; font-size: 13px;">
                                 <span style="color: #999;">[${new Date(log.timestamp).toLocaleString()}]</span>
-                                <span style="color: ${typeColors[log.type] || typeColors.info};">${log.message}</span>
+                                <span style="color: ${typeColors[log.type] || typeColors.info};">${escapeHtml(log.message)}</span>
                             </div>
                         `;
                     }).join('');
@@ -7021,11 +7016,11 @@
             messagesContainer.innerHTML = allMessages.map(msg => {
                 let contentHtml = '';
                 if (msg.type === 'image') {
-                    contentHtml = `<img src="${msg.message}" alt="图片">`;
+                    contentHtml = `<img src="${escapeHtml(msg.message)}" alt="图片">`;
                 } else if (msg.type === 'audio') {
-                    contentHtml = `<audio controls><source src="${msg.message}" type="audio/webm">您的浏览器不支持音频播放</audio>`;
+                    contentHtml = `<audio controls><source src="${escapeHtml(msg.message)}" type="audio/webm">您的浏览器不支持音频播放</audio>`;
                 } else if (msg.type === 'video') {
-                    contentHtml = `<video controls width="100%" max-height="300px"><source src="${msg.message}" type="video/webm">您的浏览器不支持视频播放</video>`;
+                    contentHtml = `<video controls width="100%" max-height="300px"><source src="${escapeHtml(msg.message)}" type="video/webm">您的浏览器不支持视频播放</video>`;
                 } else {
                     contentHtml = escapeHtml(msg.message);
                 }
@@ -7063,9 +7058,22 @@
         }
 
         function escapeHtml(text) {
+            if (!text) return '';
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+        
+        // 用于 HTML 属性中 JS 字符串的转义
+        function escapeJsString(str) {
+            if (!str) return '';
+            return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+        
+        // 用于 HTML 属性的转义
+        function escapeHtmlAttr(str) {
+            if (!str) return '';
+            return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
         
         // 过滤用户列表
@@ -7573,18 +7581,19 @@
             messagesContainer.innerHTML = data.messages.map(msg => {
                 let contentHtml = '';
                 if (msg.type === 'image') {
-                    contentHtml = `<img src="${msg.message}" alt="图片">`;
+                    contentHtml = `<img src="${escapeHtml(msg.message)}" alt="图片">`;
                 } else if (msg.type === 'audio') {
-                    contentHtml = `<audio controls><source src="${msg.message}" type="audio/webm">您的浏览器不支持音频播放</audio>`;
+                    contentHtml = `<audio controls><source src="${escapeHtml(msg.message)}" type="audio/webm">您的浏览器不支持音频播放</audio>`;
                 } else if (msg.type === 'video') {
-                    contentHtml = `<video controls width="100%" max-height="300px"><source src="${msg.message}" type="video/webm">您的浏览器不支持视频播放</video>`;
+                    contentHtml = `<video controls width="100%" max-height="300px"><source src="${escapeHtml(msg.message)}" type="video/webm">您的浏览器不支持视频播放</video>`;
                 } else {
                     // 高亮搜索结果
-                    let highlightedMessage = msg.message;
+                    let highlightedMessage = escapeHtml(msg.message);
                     const searchTerm = document.getElementById('messageSearch').value.trim();
                     if (searchTerm) {
-                        const regex = new RegExp(`(${searchTerm})`, 'gi');
-                        highlightedMessage = msg.message.replace(regex, '<mark>$1</mark>');
+                        const escapedTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                        const regex = new RegExp(`(${escapedTerm})`, 'gi');
+                        highlightedMessage = highlightedMessage.replace(regex, '<mark>$1</mark>');
                     }
                     contentHtml = highlightedMessage;
                 }
