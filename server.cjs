@@ -1,3 +1,4 @@
+
 // @ts-nocheck
 const express = require('express');
 const http = require('http');
@@ -2958,7 +2959,7 @@ app.get('/api/admin/threat-log', (req, res) => {
 });
 
 // 管理员获取通话列表API
-app.get('/api/admin/calls', (req, res) => {
+app.get('/api/admin/calls', adminApiAuthMiddleware, (req, res) => {
     try {
         const calls = Array.from(ongoingCalls.values());
         res.json({ calls });
@@ -2969,7 +2970,7 @@ app.get('/api/admin/calls', (req, res) => {
 });
 
 // 管理员结束通话API
-app.post('/api/admin/calls/:callId/end', (req, res) => {
+app.post('/api/admin/calls/:callId/end', adminApiAuthMiddleware, (req, res) => {
     try {
         const { callId } = req.params;
         const call = ongoingCalls.get(callId);
@@ -2992,7 +2993,7 @@ app.post('/api/admin/calls/:callId/end', (req, res) => {
 });
 
 // 管理员控制通话API
-app.post('/api/admin/calls/:callId/control', (req, res) => {
+app.post('/api/admin/calls/:callId/control', adminApiAuthMiddleware, (req, res) => {
     try {
         const { callId } = req.params;
         const { type, enabled } = req.body;
@@ -3018,7 +3019,7 @@ app.post('/api/admin/calls/:callId/control', (req, res) => {
 });
 
 // 管理员查看通话详情API
-app.get('/api/admin/calls/:callId', (req, res) => {
+app.get('/api/admin/calls/:callId', adminApiAuthMiddleware, (req, res) => {
     try {
         const { callId } = req.params;
         const call = ongoingCalls.get(callId);
@@ -3860,8 +3861,11 @@ app.get('/:roomName', (req, res) => {
     }
 });
 
-// 管理员密码（使用明文存储）
-let ADMIN_PASSWORD = 'admin123';
+// 管理员密码（可使用环境变量 ADMIN_PASSWORD 覆盖，强烈建议修改默认密码）
+let ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+if (!process.env.ADMIN_PASSWORD) {
+    console.warn('⚠️  警告: 管理员密码使用默认值 "admin123"，请通过环境变量 ADMIN_PASSWORD 设置自定义密码！');
+}
 let adminSocketId = null;
 
 // 管理员 API 令牌系统（用于 HTTP API 验证）
@@ -6344,6 +6348,14 @@ io.on('connection', (socket) => {
         if (socket.id === adminSocketId || (currentUser && currentUser.role === 'superadmin')) {
             const targetUser = users.get(socketId);
             if (targetUser) {
+                // 从房间中移除该用户
+                const room = rooms.get(targetUser.roomName);
+                if (room) {
+                    room.users = room.users.filter(id => id !== socketId);
+                    room.stats.currentUsers = room.users.length;
+                    room.stats.lastActivity = new Date();
+                }
+                
                 io.to(socketId).emit('kicked', '你已被管理员踢出聊天室');
                 io.sockets.sockets.get(socketId)?.disconnect();
                 users.delete(socketId);
@@ -6378,6 +6390,12 @@ io.on('connection', (socket) => {
         if (socket.id === adminSocketId || (currentUser && currentUser.role === 'superadmin')) {
             const targetUser = users.get(socketId);
             if (targetUser) {
+                // 检查用户名唯一性
+                const existingUser = Array.from(users.values()).find(u => u.username === newName && u !== targetUser);
+                if (existingUser) {
+                    socket.emit('admin-error', { message: '用户名已存在' });
+                    return;
+                }
                 const oldName = targetUser.username;
                 targetUser.username = newName;
                 io.emit('user-renamed', {
@@ -7306,6 +7324,7 @@ io.on('connection', (socket) => {
             socketEventRateLimits.delete(socket.id); // 清理 Socket 事件速率限制记录
             spamMessageHistory.delete(socket.id);    // 清理刷屏历史记录
             userConsoleLogs.delete(socket.id);
+            messageBatches.delete(socket.id);        // 清理消息批处理缓存
             
             // 清理IP连接数
             const ipConnSet = ipConnections.get(userIP);
@@ -7344,6 +7363,14 @@ io.on('connection', (socket) => {
                             });
                         });
                     }
+                }
+            }
+            
+            // 清理该用户正在进行的通话
+            for (const [callId, call] of ongoingCalls.entries()) {
+                if (call.initiator === socket.id || call.recipient === socket.id) {
+                    ongoingCalls.delete(callId);
+                    console.log(`[通话清理] 通话 ${callId} 因用户断开连接而结束`);
                 }
             }
         } else {
@@ -8435,7 +8462,8 @@ io.on('connection', (socket) => {
     
     // 在房间内踢人
     socket.on('admin-room-kick-user', (data) => {
-        if (socket.id === adminSocketId) {
+        const currentUser = users.get(socket.id);
+        if (socket.id === adminSocketId || (currentUser && currentUser.role === 'superadmin')) {
             const { roomName, socketId } = data;
             const room = rooms.get(roomName);
             if (room) {
@@ -11892,6 +11920,12 @@ io.on('connection', (socket) => {
                 if (room.users.includes(socketId)) {
                     const user = users.get(socketId);
                     if (user) {
+                        // 检查用户名唯一性
+                        const existingUser = Array.from(users.values()).find(u => u.username === newName && u !== user);
+                        if (existingUser) {
+                            socket.emit('admin-error', { message: '用户名已存在' });
+                            return;
+                        }
                         const oldName = user.username;
                         user.username = newName;
                         
@@ -13966,42 +14000,7 @@ socket.on('update-chatroom-notification', (data) => {
     });
 
     socket.on('disconnect', () => {
-        const user = users.get(socket.id);
-        if (user) {
-            // 获取用户所在的房间
-            const room = rooms.get(user.roomName);
-            if (room) {
-                // 从房间用户列表中移除
-                room.users = room.users.filter(userId => userId !== socket.id);
-                
-                // 发送给房间内其他用户
-                const roomUsers = room.users.map(userId => users.get(userId)).filter(user => user);
-                room.users.forEach(userId => {
-                    io.to(userId).emit('user-left', {
-                        username: user.username,
-                        userCount: roomUsers.length,
-                        users: roomUsers,
-                        roomName: user.roomName
-                    });
-                });
-                
-                // 发送用户离线状态通知
-                room.users.forEach(userId => {
-                    io.to(userId).emit('user-status-changed', {
-                        username: user.username,
-                        socketId: socket.id,
-                        status: 'offline',
-                        roomName: user.roomName
-                    });
-                });
-                
-                console.log(`[房间 ${user.roomName}] ${user.username} 离开聊天室，当前在线: ${roomUsers.length} 人`);
-            }
-            
-            // 删除用户信息
-            users.delete(socket.id);
-        }
-        
+        // adminSocketId 清理（不依赖 users.get，因为第一个 disconnect handler 已删除 user）
         if (socket.id === adminSocketId) {
             adminSocketId = null;
             console.log('管理员断开连接');
