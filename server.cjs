@@ -1,4 +1,3 @@
-
 // @ts-nocheck
 const express = require('express');
 const http = require('http');
@@ -483,12 +482,15 @@ app.post('/api/wechat/login', async (req, res) => {
     }
 });
 
-// 为文件上传API使用multer解析器
-app.post('/api/files/upload', upload.single('file'), async (req, res) => {
+// 为文件上传API使用raw解析器（与 /upload-image、/upload-audio 一致，客户端发送 raw binary）
+app.post('/api/files/upload', express.raw({ type: '*/*', limit: '30mb' }), async (req, res) => {
     try {
-        if (!req.file) {
+        if (!req.body || !req.body.length) {
             return res.status(400).json({ error: '没有收到文件' });
         }
+
+        const fileBuffer = req.body;
+        const fileMimetype = req.headers['content-type'] || '';
         
         // 验证相对路径（简化的安全检查）
         let relativePath = req.headers['x-path'] || '';
@@ -530,7 +532,7 @@ app.post('/api/files/upload', upload.single('file'), async (req, res) => {
         }
 
         // 如果没有扩展名，根据MIME类型自动添加
-        if (!path.extname(filename) && req.file.mimetype) {
+        if (!path.extname(filename) && fileMimetype) {
             const mimeToExt = {
                 'image/jpeg': '.jpg',
                 'image/png': '.png',
@@ -559,7 +561,7 @@ app.post('/api/files/upload', upload.single('file'), async (req, res) => {
                 'application/vnd.ms-excel': '.xls',
                 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx'
             };
-            const ext = mimeToExt[req.file.mimetype];
+            const ext = mimeToExt[fileMimetype];
             if (ext) {
                 filename += ext;
             }
@@ -578,7 +580,7 @@ app.post('/api/files/upload', upload.single('file'), async (req, res) => {
         }
         
         // 检查文件大小
-        if (req.file.buffer.length > CONFIG.FILE_SIZE_LIMITS.MAX_UPLOAD_SIZE) {
+        if (fileBuffer.length > CONFIG.FILE_SIZE_LIMITS.MAX_UPLOAD_SIZE) {
             return res.status(413).json({
                 error: `文件大小超过限制（最大${CONFIG.FILE_SIZE_LIMITS.MAX_UPLOAD_SIZE / 1024 / 1024}MB）`
             });
@@ -606,20 +608,20 @@ app.post('/api/files/upload', upload.single('file'), async (req, res) => {
 
         if (virusScanEnabled && virusScanner) {
             console.log('开始病毒扫描:', filename);
-            scanResult = await virusScanner.scanBuffer(req.file.buffer, filename);
+            scanResult = await virusScanner.scanBuffer(fileBuffer, filename);
 
             if (!scanResult.safe) {
                 console.log('文件被检测到病毒:', filename);
 
                 // 将病毒文件保存到隔离区
                 const virusPath = path.join(virusesDir, filename);
-                fs.writeFileSync(virusPath, req.file.buffer);
+                fs.writeFileSync(virusPath, fileBuffer);
 
                 // 记录病毒文件信息
                 const virusFile = {
                     id: Date.now().toString() + Math.random().toString(36).substring(2, 11),
                     filename: filename,
-                    size: req.file.buffer.length,
+                    size: fileBuffer.length,
                     uploaderIp: req.ip,
                     uploadTime: new Date().toISOString(),
                     scanResult: scanResult
@@ -641,7 +643,7 @@ app.post('/api/files/upload', upload.single('file'), async (req, res) => {
         }
         
         // 写入文件
-        fs.writeFileSync(filePath, req.file.buffer);
+        fs.writeFileSync(filePath, fileBuffer);
         const stats = fs.statSync(filePath);
         
         // 构建响应URL
@@ -4860,10 +4862,11 @@ io.on('connection', (socket) => {
             return;
         }
         
-        // 检查用户名是否已存在
-        const existingUser = Array.from(users.values()).find(user => user.username === username);
+        // 检查用户名是否已存在（不区分大小写）
+        const usernameLower = username.toLowerCase();
+        const existingUser = Array.from(users.values()).find(user => user.username.toLowerCase() === usernameLower);
         if (existingUser) {
-            socket.emit('join-error', { message: '用户名已存在，请选择其他用户名' });
+            socket.emit('join-error', { message: '用户名已存在（不区分大小写），请选择其他用户名' });
             return;
         }
         
@@ -6390,12 +6393,6 @@ io.on('connection', (socket) => {
         if (socket.id === adminSocketId || (currentUser && currentUser.role === 'superadmin')) {
             const targetUser = users.get(socketId);
             if (targetUser) {
-                // 检查用户名唯一性
-                const existingUser = Array.from(users.values()).find(u => u.username === newName && u !== targetUser);
-                if (existingUser) {
-                    socket.emit('admin-error', { message: '用户名已存在' });
-                    return;
-                }
                 const oldName = targetUser.username;
                 targetUser.username = newName;
                 io.emit('user-renamed', {
@@ -11912,7 +11909,8 @@ io.on('connection', (socket) => {
     
     // 在房间内重命名用户
     socket.on('admin-room-rename-user', (data) => {
-        if (socket.id === adminSocketId) {
+        const currentUser = users.get(socket.id);
+        if (socket.id === adminSocketId || (currentUser && currentUser.role === 'superadmin')) {
             const { roomName, socketId, newName } = data;
             const room = rooms.get(roomName);
             if (room) {
@@ -11920,12 +11918,6 @@ io.on('connection', (socket) => {
                 if (room.users.includes(socketId)) {
                     const user = users.get(socketId);
                     if (user) {
-                        // 检查用户名唯一性
-                        const existingUser = Array.from(users.values()).find(u => u.username === newName && u !== user);
-                        if (existingUser) {
-                            socket.emit('admin-error', { message: '用户名已存在' });
-                            return;
-                        }
                         const oldName = user.username;
                         user.username = newName;
                         
@@ -11942,6 +11934,8 @@ io.on('connection', (socket) => {
                     }
                 }
             }
+        } else {
+            socket.emit('admin-error', { message: '权限不足，无法重命名' });
         }
     });
 
