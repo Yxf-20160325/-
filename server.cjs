@@ -13,6 +13,10 @@ const upload = multer({
     limits: { fileSize: 30 * 1024 * 1024 }
 });
 
+// ── 数据库访问层（覆盖 用户/房间/消息/好友&私聊&禁言&黑名单）──
+// 所有 DB 函数内部已做降级处理：DB 不可用时静默跳过，绝不打断实时链路。
+const db = require('./db/db.js');
+
 // ── 解密函数：Base64 + XOR ──────────────────────────────────
 const XOR_KEY = '11'
 function decryptSecret(encoded, key) {
@@ -1068,10 +1072,11 @@ app.post('/api/mobile/send-message', express.json(), (req, res) => {
         };
         
         // 添加消息到房间
-        room.messages.push(messageData);
-        if (room.messages.length > 100) {
-            room.messages.shift();
-        }
+            room.messages.push(messageData);
+            db.insertMessage(room.roomName, messageData);
+            if (room.messages.length > 100) {
+                room.messages.shift();
+            }
         
         // 更新用户统计数据
         user.stats.messagesSent++;
@@ -4040,6 +4045,35 @@ function getMessagesFromCache(roomName, limit = 50, offset = 0) {
     return cache.messages.slice(offset, offset + limit);
 }
 
+// ===== 数据库集成辅助函数（模块 1/2/4/5）=====
+// 根据用户名找当前在线 socketId
+function socketIdByUsername(username) {
+    for (const u of users.values()) {
+        if (u.username === username) return u.socketId;
+    }
+    return null;
+}
+
+// 用户上线时，从 DB 恢复其“当前在线”的好友关系（双向）
+async function restoreFriendships(username, socketId) {
+    if (!username) return;
+    try {
+        const friends = await db.getFriendUsernames(username);
+        for (const fu of friends) {
+            const fid = socketIdByUsername(fu);
+            if (fid && fid !== socketId) {
+                if (!friendships.has(socketId)) friendships.set(socketId, new Set());
+                if (!friendships.has(fid)) friendships.set(fid, new Set());
+                friendships.get(socketId).add(fid);
+                friendships.get(fid).add(socketId);
+            }
+        }
+    } catch (e) { /* DB 降级：忽略 */ }
+}
+
+// 私聊 chat_id（按用户名，跨重启稳定）
+function pmChatIdForUsernames(a, b) { return [a, b].sort().join('__'); }
+
 // 保存缓存到文件
 function saveCacheToFile(roomName) {
     const cache = messageCache.get(roomName);
@@ -4942,6 +4976,20 @@ io.on('connection', (socket) => {
         
         // 保存用户对象
         users.set(socket.id, user);
+
+        // 持久化用户（模块 4）—— upsert
+        db.upsertUser(user);
+        // 从 DB 恢复在线好友关系（模块 5）
+        restoreFriendships(username, socket.id);
+        // 从 DB 恢复禁言状态（模块 5）
+        (async () => {
+            try {
+                const m = await db.getMute(username);
+                if (m && (m.endTime === -1 || m.endTime > Date.now())) {
+                    mutedUsers.set(socket.id, { username: username, endTime: m.endTime, reason: m.reason });
+                }
+            } catch (e) {}
+        })();
         
         // 将用户添加到房间
         room.users.push(socket.id);
@@ -5046,6 +5094,9 @@ io.on('connection', (socket) => {
             room.stats.peakUsers = room.users.length;
         }
         room.stats.lastActivity = new Date();
+
+        // 持久化房间活跃度（模块 2）—— fire-and-forget
+        db.touchRoomActivity(roomName, room.stats);
         
         // 添加用户历史记录
         room.history.userHistory.push({
@@ -5424,6 +5475,7 @@ io.on('connection', (socket) => {
                     } else {
                         // 如果消息不存在，添加新消息
                         room.messages.push(messageData);
+                        db.insertMessage(room.roomName, messageData);
                         if (room.messages.length > 100) {
                             room.messages.shift();
                         }
@@ -5432,6 +5484,7 @@ io.on('connection', (socket) => {
                 } else {
                     // 对于其他消息，添加新消息
                     room.messages.push(messageData);
+                    db.insertMessage(room.roomName, messageData);
                     if (room.messages.length > 100) {
                         room.messages.shift();
                     }
@@ -5607,6 +5660,7 @@ io.on('connection', (socket) => {
             if (room) {
                 // 添加新消息
                 room.messages.push(messageData);
+                db.insertMessage(room.roomName, messageData);
                 if (room.messages.length > 100) {
                     room.messages.shift();
                 }
@@ -6628,11 +6682,12 @@ io.on('connection', (socket) => {
                         senderSocketId: socket.id
                     };
                     
-                    // 将消息存储在房间的messages数组中
-                    room.messages.push(messageData);
-                    if (room.messages.length > 100) {
-                        room.messages.shift();
-                    }
+            // 将消息存储在房间的messages数组中
+            room.messages.push(messageData);
+            db.insertMessage(room.roomName, messageData);
+            if (room.messages.length > 100) {
+                room.messages.shift();
+            }
                     
                     // 只发送给房间内有权限查看消息的用户
                     room.users.forEach(userId => {
@@ -7312,6 +7367,7 @@ io.on('connection', (socket) => {
             
             // 清理用户数据
             users.delete(socket.id);
+            db.touchUserLastSeen(user.username); // 模块 4：记录最后在线
             friendships.delete(socket.id);
             adminForcedFriendships.delete(socket.id);
             swearWordCount.delete(socket.id);
@@ -7419,7 +7475,7 @@ io.on('connection', (socket) => {
         const user = users.get(socket.id);
         if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             bannedIPs.add(ip);
-            
+            db.banIp(ip, '管理员封禁', user ? user.username : null); // 模块 5：持久化
             // 断开该IP的所有连接
             const connSet = ipConnections.get(ip);
             if (connSet) {
@@ -7443,6 +7499,7 @@ io.on('connection', (socket) => {
         const user = users.get(socket.id);
         if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             bannedIPs.delete(ip);
+            db.unbanIp(ip); // 模块 5：持久化
             socket.emit('admin-unban-success', { ip: ip });
             console.log(`[管理员] ${user.username} 解除了对IP的封禁: ${ip}`);
         }
@@ -7492,6 +7549,7 @@ io.on('connection', (socket) => {
                     endTime: endTime,
                     reason: reason
                 });
+                db.muteUser(user.username, endTime, reason, socket.id); // 模块 5：持久化
                 
                 // 发送禁言通知给用户
                 io.to(socketId).emit('muted', {
@@ -7523,6 +7581,7 @@ io.on('connection', (socket) => {
             if (mutedData) {
                 // 从禁言列表中移除
                 mutedUsers.delete(socketId);
+                db.unmuteUser(mutedData.username); // 模块 5：持久化
                 
                 // 重置该用户的脏话计数
                 swearWordCount.delete(socketId);
@@ -7907,6 +7966,9 @@ io.on('connection', (socket) => {
             };
             
             rooms.set(roomName, newRoom);
+
+            // 持久化到数据库（模块 2）
+            db.saveRoom(newRoom);
             
             // 发送房间列表给管理员
             socket.emit('admin-rooms', Array.from(rooms.values()));
@@ -7953,6 +8015,9 @@ io.on('connection', (socket) => {
                 
                 // 删除房间
                 rooms.delete(roomName);
+
+                // 数据库标记删除（模块 2）
+                db.deleteRoom(roomName);
                 
                 // 发送房间列表给管理员
                 socket.emit('admin-rooms', Array.from(rooms.values()));
@@ -7978,6 +8043,9 @@ io.on('connection', (socket) => {
                 if (updates.settings) {
                     room.settings = { ...room.settings, ...updates.settings };
                 }
+
+                // 持久化到数据库（模块 2）
+                db.saveRoom(room);
                 
                 // 发送房间列表给管理员
                 socket.emit('admin-rooms', Array.from(rooms.values()));
@@ -8447,6 +8515,7 @@ io.on('connection', (socket) => {
                 const room = rooms.get(userRoom);
                 if (room) {
                     room.messages.push(locationMsg);
+                    db.insertMessage(room.roomName, locationMsg);
                     io.to(userRoom).emit('location', locationMsg);
                     console.log(`[位置响应] ${user.username} 响应了位置请求: ${finalLocationName}`);
                 }
@@ -13245,7 +13314,7 @@ io.on('connection', (socket) => {
         
         // 添加好友关系
         friendships.get(socket.id).add(targetSocketId);
-        
+        db.addFriendship(user.username, targetUser.username); // 模块 5：持久化
         // 通知目标用户
         io.to(targetSocketId).emit('friend-request', {
             fromSocketId: socket.id,
@@ -13324,6 +13393,7 @@ io.on('connection', (socket) => {
         // 直接添加双向好友关系
         friendships.get(socket.id).add(targetSocketId);
         friendships.get(targetSocketId).add(socket.id);
+        db.addFriendship(user.username, targetUser.username); // 模块 5：持久化
         
         // 通知双方
         io.to(socket.id).emit('friend-accepted', {
@@ -13362,6 +13432,7 @@ io.on('connection', (socket) => {
             friendships.set(socket.id, new Set());
         }
         friendships.get(socket.id).add(fromSocketId);
+        db.addFriendship(user.username, fromUser.username); // 模块 5：持久化
         
         // 通知双方
         io.to(socket.id).emit('friend-accepted', {
@@ -13426,6 +13497,7 @@ io.on('connection', (socket) => {
         if (friendships.has(friendSocketId)) {
             friendships.get(friendSocketId).delete(socket.id);
         }
+        db.removeFriendship(user.username, friendUser.username); // 模块 5：持久化
         
         // 同时清理可能存在的强制好友记录
         if (adminForcedFriendships.has(socket.id)) {
@@ -13645,6 +13717,9 @@ io.on('connection', (socket) => {
             privateMessages.set(chatId, []);
         }
         privateMessages.get(chatId).push(messageData);
+
+        // 持久化到数据库（模块 5）—— 按用户名 chat_id 跨重启稳定
+        db.insertPrivateMessage(pmChatIdForUsernames(user.username, targetUser.username), messageData);
         
         // 限制私聊消息数量
         if (privateMessages.get(chatId).length > 100) {
@@ -13667,11 +13742,20 @@ io.on('connection', (socket) => {
         
         const chatId = [socket.id, targetSocketId].sort().join('-');
         const messages = privateMessages.get(chatId) || [];
-        
-        socket.emit('private-messages-history', {
-            targetSocketId: targetSocketId,
-            messages: messages
-        });
+
+        // 优先返回数据库中的持久化私聊历史（模块 5，跨重启）；DB 不可用时回退内存
+        const dbChatId = pmChatIdForUsernames(user.username, users.get(targetSocketId)?.username || targetSocketId);
+        (async () => {
+            let history = messages;
+            try {
+                const dbMsgs = await db.getPrivateMessages(dbChatId, 200);
+                if (dbMsgs && dbMsgs.length) history = dbMsgs;
+            } catch (e) {}
+            socket.emit('private-messages-history', {
+                targetSocketId: targetSocketId,
+                messages: history
+            });
+        })();
         
         console.log(`${user.username} 获取与 ${targetSocketId} 的私聊历史消息，共 ${messages.length} 条`);
     });
@@ -13718,6 +13802,9 @@ io.on('connection', (socket) => {
                 privateMessages.set(chatId, []);
             }
             privateMessages.get(chatId).push(messageData);
+
+            // 持久化到数据库（模块 5）—— 管理员私聊按用户名 chat_id
+            db.insertPrivateMessage(pmChatIdForUsernames('admin', targetUser.username), messageData);
             
             // 限制私聊消息数量
             if (privateMessages.get(chatId).length > 100) {
@@ -14021,6 +14108,22 @@ function getRandomColor() {
 }
 
 const PORT = process.env.PORT || 147;
+
+// ── 数据库启动加载（模块 2/5：房间 & 封禁 IP 跨重启恢复）──
+(async () => {
+    await db.init();
+    if (db.isEnabled()) {
+        try {
+            const n = await db.loadAllRooms(rooms);
+            console.log(`[DB] 已从数据库加载 ${n} 个房间（含历史消息）`);
+        } catch (e) { console.error('[DB] 加载房间失败:', e.message); }
+        try {
+            const m = await db.loadBannedIps(bannedIPs);
+            console.log(`[DB] 已从数据库加载 ${m} 个封禁 IP`);
+        } catch (e) { console.error('[DB] 加载封禁IP失败:', e.message); }
+    }
+})();
+
 server.listen(PORT, () => {
     console.log(`\n========================================`);
     console.log(`聊天室服务器已启动`);
