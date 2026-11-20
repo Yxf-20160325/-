@@ -270,6 +270,16 @@
             color: white;
         }
 
+        .platform-badge {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 10px;
+            color: white;
+            font-weight: bold;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
+
         .btn-info {
             background: #17a2b8;
             color: white;
@@ -3872,7 +3882,12 @@
                 return;
             }
 
-            userList.innerHTML = users.map(user => `
+            userList.innerHTML = users.map(user => {
+                const isMiniProgram = user.platform === 'miniprogram' || user.clientType === 'miniprogram' || user.deviceType === 'miniProgram' || user.platform === 'wechat';
+                const platformBadge = isMiniProgram ? '<span class="platform-badge" style="background: #ff9800;">小程序</span>' : '<span class="platform-badge" style="background: #4caf50;">Web</span>';
+                const disabledAttr = isMiniProgram ? ' disabled title="小程序端不支持此功能"' : '';
+                const btnLabel = isMiniProgram ? '查看' : '重命名';
+                return `
                 <div class="user-item">
                     <div style="margin-right: 15px;">
                         <input type="checkbox" class="user-checkbox" value="${user.socketId}" style="width: 18px; height: 18px;">
@@ -3881,27 +3896,28 @@
                         <div class="user-color" style="background: ${user.color}"></div>
                         <div>
                             <div class="user-name">
-                                ${escapeHtml(user.username)}
+                                ${escapeHtml(user.username)} ${platformBadge}
                                 ${user.role === 'superadmin' ? '<span style="color: #ff6b6b; margin-left: 5px;">SU</span>' : ''}
                             </div>
                             <small style="color: #666;">房间: ${escapeHtml(user.roomName || 'main')}</small>
                             <small style="color: #666; margin-left: 10px;">角色: ${user.role || 'user'}</small>
                             <small style="color: #666; margin-left: 10px;">AI: ${user.permissions?.allowAIChat ? '已启用' : '未启用'}</small>
+                            <small style="color: #666; margin-left: 10px;">端: ${isMiniProgram ? '小程序' : 'Web'}</small>
                         </div>
                     </div>
                     <div class="user-actions">
-                        <button class="btn btn-rename" onclick="openRenameModal('${user.socketId}')">重命名</button>
-                        <button class="btn btn-kick" onclick="kickUser('${user.socketId}')">踢出</button>
-                        <button class="btn btn-permissions" onclick="openPermissionsModal('${user.socketId}')">权限</button>
-                        <button class="btn btn-role" onclick="openSetRoleModal('${user.socketId}', '${escapeHtml(user.username)}', '${user.role || 'user'}')">角色</button>
-                        <button class="btn btn-primary" onclick="openSetMaxFriendsModal('${user.socketId}', '${escapeHtml(user.username)}')">好友上限</button>
-                        <button class="btn btn-info" onclick="openPopupModal('${user.socketId}', '${escapeHtml(user.username)}')">弹窗</button>
-                        <button class="btn btn-success" onclick="openChangeTitleModal('${user.socketId}', '${escapeHtml(user.username)}')">更改标题</button>
-                        <button class="btn btn-secondary" onclick="openAiSettingsModal('${user.socketId}', '${escapeHtml(user.username)}')">AI设置</button>
-                        <button class="btn btn-info" onclick="openVibrateModal('${user.socketId}', '${escapeHtml(user.username)}')">震动</button>
+                        <button class="btn btn-rename" onclick="openRenameModal('${user.socketId}')">${btnLabel}</button>
+                        <button class="btn btn-kick" onclick="kickUser('${user.socketId}')"${disabledAttr}>踢出</button>
+                        <button class="btn btn-permissions" onclick="openPermissionsModal('${user.socketId}')"${disabledAttr}>权限</button>
+                        <button class="btn btn-role" onclick="openSetRoleModal('${user.socketId}', '${escapeHtml(user.username)}', '${user.role || 'user'}')${disabledAttr}>角色</button>
+                        <button class="btn btn-primary" onclick="openSetMaxFriendsModal('${user.socketId}', '${escapeHtml(user.username)}')${disabledAttr}>好友上限</button>
+                        <button class="btn btn-info" onclick="openPopupModal('${user.socketId}', '${escapeHtml(user.username)}')${disabledAttr}>弹窗</button>
+                        <button class="btn btn-success" onclick="openChangeTitleModal('${user.socketId}', '${escapeHtml(user.username)}')${disabledAttr}>更改标题</button>
+                        <button class="btn btn-secondary" onclick="openAiSettingsModal('${user.socketId}', '${escapeHtml(user.username)}')${disabledAttr}>AI设置</button>
+                        <button class="btn btn-info" onclick="openVibrateModal('${user.socketId}', '${escapeHtml(user.username)}')${disabledAttr}>震动</button>
                     </div>
                 </div>
-            `).join('');
+            `}).join('');
             
             // 添加复选框点击事件
             document.querySelectorAll('.user-checkbox').forEach(checkbox => {
