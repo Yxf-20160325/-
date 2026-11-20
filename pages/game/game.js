@@ -728,7 +728,8 @@ Page({
       })
     }
     
-    if (data.status === 'finished') {
+    // 服务端猜数字结束状态是 'ended'（其他游戏用 'finished'），两者都兼容
+    if (data.status === 'finished' || data.status === 'ended') {
       const winnerText = data.winnerName === myUsername 
         ? `🎉 恭喜你猜对了！答案是 ${data.targetNumber}` 
         : `🎉 ${data.winnerName} 猜对了！答案是 ${data.targetNumber}`

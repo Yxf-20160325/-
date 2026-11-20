@@ -7062,6 +7062,8 @@ io.on('connection', (socket) => {
             gameId: game.id,
             guesserSocketId: socket.id,
             guesserUsername: user.username,
+            // 兼容前端旧字段（game.js 的 handleGuessResult 读 data.player）
+            player: user.username,
             guess: guessValue,
             result,           // 'low' | 'high' | 'correct'
             guessCounts: game.guessCounts,
@@ -7074,6 +7076,11 @@ io.on('connection', (socket) => {
         [...game.players, ...game.spectators].forEach(pid => {
             io.to(pid).emit('guess-number-update', payload);
         });
+
+        // ===== 若轮到 ai 猜，自动出招 =====
+        if (game.status === 'playing' && game.currentGuesser === PC_SOCKET_ID) {
+            pcMaybeGuessNumber(game.id);
+        }
 
         // 游戏结束时记录历史
         if (game.status === 'ended') {
@@ -8510,6 +8517,84 @@ io.on('connection', (socket) => {
 
         console.warn(`[PC] 不支持的游戏类型: ${gameType}`);
     }
+
+    // ===== PC：猜数字自动出招 =====
+    // 思路：用二分法收敛（lo/hi 从 history 推算），延迟 900ms 后出招，
+    // 出招后广播与服务端 guess-number-guess 相同的 guess-number-update 负载。
+    function pcGuessNumber(gameId) {
+        const game = games.get(gameId);
+        if (!game || game.type !== 'guess-number') return;
+        if (game.status !== 'playing') return;
+        if (game.currentGuesser !== PC_SOCKET_ID) return; // 不是 ai 的回合
+
+        // 只用 ai 自己的历史推算区间（不偷看玩家的猜测结果），保持公平；
+        // 再加入一定随机性，避免 ai 过强——否则玩家几乎必输。
+        let lo = 1, hi = 100;
+        ((game.guesses && game.guesses[PC_SOCKET_ID]) || []).forEach(function (h) {
+            if (h.result === 'low' && h.guess >= lo) lo = h.guess + 1;
+            if (h.result === 'high' && h.guess <= hi) hi = h.guess - 1;
+        });
+        if (lo > hi) { lo = 1; hi = 100; }
+
+        let guess;
+        if (hi - lo > 10 && Math.random() < 0.35) {
+            // 较大区间时有 35% 概率不取中点，降低碾压感
+            guess = lo + Math.floor(Math.random() * (hi - lo + 1));
+        } else {
+            guess = Math.floor((lo + hi) / 2);
+        }
+        if (guess < 1) guess = 1;
+        if (guess > 100) guess = 100;
+
+        const res = makeGuessNumberGuess(gameId, PC_SOCKET_ID, guess);
+        if (!res) {
+            console.warn('[PC] 猜数字出招失败:', gameId);
+            return;
+        }
+        const { game: g, result } = res;
+
+        const payload = {
+            gameId: g.id,
+            guesserSocketId: PC_SOCKET_ID,
+            guesserUsername: PC_USERNAME,
+            // 兼容前端旧字段
+            player: PC_USERNAME,
+            guess: guess,
+            result: result,
+            guessCounts: g.guessCounts,
+            currentGuesser: g.currentGuesser,
+            status: g.status,
+            winner: g.winner,
+            winnerName: g.winner ? (g.winner === PC_SOCKET_ID ? PC_USERNAME : (users.get(g.winner)?.username || '未知')) : null,
+            targetNumber: g.status === 'ended' ? g.secret : undefined
+        };
+
+        [...g.players, ...g.spectators].forEach(function (pid) {
+            io.to(pid).emit('guess-number-update', payload);
+        });
+
+        console.log(`[PC] 猜数字 ${g.id} ai 猜了 ${guess}（区间 ${lo}-${hi}），结果 ${result}`);
+
+        if (g.status === 'ended') {
+            recordGameHistory(g);
+            console.log(`[房间 ${g.roomName}] 猜数字游戏 ${g.id} 结束，ai 猜中 ${guess}`);
+            return;
+        }
+
+        // 若下一回合仍是 ai（理论上不会，但兼容单人场景）
+        if (g.currentGuesser === PC_SOCKET_ID) {
+            setTimeout(function () { pcGuessNumber(g.id); }, 900);
+        }
+    }
+
+    // 若轮到 ai，则自动出招（延迟避免抢在开局包之前）
+    function pcMaybeGuessNumber(gameId) {
+        const g = games.get(gameId);
+        if (!g || g.type !== 'guess-number' || g.status !== 'playing') return;
+        if (g.currentGuesser !== PC_SOCKET_ID) return;
+        setTimeout(function () { pcGuessNumber(gameId); }, 900);
+    }
+
     // ===== PC 虚拟账户 END =====
 
     // 游戏邀请系统数据结构 - 已移至全局作用域
