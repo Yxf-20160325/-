@@ -259,6 +259,17 @@
             background: #5a6268;
         }
 
+        .btn-outline {
+            background: transparent;
+            color: #475569;
+            border: 2px solid #475569;
+        }
+
+        .btn-outline:hover {
+            background: #475569;
+            color: white;
+        }
+
         .btn-info {
             background: #17a2b8;
             color: white;
@@ -8168,6 +8179,85 @@ if (typeof userSettings !== 'undefined') {
                 socket.off('permission-denied', permissionDeniedHandler);
             }, 30000);
         }
+    }
+
+    // 管理员直接进入房间
+    function enterRoom(roomName, password) {
+        if (!confirm('确定要进入房间 "' + roomName + '" 吗？')) {
+            return;
+        }
+
+        socket.emit('admin-enter-room', { roomName: roomName, password: password || null });
+
+        const enterSuccessHandler = (data) => {
+            alert('进入房间成功: ' + data.message);
+            loadRooms();
+            socket.off('admin-enter-room-success', enterSuccessHandler);
+        };
+
+        const enterErrorHandler = (error) => {
+            alert('进入房间失败: ' + (error.message || '未知错误'));
+            socket.off('admin-enter-room-error', enterErrorHandler);
+        };
+
+        socket.on('admin-enter-room-success', enterSuccessHandler);
+        socket.on('admin-enter-room-error', enterErrorHandler);
+
+        setTimeout(() => {
+            socket.off('admin-enter-room-success', enterSuccessHandler);
+            socket.off('admin-enter-room-error', enterErrorHandler);
+        }, 30000);
+    }
+
+    // 批量加入房间 - 弹出提示
+    function batchJoinRoomsPrompt() {
+        const roomNames = prompt('请输入房间名，多个房间用逗号分隔：', '');
+        if (!roomNames || !roomNames.trim()) {
+            return;
+        }
+
+        const names = roomNames.split(',').map(n => n.trim()).filter(Boolean);
+        if (names.length === 0) {
+            return;
+        }
+
+        if (confirm('确定要批量加入以下 ' + names.length + ' 个房间吗？
+' + names.join('
+'))) {
+            batchJoinRooms(names);
+        }
+    }
+
+    // 批量加入房间 - 执行
+    function batchJoinRooms(roomNames) {
+        let successCount = 0;
+        let failCount = 0;
+
+        roomNames.forEach((roomName, index) => {
+            setTimeout(() => {
+                socket.emit('admin-join-room', { roomName: roomName, password: null });
+
+                const successHandler = (data) => {
+                    successCount++;
+                    console.log('批量加入成功:', roomName, data.message);
+                };
+
+                const errorHandler = (error) => {
+                    failCount++;
+                    console.warn('批量加入失败:', roomName, error.message);
+                };
+
+                socket.once('admin-join-room-success', successHandler);
+                socket.once('admin-join-room-error', errorHandler);
+
+                if (index === roomNames.length - 1) {
+                    setTimeout(() => {
+                        alert('批量加入完成：成功 ' + successCount + ' 个，失败 ' + failCount + ' 个');
+                        loadRooms();
+                    }, 2000);
+                }
+            }, index * 500);
+        });
     }
 
     // 监听投票相关事件
