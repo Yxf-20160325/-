@@ -109,6 +109,35 @@ Page({
     },
     showInteractiveCenter: false,
     onlineUsers: [],
+    avatarUrl: '',
+    showOnlineUsers: false,
+    showFileDownload: true,
+    showImagePreview: true,
+    showTimestamps: true,
+    showAudioPlayer: false,
+    notification: {
+      show: false,
+      senderName: '',
+      content: '',
+      avatarUrl: ''
+    },
+    showUploadModal: false,
+    uploadingFilename: '',
+    uploadProgress: 0,
+    uploadStatus: '准备上传...',
+    showDownloadModal: false,
+    downloadingFilename: '',
+    downloadProgress: 0,
+    downloadStatus: '准备下载...',
+    showPollDetail: false,
+    selectedPoll: null,
+    pollSelectedOptions: [],
+    hasVoted: false,
+    votedPolls: [],
+    activeGames: [],
+    gameInvitations: [],
+    gameHistory: [],
+    joinGameId: '',
     onlineUsersLoaded: false,
     devLogs: [],
     showLogsPanel: false,
@@ -749,6 +778,84 @@ Page({
             }
           } else if (event === 'online-users') {
             that.setData({ onlineUsers: Array.isArray(msg) ? msg : [], onlineUsersLoaded: true })
+          } else if (event === 'active-games') {
+            that.setData({ activeGames: Array.isArray(msg) ? msg : [] })
+          } else if (event === 'game-invitations') {
+            var gameNames = {
+              rps: '剪刀石头布',
+              gomoku: '五子棋',
+              'guess-number': '猜数字',
+              bomb: '数字炸弹',
+              pictionary: '你画我猜',
+              typing: '打字对战',
+              go: '围棋',
+              snake: '贪吃蛇'
+            }
+            var invList = (Array.isArray(msg) ? msg : []).map(function (inv) {
+              var copy = Object.assign({}, inv)
+              copy.gameName = gameNames[inv.gameType] || inv.gameType
+              return copy
+            })
+            that.setData({ gameInvitations: invList })
+          } else if (event === 'game-invitation') {
+            var existingInv = that.data.gameInvitations || []
+            var mergedInv = existingInv.concat([msg])
+            that.setData({ gameInvitations: mergedInv })
+            if (msg && msg.fromUsername) {
+              that.showNotification(msg.fromUsername, '🎮 邀请你玩「' + (msg.gameType || '游戏') + '」')
+            }
+          } else if (event === 'game-history') {
+            var typeNames = {
+              gomoku: '♟️ 五子棋',
+              rps: '✊ 剪刀石头布',
+              'guess-number': '🔢 猜数字',
+              bomb: '💣 数字炸弹',
+              pictionary: '🎨 你画我猜',
+              typing: '⌨️ 打字对战',
+              go: '⚫ 围棋',
+              snake: '🐍 贪吃蛇'
+            }
+            var curName = that.data.username
+            var histList = (Array.isArray(msg) ? msg : []).map(function (g) {
+              var isWin = g.winnerName === curName
+              var resultText = g.winnerName
+                ? (isWin ? '🎉 你获胜了' : '😢 ' + g.winnerName + ' 获胜')
+                : '🤝 平局'
+              var dt = g.endTime ? new Date(g.endTime) : new Date()
+              var timeStr = (dt.getMonth() + 1) + '/' + dt.getDate() + ' ' +
+                that.format8(dt.getHours()) + ':' + that.format8(dt.getMinutes())
+              return {
+                id: g.id,
+                gameType: g.type,
+                gameTypeName: typeNames[g.type] || g.type,
+                resultText: resultText,
+                time: timeStr,
+                winnerName: g.winnerName
+              }
+            })
+            that.setData({ gameHistory: histList })
+          } else if (event === 'kicked') {
+            var kickMsg = typeof msg === 'string' ? msg : ((msg && msg.message) || '你已被踢出聊天室')
+            that.setData({ kicked: true, connected: false, connecting: false })
+            wx.showModal({
+              title: '已被踢出',
+              content: kickMsg,
+              showCancel: false,
+              confirmText: '确定',
+              success: function () { wx.navigateBack() }
+            })
+          } else if (event === 'muted-error' || event === 'message-error' || event === 'permission-denied') {
+            var errText = (msg && msg.message) || '操作被拒绝'
+            wx.showToast({ title: errText, icon: 'none' })
+          } else if (event === 'join-error') {
+            var joinErr = (msg && msg.message) || '加入房间失败'
+            that.isInitializingSocket = false
+            wx.showModal({
+              title: '加入失败',
+              content: joinErr,
+              showCancel: false,
+              confirmText: '确定'
+            })
           }
         } catch(e) {
           console.error('解析消息失败', e)
@@ -936,4 +1043,740 @@ Page({
       confirmColor: '#576B95'
     })
   },
+
+  // ==================== 通用辅助 ====================
+
+  format8(n) {
+    n = n.toString()
+    return n[1] ? n : '0' + n
+  },
+
+  formatTime(date) {
+    var year = date.getFullYear()
+    var month = date.getMonth() + 1
+    var day = date.getDate()
+    var hour = date.getHours()
+    var minute = date.getMinutes()
+    var second = date.getSeconds()
+    return year + '/' + this.format8(month) + '/' + this.format8(day) + ' ' +
+      this.format8(hour) + ':' + this.format8(minute) + ':' + this.format8(second)
+  },
+
+  formatFileSize(bytes) {
+    if (!bytes || bytes === 0) return '0 B'
+    var k = 1024
+    var sizes = ['B', 'KB', 'MB', 'GB']
+    var i = Math.floor(Math.log(bytes) / Math.log(k))
+    if (i >= sizes.length) i = sizes.length - 1
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  },
+
+  formatAudioTime(seconds) {
+    if (!seconds || isNaN(seconds)) return '0:00'
+    var m = Math.floor(seconds / 60)
+    var s = Math.floor(seconds % 60)
+    return m + ':' + this.format8(s)
+  },
+
+  formatAudioDuration(seconds) {
+    return this.formatAudioTime(seconds)
+  },
+
+  getAudioStatus(id) {
+    var audios = this.data.playingAudios || []
+    var found = audios.find(function (a) { return a.id === id })
+    if (!found) return '▶️'
+    return found.status === 'playing' ? '⏸️' : '▶️'
+  },
+
+  getPercentage(votes, total) {
+    if (!total || total === 0) return 0
+    return Math.round((votes / total) * 100)
+  },
+
+  // ==================== 导航 / 通知 ====================
+
+  goBack() {
+    wx.navigateBack({ delta: 1 })
+  },
+
+  onTapNotification() {
+    if (!this.data.notification || !this.data.notification.show) return
+    this.setData({ 'notification.show': false })
+    wx.pageScrollTo({ scrollTop: 0, duration: 300 })
+  },
+
+  hideNotification() {
+    if (this.notificationTimer) {
+      clearTimeout(this.notificationTimer)
+      this.notificationTimer = null
+    }
+    this.setData({ 'notification.show': false })
+  },
+
+  showNotification(senderName, content, avatarUrl) {
+    var that = this
+    if (!that.data.notification) {
+      return
+    }
+    that.setData({
+      notification: {
+        show: true,
+        senderName: senderName || '',
+        content: content || '',
+        avatarUrl: avatarUrl || ''
+      }
+    })
+    if (that.notificationTimer) clearTimeout(that.notificationTimer)
+    that.notificationTimer = setTimeout(function () {
+      that.hideNotification()
+    }, 3000)
+  },
+
+  // ==================== 上传 / 下载面板 ====================
+
+  toggleUploadPanel() {
+    this.setData({ showUploadPanel: !this.data.showUploadPanel })
+  },
+
+  hideUploadPanel() {
+    this.setData({ showUploadPanel: false })
+  },
+
+  toggleDownloadPanel() {
+    this.setData({ showDownloadPanel: !this.data.showDownloadPanel })
+  },
+
+  hideDownloadPanel() {
+    this.setData({ showDownloadPanel: false })
+  },
+
+  addUpload(task) {
+    var uploads = (this.data.uploads || []).filter(function (u) { return u.id !== task.id })
+    uploads.push({ id: task.id, filename: task.filename || '', type: task.type || 'file', progress: 0, status: '上传中' })
+    this.setData({ uploads: uploads })
+  },
+
+  updateUploadProgress(id, progress) {
+    var uploads = (this.data.uploads || []).map(function (u) {
+      if (u.id !== id) return u
+      return Object.assign({}, u, { progress: progress, status: progress >= 100 ? '上传完成' : '上传中' })
+    })
+    this.setData({ uploads: uploads })
+  },
+
+  completeUpload(id, success) {
+    var that = this
+    var uploads = (that.data.uploads || []).map(function (u) {
+      if (u.id !== id) return u
+      return Object.assign({}, u, {
+        progress: success ? 100 : 0,
+        status: success ? '上传完成' : '上传失败'
+      })
+    })
+    that.setData({ uploads: uploads })
+    if (success) {
+      setTimeout(function () {
+        var left = (that.data.uploads || []).filter(function (u) { return u.id !== id })
+        that.setData({ uploads: left })
+      }, 2000)
+    }
+  },
+
+  cancelUpload(e) {
+    var id = e && e.currentTarget && e.currentTarget.dataset ? e.currentTarget.dataset.id : e
+    var task = this.data.uploadTask
+    if (task && !id) {
+      try { task.abort() } catch (err) { console.warn('中止上传失败:', err) }
+      this.setData({ uploadTask: null })
+    }
+    if (id) {
+      var uploads = (this.data.uploads || []).filter(function (u) { return u.id !== id })
+      this.setData({ uploads: uploads })
+    }
+    this.setData({ cancelledUploadId: id || null })
+  },
+
+  hideUploadModal() {
+    this.setData({
+      showUploadModal: false,
+      uploadingFilename: '',
+      uploadProgress: 0,
+      uploadStatus: '准备上传...'
+    })
+  },
+
+  addDownload(task) {
+    var downloads = (this.data.downloads || []).filter(function (d) { return d.id !== task.id })
+    downloads.push({ id: task.id, filename: task.filename || '', type: task.type || 'file', url: task.url || '', progress: 0, status: '下载中' })
+    this.setData({ downloads: downloads })
+  },
+
+  updateDownloadProgress(id, progress) {
+    var downloads = (this.data.downloads || []).map(function (d) {
+      if (d.id !== id) return d
+      return Object.assign({}, d, { progress: progress, status: progress >= 100 ? '下载完成' : '下载中' })
+    })
+    this.setData({ downloads: downloads })
+  },
+
+  completeDownload(id, success) {
+    var that = this
+    var downloads = (that.data.downloads || []).map(function (d) {
+      if (d.id !== id) return d
+      return Object.assign({}, d, {
+        progress: success ? 100 : 0,
+        status: success ? '下载完成' : '下载失败'
+      })
+    })
+    that.setData({ downloads: downloads })
+    if (success) {
+      setTimeout(function () {
+        var left = (that.data.downloads || []).filter(function (d) { return d.id !== id })
+        that.setData({ downloads: left })
+      }, 2000)
+    }
+  },
+
+  cancelDownload(e) {
+    var id = e && e.currentTarget && e.currentTarget.dataset ? e.currentTarget.dataset.id : e
+    if (id && this.downloadTasks && this.downloadTasks[id]) {
+      try { this.downloadTasks[id].abort() } catch (err) { console.warn('中止下载失败:', err) }
+      delete this.downloadTasks[id]
+    }
+    var downloads = (this.data.downloads || []).filter(function (d) { return d.id !== id })
+    this.setData({ downloads: downloads })
+  },
+
+  cancelDownloadModal() {
+    var id = this.data.currentDownloadId
+    if (id && this.downloadTasks && this.downloadTasks[id]) {
+      try { this.downloadTasks[id].abort() } catch (err) { console.warn('中止下载失败:', err) }
+      delete this.downloadTasks[id]
+    }
+    var downloads = (this.data.downloads || []).filter(function (d) { return d.id !== id })
+    this.setData({
+      downloads: downloads,
+      showDownloadModal: false,
+      downloadingFilename: '',
+      downloadProgress: 0,
+      downloadStatus: '准备下载...',
+      currentDownloadId: ''
+    })
+  },
+
+  hideDownloadModal() {
+    this.setData({
+      showDownloadModal: false,
+      downloadingFilename: '',
+      downloadProgress: 0,
+      downloadStatus: '准备下载...'
+    })
+  },
+
+  // ==================== 媒体预览 / 播放 ====================
+
+  previewImage(e) {
+    var url = e && e.currentTarget ? e.currentTarget.dataset.url : e
+    if (!url) return
+    wx.previewImage({ urls: [url], current: url })
+  },
+
+  onImageError(e) {
+    console.warn('图片加载失败:', e && e.detail ? e.detail : e)
+  },
+
+  downloadFile(e) {
+    var ds = e && e.currentTarget ? e.currentTarget.dataset : {}
+    var fileUrl = ds.url
+    var filename = ds.filename || ''
+    var allowDownload = ds.allowdownload !== false
+
+    if (allowDownload === false) {
+      wx.showModal({ title: '提示', content: '该文件不允许下载', showCancel: false, confirmText: '确定' })
+      return
+    }
+    if (!fileUrl) {
+      wx.showModal({ title: '提示', content: '文件链接无效', showCancel: false, confirmText: '确定' })
+      return
+    }
+    if (!/^https?:/.test(fileUrl)) {
+      wx.showModal({ title: '提示', content: '文件链接格式不正确', showCancel: false, confirmText: '确定' })
+      return
+    }
+
+    var ext = filename ? filename.toLowerCase().substring(filename.lastIndexOf('.')) : ''
+    var imageTypes = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']
+    var audioTypes = ['.mp3', '.wav', '.ogg', '.aac', '.m4a']
+    var videoTypes = ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm']
+
+    if (imageTypes.indexOf(ext) >= 0) {
+      wx.previewImage({ urls: [fileUrl], current: fileUrl })
+      return
+    }
+    if (videoTypes.indexOf(ext) >= 0) {
+      this.setData({ videoSrc: fileUrl, showVideoPlayer: true })
+      return
+    }
+    if (audioTypes.indexOf(ext) >= 0) {
+      this.playRemoteAudio(fileUrl, filename)
+      return
+    }
+    this.openDocument(fileUrl, filename)
+  },
+
+  openDocument(fileUrl, filename) {
+    var that = this
+    wx.showLoading({ title: '准备预览...' })
+    var downloadId = 'download_' + Date.now()
+    if (!that.downloadTasks) that.downloadTasks = {}
+    var task = wx.downloadFile({
+      url: fileUrl,
+      success: function (res) {
+        wx.hideLoading()
+        if (res.statusCode === 200) {
+          wx.openDocument({
+            filePath: res.tempFilePath,
+            showMenu: true,
+            success: function () { console.log('文档打开成功') },
+            fail: function (err) {
+              console.error('文档打开失败:', err)
+              wx.showToast({ title: '无法预览此文件', icon: 'none' })
+            }
+          })
+        } else {
+          wx.showToast({ title: '下载失败', icon: 'none' })
+        }
+        delete that.downloadTasks[downloadId]
+      },
+      fail: function (err) {
+        wx.hideLoading()
+        console.error('下载文档失败:', err)
+        wx.showToast({ title: '下载失败', icon: 'none' })
+        delete that.downloadTasks[downloadId]
+      }
+    })
+    that.downloadTasks[downloadId] = task
+  },
+
+  playRemoteAudio(url, filename) {
+    var that = this
+    var audioId = 'remote_' + Date.now()
+    var ctx = wx.createInnerAudioContext()
+    ctx.src = url
+    var list = (that.data.playingAudios || []).slice()
+    list.push({
+      id: audioId,
+      filename: filename || '音频',
+      audioUrl: url,
+      status: 'playing',
+      duration: 0,
+      currentTime: 0
+    })
+    that.setData({ playingAudios: list, showAudioPlayer: true })
+    that.data.audioContexts = that.data.audioContexts || {}
+    that.data.audioContexts[audioId] = ctx
+    ctx.onPlay(function () { console.log('音频开始播放:', audioId) })
+    ctx.onEnded(function () {
+      var updated = (that.data.playingAudios || []).map(function (a) {
+        if (a.id !== audioId) return a
+        return Object.assign({}, a, { status: 'stopped' })
+      })
+      that.setData({ playingAudios: updated })
+    })
+    ctx.onError(function (err) {
+      console.error('音频播放失败:', err)
+      wx.showToast({ title: '音频播放失败', icon: 'none' })
+    })
+    ctx.play()
+  },
+
+  playAudio(e) {
+    var url = e && e.currentTarget ? e.currentTarget.dataset.url : ''
+    if (!url) {
+      wx.showToast({ title: '音频链接无效', icon: 'none' })
+      return
+    }
+    this.playRemoteAudio(url, '音频')
+  },
+
+  toggleAudioPlay(e) {
+    var id = e && e.currentTarget ? e.currentTarget.dataset.id : e
+    var audios = this.data.playingAudios || []
+    var ctx = this.data.audioContexts ? this.data.audioContexts[id] : null
+    var target = audios.find(function (a) { return a.id === id })
+    if (!target) return
+    if (target.status === 'playing') {
+      if (ctx) { try { ctx.pause() } catch (err) {} }
+      var paused = audios.map(function (a) {
+        if (a.id !== id) return a
+        return Object.assign({}, a, { status: 'paused' })
+      })
+      this.setData({ playingAudios: paused })
+    } else {
+      if (ctx) { try { ctx.play() } catch (err) {} }
+      var played = audios.map(function (a) {
+        if (a.id !== id) return a
+        return Object.assign({}, a, { status: 'playing' })
+      })
+      this.setData({ playingAudios: played })
+    }
+  },
+
+  stopAudio(e) {
+    var id = e && e.currentTarget ? e.currentTarget.dataset.id : e
+    var ctx = this.data.audioContexts ? this.data.audioContexts[id] : null
+    if (ctx) {
+      try { ctx.stop() } catch (err) {}
+      try { ctx.destroy() } catch (err) {}
+      delete this.data.audioContexts[id]
+    }
+    var left = (this.data.playingAudios || []).filter(function (a) { return a.id !== id })
+    this.setData({ playingAudios: left, showAudioPlayer: left.length > 0 })
+  },
+
+  seekAudio(e) {
+    var ds = e && e.currentTarget ? e.currentTarget.dataset : {}
+    var id = ds.id
+    var audios = this.data.playingAudios || []
+    var target = audios.find(function (a) { return a.id === id })
+    if (!target || !target.duration) return
+    var ctx = this.data.audioContexts ? this.data.audioContexts[id] : null
+    if (!ctx) return
+    var ratio = ds.ratio || 0
+    try { ctx.seek(ratio * target.duration) } catch (err) { console.warn('跳转失败:', err) }
+  },
+
+  // ==================== 视频播放 ====================
+
+  closeVideoPlayer() {
+    this.setData({ showVideoPlayer: false, videoSrc: '' })
+  },
+
+  onVideoContentTap() {
+    // 阻止点击事件冒泡到遮罩层
+  },
+
+  onVideoError(e) {
+    console.error('视频播放失败:', e && e.detail ? e.detail : e)
+    wx.showToast({ title: '视频播放失败', icon: 'none' })
+    this.setData({ showVideoPlayer: false })
+  },
+
+  // ==================== 定位 ====================
+
+  openLocation(e) {
+    var ds = e && e.currentTarget ? e.currentTarget.dataset : {}
+    var lat = parseFloat(ds.lat)
+    var lng = parseFloat(ds.lng)
+    var address = ds.address || ''
+    if (isNaN(lat) || isNaN(lng)) {
+      wx.showToast({ title: '位置信息无效', icon: 'none' })
+      return
+    }
+    wx.openLocation({
+      latitude: lat,
+      longitude: lng,
+      name: address || '位置',
+      address: address,
+      scale: 18
+    })
+  },
+
+  // ==================== 投票 ====================
+
+  openPollDetail(e) {
+    var ds = e && e.currentTarget ? e.currentTarget.dataset : {}
+    var poll = ds.poll || null
+    if (!poll) return
+    this.setData({
+      showPollDetail: true,
+      selectedPoll: poll,
+      pollSelectedOptions: [],
+      hasVoted: (this.data.votedPolls || []).indexOf(poll.id) >= 0
+    })
+  },
+
+  closePollDetail() {
+    this.setData({ showPollDetail: false, pollSelectedOptions: [] })
+  },
+
+  selectPollOption(e) {
+    var index = e && e.currentTarget ? Number(e.currentTarget.dataset.index) : -1
+    var poll = this.data.selectedPoll
+    if (!poll || index < 0) return
+    if (this.data.hasVoted) {
+      wx.showToast({ title: '您已投过票', icon: 'none' })
+      return
+    }
+    var selected = (this.data.pollSelectedOptions || []).slice()
+    if (poll.multiple) {
+      var pos = selected.indexOf(index)
+      if (pos >= 0) {
+        selected.splice(pos, 1)
+      } else {
+        selected.push(index)
+      }
+    } else {
+      selected = [index]
+    }
+    this.setData({ pollSelectedOptions: selected })
+  },
+
+  submitPollVote() {
+    var that = this
+    var poll = that.data.selectedPoll
+    var selected = that.data.pollSelectedOptions || []
+    if (!poll) return
+    if (selected.length === 0) {
+      wx.showToast({ title: '请先选择选项', icon: 'none' })
+      return
+    }
+    if (!that.data.connected || !that.socket || that.socket.readyState !== 1) {
+      wx.showToast({ title: '未连接，无法投票', icon: 'none' })
+      return
+    }
+    var payload = JSON.stringify({ pollId: poll.id, options: selected })
+    that.socket.send({ data: '42["poll-vote",' + payload + ']' })
+
+    var voted = (that.data.votedPolls || []).slice()
+    if (voted.indexOf(poll.id) < 0) voted.push(poll.id)
+
+    var updatedPoll = Object.assign({}, poll)
+    updatedPoll.options = (poll.options || []).map(function (opt, i) {
+      if (selected.indexOf(i) < 0) return opt
+      return Object.assign({}, opt, { votes: (opt.votes || 0) + 1 })
+    })
+    updatedPoll.totalVotes = updatedPoll.options.reduce(function (sum, o) {
+      return sum + (o.votes || 0)
+    }, 0)
+
+    that.setData({
+      selectedPoll: updatedPoll,
+      hasVoted: true,
+      votedPolls: voted
+    })
+    wx.showToast({ title: '投票成功', icon: 'success' })
+  },
+
+  // ==================== 游戏 / 互动中心 ====================
+
+  inviteUserToGame(e) {
+    var ds = e && e.currentTarget ? e.currentTarget.dataset : {}
+    var userId = ds.userId
+    var username = ds.username || ''
+    var isAI = username === 'ai' || userId === 'pc-bot-virtual-socket'
+
+    var gameList = isAI
+      ? ['✊ 剪刀石头布', '♟️ 五子棋', '🔢 猜数字', '💣 数字炸弹']
+      : ['✊ 剪刀石头布', '♟️ 五子棋', '🔢 猜数字', '💣 数字炸弹', '🎨 你画我猜', '⌨️ 打字对战']
+    var gameTypes = isAI
+      ? ['rps', 'gomoku', 'guess-number', 'bomb']
+      : ['rps', 'gomoku', 'guess-number', 'bomb', 'pictionary', 'typing']
+
+    var that = this
+    wx.showActionSheet({
+      itemList: gameList,
+      success: function (res) {
+        var gameType = gameTypes[res.tapIndex]
+        that.sendGameInvitation(gameType, userId, username)
+      },
+      fail: function (err) {
+        console.log('取消选择游戏:', err)
+      }
+    })
+  },
+
+  sendGameInvitation(gameType, userId, username) {
+    if (!this.data.connected || !this.socket || this.socket.readyState !== 1) {
+      wx.showToast({ title: '未连接，无法发送邀请', icon: 'none' })
+      return
+    }
+    var payload = JSON.stringify({ userId: userId, gameType: gameType })
+    this.socket.send({ data: '42["send-game-invitation",' + payload + ']' })
+    wx.showToast({ title: '已邀请 ' + username + ' 玩' + gameType, icon: 'none' })
+  },
+
+  acceptGameInvitation(e) {
+    var id = e && e.currentTarget ? e.currentTarget.dataset.id : ''
+    if (!id) return
+    if (!this.data.connected || !this.socket || this.socket.readyState !== 1) {
+      wx.showToast({ title: '未连接，无法接受邀请', icon: 'none' })
+      return
+    }
+    var payload = JSON.stringify({ invitationId: id, accept: true })
+    this.socket.send({ data: '42["respond-game-invitation",' + payload + ']' })
+    var left = (this.data.gameInvitations || []).filter(function (inv) { return inv.id !== id })
+    this.setData({ gameInvitations: left })
+  },
+
+  rejectGameInvitation(e) {
+    var id = e && e.currentTarget ? e.currentTarget.dataset.id : ''
+    if (!id) return
+    if (!this.data.connected || !this.socket || this.socket.readyState !== 1) {
+      wx.showToast({ title: '未连接，无法拒绝邀请', icon: 'none' })
+      return
+    }
+    var payload = JSON.stringify({ invitationId: id, accept: false })
+    this.socket.send({ data: '42["respond-game-invitation",' + payload + ']' })
+    var left = (this.data.gameInvitations || []).filter(function (inv) { return inv.id !== id })
+    this.setData({ gameInvitations: left })
+  },
+
+  refreshActiveGames() {
+    if (!this.data.connected || !this.socket || this.socket.readyState !== 1) {
+      wx.showToast({ title: '未连接，无法刷新', icon: 'none' })
+      return
+    }
+    this.socket.send({ data: '42["get-active-games",{}]' })
+    wx.showToast({ title: '已刷新', icon: 'none' })
+  },
+
+  bindJoinGameIdInput(e) {
+    this.setData({ joinGameId: e.detail.value })
+  },
+
+  joinGameById() {
+    var gameId = (this.data.joinGameId || '').trim()
+    if (!gameId) {
+      wx.showToast({ title: '请输入游戏ID', icon: 'none' })
+      return
+    }
+    this.joinGameByIdInternal(gameId)
+  },
+
+  joinGame(e) {
+    var id = e && e.currentTarget ? e.currentTarget.dataset.id : ''
+    if (!id) return
+    this.joinGameByIdInternal(id)
+  },
+
+  joinGameByIdInternal(gameId) {
+    if (!this.data.connected || !this.socket || this.socket.readyState !== 1) {
+      wx.showToast({ title: '未连接，无法加入', icon: 'none' })
+      return
+    }
+    var payload = JSON.stringify({ gameId: gameId })
+    this.socket.send({ data: '42["join-game",' + payload + ']' })
+    wx.showToast({ title: '正在加入游戏', icon: 'none' })
+  },
+
+  toggleOnlineUsers() {
+    this.setData({ showOnlineUsers: !this.data.showOnlineUsers })
+  },
+
+  // ==================== 补充依赖方法 ====================
+
+  uploadAvatarToServer(tempFilePath) {
+    var that = this
+    if (!tempFilePath) return
+    wx.uploadFile({
+      url: that.getServerUrl() + '/upload',
+      filePath: tempFilePath,
+      name: 'file',
+      formData: {
+        type: 'image',
+        username: that.data.username,
+        roomName: that.data.roomName
+      },
+      success: function (res) {
+        try {
+          var data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data
+          var raw = data.url || data.fileUrl || (data.data && data.data.url) || ''
+          if (!raw) {
+            console.warn('头像上传响应无 URL:', data)
+            return
+          }
+          var url = raw
+          if (!/^https?:/.test(url)) {
+            url = raw.charAt(0) === '/' ? that.getServerUrl() + raw : that.getServerUrl() + '/' + raw
+          }
+          that.setData({ avatarUrl: url })
+          wx.setStorageSync('avatarUrl', url)
+        } catch (e) {
+          console.error('解析头像上传响应失败:', e)
+        }
+      },
+      fail: function (err) {
+        console.error('头像上传失败:', err)
+      }
+    })
+  },
+
+  doDownloadFile(url, filename, progress, type) {
+    var that = this
+    var downloadId = 'download_' + Date.now()
+    if (!that.downloadTasks) that.downloadTasks = {}
+    that.addDownload({ id: downloadId, filename: filename, type: type || 'file', url: url })
+    that.setData({
+      showDownloadModal: true,
+      downloadingFilename: filename,
+      downloadStatus: '下载中...',
+      downloadProgress: progress || 0,
+      currentDownloadId: downloadId
+    })
+    var task = wx.downloadFile({
+      url: url,
+      success: function (res) {
+        if (res.statusCode !== 200) {
+          that.completeDownload(downloadId, false)
+          that.setData({ downloadStatus: '下载失败' })
+          wx.showToast({ title: '下载失败', icon: 'none' })
+          return
+        }
+        that.completeDownload(downloadId, true)
+        that.setData({ downloadProgress: 100, downloadStatus: '下载完成' })
+        wx.showToast({ title: '下载完成', icon: 'success' })
+        var savedPath = res.tempFilePath
+        if (/^audio/.test(type || '') || /\.(mp3|wav|ogg|aac|m4a)$/i.test(filename || '')) {
+          that.playRemoteAudio(savedPath, filename)
+          return
+        }
+        wx.openDocument({
+          filePath: savedPath,
+          showMenu: true,
+          fail: function (err) {
+            console.warn('文档打开失败:', err)
+            wx.showToast({ title: '已保存到临时目录', icon: 'none' })
+          }
+        })
+        delete that.downloadTasks[downloadId]
+      },
+      fail: function (err) {
+        console.error('下载失败:', err)
+        that.completeDownload(downloadId, false)
+        that.setData({ downloadStatus: '下载失败' })
+        wx.showToast({ title: '下载失败', icon: 'none' })
+        delete that.downloadTasks[downloadId]
+      }
+    })
+    that.downloadTasks[downloadId] = task
+    if (task && task.onProgressUpdate) {
+      task.onProgressUpdate(function (res) {
+        that.updateDownloadProgress(downloadId, res.progress)
+        that.setData({ downloadProgress: res.progress })
+      })
+    }
+    return downloadId
+  },
+
+  showDevActions() {
+    var that = this
+    wx.showActionSheet({
+      itemList: ['📋 查看所有日志', '🔧 元素状态', '📤 导出日志'],
+      success: function (res) {
+        if (res.tapIndex === 0) that.showAllLogs()
+        else if (res.tapIndex === 1) that.showElementStatus()
+        else if (res.tapIndex === 2) that.exportLogs()
+      },
+      fail: function (err) {
+        console.log('取消开发操作:', err)
+      }
+    })
+  },
+
+
+
+
+
 })
