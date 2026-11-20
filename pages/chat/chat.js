@@ -1628,7 +1628,21 @@ Page({
       itemList: gameList,
       success: function (res) {
         var gameType = gameTypes[res.tapIndex]
-        that.sendGameInvitation(gameType, userId, username)
+        if (!isAI) {
+          that.sendGameInvitation(gameType, userId, username)
+          return
+        }
+        // 与 AI 对战时，先选难度
+        wx.showActionSheet({
+          itemList: ['😊 休闲（AI 会失误）', '😈 困难（AI 全力以赴）'],
+          success: function (r2) {
+            var difficulty = r2.tapIndex === 1 ? 'hard' : 'easy'
+            that.sendGameInvitation(gameType, userId, username, difficulty)
+          },
+          fail: function () {
+            console.log('取消选择难度')
+          }
+        })
       },
       fail: function (err) {
         console.log('取消选择游戏:', err)
@@ -1636,14 +1650,19 @@ Page({
     })
   },
 
-  sendGameInvitation(gameType, userId, username) {
+  sendGameInvitation(gameType, userId, username, difficulty) {
     if (!this.data.connected || !this.isSocketReady()) {
       wx.showToast({ title: '未连接，无法发送邀请', icon: 'none' })
       return
     }
-    var payload = JSON.stringify({ userId: userId, gameType: gameType })
+    var inv = { userId: userId, gameType: gameType }
+    // 仅与 AI 对战时携带难度，真人邀请无此概念
+    if (difficulty) inv.difficulty = difficulty
+    var payload = JSON.stringify(inv)
     this.socket.send({ data: '42["send-game-invitation",' + payload + ']' })
-    wx.showToast({ title: '已邀请 ' + username + ' 玩' + gameType, icon: 'none' })
+    var diffText = difficulty === 'hard' ? '困难' : (difficulty === 'easy' ? '休闲' : '')
+    var toast = '已邀请 ' + username + (diffText ? ' ' + diffText + ' 难度' : '')
+    wx.showToast({ title: toast, icon: 'none' })
   },
 
   acceptGameInvitation(e) {

@@ -8429,7 +8429,9 @@ io.on('connection', (socket) => {
 
     // 互动中心事件处理
     // ===== PC 虚拟账户：创建并开始游戏 =====
-    function pcCreateAndStartGame(playerSocketId, user, gameType) {
+    function pcCreateAndStartGame(playerSocketId, user, gameType, difficulty) {
+        // 难度：easy（休闲，AI 会失误） / hard（困难，AI 全力以赴）
+        const level = difficulty === 'hard' ? 'hard' : 'easy';
         const pcCreator = { username: PC_USERNAME, socketId: PC_SOCKET_ID };
 
         if (gameType === 'gomoku') {
@@ -8460,6 +8462,7 @@ io.on('connection', (socket) => {
             const updatedGame = joinGuessNumberGame(game.id, playerSocketId);
             if (!updatedGame) return;
             updatedGame.currentGuesser = playerSocketId; // 玩家先猜
+            updatedGame.difficulty = level; // 记录难度，pcGuessNumber 据此调整策略
             games.set(updatedGame.id, updatedGame);
             io.to(playerSocketId).emit('guess-number-start', {
                 gameId: updatedGame.id,
@@ -8527,18 +8530,35 @@ io.on('connection', (socket) => {
         if (game.status !== 'playing') return;
         if (game.currentGuesser !== PC_SOCKET_ID) return; // 不是 ai 的回合
 
-        // 只用 ai 自己的历史推算区间（不偷看玩家的猜测结果），保持公平；
-        // 再加入一定随机性，避免 ai 过强——否则玩家几乎必输。
+        // 秘密数字是双方共享的，因此对手猜出的 low/high 本身就是公开线索。
+        // 难度差异就体现在对这些线索的利用程度：
+        //   hard — 整合双方所有线索，收敛最快（真正“全力以赴”）
+        //   easy — 只看自己，且经常不取中点（会失误）
+        const isHard = game.difficulty === 'hard';
+
         let lo = 1, hi = 100;
-        ((game.guesses && game.guesses[PC_SOCKET_ID]) || []).forEach(function (h) {
-            if (h.result === 'low' && h.guess >= lo) lo = h.guess + 1;
-            if (h.result === 'high' && h.guess <= hi) hi = h.guess - 1;
+        const usePids = isHard ? Object.keys(game.guesses || {}) : [PC_SOCKET_ID];
+        usePids.forEach(function (pid) {
+            ((game.guesses && game.guesses[pid]) || []).forEach(function (h) {
+                if (h.result === 'low' && h.guess >= lo) lo = h.guess + 1;
+                if (h.result === 'high' && h.guess <= hi) hi = h.guess - 1;
+            });
         });
         if (lo > hi) { lo = 1; hi = 100; }
 
         let guess;
-        if (hi - lo > 10 && Math.random() < 0.35) {
-            // 较大区间时有 35% 概率不取中点，降低碾压感
+        if (isHard) {
+            // 困难：绝大多数回合取中点（最快收敛）。
+            // 因为结合了双方线索，若不失误会完全碾压玩家，
+            // 所以保留 30% 的“手滑”把出招范围撑大。
+            const span = hi - lo;
+            if (span > 4 && Math.random() < 0.30) {
+                guess = lo + Math.floor(Math.random() * (span + 1));
+            } else {
+                guess = Math.floor((lo + hi) / 2);
+            }
+        } else if (hi - lo > 10 && Math.random() < 0.55) {
+            // 休闲：较大区间时 55% 概率乱猜
             guess = lo + Math.floor(Math.random() * (hi - lo + 1));
         } else {
             guess = Math.floor((lo + hi) / 2);
@@ -8654,7 +8674,7 @@ io.on('connection', (socket) => {
                 });
                 // 创建并立刻开局，把 game-start 推给玩家
                 try {
-                    pcCreateAndStartGame(socket.id, user, data.gameType);
+                    pcCreateAndStartGame(socket.id, user, data.gameType, data.difficulty);
                 } catch (e) {
                     console.error('[PC] 创建游戏失败:', e.message);
                     socket.emit('game-invitation-error', { message: 'ai 创建游戏失败: ' + e.message });
