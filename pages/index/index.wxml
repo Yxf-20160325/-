@@ -1,0 +1,36 @@
+<view class="container">
+  <view class="logo">💬</view>
+  <view class="title">聊天室</view>
+  <view class="subtitle">加入房间开始聊天</view>
+  
+  <view class="avatar-section">
+    <view class="avatar-container" bindtap="chooseAvatar">
+      <image wx:if="{{avatarUrl}}" class="avatar-img" src="{{avatarUrl}}" mode="aspectFill" />
+      <view wx:else class="avatar-placeholder">
+        <text class="avatar-icon">👤</text>
+      </view>
+    </view>
+    <text class="avatar-tip">点击更换头像</text>
+  </view>
+  
+  <view class="form">
+    <view class="form-item">
+      <text class="label">房间名称</text>
+      <input class="input" type="text" placeholder="请输入房间名称" value="{{roomName}}" bindinput="bindRoomName" />
+    </view>
+    <view class="form-item">
+      <text class="label">您的昵称</text>
+      <input class="input" type="text" placeholder="请输入您的昵称" value="{{username}}" bindinput="bindUsername" />
+    </view>
+    <button class="enter-btn" wx:if="{{showLoginForm}}" bindtap="enterChat">进入聊天室</button>
+    <button class="wechat-login-btn" bindtap="wechatLogin">
+      <text class="wechat-icon">📱</text>
+      <text>微信快捷登录</text>
+    </button>
+  </view>
+  
+  <view class="tap-area" bindtap="onTapSecret">
+    <text class="tap-hint" wx:if="{{tapCount > 0 && tapCount < 5}}">{{5 - tapCount}}次后显示更多登录方式</text>
+    <text class="tap-hint" wx:else>点击此处5次显示更多登录方式</text>
+  </view>
+</view>

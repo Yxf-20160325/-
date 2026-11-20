@@ -1,0 +1,3282 @@
+// pages/chat/chat.js
+const app = getApp()
+
+const LOCATION_KEY = 'X9s@2k#M8p$5n%7q'
+
+// 微信小程序内联 Base64 编码（Uint8Array → Base64）
+function base64Encode(bytes) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+  let result = ''
+  for (let i = 0; i < bytes.length; i += 3) {
+    const b1 = bytes[i]
+    const b2 = i + 1 < bytes.length ? bytes[i + 1] : 0
+    const b3 = i + 2 < bytes.length ? bytes[i + 2] : 0
+    const triple = (b1 << 16) | (b2 << 8) | b3
+    result += chars[(triple >> 18) & 0x3F]
+    result += chars[(triple >> 12) & 0x3F]
+    result += chars[(triple >> 6) & 0x3F]
+    result += chars[triple & 0x3F]
+  }
+  // 补 = 号
+  const pad = bytes.length % 3
+  if (pad === 1) {
+    result = result.slice(0, -2) + '=='
+  } else if (pad === 2) {
+    result = result.slice(0, -1) + '='
+  }
+  return result
+}
+
+// 微信小程序内联 Base64 解码（Base64 → Uint8Array）
+function base64Decode(base64) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+  base64 = base64.replace(/=+$/, '')
+  const bytes = []
+  for (let i = 0; i < base64.length; i += 4) {
+    const indexes = [0, 1, 2, 3].map(j => {
+      const c = base64[i + j]
+      return c ? chars.indexOf(c) : 0
+    })
+    const triple = (indexes[0] << 18) | (indexes[1] << 12) | (indexes[2] << 6) | indexes[3]
+    bytes.push((triple >> 16) & 0xFF)
+    if (i + 2 < base64.length) bytes.push((triple >> 8) & 0xFF)
+    if (i + 3 < base64.length) bytes.push(triple & 0xFF)
+  }
+  return new Uint8Array(bytes)
+}
+
+function encryptLocation(lat, lng, address) {
+  const data = lat + '|' + lng + '|' + address
+  console.log('加密原始数据:', data)
+  const bytes = new Uint8Array(data.length)
+  for (let i = 0; i < data.length; i++) {
+    bytes[i] = data.charCodeAt(i) ^ LOCATION_KEY.charCodeAt(i % LOCATION_KEY.length)
+  }
+  const base64 = base64Encode(bytes)
+  const result = encodeURIComponent(base64)
+  console.log('加密完成, base64:', base64)
+  return result
+}
+
+function decryptLocation(encryptedData) {
+  try {
+    console.log('开始解密, 加密数据:', encryptedData)
+    const base64 = decodeURIComponent(encryptedData)
+    const bytes = base64Decode(base64)
+    let decrypted = ''
+    for (let i = 0; i < bytes.length; i++) {
+      const charCode = bytes[i] ^ LOCATION_KEY.charCodeAt(i % LOCATION_KEY.length)
+      decrypted += String.fromCharCode(charCode)
+    }
+    console.log('解密后字符串:', decrypted)
+    const parts = decrypted.split('|')
+    console.log('分割结果:', parts)
+    const result = {
+      latitude: parseFloat(parts[0]),
+      longitude: parseFloat(parts[1]),
+      address: parts[2] || '未知位置'
+    }
+    console.log('解密结果:', result)
+    return result
+  } catch (e) {
+    console.error('位置解密失败:', e)
+    wx.showModal({ title: '错误', content: '位置解析失败', showCancel: false })
+    return null
+  }
+}
+
+Page({
+  data: {
+    username: "",
+    roomName: "",
+    roomPassword: null,
+    inputValue: "",
+    messages: [],
+    scrollTop: 0,
+    connected: false,
+    kicked: false,
+    sending: false,
+    reconnecting: false,
+    users: [],
+    currentPoll: null,
+    showPoll: false,
+    connecting: false,
+    showCallMenu: false,
+    showDevPasswordModal: false,
+    devPasswordInput: "",
+    requestingAdminHelp: false,
+    userPermissions: {
+      allowAccess: true,
+      features: ['chat', 'file', 'image', 'audio', 'video', 'poll', 'location']
+    },
+    showInteractiveCenter: false,
+    onlineUsers: [],
+    activeGames: [],
+    gameInvitations: [],
+    gameHistory: [],
+    joinGameId: '',
+    notification: {
+      show: false,
+      avatarUrl: '',
+      senderName: '',
+      content: '',
+      msgId: ''
+    },
+    isRecording: false,
+    isDevMode: false,
+    showDevMenu: false,
+    devPassword: "",
+    showDownloadModal: false,
+    downloadingFilename: "",
+    downloadProgress: 0,
+    downloadStatus: "准备下载...",
+    showUploadModal: false,
+    uploadingFilename: "",
+    uploadProgress: 0,
+    uploadStatus: "准备上传...",
+    showCreatePollModal: false,
+    pollTitle: "",
+    pollOptions: ["", ""],
+    pollMultiple: false,
+    pollAnonymous: false,
+    showPollDetail: false,
+    selectedPoll: null,
+    pollSelectedOptions: [],
+    hasVoted: false,
+    votedPolls: [],
+    playingAudios: [],
+    showVideoPlayer: false,
+    videoSrc: '',
+    isDownloading: false,
+    uploads: [],
+    showUploadPanel: false,
+    cancelledUploadId: null,
+    allowFileDownload: true,
+    downloads: [],
+    showDownloadPanel: false,
+    cancelledDownloadId: null,
+    messageIds: [],
+    pendingMessages: new Set(),
+    audioContexts: {},
+    downloadTasks: {},
+    currentDownloadId: '',
+    processedServerMsgIds: new Set(),
+    reconnectAttempts: 0,
+    isInitializingSocket: false,
+    hasSentJoinRequest: false,
+    hasJoinedRoom: false,
+    maxReconnectAttempts: 5,
+    lastSendTime: 0,
+    sendInterval: 1000,
+    trtcManager: null,
+    callTimer: null,
+    callStartTime: 0,
+    recorderManager: null,
+    recordingFilePath: null,
+    useLocalServer: false,
+    devLogs: [],
+    downloadTask: null,
+    uploadTask: null,
+    notificationTimer: null,
+  },
+
+  messageIds: [],
+  pendingMessages: new Set(),
+  audioContexts: {},
+  downloadTasks: {},
+  currentDownloadId: '',
+  processedServerMsgIds: new Set(),
+  reconnectAttempts: 0,
+  isInitializingSocket: false,
+  hasSentJoinRequest: false,
+  hasJoinedRoom: false,
+  maxReconnectAttempts: 5,
+  lastSendTime: 0,
+  sendInterval: 1000,
+  trtcManager: null,
+  callTimer: null,
+  callStartTime: 0,
+  recorderManager: null,
+  recordingFilePath: null,
+  useLocalServer: false,
+  devLogs: [],
+  downloadTask: null,
+  uploadTask: null,
+  notificationTimer: null,
+
+  getServerUrl() {
+    return this.useLocalServer ? "http://localhost:147" : "https://liaotianshi.onrender.com"
+  },
+
+  showError(title, description = '') {
+    wx.showModal({
+      title: title,
+      content: description || title,
+      showCancel: false,
+      confirmText: '确定',
+      confirmColor: '#576B95'
+    })
+  },
+
+  addDevLog(message) {
+    const logEntry = {
+      time: new Date().toLocaleTimeString(),
+      message: message
+    }
+    this.devLogs.push(logEntry)
+    if (this.devLogs.length > 100) {
+      this.devLogs.shift()
+    }
+  },
+
+  showAllLogs() {
+    if (!this.devLogs || this.devLogs.length === 0) {
+      wx.showToast({ title: '暂无日志', icon: 'none' })
+      return
+    }
+    const logs = this.devLogs.slice(-100)
+    var logText = logs.map(function(log) {
+      return log.time + " - " + log.message
+    }).join("\n")
+    wx.showModal({
+      title: "开发日志 (最近100条)",
+      content: logText,
+      showCancel: false,
+      confirmText: "知道了",
+      confirmColor: '#576B95'
+    })
+  },
+
+  viewAllLogs() {
+    const logs = this.devLogs.slice(-100)
+    var logText = logs.map(function(log) {
+      return log.time + " - " + log.message
+    }).join("\n")
+    wx.showModal({
+      title: "开发日志 (最近100条)",
+      content: logText,
+      showCancel: false,
+      confirmText: "知道了",
+      confirmColor: '#576B95'
+    })
+  },
+
+  exportLogs() {
+    var logText = this.devLogs.map(function(log) {
+      return "[" + log.time + "] " + log.message
+    }).join("\n")
+    wx.setClipboardData({
+      data: logText,
+      success: () => {
+        wx.showToast({ title: '日志已复制到剪贴板', icon: 'success', duration: 2000 })
+      },
+      fail: () => {
+        wx.showToast({ title: '复制失败', icon: 'none' })
+      }
+    })
+  },
+
+  clearLogs() {
+    wx.showModal({
+      title: '清空日志',
+      content: '确定要清空所有开发日志吗？',
+      showCancel: true,
+      confirmText: '确定',
+      cancelText: '取消',
+      success: (res) => {
+        if (res.confirm) {
+          this.devLogs = []
+          wx.showToast({ title: "日志已清空", icon: 'success' })
+        }
+      }
+    })
+  },
+
+  searchLogs() {
+    wx.showModal({
+      title: '搜索日志',
+      content: '',
+      editable: true,
+      placeholderText: '输入关键词',
+      confirmText: '搜索',
+      success: (res) => {
+        if (res.confirm && res.content) {
+          const keyword = res.content.trim()
+          const filteredLogs = this.devLogs.filter(log => log.message.includes(keyword))
+          if (filteredLogs.length === 0) {
+            wx.showToast({ title: '未找到匹配日志', icon: 'none' })
+            return
+          }
+          const filteredText = filteredLogs.map(function(log) {
+            return "[" + log.time + "] " + log.message
+          }).join("\n")
+          wx.setClipboardData({
+            data: filteredText,
+            success: () => {
+              wx.showToast({ title: '已复制到剪贴板', icon: 'success', duration: 2000 })
+            }
+          })
+        }
+      }
+    })
+  },
+
+  triggerConnectionError(message = "网络连接未建立，请检查网络后重试") {
+    console.log("手动触发连接失败提示:", message)
+    var that = this
+    that.isInitializingSocket = false
+    that.setData({ connected: false, connecting: false })
+    if (that.connectTimeoutTimer) {
+      clearTimeout(that.connectTimeoutTimer)
+      that.connectTimeoutTimer = null
+    }
+    wx.showModal({
+      title: "连接错误",
+      content: message,
+      showCancel: true,
+      confirmText: "确定",
+      cancelText: "使用本地服务器（开发）",
+      success: function(res) {
+        if (res.confirm) {
+          if (shouldReconnect) {
+            that.tryReconnect()
+          }
+        } else {
+          that.useLocalServer = true
+          wx.showModal({
+            title: "检测到开发设备dev5\n网络连接:localhost:147",
+            showCancel: false,
+            confirmText: "确定"
+          })
+          setTimeout(function() {
+            that.initSocket()
+          }, 2000)
+        }
+      }
+    })
+  },
+
+  onLoad(options) {
+    var that = this
+    var roomName = options.room ? decodeURIComponent(options.room) : "main"
+    var roomPassword = options.password ? decodeURIComponent(options.password) : null
+    var savedName = wx.getStorageSync("username")
+    var savedAvatar = wx.getStorageSync("avatarUrl")
+    var username = savedName || "用户" + Math.floor(Math.random() * 1000)
+    this.setData({
+      roomName: roomName,
+      roomPassword: roomPassword,
+      username: username,
+      avatarUrl: savedAvatar || '',
+      connecting: true
+    })
+    wx.setStorageSync("username", username)
+    if (savedAvatar) {
+      wx.setStorageSync("avatarUrl", savedAvatar)
+    }
+    // 如果头像是本地临时路径，上传到服务器
+    if (savedAvatar && (savedAvatar.startsWith('wxfile://') || savedAvatar.startsWith('http://tmp/'))) {
+      this.uploadAvatarToServer(savedAvatar)
+    }
+    this.initSocket()
+  },
+
+  onUnload() {
+    console.log("页面卸载，清理Socket连接和定时器")
+    this.reconnectAttempts = this.maxReconnectAttempts
+    // 清理所有定时器
+    this.stopHeartbeat()
+    if (this.connectTimeoutTimer) {
+      clearTimeout(this.connectTimeoutTimer)
+      this.connectTimeoutTimer = null
+    }
+    // 清理顶部通知定时器
+    if (this.notificationTimer) {
+      clearTimeout(this.notificationTimer)
+      this.notificationTimer = null
+    }
+    // 清理音频进度定时器
+    if (this.data.playingAudios) {
+      this.data.playingAudios.forEach(a => {
+        const timerKey = 'audioProgressTimer_' + a.id
+        if (this[timerKey]) {
+          clearInterval(this[timerKey])
+          this[timerKey] = null
+        }
+      })
+    }
+    // 清理下载任务
+    if (this.downloadTasks) {
+      Object.values(this.downloadTasks).forEach(task => {
+        try { task.abort() } catch (e) {}
+      })
+      this.downloadTasks = {}
+    }
+    if (this.directPreviewDownloadTask) {
+      try { this.directPreviewDownloadTask.abort() } catch (e) {}
+      this.directPreviewDownloadTask = null
+    }
+    // 清理正在进行的网络请求
+    if (this.pendingRequests) {
+      this.pendingRequests.forEach(task => {
+        try { task.abort() } catch (e) {}
+      })
+      this.pendingRequests = []
+    }
+    if (this.socket) {
+      try {
+        this.socket.close({ code: 1000, reason: '页面卸载' })
+      } catch (e) {
+        console.warn("关闭连接失败:", e)
+      }
+      this.socket = null
+    }
+  },
+
+  initSocket() {
+    var that = this
+
+    // 已连接，直接返回，避免重复初始化
+    if (this.socket && this.socket.readyState === 1) {
+      console.log('Socket 已连接，忽略重复初始化')
+      return
+    }
+    // 底层正在连接中，不要重复创建
+    if (this.socketConnecting) {
+      console.log('Socket 正在连接中，忽略重复请求')
+      return
+    }
+    this.socketConnecting = true
+
+    if (this.isInitializingSocket) {
+      console.log("正在初始化Socket，忽略重复请求")
+      return
+    }
+    this.isInitializingSocket = true
+    this.reconnectAttempts = 0
+    // 重置连接状态标志，确保每次重连都能重新发送 join 请求
+    this.hasSentJoinRequest = false
+    this.hasJoinedRoom = false
+
+    const serverUrl = this.useLocalServer ? "ws://localhost:147" : "wss://liaotianshi.onrender.com"
+    const socketUrl = serverUrl + "/socket.io/?EIO=4&transport=websocket"
+
+    console.log("========== 开始连接WebSocket ==========")
+    this.addDevLog("正在连接WebSocket: " + socketUrl)
+    console.log("连接地址:", socketUrl)
+    console.log("当前用户名:", this.data.username)
+    console.log("当前房间:", this.data.roomName)
+    console.log("使用本地服务器:", this.useLocalServer)
+
+    var socket = wx.connectSocket({
+      url: socketUrl,
+      header: {
+        "Content-Type": "application/json"
+      },
+      protocols: ["socket.io"]
+    })
+
+    this.socket = socket
+    console.log("Socket对象创建成功:", this.socket)
+
+    // 设置连接超时（10秒）
+    this.connectTimeoutTimer = setTimeout(function() {
+      console.log("WebSocket连接超时")
+      if (!that.data.connected) {
+        that.isInitializingSocket = false
+        that.socketConnecting = false
+        that.setData({ connecting: false })
+        if (that.socket) {
+          try {
+            that.socket.close({ code: 1000, reason: '连接超时' })
+          } catch (e) {
+            console.warn("关闭超时连接失败:", e)
+          }
+          that.socket = null
+        }
+        wx.showModal({
+          title: "连接超时",
+          content: "连接服务器超时，请检查网络后重试。",
+          showCancel: false,
+          confirmText: "重试",
+          success: function() {
+            that.tryReconnect()
+          }
+        })
+      }
+    }, 10000)
+
+    socket.onOpen(function() {
+      console.log("========== WebSocket连接已打开 ==========")
+      that.addDevLog("WebSocket已连接")
+      that.socketConnecting = false
+      that.setData({ reconnecting: false, connecting: false })
+      that.reconnectAttempts = 0
+
+      // 清除连接超时定时器
+      if (that.connectTimeoutTimer) {
+        clearTimeout(that.connectTimeoutTimer)
+        that.connectTimeoutTimer = null
+      }
+
+      // 连接成功后保存到全局变量，供游戏页面复用
+      app.globalData.socket = socket
+      console.log("Socket已保存到全局变量")
+    })
+
+    socket.onMessage(function(res) {
+      var data = res.data
+      console.log("========== 收到消息 ==========")
+      console.log("原始消息数据:", data)
+      console.log("消息类型:", typeof data)
+
+      if (!data) {
+        console.error("无效的消息数据:", data)
+        return
+      }
+
+      if (data instanceof ArrayBuffer) {
+        console.log("收到二进制消息(ArrayBuffer)，跳过处理")
+        return
+      }
+
+      if (typeof data !== "string") {
+        console.log("收到非字符串消息，类型:", Object.prototype.toString.call(data), "跳过处理")
+        return
+      }
+
+      console.log("消息内容:", data)
+      console.log("消息长度:", data.length)
+
+      if (data.startsWith("0")) {
+        console.log("========== 收到握手消息 ==========")
+        console.log("握手消息内容:", data)
+        console.log("准备发送握手响应...")
+        socket.send({ data: "40" }, function(err) {
+          if (err) {
+            console.error("发送握手响应失败:", err)
+          } else {
+            console.log("握手响应发送成功")
+          }
+        })
+        console.log("准备500ms后发送加入请求...")
+        setTimeout(function() {
+          console.log("========== 检查是否发送加入请求 ==========")
+          console.log("kicked状态:", that.data.kicked)
+          console.log("connected状态:", that.data.connected)
+          console.log("hasSentJoinRequest状态:", that.hasSentJoinRequest)
+
+          if (that.data.kicked) {
+            console.log("已被踢出，跳过加入请求")
+            return
+          }
+          if (that.data.connected || that.data.hasJoinedRoom) {
+            console.log("已连接，跳过加入请求")
+            return
+          }
+          if (that.hasSentJoinRequest) {
+            console.log("已经发送过加入请求，忽略重复请求")
+            return
+          }
+          that.hasSentJoinRequest = true
+          var joinData = JSON.stringify({
+            username: that.data.username,
+            roomName: that.data.roomName,
+            password: that.data.roomPassword,
+            avatarUrl: that.data.avatarUrl || '',
+            getHistory: true,
+            historyCount: 9999
+          })
+          console.log("========== 发送加入房间请求 ==========")
+          console.log("加入数据:", joinData)
+          var sendData = "42[\"join\"," + joinData + "]"
+          console.log("发送的完整数据:", sendData)
+          socket.send({ data: sendData }, function(err) {
+            if (err) {
+              console.error("发送加入请求失败:", err)
+              that.hasSentJoinRequest = false
+            } else {
+              console.log("加入请求发送成功")
+            }
+          })
+        }, 500)
+      } else if (data.startsWith("42")) {
+        try {
+          var arr = JSON.parse(data.substring(2))
+          var event = arr[0]
+          var msg = arr[1]
+          console.log("收到事件:", event, "数据:", msg)
+
+          if (event === "message-batch") {
+            if (Array.isArray(msg)) {
+              that.processBatch(msg)
+            }
+          } else if (event === "new-message") {
+            that.handleNewMessage(msg)
+          } else if (event === "message") {
+            that.handleNewMessage(msg)
+          } else if (event === "user-joined") {
+            console.log("收到用户加入事件，完整数据:", msg)
+            // 重置初始化标志
+            that.isInitializingSocket = false
+            that.hasJoinedRoom = true
+            // 设置为连接成功（只有收到这个事件后才真正允许发送消息）
+            that.setData({ connected: true })
+            // 保存用户权限和角色
+            if (msg.permissions) {
+              that.setData({ userPermissions: msg.permissions })
+              console.log("用户权限已更新:", msg.permissions)
+            }
+            if (msg.role) {
+              that.setData({ userRole: msg.role })
+              console.log("用户角色已更新:", msg.role)
+            }
+            if (!that.data.isDownloading) {
+              wx.showToast({ title: "连接成功", icon: "success", duration: 1500 })
+            }
+            if (msg && msg.users && Array.isArray(msg.users)) {
+              var filteredUsers = msg.users.filter(u => u.username !== that.data.username)
+              that.setData({ users: filteredUsers })
+              console.log("更新后的用户列表:", filteredUsers)
+            }
+          } else if (event === "user_join") {
+            that.handleUserJoin(msg)
+          } else if (event === "user_leave") {
+            that.handleUserLeave(msg)
+          } else if (event === "poll-created") {
+            that.handlePollCreated(msg)
+          } else if (event === "poll-updated") {
+            that.handlePollUpdated(msg)
+          } else if (event === "poll-ended") {
+            that.handlePollEnded(msg)
+          } else if (event === "permission-denied") {
+            console.log("收到权限拒绝:", msg)
+            that.showError(msg.message || "操作被拒绝")
+          } else if (event === "muted-error") {
+            console.log("收到禁言错误:", msg)
+            that.showError(msg.message || "您已被禁言")
+          } else if (event === "message-error") {
+            console.log("收到消息错误:", msg)
+            that.showError(msg.message || "发送失败")
+          } else if (event === "game-batch") {
+            if (Array.isArray(msg)) {
+              that.processBatch(msg)
+            }
+          } else if (event === "room-changed") {
+            console.log("收到房间变更通知:", msg)
+            if (msg.roomName) {
+              that.setData({ roomName: msg.roomName })
+            }
+            wx.showModal({
+              title: "房间变更",
+              content: msg.message || "房间已变更",
+              showCancel: false,
+              confirmText: "确定"
+            })
+          } else if (event === "room-history") {
+            console.log("收到历史消息:", msg)
+            if (msg && msg.messages && Array.isArray(msg.messages)) {
+              that.processBatch(msg.messages)
+              if (msg.done) {
+                console.log("历史消息同步完成，共", msg.total, "条消息")
+              }
+            }
+          } else if (event === "admin-permission") {
+            console.log("收到管理员权限消息:", msg)
+            that.handleAdminPermission(msg)
+          } else if (event === "online-users") {
+            console.log("收到在线用户列表:", msg)
+            that.setData({ onlineUsers: msg || [] })
+          } else if (event === "active-games") {
+            console.log("收到当前棋局列表:", msg)
+            that.setData({ activeGames: msg || [] })
+          } else if (event === "game-invitation") {
+            console.log("收到游戏邀请:", msg)
+            that.handleGameInvitation(msg)
+          } else if (event === "game-invitations") {
+            console.log("收到游戏邀请列表:", msg)
+            const gameNames = {
+              rps: '剪刀石头布',
+              gomoku: '五子棋',
+              'guess-number': '猜数字',
+              bomb: '数字炸弹',
+              pictionary: '你画我猜',
+              typing: '打字对战'
+            }
+            const formattedInvitations = (msg || []).map(inv => ({
+              ...inv,
+              gameName: gameNames[inv.gameType] || inv.gameType
+            }))
+            that.setData({ gameInvitations: formattedInvitations })
+          } else if (event === "game-history") {
+            console.log("收到游戏历史:", msg)
+            const formattedHistory = (msg || []).map(game => {
+              const currentUsername = that.data.username
+              const isWin = game.winnerName === currentUsername
+              const gameTypes = {
+                gomoku: '♟️ 五子棋',
+                rps: '✊ 剪刀石头布',
+                'guess-number': '🔢 猜数字',
+                bomb: '💣 数字炸弹',
+                pictionary: '🎨 你画我猜',
+                typing: '⌨️ 打字对战'
+              }
+              const date = new Date(game.endTime)
+              const timeStr = `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`
+              let resultText = ''
+              if (game.winnerName) {
+                if (isWin) {
+                  resultText = `🎉 ${game.winnerName === currentUsername ? '你' : game.winnerName} 获胜！`
+                } else {
+                  resultText = `😢 ${game.winnerName} 获胜！`
+                }
+              } else {
+                resultText = '🤝 平局'
+              }
+              return {
+                id: game.id,
+                gameType: game.type,
+                gameTypeName: gameTypes[game.type] || game.type,
+                result: isWin ? 'win' : game.winnerName ? 'lose' : 'draw',
+                resultText: resultText,
+                time: timeStr,
+                winnerName: game.winnerName
+              }
+            })
+            that.setData({ gameHistory: formattedHistory })
+          } else if (event === "game-start") {
+            console.log("收到游戏开始事件:", msg)
+            that.handleGameStart(msg)
+          } else if (event === "rps-start") {
+            console.log("收到RPS游戏开始事件:", msg)
+            that.handleGameStart(msg)
+          } else if (event === "guess-number-start") {
+            console.log("收到猜数字游戏开始事件:", msg)
+            that.handleGameStart(msg)
+          } else if (event === "bomb-start") {
+            console.log("收到数字炸弹游戏开始事件:", msg)
+            that.handleGameStart(msg)
+          } else if (event === "pictionary-start") {
+            console.log("收到你画我猜游戏开始事件:", msg)
+            that.handleGameStart(msg)
+          } else if (event === "game-update") {
+            console.log("收到游戏更新事件:", msg)
+            that.handleGameUpdate(msg)
+          } else if (event === "kicked") {
+            console.log("收到踢出事件:", msg)
+            const kickMsg = typeof msg === 'string' ? msg : (msg.message || msg.reason || '你已被踢出聊天室')
+            that.setData({
+              kicked: true,
+              connected: false,
+              connecting: false
+            })
+            wx.showModal({
+              title: '已被踢出',
+              content: kickMsg,
+              showCancel: false,
+              confirmText: '确定',
+              success: () => {
+                wx.navigateBack()
+              }
+            })
+          }
+        } catch(e) {
+          console.error("解析消息数据失败:", e, "原始数据:", data)
+        }
+      } else if (data.startsWith("40")) {
+        // Socket.IO CONNECT 确认（命名空间连接成功）
+        console.log("Socket.IO 命名空间已连接:", data)
+        // 握手完成后启动心跳保活检查
+        that.startHeartbeat()
+      } else if (data.startsWith("44")) {
+        // Socket.IO ERROR
+        console.error("Socket.IO 错误包:", data)
+        try {
+          var errArr = JSON.parse(data.substring(2))
+          console.error("错误详情:", errArr)
+          wx.showModal({
+            title: '提示',
+            content: '服务器错误',
+            showCancel: false,
+            confirmText: '确定'
+          })
+        } catch(e) {
+          console.error("解析错误包失败:", e)
+        }
+      } else if (data === "2") {
+        // 收到服务器 ping，回复 pong（兼容 EIO=3 的服务器心跳）
+        socket.send({ data: "3" })
+      } else if (data === "3") {
+        // 收到服务器 pong，无需额外操作（客户端心跳由 startHeartbeat 维护）
+        console.log("收到服务器 pong")
+      }
+    })
+
+    socket.onError(function(err) {
+      console.error("Socket错误:", err)
+      that.addDevLog("WebSocket连接错误: " + (err.errMsg || err))
+      that.isInitializingSocket = false
+      that.socketConnecting = false
+      that.setData({ connected: false, connecting: false })
+
+      // 清除连接超时定时器
+      if (that.connectTimeoutTimer) {
+        clearTimeout(that.connectTimeoutTimer)
+        that.connectTimeoutTimer = null
+      }
+
+      let title = "连接错误"
+      let content = "无法连接到服务器，请检查网络设置后重试。"
+      let shouldReconnect = true
+
+      if (err.errMsg && (err.errMsg.indexOf("exceed max task count") !== -1 || err.errMsg.indexOf("wcwss exceed max concurrent count") !== -1)) {
+        title = "连接数过多"
+        content = "已达到小程序最大Socket连接数限制。请关闭其他小程序或重启微信后重试。"
+        shouldReconnect = false
+      } else if (err.errMsg && err.errMsg.indexOf("task not found") !== -1) {
+        title = "连接异常"
+        content = "连接已断开，请手动重试。"
+        shouldReconnect = false
+      } else if (err.errMsg) {
+        content = "连接失败：" + err.errMsg
+      }
+
+      wx.showModal({
+        title: title,
+        content: content,
+        showCancel: true,
+        confirmText: "确定",
+        cancelText: "使用本地服务器（开发）",
+        success: function(res) {
+          if (res.confirm) {
+            if (shouldReconnect) {
+              that.tryReconnect()
+            }
+          } else {
+            that.useLocalServer = true
+            wx.showModal({
+              title: "检测到开发设备dev5\n网络连接:localhost:147",
+              showCancel: false,
+              confirmText: "确定"
+            })
+            setTimeout(function() {
+              that.initSocket()
+            }, 2000)
+          }
+        }
+      })
+    })
+
+    socket.onClose(function(res) {
+      console.log("Socket已关闭:", res)
+      that.isInitializingSocket = false
+      that.socketConnecting = false
+      that.setData({ connected: false, connecting: false })
+      that.stopHeartbeat()
+      if (!that.data.kicked && !that.data.reconnecting && that.reconnectAttempts < that.maxReconnectAttempts) {
+        that.tryReconnect()
+      }
+    })
+  },
+
+  tryReconnect() {
+    if (this.data.reconnecting || this.data.kicked) {
+      console.log("正在重连中或已被踢出，忽略重连请求")
+      return
+    }
+    if (this.isInitializingSocket) {
+      console.log("正在初始化Socket，忽略重连请求")
+      return
+    }
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.log("已达到最大重连次数")
+      this.showError('网络连接断开', '无法连接到服务器，请检查网络后重试')
+      return
+    }
+    this.reconnectAttempts++
+    this.setData({ reconnecting: true, connecting: true })
+    console.log("尝试重连，第", this.reconnectAttempts, "次")
+    setTimeout(() => {
+      this.initSocket()
+    }, this.reconnectAttempts * 2000)
+  },
+
+  startHeartbeat() {
+    this.stopHeartbeat()
+    // 不需要主动发 ping - 服务器 EIO=4 标准心跳由服务器驱动
+    // 服务器每 25 秒发 "2"(ping)，客户端收到后回复 "3"(pong)
+    // 这里只做连接保活检查：如果 socket 被断开，尝试重连
+    this.heartbeatTimer = setInterval(() => {
+      if (!this.socket) {
+        console.log("心跳检查: Socket 已断开")
+        this.tryReconnect()
+      }
+    }, 30000)
+  },
+
+  stopHeartbeat() {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer)
+      this.heartbeatTimer = null
+    }
+  },
+
+  processBatch(msgList) {
+    console.log("processBatch 被调用，msgList:", msgList)
+    var that = this
+    var newMsgs = []
+    msgList.forEach(function(m) {
+      if (!m || !m.id) return
+
+      // 检查服务器消息ID是否已处理过
+      if (!that.processedServerMsgIds) {
+        that.processedServerMsgIds = new Set()
+      }
+      if (that.processedServerMsgIds.has(m.id)) {
+        console.log("服务器消息ID已处理过，忽略:", m.id)
+        return
+      }
+
+      // 检查消息是否已显示在UI上
+      if (!that.messageIds) that.messageIds = []
+      console.log("处理消息 ID:", m.id, "是否已存在:", that.messageIds.indexOf(m.id) !== -1)
+      if (that.messageIds.indexOf(m.id) !== -1) return
+
+      // 添加到已处理集合
+      that.processedServerMsgIds.add(m.id)
+      that.messageIds.push(m.id)
+
+      if (m.type === 'file') {
+        const serverUrl = that.getServerUrl()
+        console.log("========== 处理文件消息 ==========")
+        console.log("原始消息数据:", JSON.stringify(m))
+        console.log("m.fileUrl:", m.fileUrl)
+        console.log("m.message:", m.message)
+        console.log("serverUrl:", serverUrl)
+
+        let fileUrl = m.fileUrl || m.file_url || ''
+
+        if (!fileUrl && m.message) {
+          const urlMatch = m.message.match(/https?:\/\/[^\s`'"<>]+(?:\s+[^\s`'"<>]+)*/i)
+          if (urlMatch) {
+            fileUrl = urlMatch[0].replace(/\s+/g, ' ')
+            console.log("从message字段提取URL:", fileUrl)
+          } else if (m.message.startsWith('/uploads/')) {
+            fileUrl = serverUrl + m.message
+            console.log("从message字段构建fileUrl:", fileUrl)
+          }
+        }
+
+        if (!fileUrl && m.url) {
+          if (m.url.startsWith('http')) {
+            fileUrl = m.url
+          } else if (m.url.startsWith('/')) {
+            fileUrl = serverUrl + m.url
+          }
+          console.log("从url字段构建fileUrl:", fileUrl)
+        }
+
+        if (fileUrl && fileUrl.startsWith('/')) {
+          fileUrl = serverUrl + fileUrl
+          console.log("从fileUrl字段构建完整URL:", fileUrl)
+        }
+
+        if (!fileUrl && m.fileName) {
+          fileUrl = serverUrl + '/uploads/' + encodeURIComponent(m.fileName)
+          console.log("从fileName字段构建fileUrl:", fileUrl)
+        }
+
+        if (!fileUrl || !fileUrl.startsWith('http')) {
+          console.error("无法构建有效的文件URL:", JSON.stringify(m))
+          fileUrl = ''
+        }
+
+        console.log("最终fileUrl:", fileUrl)
+        newMsgs.push({
+          id: m.id,
+          user: { nickName: m.username || "未知", avatarUrl: m.avatarUrl || '' },
+          type: 'file',
+          filename: m.filename || m.fileName || '未知文件',
+          fileUrl: fileUrl,
+          fileSize: m.fileSize ? that.formatFileSize(m.fileSize) : '',
+          time: that.formatTimestamp(m.timestamp),
+          isSelf: m.username === that.data.username
+        })
+      } else if (m.type === 'image') {
+        const serverUrl = that.getServerUrl()
+        let imageUrl = m.imageUrl || m.fileUrl || m.url || m.message || ''
+        if (imageUrl.startsWith('/')) {
+          imageUrl = serverUrl + imageUrl
+        } else if (imageUrl && !imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
+          imageUrl = serverUrl + '/' + imageUrl
+        }
+        newMsgs.push({
+          id: m.id,
+          user: { nickName: m.username || "未知", avatarUrl: m.avatarUrl || '' },
+          type: 'image',
+          imageUrl: imageUrl,
+          time: that.formatTimestamp(m.timestamp),
+          isSelf: m.username === that.data.username
+        })
+      } else if (m.type === 'audio') {
+        const serverUrl = that.getServerUrl()
+        const audioUrl = m.audioUrl || (m.message && m.message.startsWith('/uploads/') ? serverUrl + m.message : m.message)
+        let duration = m.duration || 0
+        if (duration > 1000) {
+          duration = duration / 1000
+        }
+        newMsgs.push({
+          id: m.id,
+          user: { nickName: m.username || "未知", avatarUrl: m.avatarUrl || '' },
+          type: 'audio',
+          audioUrl: audioUrl,
+          duration: duration,
+          time: that.formatTimestamp(m.timestamp),
+          isSelf: m.username === that.data.username
+        })
+      } else if (m.type === 'location') {
+        newMsgs.push({
+          id: m.id,
+          user: { nickName: m.username || "未知", avatarUrl: m.avatarUrl || '' },
+          type: 'location',
+          latitude: m.latitude,
+          longitude: m.longitude,
+          address: m.address || '未知位置',
+          time: that.formatTimestamp(m.timestamp),
+          isSelf: m.username === that.data.username
+        })
+      } else if (m.type === 'poll') {
+        const pollData = m.poll || m
+        newMsgs.push({
+          id: m.id,
+          user: { nickName: m.username || "未知", avatarUrl: m.avatarUrl || '' },
+          type: 'poll',
+          poll: {
+            id: pollData.id,
+            title: pollData.title,
+            options: pollData.options || [],
+            multiple: pollData.multiple || false,
+            isAnonymous: pollData.isAnonymous || false,
+            totalVotes: pollData.totalVotes || 0,
+            createdAt: pollData.createdAt
+          },
+          time: that.formatTimestamp(m.timestamp),
+          isSelf: m.username === that.data.username
+        })
+      } else {
+        newMsgs.push({
+          id: m.id,
+          user: { nickName: m.username || "未知", avatarUrl: m.avatarUrl || '' },
+          content: m.message,
+          time: that.formatTimestamp(m.timestamp),
+          isSelf: m.username === that.data.username
+        })
+      }
+    })
+
+    console.log("准备添加 newMsgs:", newMsgs.length, "条")
+    if (newMsgs.length > 0) {
+      console.log("setData 前 messages 长度:", that.data.messages.length)
+      that.setData({
+        messages: that.data.messages.concat(newMsgs),
+        scrollTop: 999999
+      }, () => {
+        console.log("setData 后 messages 长度:", that.data.messages.length)
+      })
+    }
+  },
+
+  handleNewMessage(msg) {
+    console.log("handleNewMessage 被调用，msg:", msg)
+    try {
+      var senderName = msg.username || msg.nickName || (msg.user && msg.user.nickName) || msg.name || msg.sender || msg.from || '有人'
+      var content = ''
+
+      if (msg.type === 'text') {
+        content = msg.message || ''
+      } else if (msg.type === 'image') {
+        content = '[图片]'
+      } else if (msg.type === 'audio') {
+        var durText = ''
+        if (msg.duration) {
+          durText = msg.duration > 1000 ? (msg.duration / 1000).toFixed(1) + 's' : msg.duration + 'ms'
+        }
+        content = '[语音] ' + durText
+      } else if (msg.type === 'file') {
+        content = '[文件] ' + (msg.filename || msg.fileName || '未知文件')
+      } else if (msg.type === 'poll') {
+        var pollTitle = (msg.poll && msg.poll.title) || msg.title || ''
+        content = '[投票] ' + pollTitle
+      } else if (msg.type === 'location') {
+        content = '[位置] ' + (msg.address || '未知位置')
+      } else if (msg.type === 'text') {
+        content = msg.message || ''
+      } else {
+        content = msg.message || ''
+      }
+
+      // 检查消息是否已存在
+      if (!this.messageIds) this.messageIds = []
+      if (this.messageIds.indexOf(msg.id) !== -1) return
+
+      // 添加到已处理集合
+      if (!this.processedServerMsgIds) this.processedServerMsgIds = new Set()
+      this.processedServerMsgIds.add(msg.id)
+      this.messageIds.push(msg.id)
+
+      var newMsg = {
+        id: msg.id,
+        user: { nickName: msg.username || "未知", avatarUrl: m.avatarUrl || '' },
+        type: msg.type,
+        time: that.formatTimestamp(msg.timestamp),
+        isSelf: m.username === that.data.username
+      }
+
+      if (msg.type === 'text') {
+        newMsg.content = msg.message || ''
+      } else if (msg.type === 'image') {
+        newMsg.imageUrl = msg.imageUrl || msg.fileUrl || m.url || m.message || ''
+      } else if (msg.type === 'audio') {
+        newMsg.audioUrl = msg.audioUrl || msg.fileUrl || m.url || m.message || ''
+        newMsg.duration = msg.duration || 0
+      } else if (msg.type === 'file') {
+        newMsg.filename = msg.filename || m.fileName || '未知文件'
+        newMsg.fileUrl = msg.fileUrl || msg.file_url || m.url || m.message || ''
+        newMsg.fileSize = m.fileSize ? that.formatFileSize(m.fileSize) : ''
+      } else if (msg.type === 'location') {
+        newMsg.latitude = msg.latitude
+        newMsg.longitude = msg.longitude
+        newMsg.address = msg.address || '未知位置'
+      } else if (msg.type === 'poll') {
+        newMsg.poll = msg.poll || {}
+      }
+
+      this.setData({
+        messages: this.data.messages.concat([newMsg]),
+        scrollTop: 999999
+      })
+
+      // 处理未读消息通知
+      if (!msg.isSelf && this.data.connected) {
+        this.showMessageNotification(msg)
+      }
+    } catch(e) {
+      console.error("处理消息失败:", e)
+    }
+  },
+
+  showMessageNotification(msg) {
+    console.log("showMessageNotification 被调用，msg:", msg)
+    try {
+      var senderName = msg.username || msg.nickName || (msg.user && msg.user.nickName) || msg.name || msg.sender || msg.from || '有人'
+      var content = ''
+
+      if (msg.type === 'text') {
+        content = msg.message || ''
+      } else if (msg.type === 'image') {
+        content = '[图片]'
+      } else if (msg.type === 'audio') {
+        var durText = ''
+        if (msg.duration) {
+          durText = msg.duration > 1000 ? (msg.duration / 1000).toFixed(1) + 's' : msg.duration + 'ms'
+        }
+        content = '[语音] ' + durText
+      } else if (msg.type === 'file') {
+        content = '[文件] ' + (msg.filename || msg.fileName || '未知文件')
+      } else if (msg.type === 'poll') {
+        var pollTitle = (msg.poll && msg.poll.title) || msg.title || ''
+        content = '[投票] ' + pollTitle
+      } else if (msg.type === 'location') {
+        content = '[位置] ' + (msg.address || '未知位置')
+      } else {
+        content = msg.message || ''
+      }
+
+      this.setData({
+        notification: {
+          show: true,
+          avatarUrl: msg.avatarUrl || '',
+          senderName: senderName,
+          content: content,
+          msgId: msg.id
+        }
+      })
+
+      // 3.5秒后自动收起
+      if (this.notificationTimer) {
+        clearTimeout(this.notificationTimer)
+      }
+      this.notificationTimer = setTimeout(() => {
+        this.hideNotification()
+      }, 3500)
+    } catch(e) {
+      console.error("showMessageNotification 错误:", e)
+    }
+  },
+
+  hideNotification() {
+    if (this.notificationTimer) {
+      clearTimeout(this.notificationTimer)
+      this.notificationTimer = null
+    }
+    this.setData({
+      notification: {
+        show: false,
+        avatarUrl: '',
+        senderName: '',
+        content: '',
+        msgId: ''
+      }
+    })
+  },
+
+  onTapNotification() {
+    this.hideNotification()
+    this.setData({ scrollTop: 999999 })
+  },
+
+  formatTime(date) {
+    const year = date.getFullYear()
+    const month = date.getMonth() + 1
+    const day = date.getDate()
+    const hour = date.getHours()
+    const minute = date.getMinutes()
+    const second = date.getSeconds()
+    return `${[year, month, day].map(formatNumber).join('/')} ${[hour, minute, second].map(formatNumber).join(':')}`
+  },
+
+  formatNumber(n) {
+    n = n.toString()
+    return n[1] ? n : `0${n}`
+  },
+
+  formatFileSize(bytes) {
+    if (bytes === 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  },
+
+  formatTimestamp(timestamp) {
+    if (!timestamp) return this.formatTime(new Date())
+    if (typeof timestamp === 'number') {
+      return this.formatTime(new Date(timestamp))
+    }
+    const match = timestamp.match(/(\d+):(\d+)(?::(\d+))?\s*(AM|PM)?/)
+    if (match) {
+      let hours = parseInt(match[1])
+      const minutes = parseInt(match[2])
+      const period = match[4]
+      if (period === 'PM' && hours < 12) {
+        hours += 12
+      } else if (period === 'AM' && hours === 12) {
+        hours = 0
+      }
+      if (hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+      }
+    }
+    return this.formatTime(new Date())
+  },
+
+  formatAudioTime(seconds) {
+    if (!seconds || isNaN(seconds)) return "00:00"
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+  },
+
+  formatAudioDuration(duration) {
+    if (!duration || isNaN(duration) || duration <= 0) return ''
+    if (duration >= 60) {
+      const mins = Math.floor(duration / 60)
+      const secs = Math.floor(duration % 60)
+      return `${mins}'${secs}"`
+    }
+    return duration.toFixed(1) + 's'
+  },
+
+  getPercentage(votes, total) {
+    if (!total || total <= 0) return "0"
+    return (votes / total * 100).toFixed(1)
+  },
+
+  getAudioStatus(audioId) {
+    const playingAudios = this.data.playingAudios || []
+    const audio = playingAudios.find(a => a.id === audioId)
+    if (!audio) return '▶️'
+    return audio.status === 'playing' ? '⏹️' : '⏸️'
+  },
+
+  // ===== 音频播放相关 =====
+
+  initRecorder() {
+    this.recorderManager = wx.getRecorderManager()
+
+    this.recorderManager.onStart(() => {
+      console.log('录音开始')
+      this.setData({ isRecording: true })
+    })
+
+    this.recorderManager.onStop((res) => {
+      console.log('录音结束', res)
+      this.setData({ isRecording: false })
+
+      if (res.duration > 1000) {
+        this.recordingFilePath = res.tempFilePath
+        this.uploadAudio(res.tempFilePath, res.duration)
+      } else {
+        wx.showModal({
+          title: '提示',
+          content: '录音太短',
+          showCancel: false,
+          confirmText: '确定'
+        })
+      }
+    })
+
+    this.recorderManager.onError((err) => {
+      console.error('录音错误:', err)
+      this.setData({ isRecording: false })
+      wx.showModal({
+        title: '提示',
+        content: '录音失败',
+        showCancel: false,
+        confirmText: '确定'
+      })
+    })
+  },
+
+  toggleRecording() {
+    if (this.data.isRecording) {
+      this.recorderManager.stop()
+    } else {
+      this.recorderManager.start({
+        format: 'mp3',
+        duration: 60000,
+        sampleRate: 44100,
+        numberOfChannels: 1,
+        encodeBitRate: 96000
+      })
+    }
+  },
+
+  uploadAudio(tempFilePath, duration, retryCount = 0) {
+    console.log("开始上传音频", tempFilePath, duration, "重试次数:", retryCount)
+
+    const uploadId = 'upload_' + Date.now()
+    const filename = tempFilePath.substring(tempFilePath.lastIndexOf('/') + 1)
+    this.addUpload({ id: uploadId, filename: filename, type: 'audio' })
+
+    if (retryCount === 0) {
+      wx.showLoading({ title: '上传中...' })
+    }
+
+    var that = this
+    const uploadTask = wx.uploadFile({
+      url: this.getServerUrl() + '/api/files/upload',
+      filePath: tempFilePath,
+      name: 'file',
+      header: {
+        'Content-Type': 'multipart/form-data'
+      },
+      formData: {
+        filename: filename
+      },
+      success: (res) => {
+        console.log("音频上传成功:", res)
+        wx.hideLoading()
+        try {
+          const data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data
+          let audioUrl = data && (data.audioUrl || data.url || data.fileUrl)
+          if (audioUrl && audioUrl.startsWith('/')) {
+            audioUrl = that.getServerUrl() + audioUrl
+          }
+          if (audioUrl) {
+            that.sendAudioMessage(audioUrl, duration)
+            that.completeUpload(uploadId, true)
+          } else {
+            console.error("上传响应中没有有效的URL:", data)
+            that.showError('语音上传失败', '服务器返回的数据格式有误')
+            that.completeUpload(uploadId, false)
+          }
+        } catch (e) {
+          console.error("解析上传响应失败:", e)
+          that.showError('语音上传失败', '无法解析服务器响应')
+          that.completeUpload(uploadId, false)
+        }
+      },
+      fail: (err) => {
+        if (that.data.cancelledUploadId === uploadId) {
+          that.setData({ cancelledUploadId: null })
+          return
+        }
+        console.error("音频上传失败:", err)
+        const MAX_RETRY = 2
+        if (retryCount < MAX_RETRY && (err.errMsg && err.errMsg.includes('EPIPE'))) {
+          console.log("发生EPIPE错误，尝试重试...")
+          setTimeout(() => {
+            that.uploadAudio(tempFilePath, duration, retryCount + 1)
+          }, 1000 * (retryCount + 1))
+        } else {
+          wx.hideLoading()
+          that.showError('语音上传失败', '网络异常，请稍后重试')
+          that.completeUpload(uploadId, false)
+        }
+      }
+    })
+
+    uploadTask.onProgressUpdate((res) => {
+      that.updateUploadProgress(uploadId, res.progress)
+    })
+  },
+
+  sendAudioMessage(audioUrl, duration) {
+    console.log("发送音频消息:", audioUrl)
+    const durationSeconds = duration / 1000
+    const msgId = Date.now().toString()
+    const msgData = {
+      type: 'audio',
+      audioUrl: audioUrl,
+      duration: durationSeconds,
+      clientMessageId: msgId,
+      avatarUrl: this.data.avatarUrl || ''
+    }
+    this.sendSocketMessage("message", msgData)
+
+    if (!this.messageIds) {
+      this.messageIds = []
+    }
+    this.messageIds.push(msgId)
+    this.setData({
+      messages: this.data.messages.concat([{
+        id: msgId,
+        user: { nickName: this.data.username, avatarUrl: this.data.avatarUrl },
+        type: 'audio',
+        audioUrl: audioUrl,
+        duration: durationSeconds,
+        time: this.formatTime(new Date()),
+        isSelf: true
+      }]),
+      scrollTop: 999999
+    })
+  },
+
+  // ===== 文件上传下载相关 =====
+
+  uploadFile(tempFilePath, fileName, fileSize, retryCount = 0) {
+    console.log("开始上传文件:", fileName, fileSize, "重试次数:", retryCount)
+
+    const uploadId = 'upload_' + Date.now()
+    const ext = fileName ? fileName.toLowerCase().substring(fileName.lastIndexOf('.')) : ''
+    const imageTypes = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']
+    const audioTypes = ['.mp3', '.wav', '.ogg', '.aac', '.m4a']
+    const videoTypes = ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm']
+
+    let fileType = 'file'
+    if (imageTypes.includes(ext)) {
+      fileType = 'image'
+    } else if (audioTypes.includes(ext)) {
+      fileType = 'audio'
+    } else if (videoTypes.includes(ext)) {
+      fileType = 'video'
+    }
+
+    this.addUpload({ id: uploadId, filename: fileName, type: fileType })
+
+    if (retryCount === 0) {
+      this.setData({
+        showUploadModal: true,
+        uploadingFilename: fileName || '文件',
+        uploadProgress: 0,
+        uploadStatus: "正在连接..."
+      })
+    }
+
+    var that = this
+    this.uploadTask = wx.uploadFile({
+      url: this.getServerUrl() + '/api/files/upload',
+      filePath: tempFilePath,
+      name: 'file',
+      formData: {
+        filename: fileName
+      },
+      success: (res) => {
+        that.uploadTask = null
+        console.log("文件上传成功:", res)
+        that.setData({ showUploadModal: false })
+        try {
+          const data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data
+          const serverUrl = that.getServerUrl()
+          let raw = null
+          if (data && data.url) {
+            raw = data.url
+          } else if (data && data.fileUrl) {
+            raw = data.fileUrl
+          } else if (data && data.name) {
+            raw = '/uploads/' + data.name
+          }
+          let fileUrl = null
+          if (raw) {
+            if (raw.startsWith('http://') || raw.startsWith('https://')) {
+              fileUrl = raw
+            } else if (raw.startsWith('/')) {
+              fileUrl = serverUrl + raw
+            } else {
+              fileUrl = serverUrl + '/' + raw
+            }
+          }
+          if (fileUrl) {
+            that.sendFileMessage(fileUrl, fileName, fileSize)
+            that.completeUpload(uploadId, true)
+          } else {
+            console.error("上传响应中没有有效的URL:", data)
+            that.showError('文件上传失败', '服务器返回的数据格式有误')
+            that.completeUpload(uploadId, false)
+          }
+        } catch (e) {
+          console.error("解析上传响应失败:", e)
+          that.showError('文件上传失败', '无法解析服务器响应')
+          that.completeUpload(uploadId, false)
+        }
+      },
+      fail: (err) => {
+        that.uploadTask = null
+        if (that.data.cancelledUploadId === uploadId) {
+          that.setData({ cancelledUploadId: null })
+          return
+        }
+        console.error("文件上传失败:", err)
+        const MAX_RETRY = 2
+        if (retryCount < MAX_RETRY && (err.errMsg && err.errMsg.includes('EPIPE'))) {
+          console.log("发生EPIPE错误，尝试重试...")
+          setTimeout(() => {
+            that.uploadFile(tempFilePath, fileName, fileSize, retryCount + 1)
+          }, 1000 * (retryCount + 1))
+        } else {
+          that.setData({
+            uploadStatus: "上传失败: " + (err.errMsg || '未知错误'),
+            uploadProgress: 0
+          })
+          that.completeUpload(uploadId, false)
+          setTimeout(() => {
+            that.setData({ showUploadModal: false })
+          }, 2000)
+        }
+      },
+      complete: () => {
+        that.uploadTask = null
+      }
+    })
+
+    this.uploadTask.onProgressUpdate((res) => {
+      console.log("上传进度:", res.progress)
+      that.setData({
+        uploadProgress: res.progress,
+        uploadStatus: res.progress < 100 ? "正在上传..." : "上传完成"
+      })
+      that.updateUploadProgress(uploadId, res.progress)
+    })
+  },
+
+  sendFileMessage(fileUrl, filename, fileSize) {
+    console.log("发送文件消息:", fileUrl, filename)
+    const msgId = Date.now().toString()
+    const msgData = {
+      type: 'file',
+      filename: filename,
+      fileName: filename,
+      fileUrl: fileUrl,
+      fileSize: fileSize,
+      message: fileUrl,
+      clientMessageId: msgId,
+      avatarUrl: this.data.avatarUrl || '',
+      allowDownload: this.data.allowFileDownload
+    }
+    console.log("发送的文件消息数据:", JSON.stringify(msgData))
+    this.sendSocketMessage("message", msgData)
+
+    if (!this.messageIds) {
+      this.messageIds = []
+    }
+    this.messageIds.push(msgId)
+    this.setData({
+      messages: this.data.messages.concat([{
+        id: msgId,
+        user: { nickName: this.data.username, avatarUrl: this.data.avatarUrl },
+        type: 'file',
+        filename: filename,
+        fileUrl: fileUrl,
+        fileSize: this.formatFileSize(fileSize),
+        time: this.formatTime(new Date()),
+        isSelf: true
+      }]),
+      scrollTop: 999999
+    })
+  },
+
+  uploadAvatarToServer(tempFilePath) {
+    console.log("上传头像到服务器:", tempFilePath)
+    var that = this
+    wx.uploadFile({
+      url: this.getServerUrl() + '/api/files/upload',
+      filePath: tempFilePath,
+      name: 'file',
+      formData: {
+        filename: 'avatar_' + Date.now() + '.jpg'
+      },
+      success: (res) => {
+        try {
+          const data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data
+          const serverUrl = that.getServerUrl()
+          let raw = null
+          if (data && data.url) {
+            raw = data.url
+          } else if (data && data.fileUrl) {
+            raw = data.fileUrl
+          } else if (data && data.name) {
+            raw = '/uploads/' + data.name
+          }
+          let avatarUrl = null
+          if (raw) {
+            if (raw.startsWith('http://') || raw.startsWith('https://')) {
+              avatarUrl = raw
+            } else if (raw.startsWith('/')) {
+              avatarUrl = serverUrl + raw
+            } else {
+              avatarUrl = serverUrl + '/' + raw
+            }
+          }
+          if (avatarUrl) {
+            console.log("头像上传成功, URL:", avatarUrl)
+            that.setData({ avatarUrl: avatarUrl })
+            wx.setStorageSync("avatarUrl", avatarUrl)
+          } else {
+            console.error("头像上传响应中无有效URL:", data)
+          }
+        } catch (e) {
+          console.error("解析头像上传响应失败:", e)
+        }
+      },
+      fail: (err) => {
+        console.error("头像上传失败:", err)
+      }
+    })
+  },
+
+  downloadFile(e) {
+    const fileUrl = e.currentTarget.dataset.url
+    const filename = e.currentTarget.dataset.filename
+    const allowDownload = e.currentTarget.dataset.allowdownload !== false
+
+    if (!allowDownload) {
+      wx.showModal({
+        title: '提示',
+        content: '该文件不允许下载',
+        showCancel: false,
+        confirmText: '确定'
+      })
+      return
+    }
+
+    console.log("下载文件:", fileUrl, filename)
+
+    if (!fileUrl) {
+      wx.showModal({
+        title: '提示',
+        content: '文件链接无效',
+        showCancel: false,
+        confirmText: '确定'
+      })
+      return
+    }
+
+    if (!fileUrl.startsWith('http')) {
+      wx.showModal({
+        title: '提示',
+        content: '文件链接格式不正确',
+        showCancel: false,
+        confirmText: '确定'
+      })
+      return
+    }
+
+    const ext = filename ? filename.toLowerCase().substring(filename.lastIndexOf('.')) : ''
+    const audioTypes = ['.mp3', '.wav', '.ogg', '.aac', '.m4a']
+    const videoTypes = ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm']
+    const imageTypes = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']
+
+    if (imageTypes.includes(ext)) {
+      wx.previewImage({ urls: [fileUrl] })
+      return
+    }
+
+    if (audioTypes.includes(ext)) {
+      this.doDownloadFile(fileUrl, filename, 0)
+      return
+    }
+
+    if (videoTypes.includes(ext)) {
+      this.setData({
+        videoSrc: fileUrl,
+        showVideoPlayer: true
+      })
+      return
+    }
+
+    this.directPreviewDocument(fileUrl, filename)
+  },
+
+  directPreviewDocument(fileUrl, filename) {
+    var that = this
+    wx.showLoading({ title: '准备预览...' })
+
+    const downloadTask = wx.downloadFile({
+      url: fileUrl,
+      success: (res) => {
+        that.downloadTasks[downloadId] = downloadTask
+        const downloadTask = wx.downloadFile({
+          url: fileUrl
+        })
+      }
+    })
+
+    const downloadId = 'download_' + Date.now()
+    this.downloadTasks[downloadId] = downloadTask
+  },
+
+  addDownload(task) {
+    // 移除同 URL 的旧恢复条目（防止 onShow 恢复时重复）
+    const existing = this.data.downloads.filter(d => !(d.url === task.url && d.isRestored))
+    const downloads = [...existing, {
+      id: task.id,
+      filename: task.filename,
+      type: task.type,
+      url: task.url,
+      progress: 0,
+      status: '下载中',
+      isRestored: false
+    }]
+    this.setData({ downloads })
+  },
+
+  updateDownloadProgress(id, progress) {
+    const downloads = this.data.downloads.map(d => {
+      if (d.id === id) {
+        return { ...d, progress, status: progress >= 100 ? '下载完成' : '下载中' }
+      }
+      return d
+    })
+    this.setData({ downloads })
+  },
+
+  completeDownload(id, success = true) {
+    let downloads = this.data.downloads.map(d => {
+      if (d.id === id) {
+        return { ...d, progress: success ? 100 : 0, status: success ? '下载完成' : '下载失败', isRestored: false }
+      }
+      return d
+    })
+
+    if (success) {
+      setTimeout(() => {
+        const filtered = downloads.filter(d => d.id !== id)
+        this.setData({ downloads: filtered })
+      }, 2000)
+    }
+
+    this.setData({ downloads })
+  },
+
+  cancelDownload(e) {
+    const id = e.currentTarget ? e.currentTarget.dataset.id : e
+    console.log("取消下载:", id)
+
+    const downloadTask = this.downloadTasks[id]
+    if (downloadTask) {
+      try {
+        downloadTask.abort()
+        console.log("下载任务已中止")
+      } catch (e) {
+        console.warn("中止下载任务失败:", e)
+      }
+      delete this.downloadTasks[id]
+    }
+
+    const downloads = this.data.downloads.filter(d => d.id !== id)
+    this.setData({ downloads })
+  },
+
+  cancelDownloadModal() {
+    console.log("取消下载模态框")
+
+    const id = this.data.currentDownloadId
+    if (id) {
+      const downloadTask = this.downloadTasks[id]
+      if (downloadTask) {
+        try {
+          downloadTask.abort()
+          console.log("下载任务已中止")
+        } catch (e) {
+          console.warn("中止下载任务失败:", e)
+        }
+        delete this.downloadTasks[id]
+      }
+
+      const downloads = this.data.downloads.filter(d => d.id !== id)
+      this.setData({ downloads })
+    }
+
+    this.setData({
+      showDownloadModal: false,
+      downloadingFilename: "",
+      downloadProgress: 0,
+      downloadStatus: "准备下载...",
+      currentDownloadId: ''
+    })
+  },
+
+  toggleDownloadPanel() {
+    console.log("toggleDownloadPanel called, current showDownloadPanel:", this.data.showDownloadPanel)
+    console.log("downloads list:", this.data.downloads)
+    this.setData({ showDownloadPanel: !this.data.showDownloadPanel })
+  },
+
+  hideDownloadPanel() {
+    this.setData({ showDownloadPanel: false })
+  },
+
+  openDocumentPreview(filePath, filename, fileUrl) {
+    const ext = filename ? filename.toLowerCase().substring(filename.lastIndexOf('.')) : ''
+    const supportedDocs = ['.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.pdf', '.txt']
+    const audioTypes = ['.mp3', '.wav', '.ogg', '.aac', '.m4a']
+    const videoTypes = ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm']
+    const imageTypes = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp']
+
+    if (imageTypes.includes(ext)) {
+      wx.previewImage({ urls: [fileUrl] })
+      return
+    }
+
+    if (audioTypes.includes(ext)) {
+      this.doDownloadFile(fileUrl, filename, 0)
+      return
+    }
+
+    if (videoTypes.includes(ext)) {
+      this.setData({
+        videoSrc: fileUrl,
+        showVideoPlayer: true
+      })
+      return
+    }
+
+    this.directPreviewDocument(fileUrl, filename)
+  },
+
+  directPreviewDocument(fileUrl, filename) {
+    var that = this
+    wx.showLoading({ title: '准备预览...' })
+
+    const downloadTask = wx.downloadFile({
+      url: fileUrl,
+      success: (res) => {
+        that.downloadTasks[downloadId] = downloadTask
+        const downloadTask = wx.downloadFile({
+          url: fileUrl
+        })
+      }
+    })
+
+    const downloadId = 'download_' + Date.now()
+    this.downloadTasks[downloadId] = downloadTask
+  },
+
+  playDownloadedAudio(filePath, filename, fileUrl) {
+    console.log("播放下载的音频:", filePath, filename, "网络链接:", fileUrl)
+
+    const audioId = 'downloaded_' + Date.now()
+
+    const playingAudios = [...(this.data.playingAudios || [])]
+    playingAudios.push({
+      id: audioId,
+      status: 'playing',
+      filename: filename,
+      currentTime: 0,
+      duration: 0
+    })
+    this.setData({ playingAudios })
+
+    if (!this.audioContexts) {
+      this.audioContexts = {}
+    }
+
+    const innerAudioContext = wx.createInnerAudioContext()
+    this.audioContexts[audioId] = innerAudioContext
+    innerAudioContext.obeyMuteSwitch = false
+
+    // 决定实际播放源：
+    // wx.downloadFile 的临时文件扩展名由服务器 Content-Type 决定。
+    // 若服务器 Content-Type 不正确（如 application/octet-stream），临时文件会被存成 .bin，
+    // 而 InnerAudioContext 依赖扩展名判断格式，.bin 会解码失败（-11828 / 10001）。
+    // 因此若临时文件扩展名不是音频，则复制为带正确扩展名的文件再播放；
+    // 复制失败或本地文件仍不可用，则回退到网络链接播放。
+    let triedNetworkFallback = false
+    let playSrc = filePath
+    let localCopyPath = ''
+
+    const extMatch = (filename || '').toLowerCase().match(/\.(mp3|wav|aac|m4a|ogg)$/)
+    const audioExt = extMatch ? extMatch[1] : 'mp3'
+
+    if (!/\.(mp3|wav|aac|m4a|ogg)$/i.test(playSrc)) {
+      try {
+        const fs = wx.getFileSystemManager()
+        localCopyPath = wx.env.USER_DATA_PATH + '/audio_' + audioId + '.' + audioExt
+        fs.copyFileSync(playSrc, localCopyPath)
+        playSrc = localCopyPath
+        console.log("音频临时文件扩展名异常，已复制为可播放文件:", playSrc)
+      } catch (e) {
+        console.warn("复制音频临时文件失败:", e)
+        localCopyPath = ''
+      }
+    }
+
+    // 复制后仍不是可用音频源（复制失败且原文件扩展名异常），尝试直接使用本地临时文件
+    // 微信 InnerAudioContext 通常支持 wx.downloadFile 的临时路径
+    if (playSrc === filePath && !/\.(mp3|wav|aac|m4a|ogg)$/i.test(filePath)) {
+      console.log("本地音频文件无扩展名，尝试直接播放:", filePath)
+    }
+
+    innerAudioContext.src = playSrc
+
+    innerAudioContext.onPlay(() => {
+      console.log("下载的音频开始播放:", audioId)
+      const updatedAudios = [...this.data.playingAudios]
+      const index = updatedAudios.findIndex(a => a.id === audioId)
+      if (index >= 0) {
+        updatedAudios[index] = {
+          ...updatedAudios[index],
+          status: 'playing'
+        }
+        this.setData({ playingAudios: updatedAudios })
+      }
+      this.updateAudioProgress(audioId)
+    })
+
+    innerAudioContext.onPause(() => {
+      const updatedAudios = [...this.data.playingAudios]
+      const index = updatedAudios.findIndex(a => a.id === audioId)
+      if (index >= 0) {
+        updatedAudios[index] = {
+          ...updatedAudios[index],
+          status: 'paused'
+        }
+        this.setData({ playingAudios: updatedAudios })
+      }
+    })
+
+    innerAudioContext.onEnded(() => {
+      console.log("音频播放结束:", audioId)
+      const updatedAudios = this.data.playingAudios.map(a => {
+        if (a.id === audioId) {
+          return { ...a, status: 'ended', currentTime: a.duration || 0 }
+        }
+        return a
+      })
+      this.setData({ playingAudios: updatedAudios })
+
+      // 清理为修复 .bin 扩展名而复制的临时副本，避免 USER_DATA_PATH 累积
+      if (localCopyPath) {
+        try {
+          wx.getFileSystemManager().removeSavedFileSync(localCopyPath)
+        } catch (e) {
+          try {
+            wx.getFileSystemManager().unlinkSync(localCopyPath)
+          } catch (e2) {
+            console.warn("清理临时音频副本失败:", localCopyPath, e2)
+          }
+        }
+        localCopyPath = ''
+      }
+    })
+
+    innerAudioContext.onError((err) => {
+      console.error("音频播放错误:", audioId, err)
+      // 本地文件解码失败且存在网络链接时，自动回退一次（绕过损坏/失效的本地临时文件）
+      if (!triedNetworkFallback && fileUrl && fileUrl !== filePath) {
+        triedNetworkFallback = true
+        console.log("本地音频播放失败，回退使用网络链接播放:", fileUrl)
+        try {
+          innerAudioContext.src = fileUrl
+          innerAudioContext.play()
+          return
+        } catch (e2) {
+          console.error("回退网络链接播放也失败:", e2)
+        }
+      }
+
+      wx.showModal({
+        title: '提示',
+        content: '播放失败，音频文件可能无法正常打开',
+        showCancel: false,
+        confirmText: '确定'
+      })
+
+      // 清理为修复 .bin 扩展名而复制的临时副本，避免 USER_DATA_PATH 累积
+      if (localCopyPath) {
+        try {
+          wx.getFileSystemManager().removeSavedFileSync(localCopyPath)
+        } catch (e) {
+          try {
+            wx.getFileSystemManager().unlinkSync(localCopyPath)
+          } catch (e2) {
+            console.warn("清理临时音频副本失败:", localCopyPath, e2)
+          }
+        }
+        localCopyPath = ''
+      }
+
+      try {
+        innerAudioContext.destroy()
+      } catch (e) {
+        console.warn("销毁音频上下文失败:", e)
+      }
+      delete this.audioContexts[audioId]
+      const updatedAudios = this.data.playingAudios.filter(a => a.id !== audioId)
+      this.setData({ playingAudios: updatedAudios })
+    })
+
+    innerAudioContext.onCanplay(() => {
+      console.log("音频准备就绪，duration:", innerAudioContext.duration)
+      if (innerAudioContext.duration > 0) {
+        const updatedAudios = [...this.data.playingAudios]
+        const index = updatedAudios.findIndex(a => a.id === audioId)
+        if (index >= 0) {
+          updatedAudios[index] = {
+            ...updatedAudios[index],
+            duration: innerAudioContext.duration
+          }
+          this.setData({ playingAudios: updatedAudios })
+        }
+      }
+    })
+
+    innerAudioContext.play()
+  },
+
+  playAudioWithUI(filePath, filename) {
+    console.log("播放音频:", filePath, filename)
+
+    if (typeof wx.setAudioCategory === 'function') {
+      wx.setAudioCategory({
+        category: 'playback',
+        mixWithOther: true
+      })
+    }
+
+    if (this.currentAudioContext) {
+      try {
+        this.currentAudioContext.stop()
+        this.currentAudioContext.destroy()
+      } catch (e) {
+        console.warn("销毁旧音频上下文失败:", e)
+      }
+    }
+
+    const innerAudioContext = wx.createInnerAudioContext()
+    this.currentAudioContext = innerAudioContext
+    innerAudioContext.src = filePath
+    innerAudioContext.obeyMuteSwitch = false
+    innerAudioContext.volume = 1.0
+
+    innerAudioContext.onCanplay(() => {
+      console.log("音频准备就绪，duration:", innerAudioContext.duration)
+      innerAudioContext.play()
+    })
+
+    innerAudioContext.onPlay(() => {
+      console.log("音频开始播放")
+      if (!this.data.currentPlayingAudio || this.data.currentPlayingAudio.status !== 'playing') {
+        this.setData({
+          currentPlayingAudio: {
+            filename: filename,
+            status: 'playing',
+            duration: innerAudioContext.duration || 0,
+            currentTime: 0
+          }
+        })
+      }
+    })
+
+    innerAudioContext.onTimeUpdate(() => {
+      if (this.data.currentPlayingAudio) {
+        this.setData({
+          currentPlayingAudio: {
+            ...this.data.currentPlayingAudio,
+            currentTime: innerAudioContext.currentTime
+          }
+        })
+      }
+    })
+
+    innerAudioContext.onEnded(() => {
+      console.log("音频播放结束")
+      if (this.currentPlayingAudio) {
+        this.setData({
+          currentPlayingAudio: {
+            ...this.currentPlayingAudio,
+            status: 'ended',
+            currentTime: this.currentPlayingAudio.duration || 0
+          }
+        })
+      }
+    })
+
+    innerAudioContext.onError((err) => {
+      console.error("音频播放错误:", err)
+      this.setData({
+        currentPlayingAudio: null
+      })
+      wx.showModal({
+        title: '提示',
+        content: '无法播放此音频',
+        showCancel: false,
+        confirmText: '确定'
+      })
+
+      try {
+        innerAudioContext.destroy()
+        this.currentAudioContext = null
+      } catch (e) {
+        console.warn("销毁音频上下文失败:", e)
+      }
+    })
+
+    innerAudioContext.play()
+  },
+
+  playDownloadedVideo(filePath, filename) {
+    console.log("播放下载的视频:", filePath)
+    this.setData({
+      videoSrc: filePath,
+      showVideoPlayer: true
+    })
+  },
+
+  closeVideoPlayer() {
+    this.setData({ showVideoPlayer: false, videoSrc: '' })
+  },
+
+  onVideoError(e) {
+    console.error("视频播放错误:", e.detail)
+    wx.showModal({
+      title: '提示',
+      content: '视频播放失败',
+      showCancel: false,
+      confirmText: '确定'
+    })
+    setTimeout(() => {
+      this.closeVideoPlayer()
+    }, 2000)
+  },
+
+  onVideoContentTap() {
+  },
+
+  onModalContentTap() {
+  },
+
+  handleUnsupportedFile(filename) {
+    wx.showModal({
+      title: '无法打开文件',
+      content: `当前不支持预览 "${filename}" 类型的文件`,
+      showCancel: false,
+      confirmText: '复制链接',
+      success: (res) => {
+        const fileUrl = this.data.messages.find(m => m.filename === filename)?.fileUrl
+        if (fileUrl && res.confirm) {
+          wx.setClipboardData({
+            data: fileUrl,
+            success: () => {
+              wx.showModal({
+                title: '提示',
+                content: '链接已复制',
+                showCancel: false,
+                confirmText: '确定'
+              })
+            },
+            fail: () => {
+              wx.showModal({
+                title: '提示',
+                content: '复制失败',
+                showCancel: false,
+                confirmText: '确定'
+              })
+            }
+          })
+        }
+      }
+    })
+  },
+
+  formatFileSize(bytes) {
+    if (bytes === 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  },
+
+  bindKeyInput(e) {
+    this.setData({ inputValue: e.detail.value })
+  },
+
+  hasPermission(permissionName) {
+    const permissions = this.data.userPermissions
+    if (!permissions) {
+      return true
+    }
+    // 如果该权限字段在服务端权限对象中存在，按字段值判断
+    if (permissionName in permissions) {
+      return permissions[permissionName] !== false
+    }
+    // 如果不存在（如 allowSendMessages 服务端未下发），回退检查基础 allowAccess
+    return permissions.allowAccess !== false
+  },
+
+  sendMessage() {
+    console.log("sendMessage被调用")
+    console.log("sending状态:", this.data.sending)
+    console.log("connected状态:", this.data.connected)
+    console.log("输入内容:", this.data.inputValue)
+
+    const now = Date.now()
+    if (now - this.lastSendTime < this.sendInterval) {
+      console.log("发送太快，忽略")
+      return
+    }
+
+    if (this.data.sending) {
+      console.log("正在发送中，忽略")
+      return
+    }
+
+    if (this.data.kicked) {
+      wx.showModal({
+        title: '提示',
+        content: '你已被踢出',
+        showCancel: false,
+        confirmText: '确定'
+      })
+      return
+    }
+
+    var content = this.data.inputValue.trim()
+    if (!content) {
+      wx.showModal({
+        title: '提示',
+        content: '请输入内容',
+        showCancel: false,
+        confirmText: '确定'
+      })
+      return
+    }
+
+    if (!this.data.connected) {
+      wx.showModal({
+        title: '发送失败',
+        content: '网络连接未建立，请检查网络后重试。是否尝试重新连接？',
+        confirmText: '重新连接',
+        cancelText: '取消',
+        success: (res) => {
+          if (res.confirm) {
+            this.initSocket()
+          }
+        }
+      })
+      return
+    }
+
+    if (!this.hasPermission('allowSendMessages')) {
+      wx.showModal({
+        title: '提示',
+        content: '您没有发送消息的权限',
+        showCancel: false,
+        confirmText: '确定'
+      })
+      return
+    }
+
+    this.lastSendTime = now
+
+    this.setData({ inputValue: "", sending: true })
+
+    const msgId = Date.now().toString()
+    const msgData = {
+      message: content,
+      type: "text",
+      clientMessageId: msgId,
+      avatarUrl: this.data.avatarUrl || ''
+    }
+
+    this.sendSocketMessage("message", msgData, (err) => {
+      this.setData({ sending: false })
+      if (err) {
+        console.error("发送失败", err)
+      }
+    })
+
+    if (!this.messageIds) {
+      this.messageIds = []
+    }
+    this.messageIds.push(msgId)
+    this.setData({
+      messages: this.data.messages.concat([{
+        id: msgId,
+        user: { nickName: this.data.username, avatarUrl: this.data.avatarUrl },
+        content: content,
+        time: this.formatTime(new Date()),
+        isSelf: true
+      }]),
+      scrollTop: 999999
+    })
+  },
+
+  formatTime(date) {
+    const year = date.getFullYear()
+    const month = date.getMonth() + 1
+    const day = date.getDate()
+    const hour = date.getHours()
+    const minute = date.getMinutes()
+    const second = date.getSeconds()
+    return `${[year, month, day].map(formatNumber).join('/')} ${[hour, minute, second].map(formatNumber).join(':')}`
+  },
+
+  formatNumber(n) {
+    n = n.toString()
+    return n[1] ? n : `0${n}`
+  },
+
+  formatFileSize(bytes) {
+    if (bytes === 0) return '0 B'
+    const k = 1024
+    const sizes = ['B', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  },
+
+  formatTimestamp(timestamp) {
+    if (!timestamp) return this.formatTime(new Date())
+    if (typeof timestamp === 'number') {
+      return this.formatTime(new Date(timestamp))
+    }
+    const match = timestamp.match(/(\d+):(\d+)(?::(\d+))?\s*(AM|PM)?/)
+    if (match) {
+      let hours = parseInt(match[1])
+      const minutes = parseInt(match[2])
+      const period = match[4]
+      if (period === 'PM' && hours < 12) {
+        hours += 12
+      } else if (period === 'AM' && hours === 12) {
+        hours = 0
+      }
+      if (hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
+        return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+      }
+    }
+    return this.formatTime(new Date())
+  },
+
+  formatAudioTime(seconds) {
+    if (!seconds || isNaN(seconds)) return "00:00"
+    const mins = Math.floor(seconds / 60)
+    const secs = Math.floor(seconds % 60)
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+  },
+
+  formatAudioDuration(duration) {
+    if (!duration || isNaN(duration) || duration <= 0) return ''
+    if (duration >= 60) {
+      const mins = Math.floor(duration / 60)
+      const secs = Math.floor(duration % 60)
+      return `${mins}'${secs}"`
+    }
+    return duration.toFixed(1) + 's'
+  },
+
+  getPercentage(votes, total) {
+    if (!total || total <= 0) return "0"
+    return (votes / total * 100).toFixed(1)
+  },
+
+  getAudioStatus(audioId) {
+    const playingAudios = this.data.playingAudios || []
+    const audio = playingAudios.find(a => a.id === audioId)
+    if (!audio) return '▶️'
+    return audio.status === 'playing' ? '⏹️' : '⏸️'
+  },
+
+  toggleAudioPlay(e) {
+    if (!e || !e.currentTarget) {
+      console.log('toggleAudioPlay: 无效的事件对象')
+      return
+    }
+
+    const audioId = e.currentTarget.dataset.id
+    if (!audioId) {
+      console.log('toggleAudioPlay: 无效的音频ID')
+      return
+    }
+
+    if (!this.audioContexts) {
+      console.log('toggleAudioPlay: audioContexts 未初始化')
+      return
+    }
+
+    const ctx = this.audioContexts[audioId]
+    if (!ctx) {
+      console.log('toggleAudioPlay: 音频上下文不存在:', audioId)
+      return
+    }
+
+    const audios = this.data.playingAudios || []
+    const index = audios.findIndex(a => a.id === audioId)
+    if (index < 0) {
+      console.log('toggleAudioPlay: 音频不在播放列表中:', audioId)
+      return
+    }
+
+    console.log('toggleAudioPlay:', audioId, '当前状态:', audios[index].status)
+
+    if (audios[index].status === 'playing') {
+      try {
+        ctx.pause()
+        console.log('音频已暂停:', audioId)
+      } catch (err) {
+        console.error('暂停音频失败:', err)
+      }
+
+      const timerKey = 'audioProgressTimer_' + audioId
+      if (this[timerKey]) {
+        clearInterval(this[timerKey])
+        this[timerKey] = null
+        console.log('进度定时器已清除:', audioId)
+      }
+
+      const updatedAudios = [...audios]
+      updatedAudios[index] = {
+        ...updatedAudios[index],
+        status: 'paused'
+      }
+      this.setData({ playingAudios: updatedAudios })
+      console.log('播放状态已更新为 paused:', audioId)
+    } else {
+      if (audios[index].status === 'ended') {
+        try {
+          ctx.seek(0)
+          console.log('音频已重置到开始:', audioId)
+        } catch (err) {
+          console.error('重置音频失败:', err)
+        }
+      }
+
+      try {
+        ctx.play()
+        console.log('音频已播放:', audioId)
+      } catch (err) {
+        console.error('播放音频失败:', err)
+        return
+      }
+
+      const updatedAudios = [...audios]
+      updatedAudios[index] = {
+        ...updatedAudios[index],
+        status: 'playing',
+        currentTime: 0
+      }
+      this.setData({ playingAudios: updatedAudios })
+      this.updateAudioProgress(audioId)
+      console.log('播放状态已更新为 playing:', audioId)
+    }
+  },
+
+  stopAudio(e) {
+    console.log('stopAudio 被调用')
+
+    if (e && typeof e.stopPropagation === 'function') {
+      e.stopPropagation()
+    }
+
+    const audioId = e ? (e.currentTarget ? e.currentTarget.dataset.id : null) : null
+    console.log('stopAudio: audioId =', audioId)
+
+    if (audioId) {
+      const timerKey = 'audioProgressTimer_' + audioId
+      if (this[timerKey]) {
+        clearInterval(this[timerKey])
+        this[timerKey] = null
+        console.log('stopAudio: 进度定时器已清除:', audioId)
+      }
+
+      if (this.audioContexts && this.audioContexts[audioId]) {
+        const ctx = this.audioContexts[audioId]
+        try {
+          ctx.stop()
+          ctx.destroy()
+          console.log('stopAudio: 音频已停止并销毁:', audioId)
+        } catch (err) {
+          console.warn("停止音频失败:", err)
+        }
+        delete this.audioContexts[audioId]
+        console.log('stopAudio: 音频上下文已删除:', audioId)
+      } else {
+        console.log('stopAudio: 音频上下文不存在:', audioId)
+      }
+
+      const audios = this.data.playingAudios || []
+      const updatedAudios = audios.filter(a => a.id !== audioId)
+      this.setData({ playingAudios: updatedAudios })
+      console.log('stopAudio: 播放列表已更新，剩余:', updatedAudios.length)
+    } else {
+      console.log('stopAudio: 停止所有音频')
+
+      if (this.audioContexts) {
+        for (const id in this.audioContexts) {
+          const timerKey = 'audioProgressTimer_' + id
+          if (this[timerKey]) {
+            clearInterval(this[timerKey])
+            this[timerKey] = null
+          }
+          try {
+            this.audioContexts[id].stop()
+            this.audioContexts[id].destroy()
+            console.log('stopAudio: 音频已停止:', id)
+          } catch (err) {
+            console.warn("停止音频失败:", err)
+          }
+        }
+        this.audioContexts = {}
+        console.log('stopAudio: 所有音频上下文已清空')
+      } else {
+        console.log('stopAudio: audioContexts 为空')
+      }
+
+      this.setData({ playingAudios: [] })
+      console.log('stopAudio: 播放列表已清空')
+    }
+  },
+
+  seekAudio(e) {
+    const audioId = e.currentTarget.dataset.id
+    if (!audioId) return
+
+    const ctx = this.audioContexts[audioId]
+    const audios = this.data.playingAudios
+    const index = audios.findIndex(a => a.id === audioId)
+    if (!ctx || index < 0) return
+
+    const progressBar = e.currentTarget
+    const rect = progressBar.getBoundingClientRect ? progressBar.getBoundingClientRect() : { width: 200 }
+    const clientWidth = rect.width || 200
+    const clickX = e.detail.x || e.touches?.[0]?.clientX || 0
+    const offsetX = clickX - (progressBar.offsetLeft || 0)
+    const percent = Math.max(0, Math.min(1, offsetX / clientWidth))
+
+    const newTime = percent * (audios[index].duration || 1)
+    ctx.seek(newTime)
+
+    const updatedAudios = [...audios]
+    updatedAudios[index] = {
+      ...updatedAudios[index],
+      currentTime: newTime
+    }
+    this.setData({ playingAudios: updatedAudios })
+  },
+
+  goBack() {
+    wx.navigateBack()
+  },
+
+  onShareAppMessage() {
+    return {
+      title: '聊天室 - ' + this.data.roomName,
+      path: '/pages/chat/chat?room=' + encodeURIComponent(this.data.roomName),
+      imageUrl: ''
+    }
+  },
+
+  onHide() {
+    console.log("页面隐藏，保持Socket连接")
+    console.log("当前下载任务:", this.data.downloads)
+    // 离开页面时收起顶部通知，避免悬挂
+    this.hideNotification()
+  },
+
+  onShow() {
+    console.log("页面显示")
+
+    // 检查连接状态，如果断开则自动重连
+    if (!this.data.connected && !this.data.connecting && !this.isInitializingSocket) {
+      console.log("页面恢复时检测到连接已断开，尝试重连")
+      this.initSocket()
+    }
+
+    const pendingDownloads = this.data.downloads.filter(d =>
+      d.status === '下载中' && d.progress < 100 && !d.isRestored
+    )
+    console.log("需要恢复的下载任务:", pendingDownloads)
+
+    if (pendingDownloads.length > 0) {
+      wx.showToast({ title: `恢复${pendingDownloads.length}个下载任务`, icon: 'none', duration: 2000 })
+
+      const updatedDownloads = this.data.downloads.map(d => {
+        if (d.status === '下载中' && d.progress < 100) {
+          return { ...d, isRestored: true }
+        }
+        return d
+      })
+      this.setData({ downloads: updatedDownloads })
+
+      pendingDownloads.forEach(task => {
+        console.log("重新下载:", task.filename)
+        // 下载完成后移除旧的 isRestored 条目，防止重复
+        const oldId = task.id
+        this.doDownloadFile(task.url, task.filename, 0)
+      })
+    }
+  },
+
+  // ===== 投票相关功能 =====
+
+  showCreatePoll() {
+    this.setData({
+      showCreatePollModal: true,
+      pollTitle: "",
+      pollOptions: ["", ""],
+      pollMultiple: false,
+      pollAnonymous: false
+    })
+  },
+
+  closeCreatePoll() {
+    this.setData({ showCreatePollModal: false })
+  },
+
+  bindPollTitle(e) {
+    this.setData({ pollTitle: e.detail.value })
+  },
+
+  bindPollOption(e) {
+    const index = parseInt(e.currentTarget.dataset.index)
+    const options = [...this.data.pollOptions]
+    options[index] = e.detail.value
+    this.setData({ pollOptions: options })
+  },
+
+  addPollOption() {
+    if (this.data.pollOptions.length < 6) {
+      this.setData({ pollOptions: [...this.data.pollOptions, ""] })
+    }
+  },
+
+  deletePollOption(e) {
+    const index = parseInt(e.currentTarget.dataset.index)
+    if (this.data.pollOptions.length > 2) {
+      const options = this.data.pollOptions.filter((_, i) => i !== index)
+      this.setData({ pollOptions: options })
+    }
+  },
+
+  setPollMultiple(e) {
+    const value = e.currentTarget.dataset.value === 'true'
+    this.setData({ pollMultiple: value })
+  },
+
+  togglePollAnonymous() {
+    this.setData({ pollAnonymous: !this.data.pollAnonymous })
+  },
+
+  createPoll() {
+    const title = this.data.pollTitle.trim()
+    const options = this.data.pollOptions.filter(o => o.trim())
+
+    if (!title) {
+      wx.showModal({
+        title: '提示',
+        content: '请输入投票标题',
+        showCancel: false,
+        confirmText: '确定'
+      })
+      return
+    }
+
+    if (options.length < 2) {
+      wx.showModal({
+        title: '提示',
+        content: '至少需要2个选项',
+        showCancel: false,
+        confirmText: '确定'
+      })
+      return
+    }
+
+    const msgId = Date.now().toString()
+    const pollData = {
+      id: msgId,
+      title: title,
+      options: options.map(text => ({ text, votes: 0 })),
+      multiple: this.data.pollMultiple,
+      isAnonymous: this.data.pollAnonymous,
+      totalVotes: 0,
+      createdAt: new Date().toISOString()
+    }
+
+    this.sendSocketMessage("create-poll", {
+      question: title,
+      options: options,
+      allowMultiple: this.data.pollMultiple,
+      isAnonymous: this.data.pollAnonymous
+    })
+
+    this.setData({
+      showCreatePollModal: false
+    })
+
+    wx.showModal({
+      title: '提示',
+      content: '投票已发起',
+      showCancel: false,
+      confirmText: '确定'
+    })
+  },
+
+  openPollDetail(e) {
+    let poll = e.currentTarget.dataset.poll
+    if (typeof poll === 'string') {
+      try {
+        poll = JSON.parse(poll)
+      } catch (e) {
+        console.error("解析投票数据失败:", e)
+        return
+      }
+    }
+
+    const hasVoted = this.data.votedPolls.includes(poll.id)
+
+    this.setData({
+      showPollDetail: true,
+      selectedPoll: poll,
+      pollSelectedOptions: [],
+      hasVoted: hasVoted
+    })
+  },
+
+  closePollDetail() {
+    this.setData({ showPollDetail: false })
+  },
+
+  selectPollOption(e) {
+    if (this.data.hasVoted) return
+
+    const index = parseInt(e.currentTarget.dataset.index)
+    let selectedOptions = [...this.data.pollSelectedOptions]
+
+    if (this.data.selectedPoll?.multiple) {
+      if (selectedOptions.includes(index)) {
+        selectedOptions = selectedOptions.filter(i => i !== index)
+      } else {
+        selectedOptions.push(index)
+      }
+    } else {
+      selectedOptions = [index]
+    }
+
+    this.setData({ pollSelectedOptions: selectedOptions })
+  },
+
+  submitPollVote() {
+    if (this.data.pollSelectedOptions.length === 0) {
+      wx.showModal({
+        title: '提示',
+        content: '请选择选项',
+        showCancel: false,
+        confirmText: '确定'
+      })
+      return
+    }
+
+    const voteData = {
+      pollId: this.data.selectedPoll.id,
+      options: this.data.pollSelectedOptions
+    }
+
+    this.sendSocketMessage("poll-vote", voteData)
+
+    this.setData({
+      showPollDetail: false,
+      hasVoted: true,
+      votedPolls: [...this.data.votedPolls, this.data.selectedPoll.id]
+    })
+
+    wx.showModal({
+      title: '提示',
+      content: '投票成功',
+      showCancel: false,
+      confirmText: '确定'
+    })
+  },
+
+  // ===== 游戏相关功能 =====
+
+  showGomokuGame(data) {
+    console.log("显示五子棋游戏:", data)
+    this.navigateToGame(data)
+  },
+
+  showRpsGame(data) {
+    console.log("显示剪刀石头布游戏:", data)
+    this.navigateToGame(data)
+  },
+
+  showGuessNumberGame(data) {
+    console.log("显示猜数字游戏:", data)
+    this.navigateToGame(data)
+  },
+
+  showBombGame(data) {
+    console.log("显示数字炸弹游戏:", data)
+    this.navigateToGame(data)
+  },
+
+  showPictionaryGame(data) {
+    console.log("显示你画我猜游戏:", data)
+    this.navigateToGame(data)
+  },
+
+  showTypingGame(data) {
+    console.log("显示打字对战游戏:", data)
+    this.navigateToGame(data)
+  },
+
+  navigateToGame(gameData) {
+    const gameDataWithUser = {
+      ...gameData,
+      currentUsername: this.data.username
+    }
+
+    const encodedData = encodeURIComponent(JSON.stringify(gameDataWithUser))
+    wx.navigateTo({
+      url: `/pages/game/game?gameData=${encodedData}`
+    })
+  },
+
+  handleGameInvitation(invitation) {
+    console.log("处理游戏邀请:", invitation)
+
+    const gameNames = {
+      gomoku: '♟️ 五子棋',
+      rps: '✊ 剪刀石头布',
+      'guess-number': '🔢 猜数字',
+      bomb: '💣 数字炸弹',
+      pictionary: '🎨 你画我猜',
+      typing: '⌨️ 打字对战'
+    }
+
+    const gameName = gameNames[invitation.gameType] || invitation.gameType
+
+    wx.showModal({
+      title: '🎮 游戏邀请',
+      content: `${invitation.fromUsername} 邀请你玩 ${gameName}`,
+      confirmText: '接受',
+      cancelText: '拒绝',
+      success: (res) => {
+        if (res.confirm) {
+          this.acceptGameInvitation({ currentTarget: { dataset: { id: invitation.id } } })
+        } else {
+          this.rejectGameInvitation({ currentTarget: { dataset: { id: invitation.id } } })
+        }
+      }
+    })
+
+    this.loadGameInvitations()
+  },
+
+  acceptGameInvitation(e) {
+    const invitationId = e.currentTarget.dataset.id
+    console.log("接受游戏邀请:", invitationId)
+
+    if (!this.pendingMessages) {
+      this.pendingMessages = new Set()
+    }
+
+    if (this.socket) {
+      const messageId = 'msg_' + Date.now()
+      this.pendingMessages.add(messageId)
+      const data = JSON.stringify({
+        invitationId: invitationId,
+        accept: true
+      })
+      this.socket.send({
+        data: '42["respond-to-game-invitation",' + data + ']'
+      })
+
+      wx.showModal({
+        title: '提示',
+        content: '已接受邀请',
+        showCancel: false,
+        confirmText: '确定'
+      })
+
+      this.loadGameInvitations()
+    }
+  },
+
+  rejectGameInvitation(e) {
+    const invitationId = e.currentTarget.dataset.id
+    console.log("拒绝游戏邀请:", invitationId)
+
+    if (!this.pendingMessages) {
+      this.pendingMessages = new Set()
+    }
+
+    if (this.socket) {
+      const messageId = 'msg_' + Date.now()
+      this.pendingMessages.add(messageId)
+      const data = JSON.stringify({
+        invitationId: invitationId,
+        accept: false
+      })
+      this.socket.send({
+        data: '42["respond-to-game-invitation",' + data + ']'
+      })
+
+      wx.showModal({
+        title: '提示',
+        content: '已拒绝邀请',
+        showCancel: false,
+        confirmText: '确定'
+      })
+
+      this.loadGameInvitations()
+    }
+  },
+
+  handleGameStart(data) {
+    console.log("处理游戏开始事件:", data)
+
+    this.setData({
+      showInteractiveCenter: false,
+      currentGame: data
+    })
+
+    const gameTypeName = {
+      gomoku: '五子棋',
+      rps: '剪刀石头布',
+      'guess-number': '猜数字',
+      bomb: '数字炸弹',
+      pictionary: '你画我猜',
+      typing: '打字对战'
+    }
+
+    wx.showModal({
+      title: '🎮 游戏开始',
+      content: `游戏类型：${gameTypeName[data.gameType] || data.gameType}\n\n对手：${data.players?.map(p => p.username).join(', ') || '未知'}`,
+      showCancel: false,
+      confirmText: '进入游戏',
+      success: () => {
+        if (data.gameType === 'gomoku') {
+          this.showGomokuGame(data)
+        } else if (data.gameType === 'rps') {
+          this.showRpsGame(data)
+        } else if (data.gameType === 'guess-number') {
+          this.showGuessNumberGame(data)
+        } else if (data.gameType === 'bomb') {
+          this.showBombGame(data)
+        } else if (data.gameType === 'pictionary') {
+          this.showPictionaryGame(data)
+        } else if (data.gameType === 'typing') {
+          this.showTypingGame(data)
+        } else {
+          this.showError(`暂不支持${gameTypeName[data.gameType] || data.gameType}游戏`)
+        }
+      }
+    })
+  },
+
+  handleGameUpdate(data) {
+    console.log("处理游戏更新事件:", data)
+
+    const currentGame = this.data.currentGame
+
+    if (currentGame && currentGame.gameId === data.gameId) {
+      this.setData({
+        currentGame: {
+          ...currentGame,
+          board: data.board,
+          currentPlayer: data.currentPlayer,
+          status: data.status,
+          winner: data.winner
+        }
+      })
+
+      if (data.winner) {
+        const winnerName = data.winner === this.data.username ? '你' : data.winner
+        wx.showModal({
+          title: '🏆 游戏结束',
+          content: `${winnerName} 获胜！`,
+          showCancel: false,
+          success: () => {
+            wx.navigateBack()
+          }
+        })
+      }
+    }
+  },
+
+  handleGameEnd(data) {
+    console.log("游戏结束:", data)
+
+    if (data.gameId !== this.data.gameId) return
+
+    const players = data.players || this.data.players
+    const winnerPlayer = players.find(p => p.socketId === data.winner)
+    const winnerName = winnerPlayer?.username || data.winner || '未知'
+    const displayName = winnerName === this.data.username ? '你' : winnerName
+
+    wx.showModal({
+      title: '🏆 游戏结束',
+      content: `${displayName} 获胜！`,
+      showCancel: false,
+      success: () => {
+        wx.navigateBack()
+      }
+    })
+  },
+
+  handlePollCreated(poll) {
+    console.log("收到投票创建事件:", poll)
+
+    const msgId = poll.id || Date.now().toString()
+    this.messageIds.push(msgId)
+    this.processedServerMsgIds.add(msg.id)
+
+    const newMsgs = [{
+      id: msgId,
+      user: { nickName: poll.username || "未知", avatarUrl: poll.avatarUrl || '' },
+      type: 'poll',
+      poll: poll,
+      time: that.formatTimestamp(poll.timestamp),
+      isSelf: poll.username === that.data.username
+    }]
+
+    this.setData({
+      messages: that.data.messages.concat(newMsgs),
+      scrollTop: 999999
+    })
+  },
+
+  handlePollUpdated(poll) {
+    console.log("收到投票更新事件:", poll)
+
+    if (this.data.currentPoll && this.data.currentPoll.id === poll.id) {
+      this.setData({ currentPoll: poll })
+    }
+  },
+
+  handlePollEnded(pollId) {
+    console.log("收到投票结束事件:", pollId)
+
+    if (this.data.currentPoll && this.data.currentPoll.id === pollId) {
+      this.setData({ showPoll: false })
+    }
+  },
+
+  // ===== 游戏相关功能 =====
+
+  inviteUserToGame(e) {
+    const userId = e.currentTarget.dataset.userId
+    const username = e.currentTarget.dataset.username
+    const isAI = username === 'ai' || userId === 'pc-bot-virtual-socket'
+    console.log("邀请用户:", username, "userId:", userId, "isAI:", isAI)
+
+    const gameList = isAI
+      ? ['✊ 剪刀石头布', '♟️ 五子棋', '🔢 猜数字', '💣 数字炸弹']
+      : ['✊ 剪刀石头布', '♟️ 五子棋', '🔢 猜数字', '💣 数字炸弹', '🎨 你画我猜', '⌨️ 打字对战']
+
+    const gameTypes = isAI
+      ? ['rps', 'gomoku', 'guess-number', 'bomb']
+      : ['rps', 'gomoku', 'guess-number', 'bomb', 'pictionary', 'typing']
+
+    this.setData({
+      showGameInvitationModal: true,
+      gameList: gameList,
+      gameTypes: gameTypes,
+      targetUserId: userId,
+      targetUsername: username
+    })
+  },
+
+  closeGameInvitationModal() {
+    this.setData({ showGameInvitationModal: false })
+  },
+
+  selectGame(e) {
+    const index = e.currentTarget.dataset.index
+    const gameType = this.data.gameTypes[index]
+
+    const data = JSON.stringify({
+      gameType: gameType,
+      targetUserId: this.data.targetUserId
+    })
+
+    this.socket.send({
+      data: '42["send-game-invitation",' + data + ']'
+    })
+
+    wx.showModal({
+      title: '提示',
+      content: '邀请已发送',
+      showCancel: false,
+      confirmText: '确定'
+    })
+
+    this.closeGameInvitationModal()
+  },
+
+  // ===== 控制台功能 =====
+
+  showDevMenu() {
+    console.log("显示开发菜单")
+    var that = this
+    wx.showActionSheet({
+      itemList: [
+        "⋯ 更多",
+        "🔊 音频播放控制"
+      ],
+      success: function(res) {
+        console.log("开发菜单点击:", res.tapIndex)
+        switch(res.tapIndex) {
+          case 0:
+            that.showAllLogs()
+            break
+          case 1:
+            that.showAudioControlPanel()
+            break
+        }
+      },
+      fail: function(res) {
+        console.error("开发菜单失败:", res)
+      }
+    })
+  },
+
+  showAudioControlPanel() {
+    console.log("显示音频控制面板")
+    wx.showActionSheet({
+      itemList: [
+        "🔊 播放所有音频",
+        "⏹️ 停止所有音频"
+      ],
+      success: function(res) {
+        console.log("音频控制点击:", res.tapIndex)
+        switch(res.tapIndex) {
+          case 0:
+            that.playAllAudios()
+            break
+          case 1:
+            that.stopAllAudios()
+            break
+        }
+      },
+      fail: function(res) {
+        console.error("音频控制失败:", res)
+      }
+    })
+  },
+
+  playAllAudios() {
+    const playingAudios = this.data.playingAudios || []
+    playingAudios.forEach(audio => {
+      const ctx = this.audioContexts[audio.id]
+      if (ctx) {
+        ctx.play()
+      }
+    })
+  },
+
+  stopAllAudios() {
+    const playingAudios = this.data.playingAudios || []
+    playingAudios.forEach(audio => {
+      const ctx = this.audioContexts[audio.id]
+      if (ctx) {
+        ctx.pause()
+      }
+    })
+  },
+
+  // ===== 其他辅助功能 =====
+
+  toggleElement(elementName) {
+    this.setData({
+      [elementName]: !this.data[elementName]
+    })
+  },
+
+  showInteractiveCenter() {
+    console.log('打开互动中心')
+    this.setData({ showInteractiveCenter: true })
+    this.loadOnlineUsers()
+    this.loadActiveGames()
+    this.loadGameInvitations()
+    this.loadGameHistory()
+  },
+
+  showElementStatus() {
+    const status = "连接状态: " + (this.data.connected ? "已连接" : "未连接") + "\n" +
+      "正在连接: " + (this.data.connecting ? "是" : "否") + "\n" +
+      "重连次数: " + this.reconnectAttempts + "/" + this.maxReconnectAttempts + "\n" +
+      "使用本地服务器: " + (this.useLocalServer ? "是" : "否") + "\n" +
+      "服务器地址: " + this.getServerUrl() + "\n" +
+      "用户名: " + this.data.username + "\n" +
+      "房间名: " + this.data.roomName
+
+    wx.showModal({
+      title: "元素状态",
+      content: status,
+      showCancel: false,
+      confirmText: "确定"
+    })
+  },
+
+  hideNotification() {
+    if (this.notificationTimer) {
+      clearTimeout(this.notificationTimer)
+      this.notificationTimer = null
+    }
+    this.setData({
+      notification: {
+        show: false,
+        avatarUrl: '',
+        senderName: '',
+        content: '',
+        msgId: ''
+      }
+    })
+  },
+
+  onTapNotification() {
+    this.hideNotification()
+    this.setData({ scrollTop: 999999 })
+  },
+
+  updateUploadProgress(id, progress) {
+    const downloads = this.data.downloads.map(d => {
+      if (d.id === id) {
+        return { ...d, progress, status: progress >= 100 ? '上传完成' : '上传中' }
+      }
+      return d
+    })
+    this.setData({ downloads })
+  }
+})

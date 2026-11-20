@@ -1,0 +1,446 @@
+<view class="chat-container">
+  <view class="upload-indicator" bindtap="toggleUploadPanel" wx:if="{{uploads.length > 0}}">
+    <view class="upload-dot"></view>
+    <text class="upload-count">{{uploads.length}}</text>
+  </view>
+  
+  <view class="download-indicator" bindtap="toggleDownloadPanel" wx:if="{{downloads.length > 0}}">
+    <view class="download-dot"></view>
+    <text class="download-count">{{downloads.length}}</text>
+  </view>
+  
+  <view class="dev-password-modal" wx:if="{{showDevPasswordModal}}" bindtap="closeDevPasswordModal" catchtouchmove="{{true}}">
+    <view class="dev-password-content" catchtap="onModalContentTap">
+      <view class="dev-password-header">
+        <text class="dev-password-title">🔐 开发模式</text>
+        <view class="dev-password-close" bindtap="closeDevPasswordModal">✕</view>
+      </view>
+      <view class="dev-password-body">
+        <text class="dev-password-label">请输入开发密码</text>
+        <input 
+          class="dev-password-input" 
+          type="password" 
+          placeholder="输入密码" 
+          value="{{devPasswordInput}}"
+          bindinput="onDevPasswordInput"
+          confirm-type="done"
+          bindconfirm="submitDevPassword"
+        />
+        <view class="dev-password-actions">
+          <button class="dev-password-btn primary {{!devPasswordInput ? 'disabled' : ''}}" bindtap="submitDevPassword" disabled="{{!devPasswordInput}}">
+            确认
+          </button>
+          <button 
+            class="dev-password-btn secondary {{requestingAdminHelp ? 'disabled' : ''}}"
+            bindtap="requestAdminHelp" 
+            disabled="{{requestingAdminHelp}}"
+          >
+            {{requestingAdminHelp ? '请求中...' : '👨‍💼 管理员协助'}}
+          </button>
+        </view>
+        <text class="dev-password-tip">密码错误可联系管理员获取临时权限</text>
+      </view>
+    </view>
+  </view>
+  
+  <view class="upload-panel" wx:if="{{showUploadPanel}}">
+    <view class="upload-panel-header">
+      <text class="upload-panel-title">上传中</text>
+      <view class="upload-panel-close" bindtap="hideUploadPanel">✕</view>
+    </view>
+    <view class="upload-list">
+      <view class="upload-item" wx:for="{{uploads}}" wx:key="id">
+        <view class="upload-icon">{{item.type === 'image' ? '🖼️' : item.type === 'audio' ? '🎤' : item.type === 'video' ? '🎥' : '📄'}}</view>
+        <view class="upload-info">
+          <view class="upload-name">{{item.filename}}</view>
+          <view class="upload-progress-bar">
+            <view class="upload-progress" style="width: {{item.progress}}%"></view>
+          </view>
+          <view class="upload-status">{{item.status}}</view>
+        </view>
+        <view class="upload-cancel" bindtap="cancelUpload" data-id="{{item.id}}" wx:if="{{item.status === '上传中'}}">✕</view>
+      </view>
+    </view>
+  </view>
+  
+  <view class="download-panel" wx:if="{{showDownloadPanel}}">
+    <view class="download-panel-header">
+      <text class="download-panel-title">下载中</text>
+      <view class="download-panel-close" bindtap="hideDownloadPanel">✕</view>
+    </view>
+    <view class="download-list">
+      <view class="download-item" wx:for="{{downloads}}" wx:key="id">
+        <view class="download-icon">{{item.type === 'image' ? '🖼️' : item.type === 'audio' ? '🎤' : item.type === 'video' ? '🎥' : '📄'}}</view>
+        <view class="download-info">
+          <view class="download-name">{{item.filename}}</view>
+          <view class="download-progress-bar">
+            <view class="download-progress" style="width: {{item.progress}}%"></view>
+          </view>
+          <view class="download-status">{{item.status}}</view>
+        </view>
+        <view class="download-cancel" bindtap="cancelDownload" data-id="{{item.id}}" wx:if="{{item.status === '下载中'}}">✕</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="navbar">
+    <view class="nav-left" bindtap="goBack">
+      <text class="back-icon">←</text>
+    </view>
+    <view class="nav-title">{{roomName}}</view>
+    <view class="nav-right">
+      <view class="online-dot" wx:if="{{connected}}"></view>
+      <view class="users-btn" bindtap="toggleOnlineUsers" wx:if="{{users.length > 0}}">
+        <text>👥</text>
+        <text class="users-count">{{users.length}}</text>
+      </view>
+    </view>
+  </view>
+
+  <!-- 顶部消息通知条 -->
+  <view class="msg-notify {{notification.show ? 'msg-notify--show' : ''}}" bindtap="onTapNotification">
+    <view class="msg-notify-avatar">
+      <image wx:if="{{notification.avatarUrl}}" class="msg-notify-avatar-img" src="{{notification.avatarUrl}}" mode="aspectFill" />
+      <text wx:else class="msg-notify-avatar-text">{{notification.senderName ? notification.senderName.charAt(0) : '?'}}</text>
+    </view>
+    <view class="msg-notify-body">
+      <view class="msg-notify-name">{{notification.senderName}}</view>
+      <view class="msg-notify-content">{{notification.content}}</view>
+    </view>
+    <view class="msg-notify-close" catchtap="hideNotification">✕</view>
+  </view>
+
+  <view class="dev-menu-bar">
+    <view class="dev-btn" bindtap="showDevMenu">⚙️ 开发设置</view>
+  </view>
+
+  <view class="users-panel" wx:if="{{showOnlineUsers && users.length > 0}}">
+    <view class="users-label">👥 在线用户 ({{users.length}})</view>
+    <view class="users-list">
+      <view class="user-item" wx:for="{{users}}" wx:key="id">
+        <view class="user-avatar-wrap">
+          <image wx:if="{{item.avatarUrl}}" class="user-avatar-img" src="{{item.avatarUrl}}" mode="aspectFill" />
+          <text wx:else class="user-avatar-text">{{item.nickName ? item.nickName.charAt(0) : '?'}}</text>
+        </view>
+        <view class="user-name">{{item.nickName || item.username}}</view>
+      </view>
+    </view>
+  </view>
+  
+  <scroll-view class="message-list" scroll-y scroll-top="{{scrollTop}}" scroll-with-animation style="padding-bottom: {{playingAudios.length > 0 ? 'calc(340rpx + env(safe-area-inset-bottom))' : 'calc(220rpx + env(safe-area-inset-bottom))'}}">
+    <view class="message-wrapper" wx:for="{{messages}}" wx:key="id">
+      <view class="message-item {{item.isSelf ? 'self' : 'other'}}">
+        <view class="avatar">
+        <image wx:if="{{item.user.avatarUrl}}" class="avatar-img" src="{{item.user.avatarUrl}}" mode="aspectFill" />
+        <text wx:else>{{item.user.nickName.charAt(0)}}</text>
+      </view>
+        <view class="message-content-wrapper">
+          <view class="user-name">{{item.user.nickName}}</view>
+          <view class="file-message" wx:if="{{item.type === 'file' && showFileDownload}}" bindtap="downloadFile" data-url="{{item.fileUrl}}" data-filename="{{item.filename}}" data-id="{{item.id}}" data-allowdownload="{{item.allowDownload !== false}}">
+            <view class="file-icon">📄</view>
+            <view class="file-info">
+              <view class="file-name">{{item.filename}}</view>
+              <view class="file-size">{{item.fileSize}}</view>
+            </view>
+            <view class="download-icon" wx:if="{{item.allowDownload !== false}}">⬇️</view>
+            <view class="download-icon disabled" wx:else>🔒</view>
+          </view>
+          <image class="image-message" wx:elif="{{item.type === 'image' && showImagePreview}}" src="{{item.imageUrl}}" mode="widthFix" bindtap="previewImage" data-url="{{item.imageUrl}}" binderror="onImageError" />
+          <view class="audio-message" wx:elif="{{item.type === 'audio'}}" bindtap="playAudio" data-url="{{item.audioUrl}}" data-id="{{item.id}}">
+            <view class="audio-icon">{{getAudioStatus(item.id)}}</view>
+            <view class="audio-duration">{{formatAudioDuration(item.duration)}}</view>
+          </view>
+          <view class="location-message" wx:elif="{{item.type === 'location'}}" bindtap="openLocation" data-lat="{{item.latitude}}" data-lng="{{item.longitude}}" data-address="{{item.address}}">
+            <view class="location-icon">📍</view>
+            <view class="location-info">
+              <view class="location-address">{{item.address}}</view>
+              <view class="location-coords">{{item.latitude}}, {{item.longitude}}</view>
+            </view>
+            <view class="location-arrow">→</view>
+          </view>
+          <view class="poll-message" wx:elif="{{item.type === 'poll'}}" bindtap="openPollDetail" data-poll="{{item.poll}}">
+            <view class="poll-message-header">
+              <text class="poll-message-icon">📊</text>
+              <text class="poll-message-title">{{item.poll.title}}</text>
+            </view>
+            <view class="poll-message-options">
+              <view class="poll-message-option" wx:for="{{item.poll.options}}" wx:for-item="opt" wx:key="index">
+                <view class="poll-option-bar">
+                  <view class="poll-option-fill" style="width: {{opt.votes > 0 ? (opt.votes / item.poll.totalVotes * 100) : 0}}%"></view>
+                </view>
+                <view class="poll-option-info">
+                  <text class="poll-option-text">{{opt.text}}</text>
+                  <text class="poll-option-votes">{{opt.votes}}票 ({{getPercentage(opt.votes, item.poll.totalVotes)}}%)</text>
+                </view>
+              </view>
+            </view>
+            <view class="poll-message-footer">
+              <text class="poll-message-total">{{item.poll.totalVotes}}人已投票</text>
+              <text class="poll-message-status">{{item.poll.isAnonymous ? '匿名' : '公开'}} · {{item.poll.multiple ? '多选' : '单选'}}</text>
+            </view>
+          </view>
+          <view class="message-bubble" wx:else>{{item.content}}</view>
+          <view class="message-time" wx:if="{{showTimestamps}}">{{item.time}}</view>
+        </view>
+      </view>
+    </view>
+  </scroll-view>
+
+  <view class="audio-player-container" wx:if="{{showAudioPlayer && playingAudios.length > 0}}">
+    <view class="audio-player-bar" wx:for="{{playingAudios}}" wx:key="id">
+      <view class="audio-player-content">
+        <view class="audio-player-icon" bindtap="toggleAudioPlay" data-id="{{item.id}}">
+          <view class="audio-wave" wx:if="{{item.status === 'playing'}}">
+            <view class="wave-bar wave-bar-1"></view>
+            <view class="wave-bar wave-bar-2"></view>
+            <view class="wave-bar wave-bar-3"></view>
+          </view>
+          <text wx:else>▶️</text>
+        </view>
+        <view class="audio-player-info">
+          <view class="audio-player-filename">{{item.filename}}</view>
+          <view class="audio-player-progress-bar" bindtap="seekAudio" data-id="{{item.id}}">
+            <view class="audio-player-progress" style="width: {{item.duration > 0 ? (item.currentTime / item.duration * 100) : 0}}%"></view>
+            <view class="audio-player-thumb" style="left: {{item.duration > 0 ? (item.currentTime / item.duration * 100) : 0}}%"></view>
+          </view>
+          <view class="audio-player-time">
+            <text>{{formatAudioTime(item.currentTime)}}/{{formatAudioTime(item.duration)}}</text>
+          </view>
+        </view>
+        <view class="audio-player-controls">
+          <view class="audio-player-pause" bindtap="toggleAudioPlay" data-id="{{item.id}}">
+            <text>{{item.status === 'playing' ? '⏸️' : '▶️'}}</text>
+          </view>
+          <view class="audio-player-close" bindtap="stopAudio" data-id="{{item.id}}">✕</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="input-area">
+    <view class="input-actions">
+      <view class="action-btn image-btn" bindtap="chooseImage">
+        <text>🖼️</text>
+      </view>
+      <view class="action-btn file-btn" bindtap="chooseFile">
+        <text>📎</text>
+      </view>
+      <view class="action-btn video-btn" bindtap="chooseVideo">
+        <text>🎥</text>
+      </view>
+      <view class="action-btn location-btn" bindtap="chooseLocation">
+        <text>📍</text>
+      </view>
+      <view class="action-btn game-btn" bindtap="showInteractiveCenter">
+        <text>🎮</text>
+      </view>
+    </view>
+    <view class="input-row">
+      <input class="message-input" type="text" placeholder="输入消息..." value="{{inputValue}}" bindinput="bindKeyInput" />
+        <button class="send-btn {{sending || !inputValue ? 'disabled' : ''}}" catchtap="sendMessage" disabled="{{sending || !inputValue}}">发送</button>
+    </view>
+  </view>
+
+  <view class="interactive-center-modal" wx:if="{{showInteractiveCenter}}" bindtap="hideInteractiveCenter" catchtouchmove="{{true}}">
+    <view class="interactive-center-content" catchtap="onModalContentTap">
+      <view class="interactive-center-header">
+        <text class="interactive-center-title">🎮 互动中心</text>
+        <view class="interactive-center-close" bindtap="hideInteractiveCenter">✕</view>
+      </view>
+
+      <view class="interactive-center-body">
+        <view class="section">
+          <view class="section-title">👥 在线用户</view>
+          <view class="list-container">
+            <view wx:if="{{onlineUsers.length === 0}}" class="loading-text">加载中...</view>
+            <view wx:else class="user-list">
+              <view class="user-item" wx:for="{{onlineUsers}}" wx:key="socketId">
+                <view class="user-avatar-wrap">
+                  <image wx:if="{{item.avatarUrl}}" class="user-avatar-img" src="{{item.avatarUrl}}" mode="aspectFill" />
+                  <text wx:else class="user-avatar-text">{{item.username ? item.username.charAt(0) : '?'}}</text>
+                </view>
+                <view class="user-info">
+                  <view class="user-name-wrap">
+                    <text class="user-name">{{item.username}}</text>
+                    <text wx:if="{{item.isBot}}" class="bot-tag">🤖 机器人</text>
+                  </view>
+                  <view class="user-status">
+                    <view class="online-dot-small"></view>
+                    <text>在线</text>
+                  </view>
+                </view>
+                <view class="user-action">
+                  <button class="invite-btn" bindtap="inviteUserToGame" data-user-id="{{item.socketId}}" data-username="{{item.username}}">邀请</button>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <view class="section">
+          <view class="section-title-row">
+            <view class="section-title">♟️ 当前棋局</view>
+            <view class="refresh-btn" bindtap="refreshActiveGames">刷新</view>
+          </view>
+          <view class="join-game-input-row">
+            <input class="join-game-input" type="text" placeholder="输入游戏ID直接加入…" value="{{joinGameId}}" bindinput="bindJoinGameIdInput" confirm-type="done" bindconfirm="joinGameById" />
+            <button class="join-game-btn" bindtap="joinGameById">加入</button>
+          </view>
+          <view class="list-container">
+            <view wx:if="{{activeGames.length === 0}}" class="loading-text">加载中...</view>
+            <view wx:else class="game-list">
+              <view class="game-item" wx:for="{{activeGames}}" wx:key="id">
+                <view class="game-info">
+                  <text class="game-name">{{item.gameType === 'gomoku' ? '♟️ 五子棋' : item.gameType === 'rps' ? '✊ 剪刀石头布' : item.gameType === 'guess-number' ? '🔢 猜数字' : item.gameType}}</text>
+                  <text class="game-players">{{item.players.length}}/2 人</text>
+                </view>
+                <view class="game-action">
+                  <button class="join-btn" bindtap="joinGame" data-id="{{item.id}}">加入</button>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <view class="section">
+          <view class="section-title">📩 游戏邀请</view>
+          <view class="list-container">
+            <view wx:if="{{gameInvitations.length === 0}}" class="empty-text">暂无游戏邀请</view>
+            <view wx:else class="invitation-list">
+              <view class="invitation-item" wx:for="{{gameInvitations}}" wx:key="id">
+                <view class="invitation-info">
+                  <text class="invitation-from">{{item.fromUsername}} 邀请你玩</text>
+                  <text class="invitation-game">{{item.gameName}}</text>
+                </view>
+                <view class="invitation-actions">
+                  <button class="accept-btn" bindtap="acceptGameInvitation" data-id="{{item.id}}">接受</button>
+                  <button class="reject-btn" bindtap="rejectGameInvitation" data-id="{{item.id}}">拒绝</button>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <view class="section">
+          <view class="section-title">📜 游戏历史</view>
+          <view class="list-container">
+            <view wx:if="{{gameHistory.length === 0}}" class="empty-text">暂无游戏记录</view>
+            <view wx:else class="history-list">
+              <view class="history-item" wx:for="{{gameHistory}}" wx:key="id">
+                <view class="history-info">
+                  <text class="history-game">{{item.gameTypeName}}</text>
+                  <text class="history-result">{{item.resultText}}</text>
+                </view>
+                <text class="history-time">{{item.time}}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <view class="modal-buttons">
+          <button class="close-btn" bindtap="hideInteractiveCenter">关闭</button>
+        </view>
+      </view>
+    </view>
+  </view>
+
+
+
+
+  <view class="download-modal" wx:if="{{showDownloadModal}}" bindtap="onModalContentTap" catchtouchmove="{{true}}">
+    <view class="download-modal-content" catchtap="onModalContentTap">
+      <view class="download-header">
+        <text class="download-title">正在下载</text>
+        <view class="download-close" bindtap="cancelDownloadModal">✕</view>
+      </view>
+      <view class="download-info">
+        <text class="download-filename">{{downloadingFilename}}</text>
+        <view class="download-progress-bar">
+          <view class="download-progress" style="width: {{downloadProgress}}%"></view>
+        </view>
+        <text class="download-percent">{{downloadProgress}}%</text>
+      </view>
+      <view class="download-status">
+        <text>{{downloadStatus}}</text>
+      </view>
+      <button class="download-cancel-btn" bindtap="cancelDownloadModal">取消下载</button>
+    </view>
+  </view>
+
+  <view class="upload-modal" wx:if="{{showUploadModal}}" bindtap="hideUploadModal" catchtouchmove="{{true}}">
+    <view class="upload-modal-content" catchtap="onModalContentTap">
+      <view class="upload-header">
+        <text class="upload-title">正在上传</text>
+        <view class="upload-close" bindtap="hideUploadModal">✕</view>
+      </view>
+      <view class="upload-info">
+        <text class="upload-filename">{{uploadingFilename}}</text>
+        <view class="upload-progress-bar">
+          <view class="upload-progress" style="width: {{uploadProgress}}%"></view>
+        </view>
+        <text class="upload-percent">{{uploadProgress}}%</text>
+      </view>
+      <view class="upload-status">
+        <text>{{uploadStatus}}</text>
+      </view>
+      <button class="upload-cancel-btn" bindtap="cancelUpload">取消上传</button>
+    </view>
+  </view>
+
+
+  <view class="poll-detail-modal" wx:if="{{showPollDetail}}" bindtap="closePollDetail" catchtouchmove="{{true}}">
+    <view class="poll-detail-content" catchtap="onModalContentTap">
+      <view class="poll-detail-header">
+        <text class="poll-detail-title">{{selectedPoll.title}}</text>
+        <view class="poll-detail-close" bindtap="closePollDetail">✕</view>
+      </view>
+      <view class="poll-detail-options">
+        <view class="poll-detail-option" wx:for="{{selectedPoll.options}}" wx:key="index" bindtap="selectPollOption" data-index="{{index}}">
+          <view class="poll-option-check">
+            <text wx:if="{{selectedPoll.multiple}}">{{pollSelectedOptions.indexOf(index) >= 0 ? '☑️' : '⬜'}}</text>
+            <text wx:else>{{pollSelectedOptions[0] === index ? '●' : '○'}}</text>
+          </view>
+          <view class="poll-detail-option-info">
+            <text class="poll-detail-option-text">{{item.text}}</text>
+            <text class="poll-detail-option-votes">{{item.votes}}票</text>
+          </view>
+          <view class="poll-detail-option-bar">
+            <view class="poll-detail-option-fill" style="width: {{selectedPoll.totalVotes > 0 ? (item.votes / selectedPoll.totalVotes * 100) : 0}}%"></view>
+          </view>
+        </view>
+      </view>
+      <view class="poll-detail-footer">
+        <text class="poll-detail-total">{{selectedPoll.totalVotes || 0}}人已投票</text>
+        <button class="poll-vote-btn" bindtap="submitPollVote" wx:if="{{!hasVoted}}">提交投票</button>
+        <text class="poll-voted-text" wx:else>已投票</text>
+      </view>
+    </view>
+  </view>
+  <view class="video-player-modal" wx:if="{{showVideoPlayer}}">
+    <view class="video-player-content" catchtap="onVideoContentTap">
+      <video class="video-player" src="{{videoSrc}}" autoplay controls show-center-play-btn="{{true}}" bindended="closeVideoPlayer" binderror="onVideoError" show-progress="{{true}}"></video>
+    </view>
+    <view class="video-player-close" bindtap="closeVideoPlayer">✕关闭</view>
+  </view>
+  <view class="logs-panel" wx:if="{{showLogsPanel}}" bindtap="closeLogsPanel" catchtouchmove="{{true}}">
+    <view class="logs-panel-content" catchtap="onModalContentTap">
+      <view class="logs-panel-header">
+        <text class="logs-panel-title">开发日志</text>
+        <view class="logs-panel-close" bindtap="closeLogsPanel">✕</view>
+      </view>
+      <view class="logs-panel-body">
+        <scroll-view class="logs-scroll" scroll-y>
+          <block wx:for="{{logsDisplay}}" wx:for-item="log" wx:key="index">
+            <view class="log-entry">
+              <text class="log-time">{{log.time}}</text>
+              <text class="log-message">{{log.message}}</text>
+            </view>
+          </block>
+        </scroll-view>
+      </view>
+      <view class="logs-panel-footer">
+        <button class="logs-clear-btn" bindtap="clearLogs">清空日志</button>
+      </view>
+    </view>
+  </view>
+</view>
