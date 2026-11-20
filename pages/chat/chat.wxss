@@ -1952,6 +1952,10 @@
   margin-right: 6rpx;
 }
 
+.user-action {
+  flex-shrink: 0;
+}
+
 .invite-btn {
   font-size: 22rpx;
   color: #999999;

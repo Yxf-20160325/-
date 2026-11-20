@@ -252,7 +252,8 @@
         <view class="section">
           <view class="section-title">👥 在线用户</view>
           <view class="list-container">
-            <view wx:if="{{onlineUsers.length === 0}}" class="loading-text">加载中...</view>
+            <view wx:if="{{!onlineUsersLoaded}}" class="loading-text">加载中...</view>
+            <view wx:elif="{{onlineUsers.length === 0}}" class="empty-text">暂无其他在线用户</view>
             <view wx:else class="user-list">
               <view class="user-item" wx:for="{{onlineUsers}}" wx:key="socketId">
                 <view class="user-avatar-wrap">

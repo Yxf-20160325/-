@@ -108,6 +108,8 @@ Page({
       features: ['chat', 'file', 'image', 'audio', 'video', 'poll', 'location']
     },
     showInteractiveCenter: false,
+    onlineUsers: [],
+    onlineUsersLoaded: false,
     devLogs: [],
     showLogsPanel: false,
     logsDisplay: [],
@@ -612,6 +614,18 @@ Page({
   },
   showInteractiveCenter() {
     this.setData({ showInteractiveCenter: true })
+    this.loadOnlineUsers()
+  },
+
+  loadOnlineUsers() {
+    var that = this
+    if (!that.socket || that.socket.readyState !== 1) {
+      // 未连接时直接标为已加载，避免互动中心停在「加载中」
+      that.setData({ onlineUsersLoaded: true })
+      return
+    }
+    that.setData({ onlineUsersLoaded: false })
+    that.socket.send({ data: '42["get-online-users",{}]' })
   },
   hideInteractiveCenter() {
     this.setData({ showInteractiveCenter: false })
@@ -733,6 +747,8 @@ Page({
               })
               that.setData({ users: filtered })
             }
+          } else if (event === 'online-users') {
+            that.setData({ onlineUsers: Array.isArray(msg) ? msg : [], onlineUsersLoaded: true })
           }
         } catch(e) {
           console.error('解析消息失败', e)

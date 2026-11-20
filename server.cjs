@@ -2919,6 +2919,20 @@ let defaultPermissions = {
     allowRecallMessage: true,
     allowAIChat: false // 默认禁用AI聊天功能，需要管理员同意
 };
+// ===== PC 虚拟账户 =====
+const PC_SOCKET_ID = 'pc-bot-virtual-socket';
+const PC_USERNAME = 'ai';
+const PC_COLOR = '#6c757d';
+// pc 的虚拟用户对象（由各房间共享，roomName 动态设置）
+const pcUserBase = {
+    socketId: PC_SOCKET_ID,
+    username: PC_USERNAME,
+    color: PC_COLOR,
+    status: 'online',
+    role: 'user'
+}
+// ===== PC 虚拟账户 END =====
+
 
 // 默认房间
 rooms.set('main', {
@@ -8393,8 +8407,17 @@ io.on('connection', (socket) => {
                     socketId: u.socketId,
                     username: u.username,
                     color: u.color,
-                    status: u.status || 'online'
+                    status: u.status || 'online',
+                    isBot: false
                 }));
+            // 添加 pc 虚拟账户到列表末尾
+            onlineUsers.push({
+                socketId: PC_SOCKET_ID,
+                username: PC_USERNAME,
+                color: PC_COLOR,
+                status: 'online',
+                isBot: true
+            });
             socket.emit('online-users', onlineUsers);
         }
     });
