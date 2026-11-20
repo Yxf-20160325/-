@@ -646,15 +646,30 @@ Page({
     this.loadOnlineUsers()
   },
 
-  loadOnlineUsers() {
+  loadOnlineUsers(retry) {
     var that = this
-    if (!that.socket || that.socket.readyState !== 1) {
-      // 未连接时直接标为已加载，避免互动中心停在「加载中」
-      that.setData({ onlineUsersLoaded: true })
+    var attempt = retry || 0
+    var rs = that.socket ? that.socket.readyState : undefined
+    var ready = (rs === 1) || (rs === undefined && that.socket && that.data.hasJoinedRoom)
+    if (!ready) {
+      // 未连接：保留「加载中」，连接就绪后自动重试（最多 6 次）
+      if (attempt < 6) {
+        setTimeout(function () {
+          if (that.data.showInteractiveCenter) that.loadOnlineUsers(attempt + 1)
+        }, 800)
+      } else {
+        that.setData({ onlineUsersLoaded: true })
+      }
       return
     }
     that.setData({ onlineUsersLoaded: false })
-    that.socket.send({ data: '42["get-online-users",{}]' })
+    try {
+      that.socket.send({ data: '42["get-online-users",{}]' })
+      console.log('[互动中心] 已请求在线用户列表')
+    } catch (e) {
+      console.error('[互动中心] 请求在线用户失败:', e)
+      that.setData({ onlineUsersLoaded: true })
+    }
   },
   hideInteractiveCenter() {
     this.setData({ showInteractiveCenter: false })

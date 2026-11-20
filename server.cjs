@@ -3193,6 +3193,32 @@ io.on('connection', (socket) => {
             roomName: roomName
         });
         
+        // ===== 主动推送一次互动中心在线列表（含 ai 虚拟账户）=====
+        try {
+            const interactiveUsers = room.users
+                .map(uid => users.get(uid))
+                .filter(u => u && u.socketId !== socket.id)
+                .map(u => ({
+                    socketId: u.socketId,
+                    username: u.username,
+                    color: u.color,
+                    status: u.status || 'online',
+                    isBot: false
+                }));
+            interactiveUsers.push({
+                socketId: PC_SOCKET_ID,
+                username: PC_USERNAME,
+                color: PC_COLOR,
+                status: 'online',
+                isBot: true
+            });
+            socket.emit('online-users', interactiveUsers);
+            console.log(`[互动中心] 已推送在线列表给 ${username}，共 ${interactiveUsers.length} 项（含 ai）`);
+        } catch (e) {
+            console.warn('[互动中心] 推送在线列表失败:', e.message);
+        }
+        // ===== 主动推送 END =====
+        
         // 分批发送房间历史消息（每次5条）
         const batchSize = 5;
         const totalMessages = roomMessages.length;
