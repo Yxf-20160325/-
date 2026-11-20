@@ -201,7 +201,7 @@ Page({
       method: 'GET',
       success: (csrfRes) => {
         console.log('CSRF token获取成功:', csrfRes)
-        const csrfToken = csrfRes.data?.csrfToken
+        const csrfToken = csrfRes.data && csrfRes.data.csrfToken
         
         wx.request({
           url: this.getServerUrl() + '/api/wechat/login',
@@ -213,8 +213,8 @@ Page({
             code: code,
             roomName: roomName,
             password: password,
-            nickName: userInfo?.nickName || '',
-            avatarUrl: userInfo?.avatarUrl || this.data.avatarUrl || ''
+            nickName: (userInfo && userInfo.nickName) || '',
+            avatarUrl: (userInfo && userInfo.avatarUrl) || this.data.avatarUrl || ''
           },
           success: (res) => {
             console.log('微信登录API响应:', res)
@@ -222,10 +222,10 @@ Page({
             this.setData({ loading: false })
 
             if (res.data && res.data.success) {
-              const username = res.data.username || (userInfo?.nickName || '用户' + Math.floor(Math.random() * 1000))
+              const username = res.data.username || ((userInfo && userInfo.nickName) || '用户' + Math.floor(Math.random() * 1000))
               wx.setStorageSync("username", username)
-              wx.setStorageSync("wechatOpenid", res.data.wechatData?.openid)
-              if (userInfo?.avatarUrl) {
+              wx.setStorageSync("wechatOpenid", res.data.wechatData && res.data.wechatData.openid)
+              if (userInfo && userInfo.avatarUrl) {
                 wx.setStorageSync("avatarUrl", userInfo.avatarUrl)
               }
               
@@ -244,9 +244,9 @@ Page({
                 }, 1500)
               }, 500)
             } else {
-              console.error('登录失败:', res.data?.error || '未知错误')
+              console.error('登录失败:', (res.data && res.data.error) || '未知错误')
               wx.showToast({ 
-                title: res.data?.error || "登录失败", 
+                title: (res.data && res.data.error) || "登录失败", 
                 icon: "none" 
               })
             }

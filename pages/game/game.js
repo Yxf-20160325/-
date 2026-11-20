@@ -64,7 +64,8 @@ Page({
       gameStatus: '游戏中'
     })
 
-    const myUsername = gameData.currentUsername || (app.globalData.user?.username || '玩家')
+    const myUsername = gameData.currentUsername ||
+      ((app.globalData.user && app.globalData.user.username) || '玩家')
     
     let myName = myUsername
     let opponentName = '对手'
@@ -75,12 +76,12 @@ Page({
       const myPlayer = gameData.players.find(p => p.username === myUsername)
       const opponentPlayer = gameData.players.find(p => p.username !== myUsername)
       
-      myName = myPlayer?.username || myName
-      opponentName = opponentPlayer?.username || opponentName
+      myName = (myPlayer && myPlayer.username) || myName
+      opponentName = (opponentPlayer && opponentPlayer.username) || opponentName
       currentPlayerId = gameData.currentPlayer || ''
       
       const currentPlayer = gameData.players.find(p => p.socketId === currentPlayerId)
-      isMyTurn = currentPlayer?.username === myUsername
+      isMyTurn = !!(currentPlayer && currentPlayer.username === myUsername)
     }
 
     this.setData({
@@ -568,8 +569,8 @@ Page({
           return
         }
         
-        const cellWidth = rects[0]?.width || 40
-        const cellHeight = rects[0]?.height || 40
+        const cellWidth = (rects[0] && rects[0].width) || 40
+        const cellHeight = (rects[0] && rects[0].height) || 40
         const boardLeft = boardRect.left || 0
         const boardTop = boardRect.top || 0
         
@@ -631,7 +632,7 @@ Page({
     if (data.currentPlayer !== undefined) {
       const players = data.players || this.data.players
       const currentPlayer = players.find(p => p.socketId === data.currentPlayer)
-      const isMyTurn = currentPlayer?.username === this.data.myName
+      const isMyTurn = !!(currentPlayer && currentPlayer.username === this.data.myName)
       
       this.setData({
         currentPlayer: data.currentPlayer,
@@ -686,7 +687,7 @@ Page({
     if (data.winner) {
       const players = data.players || this.data.players
       const winnerPlayer = players.find(p => p.socketId === data.winner)
-      const winnerName = winnerPlayer?.username || '未知'
+      const winnerName = (winnerPlayer && winnerPlayer.username) || '未知'
       const displayName = winnerName === this.data.myName ? '你' : winnerName
       
       wx.showModal({
@@ -707,7 +708,7 @@ Page({
     
     const players = data.players || this.data.players
     const winnerPlayer = players.find(p => p.socketId === data.winner)
-    const winnerName = winnerPlayer?.username || data.winner || '未知'
+    const winnerName = (winnerPlayer && winnerPlayer.username) || data.winner || '未知'
     const displayName = winnerName === this.data.myName ? '你' : winnerName
     
     wx.showModal({
@@ -776,8 +777,11 @@ Page({
     }
     
     const myUsername = this.data.myName
-    const myChoice = data.roundResult?.choices?.[myUsername]
-    const opponentChoice = Object.keys(data.roundResult?.choices || {}).find(k => k !== myUsername)
+    const myChoice = data.roundResult && data.roundResult.choices
+      ? data.roundResult.choices[myUsername]
+      : undefined
+    const opponentChoice = Object.keys((data.roundResult && data.roundResult.choices) || {})
+      .find(k => k !== myUsername)
       ? data.roundResult.choices[Object.keys(data.roundResult.choices).find(k => k !== myUsername)]
       : null
     
@@ -787,9 +791,9 @@ Page({
     })
     
     let result = '平局'
-    if (data.roundResult?.winner === myUsername) {
+    if (data.roundResult && data.roundResult.winner === myUsername) {
       result = '🎉 你赢了！'
-    } else if (data.roundResult?.winner && data.roundResult.winner !== myUsername) {
+    } else if (data.roundResult && data.roundResult.winner && data.roundResult.winner !== myUsername) {
       result = '😢 你输了'
     }
     
@@ -902,7 +906,7 @@ Page({
     if (data.currentGuesser) {
       const currentPlayer = this.data.players.find(p => p.socketId === data.currentGuesser)
       this.setData({
-        isMyTurn: currentPlayer?.username === myUsername
+        isMyTurn: !!(currentPlayer && currentPlayer.username === myUsername)
       })
     }
     
@@ -952,11 +956,11 @@ Page({
     console.log('炸弹结果:', data)
     
     const myUsername = this.data.myName
-    const isMine = data.lastMove?.player === myUsername
+    const isMine = !!(data.lastMove && data.lastMove.player === myUsername)
     
     const historyItem = {
-      value: data.lastMove?.count,
-      isBomb: data.lastMove?.isBomb,
+      value: data.lastMove ? data.lastMove.count : undefined,
+      isBomb: data.lastMove ? data.lastMove.isBomb : undefined,
       isMine: isMine
     }
     
@@ -982,7 +986,7 @@ Page({
       const currentPlayer = this.data.players.find(p => p.socketId === data.currentPlayer)
       this.setData({
         bombHistory: newHistory,
-        isMyTurn: currentPlayer?.username === myUsername
+        isMyTurn: !!(currentPlayer && currentPlayer.username === myUsername)
       })
     }
   },
