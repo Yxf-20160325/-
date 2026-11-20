@@ -6,6 +6,30 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 
+// ── 轻量 .env 加载（不依赖 dotenv；已存在的系统环境变量优先）──
+// Render 等平台用环境变量注入，本地开发用 .env，两者都支持。
+(function loadEnvFile() {
+    try {
+        const envPath = path.join(__dirname, '.env');
+        if (!fs.existsSync(envPath)) return;
+        fs.readFileSync(envPath, 'utf8').split(/\r?\n/).forEach((line) => {
+            line = line.trim();
+            if (!line || line.charAt(0) === '#') return;
+            const eq = line.indexOf('=');
+            if (eq === -1) return;
+            const key = line.slice(0, eq).trim();
+            let value = line.slice(eq + 1).trim();
+            if ((value.charAt(0) === '"' && value.endsWith('"')) ||
+                (value.charAt(0) === "'" && value.endsWith("'"))) {
+                value = value.slice(1, -1);
+            }
+            if (key && process.env[key] === undefined) process.env[key] = value;
+        });
+    } catch (e) {
+        console.warn('[env] 读取 .env 失败:', e.message);
+    }
+})();
+
 // ── 配置常量 ────────────────────────────────────────────────
 const CONFIG = {
     // 文件大小限制
@@ -6828,12 +6852,12 @@ io.on('connection', (socket) => {
     });
     
     // 你画我猜游戏猜词事件
-    socket.on('game-guess', (data) => {
+    socket.on('game-guess', async (data) => {
         const user = users.get(socket.id);
         if (user && data.gameId && data.guess) {
             const game = games.get(data.gameId);
             if (game && game.type === 'pictionary' && game.status === 'playing') {
-                const updatedGame = makePictionaryGuess(data.gameId, socket.id, data.guess);
+                const updatedGame = await makePictionaryGuess(data.gameId, socket.id, data.guess);
                 if (updatedGame) {
                     // 通知所有玩家猜测结果
                     updatedGame.players.forEach(playerSocketId => {
@@ -7597,18 +7621,95 @@ io.on('connection', (socket) => {
         }
         return null;
     }
+    // 本地同义词表：常见近义/俗称直接判对，不必消耗模型额度
+    // 只收录确定性强、不会误判的对应关系。
+    const PIC_SYNONYMS = {
+        '汽车': ['小汽车', '轿车', '车'],
+        '小汽车': ['汽车', '轿车'],
+        '自行车': ['单车', '脚踏车'],
+        '猫': ['猫咪', '小猫'],
+        '猫咪': ['猫', '小猫'],
+        '狗': ['小狗', '狗狗'],
+        '兔子': ['小兔子', '兔'],
+        '电脑': ['计算机', '电脑主机'],
+        '手机': ['电话', '手机电话'],
+        '蛋糕': ['生日蛋糕'],
+        '生日蛋糕': ['蛋糕'],
+        '冰淇淋': ['冰激凌', '雪糕'],
+        '雪糕': ['冰淇淋', '冰激凌'],
+        '菠萝': ['凤梨'],
+        '西红柿': ['番茄'],
+        '番茄': ['西红柿'],
+        '土豆': ['马铃薯'],
+        '马铃薯': ['土豆'],
+        '出租车': ['的士', '打车'],
+        '医生': ['大夫'],
+        '大夫': ['医生'],
+        '学校': ['校园'],
+        '校园': ['学校'],
+        '月亮': ['月球'],
+        '太阳': ['日头'],
+        '猴子': ['猴'],
+        '蝴蝶': ['蝶'],
+        '乌龟': ['龟'],
+        '螃蟹': ['蟹'],
+        '剪刀': ['剪子'],
+        '镜头': ['摄像机'],
+        '足球': ['踢足球']
+    };
+
+    function picLocalSynonymMatch(word, guess) {
+        const w = String(word || '').trim();
+        const g = String(guess || '').trim();
+        if (!w || !g) return false;
+        const list = PIC_SYNONYMS[w];
+        if (list && list.indexOf(g) >= 0) return true;
+        // 反向：玩家猜的是主词，答案是俗称
+        const rev = PIC_SYNONYMS[g];
+        if (rev && rev.indexOf(w) >= 0) return true;
+        return false;
+    }
+
     
-    function makePictionaryGuess(gameId, playerSocketId, guess) {
+    async function makePictionaryGuess(gameId, playerSocketId, guess) {
         const game = games.get(gameId);
         if (!game || game.status !== 'playing') return null;
-        
+
         if (game.currentDrawer === playerSocketId) return null;
-        
+
         const normalizedGuess = guess.toLowerCase().trim();
         const normalizedWord = game.currentWord.toLowerCase().trim();
-        
-        // 检查猜测是否正确
-        const isCorrect = normalizedGuess === normalizedWord;
+
+        // 先做本地精确匹配（快，且不消耗模型额度）
+        let isCorrect = normalizedGuess === normalizedWord;
+
+        // 本地同义词表能覆盖的场景，直接判对，不必等模型
+        if (!isCorrect && picLocalSynonymMatch(game.currentWord, guess)) {
+            isCorrect = true;
+            console.log(`[本地] 同义词命中: 「${guess}」≈「${game.currentWord}」`);
+        }
+
+        // 精确不中时，再用模型判断语义是否相近（同义词/简称/俗称）
+        // 模型不可用或超时时，isCorrect 保持 false，不影响主流程
+        if (!isCorrect && normalizedGuess.length >= 1) {
+            // 过长或明显无关的猜测不送模型，省额度也省时间
+            if (normalizedGuess.length <= 12) {
+                try {
+                    const verdict = await nvidiaJudgePictionary(game.currentWord, guess);
+                    if (verdict === true) {
+                        isCorrect = true;
+                        console.log(`[NVIDIA] 语义判定通过: 「${guess}」≈「${game.currentWord}」`);
+                    }
+                } catch (e) {
+                    console.warn('[NVIDIA] 语义判分异常，按不中处理:', e.message);
+                }
+                // 判分可能耗时，期间游戏可能已结束或换词
+                if (game.status !== 'playing' || game.currentWord !== normalizedWord) {
+                    // 词已换，丢弃这次结果
+                    return game;
+                }
+            }
+        }
         
         // 记录猜测
         game.guesses.push({
@@ -8528,8 +8629,95 @@ io.on('connection', (socket) => {
             return;
         }
 
+        if (gameType === 'pictionary') {
+            // ai 当画者（players[0]），玩家猜词。游戏对象由 joinPictionaryGame 补上玩家。
+            const game = createPictionaryGame(pcCreator, user.roomName);
+            if (!game) return;
+            const updatedGame = joinPictionaryGame(game.id, playerSocketId, user.username);
+            if (!updatedGame) return;
+
+            updatedGame.currentDrawer = PC_SOCKET_ID;
+            updatedGame.status = 'playing';
+            updatedGame.startTime = new Date();
+            updatedGame.roundStartTime = new Date();
+            updatedGame.difficulty = level;
+            games.set(updatedGame.id, updatedGame);
+
+            io.to(playerSocketId).emit('pictionary-start', {
+                gameId: updatedGame.id,
+                gameType: 'pictionary',
+                players: [
+                    { socketId: PC_SOCKET_ID, username: PC_USERNAME },
+                    { socketId: playerSocketId, username: user.username }
+                ],
+                currentDrawer: PC_SOCKET_ID,
+                currentDrawerName: PC_USERNAME,
+                currentWord: null,          // 玩家是猜词方，看不到答案
+                wordHint: updatedGame.currentWord.length + '个字',
+                currentRound: updatedGame.currentRound,
+                maxRounds: updatedGame.maxRounds,
+                scores: Array.from(updatedGame.scores.entries()).map(function (ent) {
+                    return { socketId: ent[0], username: ent[0] === PC_SOCKET_ID ? PC_USERNAME : (users.get(ent[0])?.username || '未知'), score: ent[1] };
+                }),
+                status: updatedGame.status
+            });
+            console.log(`[PC] 你画我猜 ${updatedGame.id} 开始，ai 画，${user.username} 猜，词汇：${updatedGame.currentWord}`);
+
+            // ai 开画
+            setTimeout(function () { pcPictionaryDraw(updatedGame.id); }, 1000);
+            return;
+        }
         console.warn(`[PC] 不支持的游戏类型: ${gameType}`);
     }
+
+    // ===== PC：你画我猜 · AI 画画 ===== 
+    // 说明：实测让模型生成绘画坐标会超时，因此画面用本地图形模板生成。
+    // 模板坐标系为 0-100，前端等比缩放到 canvas 尺寸。
+    // 每个模板是一组 strokes；每条 stroke 是 {color, width, points:[[x,y],...]}
+    const PIC_TEMPLATES = {
+        // 天体
+        '太阳': [{ color: '#FFB300', width: 3, points: [[50,35],[58,38],[55,46],[45,46],[42,38],[50,35]] }],
+        '月亮': [{ color: '#FFD54F', width: 3, points: [[55,25],[43,32],[40,50],[50,65],[65,62],[58,52]] }],
+        '星星': [{ color: '#FFC107', width: 3, points: [[50,20],[56,38],[75,38],[60,50],[66,68],[50,57],[34,68],[40,50],[25,38],[44,38],[50,20]] }],
+        '云朵': [{ color: '#90A4AE', width: 3, points: [[25,50],[30,38],[42,36],[48,42],[58,38],[70,42],[72,52],[65,58],[35,58],[25,50]] }],
+
+        // 物体
+        '苹果': [{ color: '#E53935', width: 3, points: [[35,45],[38,62],[50,70],[62,62],[65,45],[56,38],[44,38],[35,45]] },
+                     { color: '#6D4C41', width: 2, points: [[50,38],[52,28]] }],
+        '香蕉': [{ color: '#FDD835', width: 3, points: [[30,30],[35,50],[48,62],[62,58],[68,42],[62,30]] }],
+        '西瓜': [{ color: '#66BB6A', width: 3, points: [[25,45],[50,75],[75,45],[25,45]] }],
+        '球': [{ color: '#1E88E5', width: 3, points: [[50,25],[65,32],[70,48],[65,62],[50,70],[35,62],[30,48],[35,32],[50,25]] }],
+        '气球': [{ color: '#E91E63', width: 3, points: [[50,22],[62,32],[62,48],[50,58],[38,48],[38,32],[50,22]] },
+                     { color: '#616161', width: 2, points: [[50,58],[50,78]] }],
+        '风筝': [{ color: '#FF7043', width: 3, points: [[50,20],[68,38],[50,58],[32,38],[50,20]] },
+                     { color: '#78909C', width: 2, points: [[50,58],[58,72],[50,85]] }],
+        '雨伞': [{ color: '#5C6BC0', width: 3, points: [[20,45],[50,28],[80,45],[20,45]] },
+                     { color: '#6D4C41', width: 3, points: [[50,45],[50,78],[45,80]] }],
+        '帽子': [{ color: '#4E342E', width: 3, points: [[30,52],[35,38],[65,38],[70,52],[30,52]] }],
+        '房子': [{ color: '#8D6E63', width: 3, points: [[30,52],[70,52],[70,78],[30,78],[30,52]] },
+                     { color: '#D84315', width: 3, points: [[25,52],[50,30],[75,52]] },
+                     { color: '#5D4037', width: 2, points: [[45,78],[45,62],[56,62],[56,78]] }],
+        '山': [{ color: '#616161', width: 3, points: [[15,75],[40,35],[55,55],[68,42],[85,75],[15,75]] }],
+        '树': [{ color: '#6D4C41', width: 3, points: [[50,75],[50,50]] },
+                    { color: '#43A047', width: 3, points: [[50,25],[68,48],[58,48],[72,68],[28,68],[42,48],[32,48],[50,25]] }],
+        '花': [{ color: '#F06292', width: 3, points: [[50,30],[60,38],[58,50],[42,50],[40,38],[50,30]] },
+                    { color: '#43A047', width: 3, points: [[50,50],[50,80]] }],
+        '猫': [{ color: '#616161', width: 3, points: [[32,42],[32,25],[42,32],[58,32],[68,25],[68,42],[60,58],[40,58],[32,42]] },
+                    { color: '#616161', width: 2, points: [[40,42],[42,44]] },
+                    { color: '#616161', width: 2, points: [[58,42],[60,44]] }],
+        '鱼': [{ color: '#29B6F6', width: 3, points: [[28,50],[48,36],[68,42],[68,58],[48,64],[28,50]] },
+                    { color: '#29B6F6', width: 3, points: [[68,42],[80,32],[80,68],[68,58]] }],
+        '鸟': [{ color: '#42A5F5', width: 3, points: [[30,55],[40,40],[52,48],[64,40],[74,55]] }],
+        '人': [{ color: '#5E35B1', width: 3, points: [[50,25],[50,55]] },
+                    { color: '#5E35B1', width: 3, points: [[35,42],[50,38],[65,42]] },
+                    { color: '#5E35B1', width: 3, points: [[50,55],[38,80]] },
+                    { color: '#5E35B1', width: 3, points: [[50,55],[62,80]] }],
+
+        // 抽象回退（任何未收录的词都用这个）
+        '__default': [{ color: '#546E7A', width: 4, points: [[30,40],[70,40],[70,68],[30,68],[30,40]] },
+                       { color: '#546E7A', width: 3, points: [[38,50],[62,50]] },
+                       { color: '#546E7A', width: 3, points: [[38,58],[58,58]] }]
+    };
 
     // ===== PC：猜数字自动出招 =====
     // 思路：用二分法收敛（lo/hi 从 history 推算），延迟 900ms 后出招，
@@ -8680,6 +8868,41 @@ io.on('connection', (socket) => {
             }
         });
     }
+
+    // ===== NVIDIA：你画我猜语义判分 =====
+    // 这是模型在本项目里真正有价值的场景：判断玩家的自由文字猜测
+    // 是否与答案语义相近（如“小汽车” vs “汽车”），确定性代码做不了。
+    // 缓存：同一局同一对（答案, 猜测）只问一次，避免重复消耗。
+    const picJudgeCache = new Map();
+
+    function picJudgeCacheKey(word, guess) { return word + '\u0001' + guess; }
+
+    async function nvidiaJudgePictionary(word, guess) {
+        if (!NVIDIA_API_KEY) return null;
+        const key = picJudgeCacheKey(word, guess);
+        if (picJudgeCache.has(key)) return picJudgeCache.get(key);
+
+        const out = await nvidiaChat([
+            { role: 'system', content: '你是猜词判分器。只输出一个汉字：对 或 错。' },
+            { role: 'user', content: '答案"' + word + '"，玩家猜"' + guess + '"。这个猜测算猜中吗？同义词、近义词、简称、俗称都算对。' }
+        ], 2000);
+
+        if (!out) return null;
+        const t = String(out);
+        let verdict = null;
+        if (/错/.test(t)) verdict = false;
+        else if (/对|正确|是/.test(t)) verdict = true;
+        if (verdict !== null) {
+            picJudgeCache.set(key, verdict);
+            // 缓存不宜无限增长
+            if (picJudgeCache.size > 500) {
+                const first = picJudgeCache.keys().next().value;
+                picJudgeCache.delete(first);
+            }
+        }
+        return verdict;
+    }
+    // ===== 语义判分 END =====
 
     // 让模型从候选点里挑；返回 null 表示模型不可用，调用方回退算法
     async function nvidiaPickGomokuMove(board, me, opponent, candidates) {
@@ -8939,6 +9162,143 @@ io.on('connection', (socket) => {
                 console.error('[PC] 五子棋落子异常:', e && e.message ? e.message : e);
             });
         }, 600);
+    }
+
+    // 词语提示库（休闲难度用）
+    const PIC_HINTS = {
+        '太阳': '天上的、会发光的那个', '月亮': '晚上才出来，弯弯的',
+        '星星': '一闪一闪的', '云朵': '白白的、在天上飘', '苹果': '一种水果，红的或绿的',
+        '香蕉': '黄色的、弯弯的水果', '西瓜': '夏天吃的，很大很圆', '气球': '一松手就飞走的',
+        '风筝': '需有风才能飞，有一根线', '雨伞': '下雨时用的', '帽子': '戴在头上的',
+        '房子': '人住的地方', '山': '很高很高的', '树': '有树干和叶子',
+        '花': '有花瓣，很香的', '猫': '会喵喵叫的', '鱼': '在水里游的',
+        '鸟': '有翅膀、会飞的', '人': '就是你自己', '球': '圆的，可以拍',
+        '星星': '夜里一闪一闪的'
+    };
+
+    // 把模板坐标（0-100）转成前端可直接绘制的 strokes 数据并广播
+    function pcPictionaryDraw(gameId) {
+        const game = games.get(gameId);
+        if (!game || game.type !== 'pictionary') return;
+        if (game.status !== 'playing') return;
+        if (game.currentDrawer !== PC_SOCKET_ID) return;
+
+        const word = game.currentWord;
+        const strokes = PIC_TEMPLATES[word] || PIC_TEMPLATES['__default'];
+
+        const payload = {
+            gameId: game.id,
+            drawingData: {
+                type: 'strokes',
+                width: 100,    // 模板坐标系宽高，前端等比缩放
+                height: 100,
+                strokes: strokes
+            }
+        };
+
+        game.players.forEach(function (pid) {
+            if (pid !== PC_SOCKET_ID) io.to(pid).emit('game-draw', payload);
+        });
+        game.spectators.forEach(function (pid) {
+            io.to(pid).emit('game-draw', payload);
+        });
+
+        console.log(`[PC] 你画我猜 ${game.id} ai 画了「${word}」（${strokes.length} 笔）`);
+
+        // 画完后根据难度过一会儿给一句提示
+        if (game.difficulty !== 'hard') {
+            setTimeout(function () { pcPictionaryHint(game.id); }, 3000);
+        }
+
+        // 轮次超时保护：AI 是画者时，玩家无法通过 game-finish-drawing 推进轮次，
+        // 因此这里挂一个超时器，到点若仍未猜中就自动进入下一轮，避免永久卡住。
+        const tick = game.roundTimeLimit || 60;
+        setTimeout(function () {
+            const g = games.get(game.id);
+            if (!g || g.type !== 'pictionary' || g.status !== 'playing') return;
+            if (g.currentDrawer !== PC_SOCKET_ID) return;   // 已换轮
+            if (g.guesses.some(function (x) { return x.isCorrect; })) return; // 已猜中
+            pcPictionaryNextRound(g.id, 'timeout');
+        }, tick * 1000);
+    }
+
+    // AI 作为画者时，把轮次推进到下一轮（无人猜中）
+    function pcPictionaryNextRound(gameId, reason) {
+        const game = games.get(gameId);
+        if (!game || game.type !== 'pictionary' || game.status !== 'playing') return;
+        if (game.currentDrawer !== PC_SOCKET_ID) return;
+
+        game.currentRound++;
+        if (game.currentRound < game.maxRounds) {
+            const nextDrawerIndex = (game.players.indexOf(game.currentDrawer) + 1) % game.players.length;
+            game.currentDrawer = game.players[nextDrawerIndex];
+            game.currentWord = game.words[Math.floor(Math.random() * game.words.length)];
+            game.roundStartTime = new Date();
+            game.guesses = [];
+            games.set(gameId, game);
+
+            game.players.forEach(function (pid) {
+                const isDrawer = pid === game.currentDrawer;
+                io.to(pid).emit('game-update', {
+                    gameId: game.id,
+                    gameType: 'pictionary',
+                    currentDrawer: game.currentDrawer,
+                    currentDrawerName: users.get(game.currentDrawer)?.username || '未知',
+                    currentWord: isDrawer ? game.currentWord : null,
+                    wordHint: game.currentWord.length + '个字',
+                    scores: Object.fromEntries(game.scores),
+                    currentRound: game.currentRound,
+                    maxRounds: game.maxRounds,
+                    guesses: [],
+                    status: game.status,
+                    roundAdvanced: true,
+                    reason: reason || 'timeout'
+                });
+            });
+            console.log(`[PC] 你画我猜 ${game.id} 进入第 ${game.currentRound} 轮（${reason}）`);
+
+            // 若新一轮画者仍是 ai，继续画
+            if (game.currentDrawer === PC_SOCKET_ID) {
+                setTimeout(function () { pcPictionaryDraw(game.id); }, 1200);
+            }
+        } else {
+            game.status = 'ended';
+            game.endTime = new Date();
+            let maxScore = 0, winnerSocketId = null;
+            game.scores.forEach(function (score, sid) {
+                if (score > maxScore) { maxScore = score; winnerSocketId = sid; }
+            });
+            game.winner = winnerSocketId;
+            games.set(gameId, game);
+            game.players.forEach(function (pid) {
+                io.to(pid).emit('game-update', {
+                    gameId: game.id,
+                    gameType: 'pictionary',
+                    status: 'ended',
+                    winner: game.winner,
+                    winnerName: game.winner ? (game.winner === PC_SOCKET_ID ? PC_USERNAME : (users.get(game.winner)?.username || '未知')) : null,
+                    scores: Object.fromEntries(game.scores),
+                    currentRound: game.currentRound,
+                    maxRounds: game.maxRounds
+                });
+            });
+            recordGameHistory(game);
+            console.log(`[PC] 你画我猜 ${game.id} 结束`);
+        }
+    }
+
+    // ai 给一句模糊提示（不直接说答案）
+    function pcPictionaryHint(gameId) {
+        const game = games.get(gameId);
+        if (!game || game.type !== 'pictionary' || game.status !== 'playing') return;
+        if (game.currentDrawer !== PC_SOCKET_ID) return;
+
+        const w = game.currentWord;
+        const hint = PIC_HINTS[w] || ('这个词语有 ' + w.length + ' 个字');
+        game.players.forEach(function (pid) {
+            if (pid !== PC_SOCKET_ID) io.to(pid).emit('pictionary-hint', { gameId: game.id, hint: hint });
+        });
+        console.log(`[PC] 你画我猜 ${game.id} 提示：${hint}`);
     }
 
 

@@ -169,6 +169,133 @@ Page({
     })
   },
 
+  // ===== 你画我猜：canvas 绘制 ===== 
+  // 约定：服务端下发的 drawingData 为统一格式
+  //   { type:'strokes', width, height, strokes:[{color,width,points:[[x,y],...]}] }
+  // 游戏坐标 0-100 → 画布像素等比缩放。
+
+  picCtx() {
+    if (!this._picCtx) {
+      this._picCtx = wx.createCanvasContext('pictionaryCanvas', this)
+    }
+    return this._picCtx
+  },
+
+  // 把 0-100 坐标换算为画布像素
+  picScale() {
+    if (this._picSize) return this._picSize
+    try {
+      const q = wx.createSelectorQuery().in(this)
+      // 同步拿不到，先用默认值，首次绘制后再校正
+      this._picSize = { w: 300, h: 300 }
+    } catch (e) {
+      this._picSize = { w: 300, h: 300 }
+    }
+    return this._picSize
+  },
+
+  measurePictionaryCanvas() {
+    return new Promise((resolve) => {
+      try {
+        wx.createSelectorQuery().in(this)
+          .select('.pictionary-canvas-element')
+          .boundingClientRect((rect) => {
+            if (rect && rect.width) {
+              this._picSize = { w: rect.width, h: rect.height || rect.width }
+            }
+            resolve(this.picScale())
+          })
+          .exec()
+      } catch (e) {
+        resolve(this.picScale())
+      }
+    })
+  },
+
+  // 绘制一组 strokes
+  drawStrokes(strokes) {
+    const ctx = this.picCtx()
+    const { w, h } = this.picScale()
+    strokes.forEach((s) => {
+      const pts = s.points || []
+      if (pts.length < 2) return
+      ctx.beginPath()
+      ctx.setStrokeStyle(s.color || '#333333')
+      ctx.setLineWidth(s.width || 3)
+      ctx.setLineCap('round')
+      ctx.setLineJoin('round')
+      ctx.moveTo(pts[0][0] / 100 * w, pts[0][1] / 100 * h)
+      for (let i = 1; i < pts.length; i++) {
+        ctx.lineTo(pts[i][0] / 100 * w, pts[i][1] / 100 * h)
+      }
+      ctx.stroke()
+    })
+    ctx.draw()
+  },
+
+  // 收到 ai / 对手的绘画数据
+  renderRemoteDrawing(drawingData) {
+    if (!drawingData) return
+    // 兼容两种格式：strokes 结构 或 原始线段数组
+    if (drawingData.type === 'strokes' && Array.isArray(drawingData.strokes)) {
+      this.measurePictionaryCanvas().then(() => {
+        this.drawStrokes(drawingData.strokes)
+      })
+      return
+    }
+    if (Array.isArray(drawingData)) {
+      this.drawStrokes(drawingData)
+    }
+  },
+
+  // 触摸开始：记录起点
+  onPictionaryTouch(e) {
+    if (!this.data.pictionaryIsDrawing) return
+    const t = (e.touches && e.touches[0]) || null
+    if (!t) return
+    this._picLast = { x: t.x, y: t.y }
+  },
+
+  // 触摸移动：画线并广播
+  onPictionaryMove(e) {
+    if (!this.data.pictionaryIsDrawing) return
+    const t = (e.touches && e.touches[0]) || null
+    if (!t || !this._picLast) return
+    const ctx = this.picCtx()
+    ctx.beginPath()
+    ctx.setStrokeStyle('#333333')
+    ctx.setLineWidth(3)
+    ctx.setLineCap('round')
+    ctx.moveTo(this._picLast.x, this._picLast.y)
+    ctx.lineTo(t.x, t.y)
+    ctx.stroke()
+    ctx.draw(true)
+    // 广播这一段（像素坐标，接收端按同尺寸绘制）
+    const seg = {
+      type: 'segment',
+      from: this._picLast,
+      to: { x: t.x, y: t.y },
+      color: '#333333',
+      width: 3
+    }
+    this.safeSend('42' + JSON.stringify(['game-draw', { gameId: this.data.gameId, drawingData: seg }]))
+    this._picLast = { x: t.x, y: t.y }
+  },
+
+  clearPictionary() {
+    const ctx = this.picCtx()
+    const { w, h } = this.picScale()
+    ctx.clearRect(0, 0, w, h)
+    ctx.draw()
+    this.safeSend('42' + JSON.stringify(['game-clear-canvas', { gameId: this.data.gameId }]))
+  },
+
+  submitPictionary() {
+    this.safeSend('42' + JSON.stringify(['game-finish-drawing', { gameId: this.data.gameId }]))
+    wx.showToast({ title: '已提交，等待下一轮', icon: 'none' })
+  },
+
+
   initTyping() {
     this.setData({
       typingText: '',
@@ -288,6 +415,18 @@ Page({
               this.handleGuessResult(msg)
             } else if (event === 'bomb-update') {
               this.handleBombResult(msg)
+            } else if (event === 'game-draw') {
+              // 对方（含 ai）的绘画数据
+              if (msg && msg.drawingData) this.renderRemoteDrawing(msg.drawingData)
+            } else if (event === 'game-clear-canvas') {
+              const c = this.picCtx()
+              const sz = this.picScale()
+              c.clearRect(0, 0, sz.w, sz.h)
+              c.draw()
+            } else if (event === 'pictionary-hint') {
+              if (msg && msg.hint) {
+                wx.showToast({ title: msg.hint, icon: 'none', duration: 3000 })
+              }
             }
           } catch (e) {
             console.error('解析游戏消息失败:', e)
@@ -503,6 +642,45 @@ Page({
     
     if (data.status) {
       this.setData({ gameStatus: data.status })
+    }
+
+    // 你画我猜：同步题目、猜词记录与比分
+    if (data.gameType === 'pictionary') {
+      const patch = {}
+      if (data.currentDrawer !== undefined) {
+        patch.currentDrawer = data.currentDrawer
+        // 判断自己是不是画者：通过 players 里的 socketId 反查自己的名字
+        const drawerPlayer = (data.players || this.data.players || []).find(function (p) {
+          return p.socketId === data.currentDrawer
+        })
+        const iAmDrawer = !!drawerPlayer && drawerPlayer.username === this.data.myName
+        patch.pictionaryIsDrawing = iAmDrawer
+        // 画者拿得到答案（currentWord），猜的人只拿到字数提示
+        if (iAmDrawer) {
+          patch.pictionaryWord = data.currentWord || ''
+          patch.pictionaryIsDrawer = true
+        } else {
+          patch.pictionaryWord = ''
+          patch.pictionaryIsDrawer = false
+        }
+      }
+      if (data.currentWord !== undefined && data.currentDrawer === undefined) {
+        patch.pictionaryWord = data.currentWord || ''
+      }
+      if (Array.isArray(data.guesses)) {
+        patch.pictionaryGuesses = data.guesses.map(function (g) {
+          return { player: g.username || '玩家', text: g.guess || '' }
+        })
+      }
+      if (data.roundAdvanced) {
+        patch.pictionaryWord = data.currentWord || ''
+        patch.pictionaryGuesses = []
+        const c = this.picCtx()
+        const sz = this.picScale()
+        c.clearRect(0, 0, sz.w, sz.h)
+        c.draw()
+      }
+      if (Object.keys(patch).length) this.setData(patch)
     }
     
     if (data.winner) {

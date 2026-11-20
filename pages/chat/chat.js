@@ -1617,10 +1617,10 @@ Page({
     var isAI = username === 'ai' || userId === 'pc-bot-virtual-socket'
 
     var gameList = isAI
-      ? ['✊ 剪刀石头布', '♟️ 五子棋', '🔢 猜数字', '💣 数字炸弹']
+      ? ['✊ 剪刀石头布', '♟️ 五子棋', '🔢 猜数字', '💣 数字炸弹', '🎨 你画我猜']
       : ['✊ 剪刀石头布', '♟️ 五子棋', '🔢 猜数字', '💣 数字炸弹', '🎨 你画我猜', '⌨️ 打字对战']
     var gameTypes = isAI
-      ? ['rps', 'gomoku', 'guess-number', 'bomb']
+      ? ['rps', 'gomoku', 'guess-number', 'bomb', 'pictionary']
       : ['rps', 'gomoku', 'guess-number', 'bomb', 'pictionary', 'typing']
 
     var that = this
