@@ -533,7 +533,7 @@ Page({
           avatarUrl: that.data.avatarUrl || ''
         })
         console.log('[sendMessage] 发送 payload:', payload)
-        that.socket.send({ data: '42["new-message",' + payload + ']' })
+        that.socket.send({ data: '42["message",' + payload + ']' })
         console.log('[sendMessage] socket.send 调用完成')
         that.setData({
           inputValue: ''
@@ -629,7 +629,7 @@ Page({
           address: res.address || ''
         })
         if (that.socket && that.socket.readyState === 1) {
-          that.socket.send({ data: '42["new-message",' + payload + ']' })
+          that.socket.send({ data: '42["message",' + payload + ']' })
           wx.showToast({ title: '位置已发送', icon: 'none' })
         } else {
           wx.showToast({ title: '未连接，无法发送', icon: 'none' })
@@ -644,6 +644,16 @@ Page({
   showInteractiveCenter() {
     this.setData({ showInteractiveCenter: true })
     this.loadOnlineUsers()
+  },
+
+  // 统一的 socket 就绪判定：微信 SocketTask 不保证暴露 readyState，
+  // 若为 undefined 则回退到 hasJoinedRoom 标志，避免误判为未连接。
+  isSocketReady() {
+    if (!this.socket) return false
+    var rs = this.socket.readyState
+    if (rs === 1) return true
+    if (rs === undefined && this.data.hasJoinedRoom) return true
+    return false
   },
 
   loadOnlineUsers(retry) {
@@ -862,6 +872,26 @@ Page({
           } else if (event === 'muted-error' || event === 'message-error' || event === 'permission-denied') {
             var errText = (msg && msg.message) || '操作被拒绝'
             wx.showToast({ title: errText, icon: 'none' })
+          } else if (event === 'game-start' || event === 'rps-start' ||
+                     event === 'guess-number-start' || event === 'bomb-start' ||
+                     event === 'pictionary-start' || event === 'go-start' ||
+                     event === 'snake-start') {
+            console.log('[Socket] 游戏开始:', event, msg)
+            that.onGameStart(event, msg)
+          } else if (event === 'game-invitation-sent') {
+            console.log('[游戏] 邀请已送达:', msg)
+            if (msg && msg.toUsername) {
+              wx.showToast({ title: '已邀请 ' + msg.toUsername, icon: 'none' })
+            }
+          } else if (event === 'game-invitation-error') {
+            var gErr = (msg && msg.message) || '邀请失败'
+            console.error('[游戏] 邀请失败:', gErr)
+            wx.showToast({ title: gErr, icon: 'none' })
+          } else if (event === 'game-invitation-response') {
+            console.log('[游戏] 邀请响应:', msg)
+            if (msg && msg.accept && msg.username) {
+              wx.showToast({ title: msg.username + ' 接受邀请', icon: 'none' })
+            }
           } else if (event === 'join-error') {
             var joinErr = (msg && msg.message) || '加入房间失败'
             that.isInitializingSocket = false
@@ -1004,7 +1034,7 @@ Page({
           fileSize: ''
         })
         if (that.socket && that.socket.readyState === 1) {
-          that.socket.send({ data: '42["new-message",' + payload + ']' })
+          that.socket.send({ data: '42["message",' + payload + ']' })
           wx.showToast({ title: type === 'image' ? '图片已发送' : type === 'video' ? '视频已发送' : '文件已发送', icon: 'none' })
         } else {
           wx.showToast({ title: '已上传，但未连接，无法发送', icon: 'none' })
@@ -1547,12 +1577,16 @@ Page({
       wx.showToast({ title: '请先选择选项', icon: 'none' })
       return
     }
-    if (!that.data.connected || !that.socket || that.socket.readyState !== 1) {
+    if (!that.data.connected || !that.isSocketReady()) {
       wx.showToast({ title: '未连接，无法投票', icon: 'none' })
       return
     }
-    var payload = JSON.stringify({ pollId: poll.id, options: selected })
-    that.socket.send({ data: '42["poll-vote",' + payload + ']' })
+    // 服务端签名: { pollId, optionIndex }，多选则逐项发送
+    selected.forEach(function (idx) {
+      that.socket.send({
+        data: '42["vote",' + JSON.stringify({ pollId: poll.id, optionIndex: idx }) + ']'
+      })
+    })
 
     var voted = (that.data.votedPolls || []).slice()
     if (voted.indexOf(poll.id) < 0) voted.push(poll.id)
@@ -1603,7 +1637,7 @@ Page({
   },
 
   sendGameInvitation(gameType, userId, username) {
-    if (!this.data.connected || !this.socket || this.socket.readyState !== 1) {
+    if (!this.data.connected || !this.isSocketReady()) {
       wx.showToast({ title: '未连接，无法发送邀请', icon: 'none' })
       return
     }
@@ -1615,12 +1649,12 @@ Page({
   acceptGameInvitation(e) {
     var id = e && e.currentTarget ? e.currentTarget.dataset.id : ''
     if (!id) return
-    if (!this.data.connected || !this.socket || this.socket.readyState !== 1) {
+    if (!this.data.connected || !this.isSocketReady()) {
       wx.showToast({ title: '未连接，无法接受邀请', icon: 'none' })
       return
     }
     var payload = JSON.stringify({ invitationId: id, accept: true })
-    this.socket.send({ data: '42["respond-game-invitation",' + payload + ']' })
+    this.socket.send({ data: '42["respond-to-game-invitation",' + payload + ']' })
     var left = (this.data.gameInvitations || []).filter(function (inv) { return inv.id !== id })
     this.setData({ gameInvitations: left })
   },
@@ -1628,18 +1662,51 @@ Page({
   rejectGameInvitation(e) {
     var id = e && e.currentTarget ? e.currentTarget.dataset.id : ''
     if (!id) return
-    if (!this.data.connected || !this.socket || this.socket.readyState !== 1) {
+    if (!this.data.connected || !this.isSocketReady()) {
       wx.showToast({ title: '未连接，无法拒绝邀请', icon: 'none' })
       return
     }
     var payload = JSON.stringify({ invitationId: id, accept: false })
-    this.socket.send({ data: '42["respond-game-invitation",' + payload + ']' })
+    this.socket.send({ data: '42["respond-to-game-invitation",' + payload + ']' })
     var left = (this.data.gameInvitations || []).filter(function (inv) { return inv.id !== id })
     this.setData({ gameInvitations: left })
   },
 
+  // 收到游戏开始事件：组装数据并跳转游戏页
+  onGameStart(eventName, msg) {
+    if (!msg || !msg.gameId) {
+      console.warn('[游戏] 游戏开始数据不完整:', msg)
+      return
+    }
+    var gameData = {
+      gameType: msg.gameType || 'gomoku',
+      gameId: msg.gameId,
+      players: msg.players || [],
+      currentUsername: this.data.username,
+      currentPlayer: msg.currentPlayer || '',
+      currentGuesser: msg.currentGuesser || '',
+      board: msg.board || null,
+      wins: msg.wins || {},
+      maxWins: msg.maxWins || 3,
+      round: msg.round || 1,
+      maxStep: msg.maxStep || 3,
+      guessCounts: msg.guessCounts || {} 
+    }
+    console.log('[游戏] 跳转游戏页:', gameData)
+    // 关闭互动中心
+    this.setData({ showInteractiveCenter: false })
+    var encoded = encodeURIComponent(JSON.stringify(gameData))
+    wx.navigateTo({
+      url: '/pages/game/game?gameData=' + encoded,
+      fail: function (err) {
+        console.error('[游戏] 跳转失败:', err)
+        wx.showToast({ title: '进入游戏失败', icon: 'none' })
+      }
+    })
+  },
+
   refreshActiveGames() {
-    if (!this.data.connected || !this.socket || this.socket.readyState !== 1) {
+    if (!this.data.connected || !this.isSocketReady()) {
       wx.showToast({ title: '未连接，无法刷新', icon: 'none' })
       return
     }
@@ -1667,12 +1734,12 @@ Page({
   },
 
   joinGameByIdInternal(gameId) {
-    if (!this.data.connected || !this.socket || this.socket.readyState !== 1) {
+    if (!this.data.connected || !this.isSocketReady()) {
       wx.showToast({ title: '未连接，无法加入', icon: 'none' })
       return
     }
     var payload = JSON.stringify({ gameId: gameId })
-    this.socket.send({ data: '42["join-game",' + payload + ']' })
+    this.socket.send({ data: '42["join-game-by-id",' + payload + ']' })
     wx.showToast({ title: '正在加入游戏', icon: 'none' })
   },
 

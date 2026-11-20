@@ -8421,6 +8421,97 @@ io.on('connection', (socket) => {
     });
 
     // 互动中心事件处理
+    // ===== PC 虚拟账户：创建并开始游戏 =====
+    function pcCreateAndStartGame(playerSocketId, user, gameType) {
+        const pcCreator = { username: PC_USERNAME, socketId: PC_SOCKET_ID };
+
+        if (gameType === 'gomoku') {
+            // 玩家先手（黑棋），ai 后手
+            const game = createGomokuGame({ username: user.username, socketId: playerSocketId }, user.roomName);
+            if (!game) return;
+            game.players.push(PC_SOCKET_ID);
+            game.status = 'playing';
+            game.startTime = new Date();
+            games.set(game.id, game);
+            io.to(playerSocketId).emit('game-start', {
+                gameId: game.id,
+                gameType: 'gomoku',
+                players: [
+                    { socketId: playerSocketId, username: user.username },
+                    { socketId: PC_SOCKET_ID, username: PC_USERNAME }
+                ],
+                board: game.board,
+                currentPlayer: game.currentPlayer
+            });
+            console.log(`[PC] 五子棋 ${game.id} 开始，对战 ${user.username}，玩家先手`);
+            return;
+        }
+
+        if (gameType === 'guess-number') {
+            const game = createGuessNumberGame(pcCreator, user.roomName);
+            if (!game) return;
+            const updatedGame = joinGuessNumberGame(game.id, playerSocketId);
+            if (!updatedGame) return;
+            updatedGame.currentGuesser = playerSocketId; // 玩家先猜
+            games.set(updatedGame.id, updatedGame);
+            io.to(playerSocketId).emit('guess-number-start', {
+                gameId: updatedGame.id,
+                gameType: 'guess-number',
+                players: [
+                    { socketId: PC_SOCKET_ID, username: PC_USERNAME },
+                    { socketId: playerSocketId, username: user.username }
+                ],
+                currentGuesser: updatedGame.currentGuesser,
+                guessCounts: updatedGame.guessCounts
+            });
+            console.log(`[PC] 猜数字 ${updatedGame.id} 开始，对战 ${user.username}，玩家先猜`);
+            return;
+        }
+
+        if (gameType === 'rps') {
+            const game = createRPSGame(pcCreator, user.roomName);
+            if (!game) return;
+            const updatedGame = joinRPSGame(game.id, playerSocketId, user.username);
+            if (!updatedGame) return;
+            io.to(playerSocketId).emit('rps-start', {
+                gameId: updatedGame.id,
+                gameType: 'rps',
+                players: [
+                    { socketId: PC_SOCKET_ID, username: PC_USERNAME },
+                    { socketId: playerSocketId, username: user.username }
+                ],
+                wins: Object.assign({}, updatedGame.wins),
+                maxWins: updatedGame.maxWins,
+                round: updatedGame.round
+            });
+            console.log(`[PC] 猜拳 ${updatedGame.id} 开始，对战 ${user.username}`);
+            return;
+        }
+
+        if (gameType === 'bomb') {
+            const game = createBombGame(pcCreator, user.roomName);
+            if (!game) return;
+            const updatedGame = joinBombGame(game.id, playerSocketId, user.username);
+            if (!updatedGame) return;
+            io.to(playerSocketId).emit('bomb-start', {
+                gameId: updatedGame.id,
+                gameType: 'bomb',
+                players: [
+                    { socketId: PC_SOCKET_ID, username: PC_USERNAME },
+                    { socketId: playerSocketId, username: user.username }
+                ],
+                maxStep: updatedGame.maxStep,
+                current: 0,
+                currentPlayer: updatedGame.players[0]
+            });
+            console.log(`[PC] 数字炸弹 ${updatedGame.id} 开始，对战 ${user.username}`);
+            return;
+        }
+
+        console.warn(`[PC] 不支持的游戏类型: ${gameType}`);
+    }
+    // ===== PC 虚拟账户 END =====
+
     // 游戏邀请系统数据结构 - 已移至全局作用域
 
     // 获取在线用户列表
@@ -8453,6 +8544,40 @@ io.on('connection', (socket) => {
         const user = users.get(socket.id);
         if (user && data.userId && data.gameType) {
             const targetUser = users.get(data.userId);
+            // ===== PC 虚拟账户：自动接受邀请，直接开局 =====
+            if (data.userId === PC_SOCKET_ID) {
+                const pcAcceptedGameTypes = ['gomoku', 'guess-number', 'rps', 'bomb'];
+                if (pcAcceptedGameTypes.indexOf(data.gameType) < 0) {
+                    socket.emit('game-invitation-error', { message: `ai 暂不支持「${data.gameType}」游戏` });
+                    return;
+                }
+                // 告知邀请方：ai 已接受
+                socket.emit('game-invitation-sent', {
+                    id: `inv-pc-${Date.now()}`,
+                    from: socket.id,
+                    fromUsername: user.username,
+                    to: PC_SOCKET_ID,
+                    toUsername: PC_USERNAME,
+                    gameType: data.gameType,
+                    status: 'accepted',
+                    createdAt: new Date().toISOString(),
+                    roomName: user.roomName
+                });
+                socket.emit('game-invitation-response', {
+                    accept: true,
+                    username: PC_USERNAME
+                });
+                // 创建并立刻开局，把 game-start 推给玩家
+                try {
+                    pcCreateAndStartGame(socket.id, user, data.gameType);
+                } catch (e) {
+                    console.error('[PC] 创建游戏失败:', e.message);
+                    socket.emit('game-invitation-error', { message: 'ai 创建游戏失败: ' + e.message });
+                }
+                return;
+            }
+            // ===== PC 虚拟账户 END =====
+
             if (targetUser) {
                 // 检查是否已存在同一对用户+游戏类型的 pending 邀请
                 const duplicate = Array.from(gameInvitations.values()).find(inv =>
