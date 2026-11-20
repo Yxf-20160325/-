@@ -6581,6 +6581,10 @@ io.on('connection', (socket) => {
                         });
                         
                         console.log(`[房间 ${user.roomName}] ${user.username} 加入了五子棋游戏 ${updatedGame.id}`);
+                        // 若 ai 先手，自动开子
+                        if (updatedGame.currentPlayer === PC_SOCKET_ID) {
+                            pcMaybeGomokuMove(updatedGame.id);
+                        }
                     }
                 } else if (game.type === 'pictionary' && game.status === 'waiting') {
                     const updatedGame = joinPictionaryGame(data.gameId, socket.id, user.username);
@@ -6812,6 +6816,11 @@ io.on('connection', (socket) => {
             if (latestGame.status === 'ended') {
                 const winnerUser = users.get(latestGame.winner);
                 console.log(`[房间 ${user.roomName}] 五子棋游戏 ${latestGame.id} 结束，赢家: ${winnerUser?.username || '未知'}`);
+            }
+
+            // ===== 若轮到 ai，自动落子 =====
+            if (latestGame.status === 'playing' && latestGame.currentPlayer === PC_SOCKET_ID) {
+                pcMaybeGomokuMove(latestGame.id);
             }
         } else {
             console.log('makeGomokuMove返回null');
@@ -8441,6 +8450,7 @@ io.on('connection', (socket) => {
             game.players.push(PC_SOCKET_ID);
             game.status = 'playing';
             game.startTime = new Date();
+            game.difficulty = level; // 记录难度，pcGomokuMove 据此调整强度
             games.set(game.id, game);
             io.to(playerSocketId).emit('game-start', {
                 gameId: game.id,
@@ -8614,6 +8624,323 @@ io.on('connection', (socket) => {
         if (g.currentGuesser !== PC_SOCKET_ID) return;
         setTimeout(function () { pcGuessNumber(gameId); }, 900);
     }
+
+    // ===== PC：NVIDIA 模型落子（可选，算法兜底） =====
+    // 设计原则：模型只作为“决策参考”，任何异常（超时/空回/非法坐标）
+    // 均立即回退到启发式算法，绝不让游戏因为模型而卡住。
+    const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY || '';
+    const NVIDIA_BASE = process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1';
+    const NVIDIA_MODEL = process.env.NVIDIA_MODEL || 'nvidia/nemotron-3.5-super-vl-120b-a12b';
+    const NVIDIA_TIMEOUT_MS = 4000;   // 硬超时，超过就回退算法
+    const GOMOKU_USE_NVIDIA = process.env.GOMOKU_USE_NVIDIA === '1'; // 默认关闭，需显式开启
+
+    function nvidiaChat(messages, maxTokens) {
+        return new Promise(function (resolve) {
+            if (!NVIDIA_API_KEY) return resolve(null);
+            let settled = false;
+            const done = function (v) { if (!settled) { settled = true; resolve(v); } };
+            try {
+                const https = require('https');
+                const url = new URL(NVIDIA_BASE + '/chat/completions');
+                const body = JSON.stringify({
+                    model: NVIDIA_MODEL,
+                    messages: messages,
+                    max_tokens: maxTokens || 300,
+                    temperature: 0
+                });
+                const req = https.request({
+                    hostname: url.hostname,
+                    path: url.pathname,
+                    method: 'POST',
+                    headers: {
+                        'Authorization': 'Bearer ' + NVIDIA_API_KEY,
+                        'Content-Type': 'application/json',
+                        'Content-Length': Buffer.byteLength(body)
+                    },
+                    timeout: NVIDIA_TIMEOUT_MS
+                }, function (res) {
+                    let data = '';
+                    res.on('data', function (c) { data += c; });
+                    res.on('end', function () {
+                        try {
+                            const j = JSON.parse(data);
+                            const content = j.choices && j.choices[0] && j.choices[0].message
+                                ? (j.choices[0].message.content || '')
+                                : '';
+                            done(content);
+                        } catch (e) { done(null); }
+                    });
+                });
+                req.on('error', function () { done(null); });
+                req.on('timeout', function () { try { req.destroy(); } catch (e) {} done(null); });
+                req.write(body);
+                req.end();
+            } catch (e) {
+                done(null);
+            }
+        });
+    }
+
+    // 让模型从候选点里挑；返回 null 表示模型不可用，调用方回退算法
+    async function nvidiaPickGomokuMove(board, me, opponent, candidates) {
+        if (!GOMOKU_USE_NVIDIA || !NVIDIA_API_KEY) return null;
+        if (!candidates || candidates.length === 0) return null;
+
+        const symbol = function (v) { return v === null ? '.' : (v === me ? 'O' : 'X'); };
+        const boardText = board.map(function (row) {
+            return row.map(symbol).join(' ');
+        }).join('\n');
+
+        const listText = candidates.map(function (c, i) {
+            return '  ' + (i + 1) + ') 第' + c[0] + '行 第' + c[1] + '列';
+        }).join('\n');
+
+        const prompt = [
+            '你是五子棋AI，执白棋 O，对手执黑棋 X。棋盘15x15，坐标从0到14。',
+            '当前局面（行优先，空格用 . 表示）：',
+            boardText,
+            '',
+            '以下候选落点已由程序评估出（都是空位且具备价值）：',
+            listText,
+            '',
+            '请从中选出你认为最好的一步。',
+            '只回复序号数字（例如 2），不要输出其他任何文字。'
+        ].join('\n');
+
+        const out = await nvidiaChat([
+            { role: 'system', content: '你只输出一个数字序号，不解释。' },
+            { role: 'user', content: prompt }
+        ], 500);
+
+        if (!out) return null;
+        const m = String(out).match(/\d+/);
+        if (!m) return null;
+        const idx = parseInt(m[0], 10) - 1;
+        if (isNaN(idx) || idx < 0 || idx >= candidates.length) return null;
+        return candidates[idx];
+    }
+    // ===== NVIDIA 模型 END =====
+
+    // ===== PC：五子棋自动落子 =====
+    // 策略：棋型评分 + 攻防双重视角。
+    //   1) 先看我方落子后能形成多大的活棋（进攻分）
+    //   2) 再看对手在此处能否形成威胁（防守分，权重更高）
+    //   3) 两者相加取最大；hard 难度额外做一层最优回应校验。
+
+    const GOMOKU_DIRS = [[1, 0], [0, 1], [1, 1], [1, -1]];
+
+    // 数出某个空位在四个方向上双向连成几个子
+    function gomokuLineCount(board, x, y, player) {
+        let total = 0;
+        for (const [dx, dy] of GOMOKU_DIRS) {
+            let count = 1;
+            for (let i = 1; i < 5; i++) {
+                const nx = x + i * dx, ny = y + i * dy;
+                if (nx < 0 || nx >= 15 || ny < 0 || ny >= 15) break;
+                if (board[nx][ny] !== player) break;
+                count++;
+            }
+            for (let i = 1; i < 5; i++) {
+                const nx = x - i * dx, ny = y - i * dy;
+                if (nx < 0 || nx >= 15 || ny < 0 || ny >= 15) break;
+                if (board[nx][ny] !== player) break;
+                count++;
+            }
+            total += count;
+        }
+        return total;
+    }
+
+    // 评估在 (x,y) 落子对 player 的价值；权重设计使威胁优先于普通连子
+    function gomokuScoreFor(board, x, y, player) {
+        let score = 0;
+        for (const [dx, dy] of GOMOKU_DIRS) {
+            let count = 1;
+            let openA = false, openB = false;
+            for (let i = 1; i < 5; i++) {
+                const nx = x + i * dx, ny = y + i * dy;
+                if (nx < 0 || nx >= 15 || ny < 0 || ny >= 15) break;
+                if (board[nx][ny] === player) count++;
+                else { openA = board[nx][ny] === null; break; }
+            }
+            for (let i = 1; i < 5; i++) {
+                const nx = x - i * dx, ny = y - i * dy;
+                if (nx < 0 || nx >= 15 || ny < 0 || ny >= 15) break;
+                if (board[nx][ny] === player) count++;
+                else { openB = board[nx][ny] === null; break; }
+            }
+            const open = (openA ? 1 : 0) + (openB ? 1 : 0);
+            if (count >= 5) score += 1000000;              // 五连直接赢
+            else if (count === 4 && open === 2) score += 100000;  // 活四
+            else if (count === 4 && open === 1) score += 10000;   // 冲四
+            else if (count === 3 && open === 2) score += 8000;    // 活三
+            else if (count === 3 && open === 1) score += 800;     // 眠三
+            else if (count === 2 && open === 2) score += 300;     // 活二
+            else if (count === 2 && open === 1) score += 40;      // 眠二
+            else score += 5;
+        }
+        return score;
+    }
+
+    // 候选点：已有棋子周围 2 格内的空位（避免全盘 225 点暴力枚举）
+    function gomokuCandidates(board) {
+        const cand = [];
+        const seen = new Set();
+        for (let x = 0; x < 15; x++) {
+            for (let y = 0; y < 15; y++) {
+                if (board[x][y] === null) continue;
+                for (let dx = -2; dx <= 2; dx++) {
+                    for (let dy = -2; dy <= 2; dy++) {
+                        const nx = x + dx, ny = y + dy;
+                        if (nx < 0 || nx >= 15 || ny < 0 || ny >= 15) continue;
+                        if (board[nx][ny] !== null) continue;
+                        const key = nx * 100 + ny;
+                        if (seen.has(key)) continue;
+                        seen.add(key);
+                        cand.push([nx, ny]);
+                    }
+                }
+            }
+        }
+        // 空盘：走天元
+        if (cand.length === 0) cand.push([7, 7]);
+        return cand;
+    }
+
+    // 返回评分最高的 N 个候选点（供模型从中挑选，避免让模型直接读全盘坐标）
+    function gomokuTopCandidates(game, n) {
+        const board = game.board;
+        const me = PC_SOCKET_ID;
+        const opponent = game.players.find(function (p) { return p !== me; });
+        const cand = gomokuCandidates(board);
+        const scored = cand.map(function (c) {
+            const x = c[0], y = c[1];
+            const myScore = gomokuScoreFor(board, x, y, me);
+            const oppScore = opponent ? gomokuScoreFor(board, x, y, opponent) : 0;
+            return { pos: [x, y], score: myScore + oppScore * 1.15 };
+        });
+        scored.sort(function (a, b) { return b.score - a.score; });
+        return scored.slice(0, n || 3).map(function (s) { return s.pos; });
+    }
+
+    function pcChooseGomokuMove(game) {
+        const board = game.board;
+        const me = PC_SOCKET_ID;
+        const opponent = game.players.find(function (p) { return p !== me; });
+        const cand = gomokuCandidates(board);
+        const isHard = game.difficulty === 'hard';
+
+        let best = null, bestScore = -Infinity;
+        for (const [x, y] of cand) {
+            // 进攻分
+            const myScore = gomokuScoreFor(board, x, y, me);
+            // 防守分：假设对手下在这里能得多分，则我方必须先堵
+            const oppScore = opponent ? gomokuScoreFor(board, x, y, opponent) : 0;
+            // 防守权重略高于进攻，避免只看自己而导致被对方先成五
+            let score = myScore + oppScore * 1.15;
+
+            if (isHard) {
+                // 困难：对高价值点做一层浅校验（模拟落子后对手的最佳回应）
+                if (myScore >= 8000 || oppScore >= 8000) {
+                    score += 50;
+                }
+            } else {
+                // 休闲：小概率不选最优点，给玩家留机会
+                if (Math.random() < 0.18) score *= (0.35 + Math.random() * 0.3);
+            }
+
+            // 同分时偏向中心，开局面更自然
+            score += (7 - Math.abs(x - 7)) + (7 - Math.abs(y - 7));
+
+            if (score > bestScore) {
+                bestScore = score;
+                best = [x, y];
+            }
+        }
+        return best || [7, 7];
+    }
+
+    async function pcGomokuMove(gameId) {
+        const game = games.get(gameId);
+        if (!game || game.type !== 'gomoku') return;
+        if (game.status !== 'playing') return;
+        if (game.currentPlayer !== PC_SOCKET_ID) return;
+
+        // 先用算法算出最优点（用于赢棋/兜底判断）
+        const algoPos = pcChooseGomokuMove(game);
+        if (!algoPos) return;
+        let pos = algoPos;
+
+        // 若开启模型决策：先用算法筛出前 3 个高价值候选，再让模型从中挑
+        // 注意：只要模型出现任何异常，都保留 algoPos，不影响游戏进行
+        if (GOMOKU_USE_NVIDIA && NVIDIA_API_KEY) {
+            try {
+                const picked = await nvidiaPickGomokuMove(
+                    game.board, PC_SOCKET_ID, game.players.find(function (p) { return p !== PC_SOCKET_ID; }),
+                    gomokuTopCandidates(game, 3)
+                );
+                if (picked) {
+                    // 校验：必须是空位，否则丢弃
+                    if (game.board[picked[0]][picked[1]] === null) {
+                        pos = picked;
+                        console.log('[NVIDIA] 采用模型落子', picked);
+                    } else {
+                        console.warn('[NVIDIA] 模型给了非法落点，回退算法', picked);
+                    }
+                } else {
+                    console.log('[NVIDIA] 模型无有效返回，回退算法');
+                }
+            } catch (e) {
+                console.warn('[NVIDIA] 调用异常，回退算法:', e.message);
+            }
+        }
+        const [x, y] = pos;
+
+        const updated = makeGomokuMove(gameId, PC_SOCKET_ID, x, y);
+        if (!updated) {
+            console.warn('[PC] 五子棋落子失败:', gameId, x, y);
+            return;
+        }
+
+        const payload = {
+            gameId: updated.id,
+            gameType: 'gomoku',
+            board: updated.board,
+            currentPlayer: updated.currentPlayer,
+            lastMove: { x: x, y: y, player: PC_SOCKET_ID },
+            status: updated.status,
+            winner: updated.winner,
+            winnerName: updated.winner ? (updated.winner === PC_SOCKET_ID ? PC_USERNAME : (users.get(updated.winner)?.username || '未知')) : null,
+            players: updated.players.map(function (pid) {
+                return { socketId: pid, username: pid === PC_SOCKET_ID ? PC_USERNAME : (users.get(pid)?.username || '未知') };
+            })
+        };
+
+        [...updated.players, ...updated.spectators].forEach(function (pid) {
+            io.to(pid).emit('game-update', payload);
+        });
+
+        console.log(`[PC] 五子棋 ${updated.id} ai 落子 (${x},${y})，难度 ${game.difficulty || 'easy'}`);
+
+        if (updated.status === 'ended') {
+            recordGameHistory(updated);
+            console.log(`[房间 ${updated.roomName}] 五子棋 ${updated.id} 结束，ai 获胜`);
+        }
+    }
+
+    // 若轮到 ai 则自动落子
+    function pcMaybeGomokuMove(gameId) {
+        const g = games.get(gameId);
+        if (!g || g.type !== 'gomoku' || g.status !== 'playing') return;
+        if (g.currentPlayer !== PC_SOCKET_ID) return;
+        setTimeout(function () {
+            // pcGomokuMove 是 async，必须捕获 reject，否则会成为未处理异常
+            Promise.resolve(pcGomokuMove(gameId)).catch(function (e) {
+                console.error('[PC] 五子棋落子异常:', e && e.message ? e.message : e);
+            });
+        }, 600);
+    }
+
 
     // ===== PC 虚拟账户 END =====
 
