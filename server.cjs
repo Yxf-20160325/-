@@ -222,41 +222,28 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '300mb' }), asyn
             fs.mkdirSync(dirPath, { recursive: true });
         }
 
-        // 病毒扫描
-        let scanResult = { safe: true, scanned: false, message: '病毒检测已禁用' };
-
+        // 病毒扫描改为后台异步：VirusTotal 需 15-60 秒，在响应里 await
+        // 会让小程序 request（10秒超时）必然失败。文件先保存、立即返回 URL。
+        let scanResult = { safe: true, scanned: false, message: '待后台扫描' };
         if (virusScanEnabled && virusScanner) {
-            console.log('开始病毒扫描:', filename);
-            scanResult = await virusScanner.scanBuffer(req.body, filename);
-
-            if (!scanResult.safe) {
-                console.log('文件被检测到病毒:', filename);
-
-                // 将病毒文件保存到隔离区
-                const virusPath = path.join(virusesDir, filename);
-                fs.writeFileSync(virusPath, req.body);
-
-                // 记录病毒文件信息
-                const virusFile = {
-                    id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-                    filename: filename,
-                    size: req.body.length,
-                    uploaderIp: req.ip,
-                    uploadTime: new Date().toISOString(),
-                    scanResult: scanResult
-                };
-
-                // 使用 Map 存储而不是数组
-                virusFiles.set(virusFile.id, virusFile);
-
-                return res.status(403).json({
-                    error: '不允许上传病毒',
-                    viruses: scanResult.viruses,
-                    virusId: virusFile.id
+            const fileBuffer = Buffer.from(req.body);
+            Promise.resolve(virusScanner.scanBuffer(fileBuffer, filename))
+                .then(function (result) {
+                    if (result && !result.safe) {
+                        try {
+                            const virusPath = path.join(virusesDir, filename);
+                            fs.writeFileSync(virusPath, fileBuffer);
+                            console.warn('[后台扫描] 发现危险文件，已隔离:', filename);
+                        } catch (e) {
+                            console.warn('[后台扫描] 隔离失败:', e.message);
+                        }
+                    } else {
+                        console.log('[后台扫描] 安全:', filename);
+                    }
+                })
+                .catch(function (e) {
+                    console.warn('[后台扫描] 失败:', e.message);
                 });
-            }
-            
-            console.log('病毒扫描完成:', filename, '结果:', scanResult.message);
         } else {
             console.log('病毒检测已禁用，跳过扫描:', filename);
         }

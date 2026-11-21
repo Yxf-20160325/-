@@ -563,7 +563,8 @@ Page({
       sourceType: ['album', 'camera'],
       success: function(res) {
         var tempFilePath = res.tempFiles[0].tempFilePath
-        that.uploadAndSend('image', tempFilePath)
+        var displayName = res.tempFiles[0].name || ('图片-' + Date.now() + '.jpg')
+        that.uploadAndSend('image', tempFilePath, displayName)
       },
       fail: function(err) {
         console.error('选择图片失败', err)
@@ -578,7 +579,8 @@ Page({
       type: 'file',
       success: function(res) {
         var tempFilePath = res.tempFiles[0].path
-        that.uploadAndSend('file', tempFilePath)
+        var displayName = res.tempFiles[0].name || tempFilePath.split('/').pop() || 'file'
+        that.uploadAndSend('file', tempFilePath, displayName)
       },
       fail: function(err) {
         console.error('选择文件失败', err)
@@ -594,7 +596,8 @@ Page({
       sourceType: ['album', 'camera'],
       success: function(res) {
         var tempFilePath = res.tempFiles[0].tempFilePath
-        that.uploadAndSend('video', tempFilePath)
+        var displayName = res.tempFiles[0].name || ('视频-' + Date.now() + '.mp4')
+        that.uploadAndSend('video', tempFilePath, displayName)
       },
       fail: function(err) {
         console.error('选择视频失败', err)
@@ -998,7 +1001,7 @@ Page({
       that.handleNewMessage(msg)
     })
   },
-  uploadAndSend(type, tempFilePath) {
+  uploadAndSend(type, tempFilePath, displayName) {
     var that = this
     if (!that.data.connected) {
       wx.showModal({
@@ -1018,7 +1021,7 @@ Page({
       })
       return
     }
-    var fileName = tempFilePath.split('/').pop() || 'file'
+    var fileName = displayName || tempFilePath.split('/').pop() || 'file'
     // 用上传进度弹窗（showUploadModal），不再用 wx.showLoading
     that.setData({
       showUploadModal: true,
