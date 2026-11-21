@@ -10393,7 +10393,7 @@ if (typeof userSettings !== 'undefined') {
                         </div>
                         <div style="display:flex;gap:8px;">
                             <button class="btn btn-primary" onclick="viewAiGameDetails('${game.id}')">👁️ 查看</button>
-                            ${isPlaying ? `<button class="btn btn-warning" onclick="forceAiMove('${game.id}')">⚡ 强制AI行动</button>` : ''}
+                            ${isPlaying ? `<button class="btn btn-warning" onclick="forceAiMove('${game.id}', '${game.type}')">🎯 指定AI行动</button>` : ''}
                             ${isPlaying ? `<button class="btn btn-danger" onclick="endAiGame('${game.id}')">⏹️ 结束</button>` : ''}
                         </div>
                     </div>
@@ -10486,20 +10486,47 @@ if (typeof userSettings !== 'undefined') {
     }
 
     // 强制 AI 行动
-    async function forceAiMove(gameId) {
-        if (!confirm('确定要强制 AI 立即行动吗？')) return;
-        
+    async function forceAiMove(gameId, gameType) {
+        let params = {};
+        let desc = '';
+        if (gameType === 'gomoku' || gameType === 'go') {
+            const x = prompt('指定 AI 落子的 X 坐标（0-14）：', '');
+            if (x === null) return;
+            const y = prompt('指定 AI 落子的 Y 坐标（0-14）：', '');
+            if (y === null) return;
+            params = { x: parseInt(x), y: parseInt(y) };
+            desc = `落子 (${params.x}, ${params.y})`;
+        } else if (gameType === 'guess-number') {
+            const n = prompt('指定 AI 猜的数字（1-100）：', '');
+            if (n === null) return;
+            params = { guess: parseInt(n) };
+            desc = `猜 ${params.guess}`;
+        } else if (gameType === 'rps') {
+            const c = prompt('指定 AI 出招（rock/paper/scissors）：', 'rock');
+            if (c === null) return;
+            params = { choice: c.trim() };
+            desc = `出 ${params.choice}`;
+        } else if (gameType === 'bomb') {
+            const cnt = prompt('指定 AI 报几个数（1-3）：', '1');
+            if (cnt === null) return;
+            params = { count: parseInt(cnt) };
+            desc = `报 ${params.count} 个数`;
+        } else {
+            // pictionary/typing/snake 等：直接触发 AI 行动
+            desc = '自动行动';
+        }
+        if (!confirm('确定要让 AI ' + desc + ' 吗？')) return;
+
         try {
             const res = await fetch('/api/admin/ai-games/force-move', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ gameId })
+                body: JSON.stringify({ gameId, params })
             });
             const data = await res.json();
-            
             if (data.success) {
-                showAdminNotif('AI 已执行行动');
-                loadAiGames(); // 刷新状态
+                showAdminNotif('AI 已执行: ' + desc);
+                loadAiGames();
             } else {
                 alert('操作失败: ' + data.error);
             }

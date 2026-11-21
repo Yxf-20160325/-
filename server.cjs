@@ -150,6 +150,23 @@ function pcTypingMove(gameId) {}
 function pcGoMove(gameId) {}
 // ===== PC AI 函数前置声明 END =====
 
+// ===== AI 行动注册表 ===== 
+// 真正的 AI 函数定义在 io.on('connection') 闭包内，HTTP API 访问不到。
+// 各实现处把自己注册到这里，供管理后台通过 HTTP API 调用。
+const pcAIHandlers = {};
+function registerPcHandler(type, fn) { pcAIHandlers[type] = fn; }
+
+// 管理员指定行动队列：HTTP API 写入，AI 函数执行时消费
+const adminForcedMoves = new Map(); // gameId -> { params, ts }
+function setForcedMove(gameId, params) { adminForcedMoves.set(gameId, { params, ts: Date.now() }); }
+function consumeForcedMove(gameId) {
+    const m = adminForcedMoves.get(gameId);
+    if (!m) return null;
+    if (Date.now() - m.ts > 30000) { adminForcedMoves.delete(gameId); return null; }
+    adminForcedMoves.delete(gameId);
+    return m.params;
+}
+
 // 默认权限（提前声明，避免 TDZ 问题）
 let defaultPermissions = {
     allowAudio: true,
@@ -2615,35 +2632,14 @@ app.post('/api/admin/ai-games/force-move', express.json(), (req, res) => {
             return res.status(400).json({ success: false, error: '游戏不在进行中' });
         }
         
-        // 根据游戏类型调用对应的 AI 函数
-        switch (game.type) {
-            case 'gomoku':
-                pcGomokuMove(gameId);
-                break;
-            case 'guess-number':
-                pcGuessNumber(gameId);
-                break;
-            case 'rps':
-                // @ts-ignore
-                pcRpsMove(gameId);
-                break;
-            case 'bomb':
-                pcBombMove(gameId);
-                break;
-            case 'pictionary':
-                pcPictionaryDraw(gameId);
-                break;
-            case 'typing':
-                pcTypingMove(gameId);
-                break;
-            case 'go':
-                pcGoMove(gameId);
-                break;
-            case 'snake':
-                // 贪吃蛇是实时游戏，不需要强制行动
-                return res.status(400).json({ success: false, error: '贪吃蛇是实时游戏，无法强制行动' });
-            default:
-                return res.status(400).json({ success: false, error: '未知的游戏类型' });
+        // 通过注册表调用真正的 AI 函数（闭包内的实现）
+        const handler = pcAIHandlers[game.type];
+        if (handler) {
+            // 若管理员指定了具体行动，先放入队列供 AI 消费
+            if (req.body.params) setForcedMove(gameId, req.body.params);
+            handler(gameId);
+        } else {
+            console.warn('[管理后台] AI 函数未注册:', game.type);
         }
         
         addAiThought(game.type, '强制行动', `管理员强制 AI 在 ${game.type} 游戏中行动`);
@@ -10708,6 +10704,7 @@ io.on('connection', (socket) => {
      * 优先提子，其次占角，随机落子
      */
     function pcGoMove(gameId) {
+    registerPcHandler('go', pcGoMove);
         const game = games.get(gameId);
         if (!game || game.status !== 'playing' || game.currentPlayer !== PC_SOCKET_ID) return;
         
@@ -10804,6 +10801,7 @@ io.on('connection', (socket) => {
      * 优先级：自己能赢 > 阻止对手赢 > 进攻 > 防守
      */
     function pcGomokuMove(gameId) {
+    registerPcHandler('gomoku', pcGomokuMove);
         const game = games.get(gameId);
         if (!game || game.status !== 'playing' || game.currentPlayer !== PC_SOCKET_ID) return;
 
@@ -10941,7 +10939,16 @@ io.on('connection', (socket) => {
         }
         addAiThought('gomoku', '落子思考', thought);
 
-        const updatedGame = makeGomokuMove(gameId, PC_SOCKET_ID, bestX, bestY);
+        // 管理员指定行动优先：覆盖 AI 自己算出的坐标
+        const forced = consumeForcedMove(gameId);
+        let moveX = bestX, moveY = bestY;
+        if (forced && typeof forced.x === 'number' && typeof forced.y === 'number') {
+            if (forced.x >= 0 && forced.x < 15 && forced.y >= 0 && forced.y < 15 && game.board[forced.x][forced.y] === null) {
+                moveX = forced.x; moveY = forced.y;
+                addAiThought('gomoku', '管理员指定', `管理员指定 AI 落子 (${moveX}, ${moveY})`);
+            }
+        }
+        const updatedGame = makeGomokuMove(gameId, PC_SOCKET_ID, moveX, moveY);
         if (!updatedGame) return;
 
         const latestGame = games.get(gameId);
@@ -10952,7 +10959,7 @@ io.on('connection', (socket) => {
             gameType: 'gomoku',
             board: latestGame.board,
             currentPlayer: latestGame.currentPlayer,
-            lastMove: { x: bestX, y: bestY, player: PC_SOCKET_ID },
+            lastMove: { x: moveX, y: moveY, player: PC_SOCKET_ID },
             status: latestGame.status,
             winner: latestGame.winner,
             players: latestGame.players.map(pid => ({
@@ -10978,6 +10985,7 @@ io.on('connection', (socket) => {
      * 再收集全局已猜数字避免重复，永不使用 pcGuessRanges Map。
      */
     function pcGuessNumber(gameId) {
+    registerPcHandler('guess-number', pcGuessNumber);
         const game = games.get(gameId);
         if (!game || game.status !== 'playing' || game.currentGuesser !== PC_SOCKET_ID) return;
 
@@ -11012,7 +11020,14 @@ io.on('connection', (socket) => {
         // 记录 AI 思考过程
         addAiThought('guess-number', '猜测思考', `当前有效区间 [${lo}, ${hi}]，已猜数字 ${guessedNumbers.size} 个，选择中间值 ${mid}`);
 
-        const res = makeGuessNumberGuess(gameId, PC_SOCKET_ID, mid);
+        // 管理员指定行动优先：强制猜指定数字
+        const forced = consumeForcedMove(gameId);
+        let guessNum = mid;
+        if (forced && typeof forced.guess === 'number' && forced.guess >= 1 && forced.guess <= 100) {
+            guessNum = forced.guess;
+            addAiThought('guess-number', '管理员指定', `管理员指定 AI 猜 ${guessNum}`);
+        }
+        const res = makeGuessNumberGuess(gameId, PC_SOCKET_ID, guessNum);
         if (!res) return;
         const { game: g, result } = res;
 
@@ -11020,7 +11035,7 @@ io.on('connection', (socket) => {
             gameId: g.id,
             guesserSocketId: PC_SOCKET_ID,
             guesserUsername: PC_USERNAME,
-            guess: mid,
+            guess: guessNum,
             result,
             guessCounts: g.guessCounts,
             currentGuesser: g.currentGuesser,
@@ -11044,6 +11059,7 @@ io.on('connection', (socket) => {
      * PC 猜拳 AI：随机出招（三选一）
      */
     function pcRPSMove(gameId) {
+    registerPcHandler('rps', pcRPSMove);
         const game = games.get(gameId);
         if (!game || game.status !== 'playing') return;
         if (game.choices && game.choices[PC_SOCKET_ID]) return; // 已出招
@@ -11055,7 +11071,14 @@ io.on('connection', (socket) => {
         const choiceNames = { rock: '石头', paper: '布', scissors: '剪刀' };
         addAiThought('rps', '出招思考', `随机选择出 ${choiceNames[choice]}`);
 
-        const updatedGame = makeRPSMove(gameId, PC_SOCKET_ID, choice);
+        // 管理员指定出招优先
+        const forced = consumeForcedMove(gameId);
+        let rpsChoice = choice;
+        if (forced && ['rock','paper','scissors'].includes(forced.choice)) {
+            rpsChoice = forced.choice;
+            addAiThought('rps', '管理员指定', `管理员指定 AI 出 ${rpsChoice}`);
+        }
+        const updatedGame = makeRPSMove(gameId, PC_SOCKET_ID, rpsChoice);
         if (!updatedGame) return;
 
         // 发给真实玩家
@@ -11093,6 +11116,7 @@ io.on('connection', (socket) => {
      * 策略：若能让对手下一步必须报 bombNumber 则只报1个；否则随机报1-3个
      */
     function pcBombMove(gameId) {
+    registerPcHandler('bomb', pcBombMove);
         const game = games.get(gameId);
         if (!game || game.status !== 'playing') return;
         if (game.players[game.currentPlayerIdx] !== PC_SOCKET_ID) return;
@@ -11118,7 +11142,14 @@ io.on('connection', (socket) => {
         const strategy = (safeCount >= 1 && safeCount <= maxStep) ? '使用必胜策略' : '随机报数';
         addAiThought('bomb', '报数思考', `当前 ${current}，炸弹在 ${bomb}，剩余 ${remaining}，${strategy}，报 ${count} 个数`);
 
-        const updatedGame = makeBombMove(gameId, PC_SOCKET_ID, count);
+        // 管理员指定报数优先
+        const forced = consumeForcedMove(gameId);
+        let bombCount = count;
+        if (forced && typeof forced.count === 'number' && forced.count >= 1 && forced.count <= maxStep) {
+            bombCount = forced.count;
+            addAiThought('bomb', '管理员指定', `管理员指定 AI 报 ${bombCount} 个数`);
+        }
+        const updatedGame = makeBombMove(gameId, PC_SOCKET_ID, bombCount);
         if (!updatedGame) return;
 
         const realPlayers = updatedGame.players.filter(p => p !== PC_SOCKET_ID);
@@ -11150,6 +11181,7 @@ io.on('connection', (socket) => {
      * 不会自动猜对，只是模拟画画动作
      */
     function pcPictionaryDraw(gameId) {
+    registerPcHandler('pictionary', pcPictionaryDraw);
         const game = games.get(gameId);
         if (!game || game.status !== 'playing' || game.currentDrawer !== PC_SOCKET_ID) return;
 
