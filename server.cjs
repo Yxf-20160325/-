@@ -9295,6 +9295,364 @@ io.on('connection', (socket) => {
         '星星': '夜里一闪一闪的'
     };
 
+    // ===== 你画我猜：程序化简笔画生成器 =====
+    // 手写模板只覆盖 17/165 个词，其余都会画成同一个方框，无法猜。
+    // 这里用组合式基础图形，按词动态生成可辨识且互不相同的简笔画。
+    // 坐标统一 0-100，返回 [{color,width,points:[[x,y],...]}, ...]
+
+    function PcShape() {
+        this.s = [];
+    }
+    PcShape.prototype.line = function (pts, color) {
+        this.s.push({ color: color || '#37474F', width: 3, points: pts });
+        return this;
+    };
+    PcShape.prototype.poly = function (pts, color, close) {
+        if (close !== false) pts = pts.concat([pts[0]]);
+        return this.line(pts, color);
+    };
+    PcShape.prototype.circle = function (cx, cy, r, color) {
+        var pts = [];
+        for (var i = 0; i <= 16; i++) {
+            var a = (i / 16) * Math.PI * 2;
+            pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+        }
+        return this.line(pts, color);
+    };
+    PcShape.prototype.rect = function (x, y, w, h, color) {
+        return this.poly([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], color);
+    };
+    PcShape.prototype.dot = function (cx, cy, color) {
+        return this.line([[cx, cy], [cx + 0.5, cy]], color || '#37474F');
+    };
+    PcShape.prototype.out = function () { return this.s; };
+
+    // 依据词语生成图形；优先用专属模板，然后按类别/关键字生成
+    function pcPictionaryShape(word) {
+        // 手写模板优先（画得更精细）
+        if (PIC_TEMPLATES[word]) return PIC_TEMPLATES[word];
+
+        var p = new PcShape();
+        var C = {
+            dark: '#37474F', red: '#E53935', green: '#43A047', blue: '#1E88E5',
+            yellow: '#FDD835', orange: '#FB8C00', brown: '#6D4C41', pink: '#EC407A',
+            gray: '#78909C', purple: '#7E57C2', white: '#FFFFFF'
+        };
+
+        // 分类词表（顺序决定匹配优先级）
+        var fruit = ['葡萄','草莓','菠萝','橙子','樱桃','芒果','柠檬','白菜','番茄','黄瓜','玉米','蘑菇','南瓜','胡萝卜','辣椒','大蒜','洋葱'];
+        var animal = ['狗','兔子','熊猫','老虎','大象','长颈鹿','企鹅','鳄鱼','猴子','斑马','骆驼','蜗牛','蝴蝶','乌龟','螃蟹','蜜蜂','鲨鱼'];
+        var vehicle = ['飞机','汽车','自行车','摩托车','轮船','火车','地铁','直升机','潜水艇','热气球'];
+        var sport = ['足球','篮球','乒乓球','羽毛球','网球','游泳','滑板','跳绳','钓鱼','爬山'];
+        var home = ['电视','冰箱','电脑','手机','手表','眼镜','帽子','鞋子','书包','枕头','镜子','蜡烛','钥匙','剪刀','台灯','风扇','锁头','毛巾','牙刷'];
+        var food = ['汉堡','披萨','寿司','火锅','面条','饺子','包子','炒饭','薯条','爆米花','糖果','巧克力','奶茶','咖啡','面包','鸡腿','烤鸭','螺蛳粉'];
+        var nature = ['海','彩虹','瀑布','沙漠','火山','闪电','雪花','彩霞','河流','草地','森林','洞穴','岛屿'];
+        var place = ['学校','医院','公园','超市','餐厅','电影院','动物园','图书馆','游乐场','加油站','机场','地铁站','海滩','操场','教室'];
+        var people = ['厨师','警察','护士','老师','消防员','宇航员','魔法师','海盗','忍者','超人'];
+        var fun = ['吉他','钢琴','麦克风','魔方','扑克','棋盘','玩偶','烟花'];
+        var action = ['跑步','跳舞','睡觉','哭泣','大笑','拥抱','飞翔','打架','变魔术'];
+
+        // —— 水果蔬菜：圆形/椭圆形果实 + 枝叶 ——
+        if (fruit.indexOf(word) >= 0) {
+            var fc = C.red;
+            if (/葡萄|黄瓜|玉米/.test(word)) fc = C.green;
+            else if (/橙子|胡萝卜|南瓜/.test(word)) fc = C.orange;
+            else if (/柠檬|白菜|大蒜|洋葱/.test(word)) fc = C.yellow;
+            else if (/蘑菇|番茄/.test(word)) fc = word === '蘑菇' ? C.brown : C.red;
+            if (word === '葡萄') {
+                [[40,45],[52,42],[62,46],[45,56],[57,58],[50,68]].forEach(function (q) { p.circle(q[0], q[1], 7, C.purple); });
+                p.line([[50,35],[62,28]], C.green);
+            } else if (word === '香蕉') {
+                p.line([[28,32],[34,52],[48,64],[62,58],[70,40]], C.yellow);
+                p.line([[28,32],[26,28]], C.brown);
+            } else if (word === '胡萝卜') {
+                p.poly([[45,42],[55,42],[50,78]], C.orange);
+                p.line([[50,42],[45,30]], C.green);
+                p.line([[50,42],[58,30]], C.green);
+            } else if (word === '玉米') {
+                p.poly([[42,35],[58,35],[60,75],[40,75]], C.yellow);
+                for (var i = 0; i < 4; i++) p.line([[43,42 + i*8],[57,42 + i*8]], C.orange);
+            } else if (word === '蘑菇') {
+                p.line([[30,50],[35,38],[50,33],[65,38],[70,50],[30,50]], C.red);
+                p.rect(44, 50, 12, 25, C.brown);
+            } else if (word === '辣椒') {
+                p.line([[52,38],[46,52],[50,68],[58,72]], C.red);
+                p.line([[52,38],[60,32]], C.green);
+            } else {
+                p.circle(50, 52, 20, fc);
+                p.line([[50,32],[58,24]], C.brown);
+                p.line([[58,24],[68,26]], C.green);
+            }
+            return p.out();
+        }
+
+        // —— 动物：主体 + 头 + 腿，按词区分特征 ——
+        if (animal.indexOf(word) >= 0) {
+            if (/鱼|鲨鱼/.test(word)) {
+                p.poly([[28,50],[48,36],[68,42],[68,58],[48,64]], C.blue);
+                p.poly([[68,42],[82,30],[82,70],[68,58]], C.blue);
+                p.dot(40, 48, C.dark);
+            } else if (/鸟|企鹅|猫头鹰/.test(word)) {
+                p.circle(50, 45, 15, word === '企鹅' ? C.dark : C.orange);
+                p.poly([[38,48],[28,58],[38,52]], C.yellow);
+                p.poly([[62,48],[72,58],[62,52]], C.yellow);
+                p.dot(45, 42, C.dark); p.dot(55, 42, C.dark);
+                p.line([[50,60],[50,75]], C.orange);
+            } else if (/长颈鹿/.test(word)) {
+                p.rect(38, 50, 24, 25, C.yellow);
+                p.line([[50,50],[50,25]], C.yellow);
+                p.circle(50, 22, 8, C.yellow);
+                p.line([[45,15],[44,8]], C.brown); p.line([[55,15],[56,8]], C.brown);
+            } else if (/大象/.test(word)) {
+                p.circle(50, 50, 20, C.gray);
+                p.circle(32, 52, 10, C.gray);
+                p.line([[38,60],[36,78]], C.gray); p.line([[62,60],[64,78]], C.gray);
+            } else if (/兔/.test(word)) {
+                p.circle(50, 50, 16, C.white);
+                p.line([[42,36],[40,18]], C.white); p.line([[58,36],[60,18]], C.white);
+                p.dot(44,48,C.dark); p.dot(56,48,C.dark);
+            } else if (/乌龟|螃蟹|蜗牛|蝴蝶|蜜蜂|鳄鱼|猴子|熊猫|老虎|斑马|骆驼|狗|猫/.test(word)) {
+                var bodyColor = C.gray;
+                if (/老虎/.test(word)) bodyColor = C.orange;
+                if (/熊猫/.test(word)) bodyColor = C.dark;
+                if (/蜜蜂/.test(word)) bodyColor = C.yellow;
+                p.circle(50, 52, 18, bodyColor);
+                p.circle(50, 34, 11, bodyColor);
+                p.dot(46,32,C.dark); p.dot(54,32,C.dark);
+                p.line([[38,68],[34,80]], bodyColor); p.line([[62,68],[66,80]], bodyColor);
+                // 尾巴
+                p.line([[68,52],[80,46]], bodyColor);
+            } else {
+                p.circle(50, 50, 18, bodyColor);
+            }
+            return p.out();
+        }
+
+        // —— 交通工具 ——
+        if (vehicle.indexOf(word) >= 0) {
+            if (/飞机|直升机/.test(word)) {
+                p.poly([[20,50],[80,46],[72,54],[20,50]], C.gray);
+                p.poly([[45,48],[40,25],[52,48]], C.blue);
+                p.poly([[30,50],[22,65],[40,52]], C.blue);
+            } else if (/自行车|摩托车/.test(word)) {
+                p.circle(32, 66, 12, C.dark); p.circle(70, 66, 12, C.dark);
+                p.line([[32,66],[48,46],[70,66]], C.red);
+                p.line([[48,46],[54,36]], C.dark);
+            } else if (/轮船|潜水艇/.test(word)) {
+                p.poly([[25,50],[75,50],[68,68],[33,68]], C.blue);
+                p.rect(45, 35, 12, 15, C.white);
+                p.line([[20,72],[80,72]], C.water || C.blue);
+            } else if (/热气球/.test(word)) {
+                p.circle(50, 38, 18, C.red);
+                p.line([[42,54],[46,68]], C.brown); p.line([[58,54],[54,68]], C.brown);
+                p.rect(45, 68, 10, 8, C.brown);
+            } else {
+                p.rect(25, 45, 50, 22, C.blue);
+                p.rect(32, 38, 14, 8, C.white); p.rect(52, 38, 14, 8, C.white);
+                p.circle(38, 70, 6, C.dark); p.circle(64, 70, 6, C.dark);
+            }
+            return p.out();
+        }
+
+        // —— 运动 ——
+        if (sport.indexOf(word) >= 0) {
+            if (/游泳/.test(word)) {
+                for (var k = 0; k < 3; k++) p.line([[20,45+k*10],[35,38+k*10],[50,45+k*10],[65,38+k*10],[80,45+k*10]], C.blue);
+                p.circle(50, 30, 6, C.yellow);
+            } else if (/钓鱼/.test(word)) {
+                p.line([[55,25],[40,60]], C.brown);
+                p.line([[40,60],[25,62]], C.gray);
+                p.circle(50, 50, 12, C.blue);
+            } else if (/跳绳/.test(word)) {
+                p.circle(50, 25, 6, C.yellow);
+                p.line([[50,31],[50,55]], C.red);
+                p.line([[25,55],[50,75],[75,55]], C.blue);
+            } else if (/滑板/.test(word)) {
+                p.line([[30,68],[70,68]], C.dark);
+                p.circle(38, 74, 4, C.gray); p.circle(62, 74, 4, C.gray);
+                p.circle(50, 40, 7, C.yellow);
+            } else if (/爬山/.test(word)) {
+                p.poly([[20,75],[45,35],[60,55],[72,42],[88,75]], C.brown);
+                p.circle(50, 28, 5, C.red);
+            } else {
+                p.circle(50, 52, 22, /篮球/.test(word) ? C.orange : /足球/.test(word) ? C.white : C.yellow);
+                if (/足球/.test(word)) p.poly([[50,40],[42,48],[46,58],[56,58],[60,48]], C.dark);
+                p.line([[28,52],[72,52]], C.dark); p.line([[50,30],[50,74]], C.dark);
+            }
+            return p.out();
+        }
+
+        // —— 家居物品 ——
+        if (home.indexOf(word) >= 0) {
+            if (/眼镜/.test(word)) {
+                p.circle(37, 50, 12, C.dark); p.circle(63, 50, 12, C.dark);
+                p.line([[49,50],[51,50]], C.dark);
+            } else if (/钥匙/.test(word)) {
+                p.circle(35, 42, 10, C.yellow);
+                p.line([[42,48],[70,72]], C.yellow); p.line([[62,64],[70,56]], C.yellow);
+            } else if (/剪刀/.test(word)) {
+                p.circle(38, 68, 7, C.gray); p.circle(62, 68, 7, C.gray);
+                p.line([[40,62],[62,30]], C.gray); p.line([[60,62],[38,30]], C.gray);
+            } else if (/伞/.test(word)) {
+                p.line([[25,52],[50,32],[75,52]], C.blue);
+                p.line([[50,52],[50,78],[44,82]], C.brown);
+            } else if (/帽子/.test(word)) {
+                p.line([[30,55],[35,35],[65,35],[70,55]], C.red);
+                p.line([[25,55],[75,55]], C.red);
+            } else if (/风扇/.test(word)) {
+                p.circle(50, 50, 22, C.gray);
+                for (var a = 0; a < 3; a++) { var ang = a * Math.PI*2/3; p.line([[50,50],[50+18*Math.cos(ang),50+18*Math.sin(ang)]], C.blue); }
+            } else if (/手表/.test(word)) {
+                p.circle(50, 50, 14, C.gray);
+                p.line([[42,36],[42,28],[58,28],[58,36]], C.gray);
+                p.line([[50,50],[50,42]], C.dark); p.line([[50,50],[56,52]], C.dark);
+            } else if (/鞋子|书包|枕头|毛巾|牙刷|蜡烛|镜子|台灯|锁头/.test(word)) {
+                p.rect(32, 40, 36, 30, C.blue);
+                p.line([[32,50],[68,50]], C.dark);
+            } else {
+                p.rect(28, 38, 44, 28, C.gray);
+                p.rect(34, 44, 32, 16, C.dark);
+            }
+            return p.out();
+        }
+
+        // —— 食物 ——
+        if (food.indexOf(word) >= 0) {
+            if (/披萨/.test(word)) {
+                p.circle(50, 50, 24, C.yellow);
+                p.line([[30,45],[70,45]], C.red); p.line([[40,30],[40,70]], C.red);
+            } else if (/汉堡/.test(word)) {
+                p.line([[30,42],[50,30],[70,42]], C.orange);
+                p.rect(30, 42, 40, 8, C.green);
+                p.rect(30, 50, 40, 10, C.brown);
+                p.line([[30,60],[70,60]], C.orange);
+            } else if (/冰淇淋/.test(word)) {
+                p.circle(50, 42, 14, C.pink);
+                p.poly([[38,54],[50,78],[62,54]], C.yellow);
+            } else if (/面条|螺蛳粉|火锅/.test(word)) {
+                p.circle(50, 50, 24, C.gray);
+                for (var n = 0; n < 4; n++) p.line([[35,45+n*6],[65,43+n*6]], C.yellow);
+            } else if (/糖果/.test(word)) {
+                p.circle(50, 50, 12, C.pink);
+                p.poly([[38,50],[28,42],[30,58]], C.white);
+                p.poly([[62,50],[72,42],[70,58]], C.white);
+            } else if (/咖啡|奶茶/.test(word)) {
+                p.rect(38, 40, 24, 30, C.white);
+                p.line([[62,46],[70,46],[68,60],[62,58]], C.white);
+            } else {
+                p.circle(50, 52, 22, C.orange);
+                p.dot(42,48,C.dark); p.dot(58,48,C.dark);
+            }
+            return p.out();
+        }
+
+        // —— 自然景物 ——
+        if (nature.indexOf(word) >= 0) {
+            if (/海|河流|瀑布/.test(word)) {
+                for (var w = 0; w < 4; w++) p.line([[18,42+w*10],[35,36+w*10],[52,42+w*10],[70,36+w*10],[86,42+w*10]], C.blue);
+            } else if (/彩虹/.test(word)) {
+                [C.red, C.orange, C.yellow, C.green, C.blue].forEach(function (col, i) {
+                    p.line([[20,75-i*6],[50,45-i*6],[80,75-i*6]], col);
+                });
+            } else if (/闪电/.test(word)) {
+                p.poly([[55,20],[35,52],[50,52],[40,82],[70,45],[52,45]], C.yellow);
+            } else if (/雪花/.test(word)) {
+                for (var s = 0; s < 6; s++) { var th = s*Math.PI/3; p.line([[50,50],[50+22*Math.cos(th),50+22*Math.sin(th)]], C.blue); }
+            } else if (/火山/.test(word)) {
+                p.poly([[20,78],[45,38],[58,38],[82,78]], C.brown);
+                p.poly([[45,38],[50,20],[55,38]], C.red);
+            } else if (/森林|树|草地/.test(word)) {
+                p.line([[50,80],[50,50]], C.brown);
+                p.circle(50, 40, 18, C.green);
+            } else {
+                p.circle(50, 50, 22, C.yellow);
+            }
+            return p.out();
+        }
+
+        // —— 场所 ——
+        if (place.indexOf(word) >= 0) {
+            p.rect(28, 45, 44, 35, C.brown);
+            p.poly([[24,45],[50,25],[76,45]], C.red);
+            p.rect(44, 60, 12, 20, C.blue);
+            p.rect(32, 52, 8, 8, C.yellow); p.rect(60, 52, 8, 8, C.yellow);
+            if (/学校|教室|图书馆/.test(word)) p.line([[40,38],[60,38]], C.white);
+            if (/医院/.test(word)) { p.line([[50,32],[50,44]], C.white); p.line([[44,38],[56,38]], C.white); }
+            return p.out();
+        }
+
+        // —— 职业人物 ——
+        if (people.indexOf(word) >= 0) {
+            p.circle(50, 32, 12, C.yellow);
+            p.line([[50,44],[50,72]], /超人/.test(word) ? C.red : C.blue);
+            p.line([[50,52],[32,64]], C.yellow); p.line([[50,52],[68,64]], C.yellow);
+            p.line([[50,72],[40,86]], C.dark); p.line([[50,72],[60,86]], C.dark);
+            if (/厨师|护士|老师/.test(word)) p.circle(50, 22, 8, C.white);
+            if (/警察|消防员|宇航员/.test(word)) p.rect(42, 18, 16, 6, C.blue);
+            if (/超人/.test(word)) p.poly([[38,46],[26,66],[50,58]], C.red);
+            return p.out();
+        }
+
+        // —— 娱乐 ——
+        if (fun.indexOf(word) >= 0) {
+            if (/吉他/.test(word)) {
+                p.circle(38, 62, 12, C.brown);
+                p.rect(44, 30, 12, 38, C.orange);
+                p.line([[46,34],[46,62]], C.dark); p.line([[50,34],[50,62]], C.dark);
+            } else if (/钢琴/.test(word)) {
+                p.rect(28, 45, 44, 24, C.dark);
+                for (var k = 0; k < 7; k++) p.line([[30+k*6,45],[30+k*6,60]], C.white);
+                p.line([[36,45],[36,62]], C.dark); p.line([[48,45],[48,62]], C.dark); p.line([[60,45],[60,62]], C.dark);
+            } else if (/魔方/.test(word)) {
+                p.rect(34, 34, 32, 32, C.red);
+                p.line([[45,34],[45,66]], C.dark); p.line([[55,34],[55,66]], C.dark);
+                p.line([[34,45],[66,45]], C.dark); p.line([[34,55],[66,55]], C.dark);
+            } else if (/麦克风/.test(word)) {
+                p.circle(50, 38, 12, C.gray);
+                p.line([[50,50],[50,74]], C.dark);
+            } else if (/扑克|棋盘/.test(word)) {
+                p.rect(35, 38, 30, 30, C.white);
+                p.line([[50,44],[50,62]], C.red); p.line([[41,53],[59,53]], C.red);
+            } else if (/烟花/.test(word)) {
+                for (var f = 0; f < 8; f++) { var fa = f*Math.PI/4; p.line([[50,50],[50+24*Math.cos(fa),50+24*Math.sin(fa)]], f%2?C.red:C.yellow); }
+            } else {
+                p.circle(50, 50, 20, C.pink);
+            }
+            return p.out();
+        }
+
+        // —— 动作 ——
+        if (action.indexOf(word) >= 0) {
+            p.circle(50, 26, 9, C.yellow);
+            p.line([[50,35],[50,58]], C.blue);
+            if (/跑步|跳舞/.test(word)) {
+                p.line([[50,58],[34,72]], C.blue); p.line([[50,58],[66,70]], C.blue);
+                p.line([[50,42],[32,50]], C.blue); p.line([[50,42],[68,36]], C.blue);
+            } else if (/睡觉/.test(word)) {
+                p.line([[36,30],[44,26],[52,30],[60,26]], C.dark);
+                p.line([[50,58],[36,70]], C.blue); p.line([[50,58],[64,70]], C.blue);
+            } else if (/哭泣|大笑/.test(word)) {
+                p.dot(44,26,C.dark); p.dot(56,26,C.dark);
+                if (/哭泣/.test(word)) p.line([[46,33],[46,40],[54,40],[54,33]], C.blue);
+                else p.line([[42,33],[50,40],[58,33]], C.red);
+                p.line([[50,58],[38,72]], C.blue); p.line([[50,58],[62,72]], C.blue);
+            } else if (/拥抱|打架/.test(word)) {
+                p.line([[40,44],[28,40]], C.blue); p.line([[60,44],[72,40]], C.blue);
+                p.line([[50,58],[38,72]], C.blue); p.line([[50,58],[62,72]], C.blue);
+            } else {
+                p.line([[50,42],[32,48]], C.blue); p.line([[50,42],[68,48]], C.blue);
+                p.line([[50,58],[50,76]], C.blue);
+            }
+            return p.out();
+        }
+
+        // 其他：中心方块 + 对角线，仍然比纯方框有辨识度
+        p.rect(35, 35, 30, 30, C.gray);
+        p.line([[35,35],[65,65]], C.dark);
+        p.line([[65,35],[35,65]], C.dark);
+        return p.out();
+    }
+
     // 把模板坐标（0-100）转成前端可直接绘制的 strokes 数据并广播
     function pcPictionaryDraw(gameId) {
         const game = games.get(gameId);
@@ -9303,7 +9661,9 @@ io.on('connection', (socket) => {
         if (game.currentDrawer !== PC_SOCKET_ID) return;
 
         const word = game.currentWord;
-        const strokes = PIC_TEMPLATES[word] || PIC_TEMPLATES['__default'];
+        // 用程序化生成器：优先手写模板，其余按词动态生成，
+        // 避免 148 个词都画成同一个抽象方框。
+        const strokes = pcPictionaryShape(word);
 
         const payload = {
             gameId: game.id,
@@ -9457,7 +9817,9 @@ io.on('connection', (socket) => {
             const targetUser = users.get(data.userId);
             // ===== PC 虚拟账户：自动接受邀请，直接开局 =====
             if (data.userId === PC_SOCKET_ID) {
-                const pcAcceptedGameTypes = ['gomoku', 'guess-number', 'rps', 'bomb'];
+                // 必须与 pcCreateAndStartGame 支持的分支保持一致，
+                // 否则你画我猜会在白名单这关被拦掉，根本走不到创建游戏。
+                const pcAcceptedGameTypes = ['gomoku', 'guess-number', 'rps', 'bomb', 'pictionary'];
                 if (pcAcceptedGameTypes.indexOf(data.gameType) < 0) {
                     socket.emit('game-invitation-error', { message: `ai 暂不支持「${data.gameType}」游戏` });
                     return;
