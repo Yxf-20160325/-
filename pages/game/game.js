@@ -199,78 +199,102 @@ Page({
   //   { type:'strokes', width, height, strokes:[{color,width,points:[[x,y],...]}] }
   // 游戏坐标 0-100 → 画布像素等比缩放。
 
-  picCtx() {
-    if (!this._picCtx) {
-      this._picCtx = wx.createCanvasContext('pictionaryCanvas', this)
-    }
-    return this._picCtx
+  // 新版 canvas 2d：异步取节点，拿到 context 后缓存
+  picCtx(cb) {
+    if (this._picCtx && cb) { cb(this._picCtx); return }
+    var self = this
+    wx.createSelectorQuery()
+      .select('#pictionaryCanvas')
+      .fields({ node: true, size: true })
+      .exec(function (res) {
+        if (!res || !res[0] || !res[0].node) {
+          console.warn('[pictionary] canvas 节点未就绪'); if (cb) cb(null); return
+        }
+        var canvas = res[0].node
+        var ctx = canvas.getContext('2d')
+        var dpr = wx.getSystemInfoSync ? (wx.getSystemInfoSync().pixelRatio || 1) : 1
+        canvas.width = (res[0].width || 300) * dpr
+        canvas.height = (res[0].height || 300) * dpr
+        ctx.scale(dpr, dpr)
+        self._picCtx = ctx
+        self._picSize = { w: res[0].width || 300, h: res[0].height || 300 }
+        if (cb) cb(ctx)
+      })
   },
 
-  // 把 0-100 坐标换算为画布像素
+  // 取画布尺寸（用 picCtx 回调里已缓存的尺寸）
   picScale() {
-    if (this._picSize) return this._picSize
-    try {
-      const q = wx.createSelectorQuery().in(this)
-      // 同步拿不到，先用默认值，首次绘制后再校正
-      this._picSize = { w: 300, h: 300 }
-    } catch (e) {
-      this._picSize = { w: 300, h: 300 }
-    }
-    return this._picSize
+    return this._picSize || { w: 300, h: 300 }
   },
 
-  measurePictionaryCanvas() {
-    return new Promise((resolve) => {
-      try {
-        wx.createSelectorQuery().in(this)
-          .select('.pictionary-canvas-element')
-          .boundingClientRect((rect) => {
-            if (rect && rect.width) {
-              this._picSize = { w: rect.width, h: rect.height || rect.width }
-            }
-            resolve(this.picScale())
-          })
-          .exec()
-      } catch (e) {
-        resolve(this.picScale())
-      }
-    })
-  },
-
-  // 绘制一组 strokes
+  // 用 2d context 绘制一组 strokes
   drawStrokes(strokes) {
-    const ctx = this.picCtx()
-    const { w, h } = this.picScale()
-    strokes.forEach((s) => {
-      const pts = s.points || []
-      if (pts.length < 2) return
-      ctx.beginPath()
-      ctx.setStrokeStyle(s.color || '#333333')
-      ctx.setLineWidth(s.width || 3)
-      ctx.setLineCap('round')
-      ctx.setLineJoin('round')
-      ctx.moveTo(pts[0][0] / 100 * w, pts[0][1] / 100 * h)
-      for (let i = 1; i < pts.length; i++) {
-        ctx.lineTo(pts[i][0] / 100 * w, pts[i][1] / 100 * h)
-      }
-      ctx.stroke()
+    var self = this
+    this.picCtx(function (ctx) {
+      if (!ctx) return
+      var sz = self.picScale()
+      var w = sz.w, h = sz.h
+      ctx.clearRect(0, 0, w, h)
+      strokes.forEach(function (s) {
+        var pts = s.points || []
+        if (pts.length < 2) return
+        ctx.beginPath()
+        ctx.strokeStyle = s.color || '#333333'
+        ctx.lineWidth = s.width || 3
+        ctx.lineCap = 'round'
+        ctx.lineJoin = 'round'
+        ctx.moveTo(pts[0][0] / 100 * w, pts[0][1] / 100 * h)
+        for (var i = 1; i < pts.length; i++) {
+          ctx.lineTo(pts[i][0] / 100 * w, pts[i][1] / 100 * h)
+        }
+        ctx.stroke()
+      })
     })
-    ctx.draw()
   },
 
-  // 收到 ai / 对手的绘画数据
+  // 收到 ai / 对手的绘画数据；canvas 未就绪时缓存并重试
   renderRemoteDrawing(drawingData) {
     if (!drawingData) return
-    // 兼容两种格式：strokes 结构 或 原始线段数组
+    this._lastDrawing = drawingData
+    var self = this
+    var strokes = null
     if (drawingData.type === 'strokes' && Array.isArray(drawingData.strokes)) {
-      this.measurePictionaryCanvas().then(() => {
-        this.drawStrokes(drawingData.strokes)
-      })
+      strokes = drawingData.strokes
+    } else if (Array.isArray(drawingData)) {
+      strokes = drawingData
+    }
+    if (!strokes) {
+      // 真人实时绘画：单段线
+      if (drawingData.type === 'segment' && drawingData.from && drawingData.to) {
+        var seg = drawingData
+        this.picCtx(function (ctx) {
+          if (!ctx) return
+          ctx.beginPath()
+          ctx.strokeStyle = seg.color || '#333333'
+          ctx.lineWidth = seg.width || 3
+          ctx.lineCap = 'round'
+          ctx.moveTo(seg.from.x, seg.from.y)
+          ctx.lineTo(seg.to.x, seg.to.y)
+          ctx.stroke()
+        })
+      }
       return
     }
-    if (Array.isArray(drawingData)) {
-      this.drawStrokes(drawingData)
+    this.drawStrokes(strokes)
+    // 若首次节点未就绪（ctx 为空），延迟重试几次
+    var attempt = function (n) {
+      if (n <= 0 || self._picCtx) return
+      setTimeout(function () {
+        self.drawStrokes(strokes)
+        attempt(n - 1)
+      }, 300)
     }
+    attempt(5)
+  },
+
+  // 页面渲染完成后主动重绘缓存的画作
+  redrawCachedDrawing() {
+    if (this._lastDrawing) this.renderRemoteDrawing(this._lastDrawing)
   },
 
   // 触摸开始：记录起点
@@ -281,37 +305,35 @@ Page({
     this._picLast = { x: t.x, y: t.y }
   },
 
-  // 触摸移动：画线并广播
+  // 触摸移动：画线并广播（新版 2d context）
   onPictionaryMove(e) {
     if (!this.data.pictionaryIsDrawing) return
     const t = (e.touches && e.touches[0]) || null
     if (!t || !this._picLast) return
-    const ctx = this.picCtx()
-    ctx.beginPath()
-    ctx.setStrokeStyle('#333333')
-    ctx.setLineWidth(3)
-    ctx.setLineCap('round')
-    ctx.moveTo(this._picLast.x, this._picLast.y)
-    ctx.lineTo(t.x, t.y)
-    ctx.stroke()
-    ctx.draw(true)
-    // 广播这一段（像素坐标，接收端按同尺寸绘制）
-    const seg = {
-      type: 'segment',
-      from: this._picLast,
-      to: { x: t.x, y: t.y },
-      color: '#333333',
-      width: 3
-    }
+    var from = this._picLast
+    var to = { x: t.x, y: t.y }
+    this.picCtx(function (ctx) {
+      if (!ctx) return
+      ctx.beginPath()
+      ctx.strokeStyle = '#333333'
+      ctx.lineWidth = 3
+      ctx.lineCap = 'round'
+      ctx.moveTo(from.x, from.y)
+      ctx.lineTo(to.x, to.y)
+      ctx.stroke()
+    })
+    var seg = { type: 'segment', from: from, to: to, color: '#333333', width: 3 }
     this.safeSend('42' + JSON.stringify(['game-draw', { gameId: this.data.gameId, drawingData: seg }]))
-    this._picLast = { x: t.x, y: t.y }
+    this._picLast = to
   },
 
   clearPictionary() {
-    const ctx = this.picCtx()
-    const { w, h } = this.picScale()
-    ctx.clearRect(0, 0, w, h)
-    ctx.draw()
+    var self = this
+    this.picCtx(function (ctx) {
+      if (!ctx) return
+      var sz = self.picScale()
+      ctx.clearRect(0, 0, sz.w, sz.h)
+    })
     this.safeSend('42' + JSON.stringify(['game-clear-canvas', { gameId: this.data.gameId }]))
   },
 
@@ -495,10 +517,12 @@ Page({
               // 对方（含 ai）的绘画数据
               if (msg && msg.drawingData) this.renderRemoteDrawing(msg.drawingData)
             } else if (event === 'game-clear-canvas') {
-              const c = this.picCtx()
-              const sz = this.picScale()
-              c.clearRect(0, 0, sz.w, sz.h)
-              c.draw()
+              var self2 = this
+              this.picCtx(function (ctx2) {
+                if (!ctx2) return
+                var sz2 = self2.picScale()
+                ctx2.clearRect(0, 0, sz2.w, sz2.h)
+              })
             } else if (event === 'pictionary-hint') {
               if (msg && msg.hint) {
                 wx.showToast({ title: msg.hint, icon: 'none', duration: 3000 })
@@ -816,10 +840,12 @@ Page({
       if (roundChanged) {
         patch.pictionaryWord = data.currentWord || ''
         patch.pictionaryGuesses = []
-        const c = this.picCtx()
-        const sz = this.picScale()
-        c.clearRect(0, 0, sz.w, sz.h)
-        c.draw()
+        var self3 = this
+        this.picCtx(function (ctx3) {
+          if (!ctx3) return
+          var sz3 = self3.picScale()
+          ctx3.clearRect(0, 0, sz3.w, sz3.h)
+        })
       }
       if (Object.keys(patch).length) this.setData(patch)
     }

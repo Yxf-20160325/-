@@ -128,7 +128,7 @@
       <view class="pictionary-title">🎨 你画我猜</view>
       <view class="pictionary-word" wx:if="{{pictionaryWord}}">题目：{{pictionaryWord}}</view>
       <view class="pictionary-canvas" bindtouchstart="onPictionaryTouch" bindtouchmove="onPictionaryMove">
-        <canvas canvas-id="pictionaryCanvas" class="pictionary-canvas-element"></canvas>
+        <canvas type="2d" id="pictionaryCanvas" class="pictionary-canvas-element"></canvas>
       </view>
       <view class="pictionary-controls" wx:if="{{pictionaryIsDrawer}}">
         <button class="pictionary-btn" bindtap="clearPictionary">清除画布</button>
