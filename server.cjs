@@ -4552,12 +4552,17 @@ io.on('connection', (socket) => {
         }
 
         // 验证输入参数
-        if (!data || typeof data !== 'object') {
-            socket.emit('admin-login-error', { message: '无效的登录数据' });
-            return;
+        // 兼容两种格式：{password:'xxx'} 或直接字符串 'xxx'
+        var password
+        if (typeof data === 'string') {
+            password = data
+        } else if (data && typeof data === 'object') {
+            password = data.password
+        } else {
+            socket.emit('admin-login-error', { message: '无效的登录数据' })
+            return
         }
         
-        const password = data.password;
         if (!password || typeof password !== 'string') {
             socket.emit('admin-login-error', { message: '密码不能为空' });
             return;
