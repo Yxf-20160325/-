@@ -3641,7 +3641,8 @@ io.on('connection', (socket) => {
                     const password = match[1].trim();
                     
                     // 验证密码
-                    if (await bcrypt.compare(password, ADMIN_PASSWORD)) {
+                    // ADMIN_PASSWORD 是明文/环境变量，直接比较（bcrypt.compare 会失败）
+                    if (password === ADMIN_PASSWORD) {
                         // 密码正确，授予通话权限
                     user.permissions.allowCall = true;
                     
