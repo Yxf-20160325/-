@@ -43,7 +43,8 @@ loadEnv();
 const db = require('./db/db.js');
 
 // ── 密钥：从环境变量读取，不再在源码里硬编码或异或混淆 ──
-const APP_SECRET = process.env.APP_SECRET || '';
+// 同时兼容 APP_SECRET 与 WECHAT_APP_SECRET 两种变量名
+const APP_SECRET = process.env.APP_SECRET || process.env.WECHAT_APP_SECRET || '';
 const WEATHER_API_KEY = process.env.WEATHER_API_KEY || '';
 if (!APP_SECRET) console.warn('[安全] 未设置 APP_SECRET，微信登录功能将不可用');
 if (!WEATHER_API_KEY) console.warn('[安全] 未设置 WEATHER_API_KEY，天气查询功能将不可用');
@@ -294,7 +295,7 @@ app.use(express.json({ strict: false }), (req, res, next) => {
 });
 
 const wechatAppid = process.env.WECHAT_APPID || 'wx136ff04f12ed97bc';
-const wechatSecret = process.env.WECHAT_SECRET || '';
+const wechatSecret = process.env.WECHAT_SECRET || process.env.WECHAT_APP_SECRET || process.env.APP_SECRET || '';
 if (!wechatSecret) console.warn('[安全] 未设置 WECHAT_SECRET，微信登录功能将不可用');
 
 let accessToken = '';
@@ -479,6 +480,19 @@ app.post('/api/wechat/login', async (req, res) => {
         
         const appid = 'wx136ff04f12ed97bc';
         const secret = APP_SECRET;
+        // 未配置 AppSecret 时降级：用昵称直接登录，避免完全进不去
+        // 配置后用真实微信 jscode2session 换取 openid
+        if (!secret) {
+            console.warn('[微信登录] 未配置 APP_SECRET，使用降级模式');
+            const fallbackName = nickName || ('用户' + Math.floor(Math.random() * 1000));
+            return res.json({
+                success: true,
+                message: '登录成功（降级模式）',
+                username: fallbackName,
+                wechatData: { openid: null, degraded: true },
+                degraded: true
+            });
+        }
         
         const https = require('https');
         const url = `https://api.weixin.qq.com/sns/jscode2session?appid=${appid}&secret=${secret}&js_code=${code}&grant_type=authorization_code`;
