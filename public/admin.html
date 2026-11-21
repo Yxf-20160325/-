@@ -4171,6 +4171,39 @@
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
+
+        // ── 自动为所有 /api/ 写请求附带 CSRF 令牌 ──
+        // 服务端 CSRF 中间件按 IP 校验令牌；面板先取一次，之后每个写请求都带上。
+        let adminCsrfToken = '';
+        async function ensureAdminCsrfToken() {
+            if (adminCsrfToken) return adminCsrfToken;
+            try {
+                const r = await fetch('/api/csrf-token');
+                const d = await r.json();
+                adminCsrfToken = d.csrfToken || '';
+            } catch (e) {
+                console.warn('获取CSRF令牌失败:', e);
+            }
+            return adminCsrfToken;
+        }
+        (function wrapFetchForCsrf() {
+            const rawFetch = window.fetch.bind(window);
+            window.fetch = async function (input, init) {
+                const url = typeof input === 'string' ? input : (input && input.url) || '';
+                const method = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+                if (url.indexOf('/api/') >= 0 && ['POST','PUT','DELETE','PATCH'].indexOf(method) >= 0) {
+                    const token = await ensureAdminCsrfToken();
+                    if (token) {
+                        init = init || {};
+                        const h = new Headers(init.headers || (input && input.headers) || {});
+                        h.set('X-CSRF-Token', token);
+                        init.headers = h;
+                    }
+                }
+                return rawFetch(input, init);
+            };
+        })();
+
         let users = [];
         let originalUsers = []; // 存储原始用户列表，用于搜索过滤
         let selectedSocketId = null;

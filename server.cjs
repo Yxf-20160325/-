@@ -4550,17 +4550,20 @@ function csrfProtectionMiddleware(req, res, next) {
     }
 
     // 豁免以下接口：它们自有鉴权方式（微信、移动端令牌、上传表单、推送），不适用 CSRF 令牌
+    // 注意：app.use('/api/', middleware) 会剥离挂载前缀，req.path 实际是
+    // '/admin/...' 而非 '/api/admin/...'，所以这里用 originalUrl 判断。
+    const checkPath = req.originalUrl || req.path;
     const csrfExemptPrefixes = [
         '/api/wechat/', '/api/mobile/login', '/api/mobile/messages',
         '/api/mobile/send-message', '/api/files/upload', '/api/upload-image',
         '/api/upload-audio', '/api/push/', '/api/plugins/docs'
     ];
-    if (csrfExemptPrefixes.some((prefix) => req.path.startsWith(prefix))) {
+    if (csrfExemptPrefixes.some((prefix) => checkPath.startsWith(prefix))) {
         return next();
     }
 
     // 管理后台接口已有管理员令牌/密码鉴权，CSRF 保护多余，直接放行
-    if (req.path.startsWith('/api/admin/')) {
+    if (checkPath.startsWith('/api/admin/')) {
         return next();
     }
     
