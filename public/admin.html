@@ -1127,7 +1127,7 @@
             <div class="login-form">
                 <form id="loginForm">
                     <input type="password" id="adminPassword" placeholder="请输入管理员密码">
-                    <button type="submit">登录</button>
+                    <button type="button" id="adminLoginBtn">登录</button>
                 </form>
             </div>
         </div>
@@ -5686,9 +5686,17 @@
         }
         
         function login() {
-            const password = adminPassword.value;
-            socket.emit('admin-login', { password: password });
+            const password = adminPassword.value
+            if (!password) { alert('请输入管理员密码'); return }
+            socket.emit('admin-login', { password: password })
         }
+
+        // 关键：监听登录失败，否则密码错误时页面毫无反应
+        socket.on('admin-login-error', function (err) {
+            var msg = (err && err.message) ? err.message : '登录失败'
+            alert(msg)
+            if (adminPassword) { adminPassword.value = ''; adminPassword.focus() }
+        })
 
         socket.on('admin-login-success', (success) => {
             if (success) {
@@ -5798,7 +5806,7 @@
             }
             
             // 直接绑定登录按钮的点击事件
-            const loginButton = document.querySelector('.login-form button[type="submit"]');
+            const loginButton = document.getElementById('adminLoginBtn') || document.querySelector('.login-form button');
             if (loginButton) {
                 loginButton.addEventListener('click', function(e) {
                     e.preventDefault();
