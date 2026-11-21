@@ -263,7 +263,12 @@ Page({
         console.error('CSRF token获取失败:', csrfErr)
         wx.hideLoading()
         this.setData({ loading: false })
-        wx.showToast({ title: 'CSRF 获取失败，请重试: ' + (csrfErr.errMsg || '未知错误'), icon: 'none' })
+        wx.showModal({
+          title: '提示',
+          content: 'CSRF 获取失败，请重试：' + (csrfErr.errMsg || '未知错误'),
+          showCancel: false,
+          confirmText: '确定'
+        })
       }
     })
   },
