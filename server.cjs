@@ -3289,6 +3289,25 @@ io.on('connection', (socket) => {
         if (!user.permissions.allowViewUsers) {
             roomUsers = [];
         }
+
+        // 把 ai 虚拟账户也纳到 user-joined 的用户列表里，
+        // 否则顶部「在线用户」面板（数据源是 user-joined）永远看不到 ai，
+        // 只有互动中心（数据源是 online-users）才看得到，两处不一致。
+        if (roomUsers.length > 0) {
+            const hasPc = roomUsers.some(function (u) {
+                return u && (u.socketId === PC_SOCKET_ID || u.username === PC_USERNAME);
+            });
+            if (!hasPc) {
+                roomUsers = roomUsers.concat([{
+                    socketId: PC_SOCKET_ID,
+                    username: PC_USERNAME,
+                    color: PC_COLOR,
+                    status: 'online',
+                    role: 'user',
+                    isBot: true
+                }]);
+            }
+        }
         
         // 发送给当前用户
         socket.emit('user-joined', {
@@ -3299,7 +3318,13 @@ io.on('connection', (socket) => {
         });
         
         // 发送给房间内其他用户（只发送有权限的用户）
-        const otherUsers = roomUsers.filter(u => u.permissions.allowViewUsers);
+        // ai 虚拟账户没有 permissions 字段，直接访问会抛 TypeError，
+        // 这里显式判空；真实用户仍按 allowViewUsers 过滤。
+        const otherUsers = roomUsers.filter(u => {
+            if (!u) return false;
+            if (u.socketId === PC_SOCKET_ID) return true;
+            return !!(u.permissions && u.permissions.allowViewUsers);
+        });
         socket.to(roomName).emit('user-joined', {
             username: username,
             userCount: room.users.length,

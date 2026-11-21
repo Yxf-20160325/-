@@ -122,7 +122,10 @@
           <image wx:if="{{item.avatarUrl}}" class="user-avatar-img" src="{{item.avatarUrl}}" mode="aspectFill" />
           <text wx:else class="user-avatar-text">{{item.nickName ? item.nickName.charAt(0) : '?'}}</text>
         </view>
-        <view class="user-name">{{item.nickName || item.username}}</view>
+        <view class="user-name-wrap">
+          <text class="user-name">{{item.nickName || item.username}}</text>
+          <text wx:if="{{item.isBot}}" class="bot-tag">🤖 机器人</text>
+        </view>
       </view>
     </view>
   </view>
