@@ -992,7 +992,7 @@ Page({
       // 相对路径转绝对：老消息/服务端历史里的 /uploads/xxx 在这里统一处理
       imageUrl: this.normalizeFileUrl(msg.imageUrl || msg.url || ''),
       fileUrl: this.normalizeFileUrl(msg.fileUrl || msg.url || ''),
-      filename: msg.filename || '',
+      filename: msg.filename || msg.fileName || '',
       fileSize: msg.fileSize || '',
       latitude: msg.latitude,
       longitude: msg.longitude,

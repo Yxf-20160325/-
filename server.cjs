@@ -3764,7 +3764,12 @@ io.on('connection', (socket) => {
                 pinnedBy: null, // 置顶者
                 pinnedAt: null, // 置顶时间
                 // 包含额外的文件和音频属性
-                fileName: data.fileName,
+                fileName: data.fileName || data.filename,
+                // 文件/图片/视频链接必须原样透传，否则接收方 fileUrl 为空 → “文件链接无效”
+                imageUrl: data.imageUrl,
+                fileUrl: data.fileUrl,
+                videoUrl: data.videoUrl,
+                avatarUrl: data.avatarUrl,
                 fileSize: data.fileSize,
                 contentType: data.contentType,
                 // 包含位置消息属性
@@ -11040,7 +11045,11 @@ io.on('connection', (socket) => {
             timestamp: new Date().toLocaleTimeString(),
             readBy: [socket.id], // 初始时只有发送者已读
             // 包含额外的文件和音频属性
-            fileName: data.fileName,
+            fileName: data.fileName || data.filename,
+            imageUrl: data.imageUrl,
+            fileUrl: data.fileUrl,
+            videoUrl: data.videoUrl,
+            avatarUrl: data.avatarUrl,
             fileSize: data.fileSize,
             contentType: data.contentType
         };
@@ -11104,7 +11113,11 @@ io.on('connection', (socket) => {
                 timestamp: new Date().toLocaleTimeString(),
                 readBy: [socket.id], // 初始时只有发送者已读
                 // 包含额外的文件和音频属性
-                fileName: data.fileName,
+                fileName: data.fileName || data.filename,
+                imageUrl: data.imageUrl,
+                fileUrl: data.fileUrl,
+                videoUrl: data.videoUrl,
+                avatarUrl: data.avatarUrl,
                 fileSize: data.fileSize,
                 contentType: data.contentType
             };
