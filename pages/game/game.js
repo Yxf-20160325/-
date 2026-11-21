@@ -147,6 +147,7 @@ Page({
   },
 
   initGuessNumber() {
+    this._gameEndShown = false
     this.setData({
       guessInput: '',
       guessMin: 1,
@@ -1083,10 +1084,13 @@ Page({
     }
     
     // 服务端猜数字结束状态是 'ended'（其他游戏用 'finished'），两者都兼容
-    if (data.status === 'finished' || data.status === 'ended') {
-      const winnerText = data.winnerName === myUsername 
-        ? `🎉 恭喜你猜对了！答案是 ${data.targetNumber}` 
-        : `🎉 ${data.winnerName} 猜对了！答案是 ${data.targetNumber}`
+    if ((data.status === 'finished' || data.status === 'ended') && !this._gameEndShown) {
+      this._gameEndShown = true
+      const answer = (data.targetNumber !== undefined && data.targetNumber !== null)
+        ? data.targetNumber : '（未知）'
+      const winnerText = data.winnerName === myUsername
+        ? `🎉 恭喜你猜对了！答案是 ${answer}`
+        : `🎉 ${data.winnerName || '对手'} 猜对了！答案是 ${answer}`
       wx.showModal({
         title: '🏆 游戏结束',
         content: winnerText,

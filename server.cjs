@@ -7226,7 +7226,11 @@ io.on('connection', (socket) => {
             currentGuesser: game.currentGuesser,
             status: game.status,
             winner: game.winner,
-            winnerName: game.winner ? (users.get(game.winner)?.username || '未知') : null
+            winnerName: game.winner
+                ? (game.winner === PC_SOCKET_ID ? PC_USERNAME : (users.get(game.winner)?.username || '未知'))
+                : null,
+            // 游戏结束时下发答案，供前端胜利弹窗显示；未结束不下发保持神秘
+            targetNumber: game.status === 'ended' ? game.secret : undefined
         };
 
         [...game.players, ...game.spectators].forEach(pid => {
