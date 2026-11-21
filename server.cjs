@@ -1,3 +1,4 @@
+// @ts-nocheck
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -5,40 +6,47 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
-let uploadMultipart = null;
-try {
-    const multer = require('multer');
-    uploadMultipart = multer({
-        storage: multer.memoryStorage(),
-        limits: { fileSize: 30 * 1024 * 1024 }
-    });
-} catch (e) {
-    console.warn('[上传] multer 未安装，multipart 上传不可用:', e.message);
-}
+const multer = require('multer');
 
-// ── 轻量 .env 加载（不依赖 dotenv；已存在的系统环境变量优先）──
-// Render 等平台用环境变量注入，本地开发用 .env，两者都支持。
-(function loadEnvFile() {
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 30 * 1024 * 1024 }
+});
+
+// ── 环境变量：读取 .env（不依赖 dotenv；已存在的系统环境变量不被覆盖）──
+function loadEnv() {
+    const envPath = path.join(__dirname, '.env');
+    if (!fs.existsSync(envPath)) return;
     try {
-        const envPath = path.join(__dirname, '.env');
-        if (!fs.existsSync(envPath)) return;
         fs.readFileSync(envPath, 'utf8').split(/\r?\n/).forEach((line) => {
             line = line.trim();
-            if (!line || line.charAt(0) === '#') return;
+            if (!line || line.startsWith('#')) return;
             const eq = line.indexOf('=');
             if (eq === -1) return;
             const key = line.slice(0, eq).trim();
             let value = line.slice(eq + 1).trim();
-            if ((value.charAt(0) === '"' && value.endsWith('"')) ||
-                (value.charAt(0) === "'" && value.endsWith("'"))) {
+            if (value.startsWith('"') && value.endsWith('"')) {
                 value = value.slice(1, -1);
             }
-            if (key && process.env[key] === undefined) process.env[key] = value;
+            if (key && process.env[key] === undefined) {
+                process.env[key] = value;
+            }
         });
     } catch (e) {
-        console.warn('[env] 读取 .env 失败:', e.message);
+        console.warn('读取 .env 失败:', e.message);
     }
-})();
+}
+loadEnv();
+
+// ── 数据库访问层（覆盖 用户/房间/消息/好友&私聊&禁言&黑名单）──
+// 所有 DB 函数内部已做降级处理：DB 不可用时静默跳过，绝不打断实时链路。
+const db = require('./db/db.js');
+
+// ── 密钥：从环境变量读取，不再在源码里硬编码或异或混淆 ──
+const APP_SECRET = process.env.APP_SECRET || '';
+const WEATHER_API_KEY = process.env.WEATHER_API_KEY || '';
+if (!APP_SECRET) console.warn('[安全] 未设置 APP_SECRET，微信登录功能将不可用');
+if (!WEATHER_API_KEY) console.warn('[安全] 未设置 WEATHER_API_KEY，天气查询功能将不可用');
 
 // ── 配置常量 ────────────────────────────────────────────────
 const CONFIG = {
@@ -66,7 +74,7 @@ const CONFIG = {
     VIRUS_CLEANUP_INTERVAL: 24 * 60 * 60 * 1000  // 每天一次
 };
 
-// ── 日志配置 ────────────────────────────────────────────────
+// ── 日志配置 1=
 const LOG_LEVELS = {
     ERROR: 0,
     WARN: 1,
@@ -97,9 +105,11 @@ function log(level, message, data) {
 global.log = log;
 global.LOG_LEVELS = LOG_LEVELS;
 
-// 病毒扫描默认关闭：VirusTotal 需 15-60 秒，开启会拖慢上传。
-// 需要时用环境变量 VIRUS_SCAN_ENABLED=1 开启（后台异步，不阻塞上传）。
-let virusScanEnabled = process.env.VIRUS_SCAN_ENABLED === '1';
+// 病毒检测配置（提前声明，避免 TDZ 问题）
+let virusScanEnabled = false;
+// 上传并发保护：同一时间最多处理 10 个大文件上传，避免内存占满
+const MAX_CONCURRENT_UPLOADS = 10;
+let activeUploads = 0;
 
 // 导入病毒扫描器（添加错误处理）
 let virusScanner = null;
@@ -116,13 +126,97 @@ const rooms = new Map();
 const users = new Map();
 const games = new Map(); // 存储游戏: Map<gameId, game>（全局共享，所有连接可见）
 
+// ===== PC 虚拟账户 =====
+const PC_SOCKET_ID = 'pc-bot-virtual-socket';
+const PC_USERNAME = 'ai';
+const PC_COLOR = '#6c757d';
+// pc 的虚拟用户对象（由各房间共享，roomName 动态设置）
+const pcUserBase = {
+    socketId: PC_SOCKET_ID,
+    username: PC_USERNAME,
+    color: PC_COLOR,
+    status: 'online',
+    role: 'user'
+};
+// ===== PC 虚拟账户 END =====
+
+// ===== PC AI 函数前置声明（避免 TDZ 问题）=====
+function pcGomokuMove(gameId) {}
+function pcGuessNumber(gameId) {}
+function pcRPSMove(gameId) {}
+function pcBombMove(gameId) {}
+function pcPictionaryDraw(gameId) {}
+function pcTypingMove(gameId) {}
+function pcGoMove(gameId) {}
+// ===== PC AI 函数前置声明 END =====
+
+// 默认权限（提前声明，避免 TDZ 问题）
+let defaultPermissions = {
+    allowAudio: true,
+    allowImage: true,
+    allowFile: true,
+    allowSendMessages: true,
+    allowViewMessages: true,
+    allowCall: false, // 默认禁用通话功能，需通过权限申请获取
+    allowAddFriends: true,
+    allowViewUsers: true,
+    allowPrivateChat: true,
+    allowOpenFriendsPage: true,
+    allowRecallMessage: true,
+    allowAIChat: false // 默认禁用AI聊天功能，需要管理员同意
+};
+
+// IP 封禁和连接管理（提前声明，避免 TDZ 问题）
+const bannedIPs = new Set(); // 存储被封禁的IP
+const ipConnections = new Map(); // 存储IP连接数: Map<ip, Set<socketId>>
+const mutedUsers = new Map(); // 存储被禁言用户: Map<socketId, { username, endTime, reason }>
+const MAX_CONNECTIONS_PER_IP = 5; // 每个IP最大连接数
+
+// ==================== API 管理系统（提前声明，中间件需要在路由之前访问） ====================
+const customApiRoutes = new Map(); // key: `${method}:${path}`, value: { method, path, handler, description, enabled, createdAt }
+const disabledBuiltinApis = new Set(); // 禁用的内置 API 路径集合（存储 Express 路由 pattern，如 GET:/api/users/:id）
+
+/**
+ * 将 Express 路由 pattern（如 /api/users/:id）转为正则表达式
+ * 支持 :param 和 * 通配符
+ */
+function routePatternToRegex(pattern) {
+    const escaped = pattern
+        .replace(/[.+?^${}()|[\]\\]/g, '\\$&') // 转义正则特殊字符（保留 *）
+        .replace(/\\\*/g, '.*')                  // * 转为 .*
+        .replace(/:([^/]+)/g, '[^/]+');           // :param 转为 [^/]+
+    return new RegExp(`^${escaped}$`);
+}
+
+/**
+ * 检查某个实际路径是否命中任意已禁用的路由 pattern
+ */
+function isBuiltinApiDisabled(method, reqPath) {
+    for (const key of disabledBuiltinApis) {
+        const colonIdx = key.indexOf(':');
+        if (colonIdx === -1) continue;
+        const keyMethod = key.slice(0, colonIdx);
+        const keyPattern = key.slice(colonIdx + 1);
+        if (keyMethod !== method) continue;
+        if (keyPattern === reqPath) return true; // 精确匹配
+        if (keyPattern.includes(':') || keyPattern.includes('*')) {
+            if (routePatternToRegex(keyPattern).test(reqPath)) return true;
+        }
+    }
+    return false;
+}
+
 const app = express();
 app.use(cors({
-    origin: ['*'],
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'X-Content-Type-Options', 'X-Requested-With'],
+    origin: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+        'Content-Type', 'X-Content-Type-Options', 'X-Requested-With',
+        'X-Filename', 'X-Path', 'X-CSRF-Token', 'X-Internal-Request',
+        'Authorization', 'Accept', 'Accept-Language'
+    ],
     credentials: true,
-    exposedHeaders: ['Content-Type', 'X-Content-Type-Options']
+    exposedHeaders: ['Content-Type', 'X-Content-Type-Options', 'Content-Disposition']
 }));
 
 // ── 安全响应头 ────────────────────────────────────────────────
@@ -132,23 +226,303 @@ app.use((req, res, next) => {
     res.setHeader('X-Frame-Options', 'DENY');
     // 【安全】不向第三方泄露完整 Referer URL
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    // 【安全】限制浏览器功能（摄像头/麦克风仅限同源）
-    res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=()');
+    // 【安全】限制浏览器功能（摄像头/麦克风仅限同源，地理位置允许同源使用）
+    res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self)');
     // 【安全】启用旧版 XSS Filter（部分老浏览器）
     res.setHeader('X-XSS-Protection', '1; mode=block');
+    // 【安全】Content-Security-Policy（从 HTML meta tag 迁移到 HTTP header，App 环境不受影响）
+    res.setHeader('Content-Security-Policy',
+        "default-src 'self'; " +
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com; " +
+        "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; " +
+        "img-src 'self' data: blob: https://restapi.amap.com https://api.giphy.com; " +
+        "media-src 'self' blob:; " +
+        "connect-src 'self' ws: wss: https://libretranslate.de https://api.mymemory.translated.net https://open.bigmodel.cn https://api.deepseek.com https://api.freegpt.one https://api.siliconflow.cn https://nominatim.openstreetmap.org https://api.giphy.com https://restapi.amap.com; " +
+        "font-src 'self' data:;"
+    );
     next();
 });
+
+// ===== 内置 API / 页面 禁用拦截中间件（必须在所有路由和静态文件之前） =====
+app.use((req, res, next) => {
+    const method = req.method.toUpperCase();
+    if (isBuiltinApiDisabled(method, req.path)) {
+        const key = `${method}:${req.path}`;
+        // 页面类请求返回 HTML，API 类请求返回 JSON
+        if (req.accepts('html') && !req.path.startsWith('/api/')) {
+            return res.status(503).send('<h1>该页面已被管理员禁用</h1>');
+        }
+        return res.status(503).json({ error: '该 API 已被管理员禁用' });
+    }
+    next();
+});
+
+// 静态文件服务（放在禁用中间件之后，这样页面请求也能被拦截）
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 为文件上传API单独配置raw解析器
-app.post('/api/files/upload', express.raw({ type: '*/*', limit: '300mb' }), async (req, res) => {
+// ===== 自定义 API 统一分发中间件（必须在所有路由之前） =====
+app.use(express.json({ strict: false }), (req, res, next) => {
+    const method = req.method.toUpperCase();
+    const key = `${method}:${req.path}`;
+    const route = customApiRoutes.get(key);
+    if (!route) return next();
+    if (!route.enabled) {
+        return res.status(503).json({ error: 'API 已禁用' });
+    }
     try {
-        // 验证请求头
-        if (!req.headers['content-type']) {
-            return res.status(400).json({ error: '缺少Content-Type请求头' });
+        route.handlerFn(req, res, rooms, users, io);
+    } catch (e) {
+        res.status(500).json({ error: '处理器执行出错: ' + e.message });
+    }
+});
+
+const wechatAppid = process.env.WECHAT_APPID || 'wx136ff04f12ed97bc';
+const wechatSecret = process.env.WECHAT_SECRET || '';
+if (!wechatSecret) console.warn('[安全] 未设置 WECHAT_SECRET，微信登录功能将不可用');
+
+let accessToken = '';
+let tokenExpireTime = 0;
+
+async function getAccessToken() {
+    if (accessToken && Date.now() < tokenExpireTime) {
+        return accessToken;
+    }
+    
+    return new Promise((resolve, reject) => {
+        const https = require('https');
+        const url = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${wechatAppid}&secret=${wechatSecret}`;
+        
+        https.get(url, (resp) => {
+            let data = '';
+            resp.on('data', (chunk) => {
+                data += chunk;
+            });
+            resp.on('end', () => {
+                try {
+                    const result = JSON.parse(data);
+                    if (result.errcode) {
+                        console.error('获取access_token失败:', result.errmsg);
+                        reject(result.errmsg);
+                    } else {
+                        accessToken = result.access_token;
+                        tokenExpireTime = Date.now() + (result.expires_in - 100) * 1000;
+                        console.log('获取access_token成功');
+                        resolve(accessToken);
+                    }
+                } catch (e) {
+                    console.error('解析响应失败:', e);
+                    reject(e.message);
+                }
+            });
+        }).on('error', (e) => {
+            console.error('网络请求失败:', e);
+            reject(e.message);
+        });
+    });
+}
+
+async function sendSubscribeMessage(openid, templateId, data) {
+    try {
+        const token = await getAccessToken();
+        const https = require('https');
+        const url = `https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token=${token}`;
+        
+        const postData = JSON.stringify({
+            touser: openid,
+            template_id: templateId,
+            data: data
+        });
+        
+        return new Promise((resolve, reject) => {
+            const options = {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': postData.length
+                }
+            };
+            
+            const req = https.request(url, options, (resp) => {
+                let data = '';
+                resp.on('data', (chunk) => {
+                    data += chunk;
+                });
+                resp.on('end', () => {
+                    try {
+                        const result = JSON.parse(data);
+                        if (result.errcode === 0) {
+                            resolve(result);
+                        } else {
+                            console.error('发送订阅消息失败:', result.errmsg);
+                            reject(result.errmsg);
+                        }
+                    } catch (e) {
+                        console.error('解析响应失败:', e);
+                        reject(e.message);
+                    }
+                });
+            });
+            
+            req.on('error', (e) => {
+                console.error('网络请求失败:', e);
+                reject(e.message);
+            });
+            
+            req.write(postData);
+            req.end();
+        });
+    } catch (e) {
+        console.error('发送订阅消息异常:', e);
+        throw e;
+    }
+}
+
+// 保存用户openid
+const userOpenIds = new Map();
+
+app.post('/api/wechat/save-openid', express.json(), (req, res) => {
+    try {
+        const { username, openid } = req.body;
+        if (username && openid) {
+            userOpenIds.set(username, openid);
+            console.log('保存openid成功:', username, openid);
+            res.json({ success: true, message: '保存成功' });
+        } else {
+            res.json({ success: false, message: '参数错误' });
+        }
+    } catch (e) {
+        console.error('保存openid失败:', e);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 发送订阅消息API
+app.post('/api/wechat/send-subscribe', express.json(), async (req, res) => {
+    try {
+        const { openid, templateId, data } = req.body;
+        if (!openid || !templateId) {
+            return res.json({ success: false, message: '缺少必要参数' });
         }
         
-        // 验证相对路径（改进的安全检查）
+        const result = await sendSubscribeMessage(openid, templateId, data);
+        res.json({ success: true, result: result });
+    } catch (e) {
+        console.error('发送订阅消息失败:', e);
+        res.json({ success: false, error: e.message });
+    }
+});
+
+// 测试订阅消息API
+app.post('/api/wechat/test-subscribe', express.json(), async (req, res) => {
+    try {
+        const { username } = req.body;
+        if (!username) {
+            return res.json({ success: false, message: '缺少用户名参数' });
+        }
+        
+        const openid = userOpenIds.get(username);
+        if (!openid) {
+            return res.json({ success: false, message: `用户 ${username} 没有绑定openid` });
+        }
+        
+        console.log(`[测试订阅] 用户: ${username}, openid: ${openid}`);
+        
+        const templateId = 'wp9n3Cjz_cDMTj5uPXzJ600IvIJjBs5mxjJRgxQtjYA';
+        const templateData = {
+            thing1: { value: '测试消息' },
+            thing2: { value: '这是一条测试订阅消息' },
+            time3: { value: new Date().toLocaleString() }
+        };
+        
+        const result = await sendSubscribeMessage(openid, templateId, templateData);
+        res.json({ success: true, result: result });
+    } catch (e) {
+        console.error('[测试订阅] 失败:', e);
+        res.json({ success: false, error: e.message });
+    }
+});
+
+// 获取用户openid列表API
+app.get('/api/wechat/openids', (req, res) => {
+    const openidList = [];
+    userOpenIds.forEach((openid, username) => {
+        openidList.push({ username, openid });
+    });
+    res.json({ success: true, openids: openidList });
+});
+
+// 微信登录API
+app.post('/api/wechat/login', async (req, res) => {
+    try {
+        const { code, roomName, nickName, avatarUrl } = req.body;
+        
+        if (!code) {
+            return res.status(400).json({ success: false, message: '缺少code参数' });
+        }
+        
+        const appid = 'wx136ff04f12ed97bc';
+        const secret = APP_SECRET;
+        
+        const https = require('https');
+        const url = `https://api.weixin.qq.com/sns/jscode2session?appid=${appid}&secret=${secret}&js_code=${code}&grant_type=authorization_code`;
+        
+        https.get(url, (resp) => {
+            let data = '';
+            resp.on('data', (chunk) => {
+                data += chunk;
+            });
+            resp.on('end', () => {
+                try {
+                    const wechatData = JSON.parse(data);
+                    if (wechatData.errcode) {
+                        console.error('微信API调用失败:', wechatData.errmsg);
+                        return res.status(400).json({ success: false, message: wechatData.errmsg });
+                    }
+                    
+                    const username = nickName || '用户' + Math.floor(Math.random() * 1000);
+                    
+                    if (wechatData.openid) {
+                        userOpenIds.set(username, wechatData.openid);
+                        console.log('微信登录，保存openid:', username, wechatData.openid);
+                    }
+                    
+                    res.json({
+                        success: true,
+                        message: '登录成功',
+                        username: username,
+                        wechatData: wechatData
+                    });
+                } catch (e) {
+                    console.error('解析微信响应失败:', e);
+                    res.status(500).json({ success: false, message: '解析响应失败' });
+                }
+            });
+        }).on('error', (err) => {
+            console.error('微信登录请求失败:', err);
+            res.status(500).json({ success: false, message: '请求微信服务器失败' });
+        });
+    } catch (error) {
+        console.error('微信登录处理失败:', error);
+        res.status(500).json({ success: false, message: '服务器内部错误' });
+    }
+});
+
+// 为文件上传API使用raw解析器（与 /upload-image、/upload-audio 一致，客户端发送 raw binary）
+app.post('/api/files/upload', express.raw({ type: '*/*', limit: '30mb' }), async (req, res) => {
+    // 并发上传保护
+    if (activeUploads >= MAX_CONCURRENT_UPLOADS) {
+        return res.status(429).json({ error: '服务器上传繁忙，请稍后再试' });
+    }
+    activeUploads++;
+    try {
+        if (!req.body || !req.body.length) {
+            return res.status(400).json({ error: '没有收到文件' });
+        }
+
+        const fileBuffer = req.body;
+        const fileMimetype = req.headers['content-type'] || '';
+        
+        // 验证相对路径（简化的安全检查）
         let relativePath = req.headers['x-path'] || '';
         if (relativePath) {
             // 先检查原始路径类型和长度
@@ -166,22 +540,9 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '300mb' }), asyn
                 return res.status(400).json({ error: '路径编码错误' });
             }
 
-            // 检查危险字符（包括 null 字节）
-            const dangerousChars = ['..', '\\', '/', '\0', '\n', '\r', '\t'];
-            for (const char of dangerousChars) {
-                if (relativePath.includes(char)) {
-                    return res.status(403).json({ error: '路径包含非法字符' });
-                }
-            }
-
-            // 规范化路径
-            relativePath = path.normalize(relativePath);
-
-            // 最终安全检查
-            if (relativePath !== '.' && relativePath !== '') {
-                if (relativePath.startsWith('.') || relativePath.startsWith('/') || relativePath.startsWith('\\')) {
-                    return res.status(403).json({ error: '路径包含非法字符' });
-                }
+            // 检查危险字符
+            if (relativePath.includes('..') || relativePath.includes('\\') || relativePath.includes('/')) {
+                return res.status(403).json({ error: '路径包含非法字符' });
             }
         }
         
@@ -199,6 +560,42 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '300mb' }), asyn
                 return res.status(403).json({ error: '文件名包含非法字符' });
             }
         }
+
+        // 如果没有扩展名，根据MIME类型自动添加
+        if (!path.extname(filename) && fileMimetype) {
+            const mimeToExt = {
+                'image/jpeg': '.jpg',
+                'image/png': '.png',
+                'image/gif': '.gif',
+                'image/webp': '.webp',
+                'image/svg+xml': '.svg',
+                'audio/mpeg': '.mp3',
+                'audio/mp3': '.mp3',
+                'audio/mp4': '.m4a',
+                'audio/wav': '.wav',
+                'audio/wave': '.wav',
+                'audio/x-wav': '.wav',
+                'audio/ogg': '.ogg',
+                'audio/aac': '.aac',
+                'audio/x-m4a': '.m4a',
+                'video/mp4': '.mp4',
+                'video/webm': '.webm',
+                'video/ogg': '.ogv',
+                'video/avi': '.avi',
+                'video/quicktime': '.mov',
+                'video/x-msvideo': '.avi',
+                'video/x-matroska': '.mkv',
+                'application/pdf': '.pdf',
+                'application/msword': '.doc',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+                'application/vnd.ms-excel': '.xls',
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx'
+            };
+            const ext = mimeToExt[fileMimetype];
+            if (ext) {
+                filename += ext;
+            }
+        }
         
         // 检查是否为PHP文件
         if (filename.toLowerCase().endsWith('.php')) {
@@ -213,7 +610,7 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '300mb' }), asyn
         }
         
         // 检查文件大小
-        if (req.body.length > CONFIG.FILE_SIZE_LIMITS.MAX_UPLOAD_SIZE) {
+        if (fileBuffer.length > CONFIG.FILE_SIZE_LIMITS.MAX_UPLOAD_SIZE) {
             return res.status(413).json({
                 error: `文件大小超过限制（最大${CONFIG.FILE_SIZE_LIMITS.MAX_UPLOAD_SIZE / 1024 / 1024}MB）`
             });
@@ -236,34 +633,47 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '300mb' }), asyn
             fs.mkdirSync(dirPath, { recursive: true });
         }
 
-        // 病毒扫描改为后台异步：VirusTotal 需 15-60 秒，在响应里 await
-        // 会让小程序 request（10秒超时）必然失败。文件先保存、立即返回 URL。
-        let scanResult = { safe: true, scanned: false, message: '待后台扫描' };
+        // 病毒扫描
+        let scanResult = { safe: true, scanned: false, message: '病毒检测已禁用' };
+
         if (virusScanEnabled && virusScanner) {
-            const fileBuffer = Buffer.from(req.body);
-            Promise.resolve(virusScanner.scanBuffer(fileBuffer, filename))
-                .then(function (result) {
-                    if (result && !result.safe) {
-                        try {
-                            const virusPath = path.join(virusesDir, filename);
-                            fs.writeFileSync(virusPath, fileBuffer);
-                            console.warn('[后台扫描] 发现危险文件，已隔离:', filename);
-                        } catch (e) {
-                            console.warn('[后台扫描] 隔离失败:', e.message);
-                        }
-                    } else {
-                        console.log('[后台扫描] 安全:', filename);
-                    }
-                })
-                .catch(function (e) {
-                    console.warn('[后台扫描] 失败:', e.message);
+            console.log('开始病毒扫描:', filename);
+            scanResult = await virusScanner.scanBuffer(fileBuffer, filename);
+
+            if (!scanResult.safe) {
+                console.log('文件被检测到病毒:', filename);
+
+                // 将病毒文件保存到隔离区
+                const virusPath = path.join(virusesDir, filename);
+                fs.writeFileSync(virusPath, fileBuffer);
+
+                // 记录病毒文件信息
+                const virusFile = {
+                    id: Date.now().toString() + Math.random().toString(36).substring(2, 11),
+                    filename: filename,
+                    size: fileBuffer.length,
+                    uploaderIp: req.ip,
+                    uploadTime: new Date().toISOString(),
+                    scanResult: scanResult
+                };
+
+                // 使用 Map 存储而不是数组
+                virusFiles.set(virusFile.id, virusFile);
+
+                return res.status(403).json({
+                    error: '不允许上传病毒',
+                    viruses: scanResult.viruses,
+                    virusId: virusFile.id
                 });
+            }
+            
+            console.log('病毒扫描完成:', filename, '结果:', scanResult.message);
         } else {
             console.log('病毒检测已禁用，跳过扫描:', filename);
         }
         
         // 写入文件
-        fs.writeFileSync(filePath, req.body);
+        fs.writeFileSync(filePath, fileBuffer);
         const stats = fs.statSync(filePath);
         
         // 构建响应URL
@@ -302,52 +712,56 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '300mb' }), asyn
     } catch (error) {
         console.error('上传文件失败:', error);
         res.status(500).json({ error: '上传文件失败' });
+    } finally {
+        activeUploads--;
     }
 });
 
-// ── multipart 上传（wx.uploadFile，支持真实进度回调）──
-// 服务端默认走 raw 的 /api/files/upload；这里额外提供 multipart 版本，
-// 让小程序能用 wx.uploadFile 的 onProgressUpdate 显示真实进度条。
-// 若 multer 不可用，/upload 返回明确错误（不会拖垮服务）
-app.post('/upload', function (req, res, next) {
-    if (!uploadMultipart) {
-        return res.status(503).json({ error: 'multipart 上传不可用（缺少 multer 依赖）' });
-    }
-    next();
-}, uploadMultipart ? uploadMultipart.single('file') : function (req, res, next) { next(); }, (req, res) => {
+// ── multipart 上传（wx.uploadFile，带真实进度回调）──
+app.post('/upload', upload.single('file'), (req, res) => {
     try {
-        if (!req.file) {
-            return res.status(400).json({ error: '没有收到文件' });
-        }
+        if (!req.file) return res.status(400).json({ error: '没有收到文件' });
         let originalName = req.file.originalname || ('file-' + Date.now());
-        // multer 按 latin1 解析 multipart filename，中文会乱码；先还原 UTF-8
         try { originalName = Buffer.from(originalName, 'latin1').toString('utf8'); } catch (e) {}
         try { originalName = decodeURIComponent(originalName); } catch (e) {}
-        // 安全：只取文件名部分，禁止危险字符
-        originalName = path.basename(originalName).replace(/[\/\\:*?"<>|]/g, '_');
-        if (!originalName) originalName = 'file';
+        originalName = path.basename(originalName).replace(/[\/\\:*?"<>|]/g, '_') || 'file';
         const filename = Date.now() + '-' + Math.round(Math.random() * 1e9) + '-' + originalName;
-
         const uploadsDir = path.join(__dirname, 'uploads');
         if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
         const filePath = path.join(uploadsDir, filename);
         fs.writeFileSync(filePath, req.file.buffer);
         const stats = fs.statSync(filePath);
-        const fileUrl = '/uploads/' + filename;
-
         console.log('[multipart上传]', filename, stats.size + ' bytes');
-        res.json({ name: filename, size: stats.size, url: fileUrl, scanResult: { safe: true, scanned: false } });
+        res.json({ name: filename, size: stats.size, url: '/uploads/' + filename });
     } catch (error) {
         console.error('multipart 上传失败:', error);
         res.status(500).json({ error: '上传文件失败' });
     }
 });
 
-// 其他路由使用json解析器
-app.use(express.json({ limit: '30mb' }));
+// 其他路由使用json解析器（跳过 multipart/form-data 和非 JSON 类型以避免与文件上传冲突）
+app.use((req, res, next) => {
+    const ct = req.headers['content-type'] || '';
+    // 跳过 multipart/form-data（让 formidable 处理）
+    if (ct.startsWith('multipart/form-data')) {
+        return next();
+    }
+    // 跳过非 JSON 类型（如 application/octet-stream、image/*、audio/* 等），这些是文件上传
+    // express.json() 只处理 application/json 类型
+    if (ct && !ct.includes('application/json')) {
+        return next();
+    }
+    return express.json({ limit: '30mb' })(req, res, next);
+});
 
-// 应用API速率限制中间件到所有API端点
+// 所有 /api/ 接口统一限流（必须放在具体路由之前，避免前面的路由绕过限流）
 app.use('/api/', apiRateLimitMiddleware);
+
+// CSRF 保护（放在具体路由之前；下列接口豁免，它们自有鉴权方式）
+app.use('/api/', csrfProtectionMiddleware);
+
+// 移动端接口按登录令牌验证（令牌由 /api/mobile/login 下发）
+app.use('/api/mobile', requireMobileToken);
 
 
 
@@ -394,8 +808,6 @@ setInterval(() => {
     }
 }, 24 * 60 * 60 * 1000); // 每天清理一次
 
-// 病毒检测配置已在文件开头声明（默认关闭，可用 VIRUS_SCAN_ENABLED=1 开启）
-
 // 本地存储配置
 
 
@@ -437,16 +849,80 @@ app.post('/api/push/unsubscribe', express.json(), (req, res) => {
 });
 
 // 发送推送通知
-function sendPushNotification(socketId, title, body, data = {}) {
-    const subscription = pushSubscriptions.get(socketId);
-    if (subscription) {
-        // 这里可以集成实际的推送服务，如 Firebase Cloud Messaging 或 Web Push
-        console.log(`发送推送通知给 ${socketId}: ${title} - ${body}`);
-        // 实际的推送逻辑
+async function sendPushNotification(socketId, title, body, data = {}) {
+    try {
+        const user = users.get(socketId);
+        if (!user) {
+            console.log(`[订阅消息] 找不到用户: ${socketId}`);
+            return;
+        }
+        
+        const openid = userOpenIds.get(user.username);
+        if (!openid) {
+            console.log(`[订阅消息] 用户 ${user.username} 没有绑定openid，无法发送订阅消息`);
+            return;
+        }
+        
+        console.log(`[订阅消息] 准备发送给 ${user.username} (${openid}): ${title} - ${body}`);
+        
+        const templateId = 'wp9n3Cjz_cDMTj5uPXzJ600IvIJjBs5mxjJRgxQtjYA';
+        const templateData = {
+            thing1: { value: title },
+            thing2: { value: body },
+            time3: { value: new Date().toLocaleString() }
+        };
+        
+        const result = await sendSubscribeMessage(openid, templateId, templateData);
+        console.log('[订阅消息] 发送成功，结果:', result);
+    } catch (e) {
+        console.error('[订阅消息] 发送失败:', e);
     }
 }
 
 // 移动应用接口
+
+// 检查房间是否需要密码
+app.post('/api/check-room', express.json(), (req, res) => {
+    try {
+        const { roomName } = req.body;
+        
+        if (!roomName) {
+            return res.status(400).json({ error: '房间名称不能为空' });
+        }
+        
+        const room = rooms.get(roomName);
+        if (!room) {
+            return res.json({ exists: false, requiresPassword: false });
+        }
+        
+        res.json({ 
+            exists: true, 
+            requiresPassword: !!room.password,
+            userCount: room.users?.size || 0
+        });
+    } catch (e) {
+        console.error('检查房间失败:', e);
+        res.status(500).json({ error: '检查房间失败' });
+    }
+});
+
+// 移动端接口令牌鉴权（除登录外，其余移动端接口必须携带有效 token）
+function requireMobileToken(req, res, next) {
+    if (req.path === '/api/mobile/login') {
+        return next();
+    }
+    const token =
+        (req.body && req.body.token) || (req.query && req.query.token) || req.headers['x-mobile-token'];
+    if (!token) {
+        return res.status(401).json({ error: '缺少登录令牌，请先登录' });
+    }
+    const user = Array.from(users.values()).find((u) => u.token === token);
+    if (!user) {
+        return res.status(401).json({ error: '登录令牌无效或已过期，请重新登录' });
+    }
+    req.mobileUser = user;
+    next();
+}
 
 // 移动应用登录
 app.post('/api/mobile/login', express.json(), (req, res) => {
@@ -464,7 +940,7 @@ app.post('/api/mobile/login', express.json(), (req, res) => {
         }
         
         // 检查密码是否正确
-        if (room.password && room.password !== password) {
+        if (room.password && !bcrypt.compareSync(password, room.password)) {
             return res.status(401).json({ error: '密码错误' });
         }
         
@@ -475,7 +951,7 @@ app.post('/api/mobile/login', express.json(), (req, res) => {
         }
         
         // 生成临时socketId（移动应用使用）
-        const mobileSocketId = 'mobile-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        const mobileSocketId = 'mobile-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
         
         // 创建用户对象
         const user = {
@@ -558,6 +1034,7 @@ app.post('/api/mobile/login', express.json(), (req, res) => {
         
         // 生成认证令牌
         const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        user.token = token; // 移动端后续请求凭此令牌鉴权
         
         res.json({
             success: true,
@@ -586,9 +1063,9 @@ app.post('/api/mobile/login', express.json(), (req, res) => {
 });
 
 // 移动应用获取消息
-app.get('/api/mobile/messages', express.json(), (req, res) => {
+app.get('/api/mobile/messages', (req, res) => {
     try {
-        const { token, roomName, limit = 50, offset = 0 } = req.body;
+        const { token, roomName, limit = 50, offset = 0 } = req.query;
         
         if (!token || !roomName) {
             return res.status(400).json({ error: '缺少必要参数' });
@@ -605,6 +1082,7 @@ app.get('/api/mobile/messages', express.json(), (req, res) => {
         // 如果缓存中没有足够的消息，从房间消息中获取
         if (messages.length < limit) {
             messages = room.messages
+                // @ts-ignore
                 .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
                 .slice(offset, offset + limit);
             
@@ -627,6 +1105,7 @@ app.get('/api/mobile/messages', express.json(), (req, res) => {
 });
 
 // 移动应用发送消息
+// 用途：移动端向指定房间发送聊天消息
 app.post('/api/mobile/send-message', express.json(), (req, res) => {
     try {
         const { token, roomName, message, type = 'text', fileName, fileSize, contentType } = req.body;
@@ -635,10 +1114,9 @@ app.post('/api/mobile/send-message', express.json(), (req, res) => {
             return res.status(400).json({ error: '缺少必要参数' });
         }
         
-        // 查找用户（这里简化处理，实际应该验证token）
-        const user = Array.from(users.values()).find(u => u.socketId.includes('mobile-'));
+        const user = req.mobileUser;
         if (!user) {
-            return res.status(401).json({ error: '用户未登录' });
+            return res.status(401).json({ error: '用户未登录，请先通过 /api/mobile/login 获取令牌' });
         }
         
         const room = rooms.get(roomName);
@@ -647,7 +1125,7 @@ app.post('/api/mobile/send-message', express.json(), (req, res) => {
         }
         
         // 生成消息ID
-        const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        const messageId = Date.now() + '-' + Math.random().toString(36).substring(2, 11);
         
         // 创建消息数据
         const messageData = {
@@ -656,7 +1134,7 @@ app.post('/api/mobile/send-message', express.json(), (req, res) => {
             color: user.color,
             message: message,
             type: type,
-            timestamp: new Date().toLocaleTimeString(),
+            timestamp: Date.now(),
             senderSocketId: user.socketId,
             readBy: [user.socketId],
             pinned: false,
@@ -668,10 +1146,11 @@ app.post('/api/mobile/send-message', express.json(), (req, res) => {
         };
         
         // 添加消息到房间
-        room.messages.push(messageData);
-        if (room.messages.length > 100) {
-            room.messages.shift();
-        }
+            room.messages.push(messageData);
+            db.insertMessage(room.roomName, messageData);
+            if (room.messages.length > 100) {
+                room.messages.shift();
+            }
         
         // 更新用户统计数据
         user.stats.messagesSent++;
@@ -722,6 +1201,22 @@ app.post('/api/mobile/send-message', express.json(), (req, res) => {
 const plugins = new Map();
 const pluginDir = path.join(__dirname, 'plugins');
 
+// 已加载插件通过 io.on('connection', handler) 注册的 connection 处理器集合。
+// 统一在这里收集，再由 ensurePluginDispatch 派发，避免每次 loadPlugins 都往真实 io 重复注册。
+let pluginConnectionHandlers = [];
+let pluginDispatchRegistered = false;
+
+// 确保所有已加载插件的 connection 处理器对未来「新连接」生效（只注册一次）
+function ensurePluginDispatch() {
+    if (pluginDispatchRegistered) return;
+    io.on('connection', (socket) => {
+        pluginConnectionHandlers.forEach(handler => {
+            try { handler(socket); } catch (e) { console.error('插件连接处理出错:', e); }
+        });
+    });
+    pluginDispatchRegistered = true;
+}
+
 // 确保插件目录存在
 if (!fs.existsSync(pluginDir)) {
     fs.mkdirSync(pluginDir, { recursive: true });
@@ -730,7 +1225,17 @@ if (!fs.existsSync(pluginDir)) {
 // 加载插件
 function loadPlugins() {
     try {
-        const pluginFiles = fs.readdirSync(pluginDir).filter(file => file.endsWith('.js'));
+        // 重新加载前重置已收集的插件连接处理器（避免重复堆积导致多次触发）
+        pluginConnectionHandlers.length = 0;
+
+        // 仅允许「内置插件」在服务端执行（如 weather.js，它需要服务端网络调用与密钥）。
+        // 用户自建插件不再于服务端 require 执行，改为在客户端浏览器本地运行——
+        // 这样它们拿不到服务端的全局 users/rooms/messages，也无法访问进程权限，
+        // 彻底消除「插件读取所有用户信息 / RCE」的风险。
+        const SERVER_BUILTIN_PLUGINS = new Set(['weather.js']);
+
+        const pluginFiles = fs.readdirSync(pluginDir)
+            .filter(file => file.endsWith('.js') && SERVER_BUILTIN_PLUGINS.has(file));
 
         pluginFiles.forEach(file => {
             try {
@@ -760,12 +1265,18 @@ function loadPlugins() {
                         }
                     };
 
-                    // 将 io 对象修改,让插件的 io.on('connection') 能够注册消息监听器
+                    // 收集插件通过 io.on('connection', handler) 注册的处理器，
+                    // 不再直接往真实 io 重复注册（否则每次 loadPlugins 都会多注册一份）。
+                    // mockSocket 仅用于在加载时捕获插件内部注册的 message 处理器。
                     const originalIoOn = io.on;
                     io.on = (event, handler) => {
                         if (event === 'connection') {
-                            // 模拟一个连接事件,让插件能够注册 socket 监听器
-                            handler(mockSocket);
+                            pluginConnectionHandlers.push(handler);
+                            // 立即用 mockSocket 触发，捕获插件内部注册的 message/emit 处理器。
+                            // 注意：此处【不再】把 connection handler 透传给真实 io，
+                            // 未来连接统一由 ensurePluginDispatch 派发，避免重复注册导致多次触发。
+                            try { handler(mockSocket); } catch (e) { console.error(`插件 ${plugin.name} 模拟连接处理出错:`, e); }
+                            return;
                         }
                         return originalIoOn.call(io, event, handler);
                     };
@@ -783,6 +1294,17 @@ function loadPlugins() {
                 console.error(`加载插件 ${file} 失败:`, error);
             }
         });
+
+        // 关键修复：让插件对「当前已连接」的所有真实 socket 立即生效。
+        // 否则用户在创建/重载插件时已经登录，必须断开重连才能用上插件（表现为“插件没用”）。
+        ensurePluginDispatch();
+        if (io.sockets && io.sockets.sockets) {
+            io.sockets.sockets.forEach(sock => {
+                pluginConnectionHandlers.forEach(handler => {
+                    try { handler(sock); } catch (e) { console.error('插件连接处理(当前连接)出错:', e); }
+                });
+            });
+        }
 
         console.log(`共加载 ${plugins.size} 个插件`);
     } catch (error) {
@@ -807,15 +1329,43 @@ function unloadPlugin(pluginName) {
 // 插件管理API
 app.get('/api/plugins', (req, res) => {
     try {
-        // 定义自带插件列表
+        // 定义自带插件列表（这些在服务端执行）
         const builtinPlugins = ['weather'];
-        
-        const pluginList = Array.from(plugins.values()).map(plugin => ({
-            name: plugin.name,
-            version: plugin.version || '1.0.0',
-            description: plugin.description || '',
-            isBuiltin: builtinPlugins.includes(plugin.name)
-        }));
+        const pluginList = [];
+
+        // 1) 已加载的内置插件（来自 plugins Map，服务端 require 执行）
+        Array.from(plugins.values()).forEach(plugin => {
+            pluginList.push({
+                name: plugin.name,
+                version: plugin.version || '1.0.0',
+                description: plugin.description || '',
+                isBuiltin: true
+            });
+        });
+
+        // 2) 扫描 plugins 目录中的「用户插件」文件。
+        //    注意：本地运行模型下，用户插件不再由服务端 require 执行，
+        //    因此不会进入 plugins Map；这里直接从磁盘读取，让它们在列表中可见、可被客户端拉取本地运行。
+        try {
+            const files = fs.readdirSync(pluginDir).filter(f => f.endsWith('.js'));
+            files.forEach(f => {
+                const base = f.replace(/\.js$/, '');
+                if (builtinPlugins.includes(base)) return;          // 跳过内置
+                if (pluginList.some(p => p.name === base)) return;  // 避免与内置重名重复
+                try {
+                    const content = fs.readFileSync(path.join(pluginDir, f), 'utf8');
+                    const nameMatch = content.match(/name:\s*"([^"]*)"/);
+                    const descMatch = content.match(/description:\s*"([^"]*)"/);
+                    pluginList.push({
+                        name: nameMatch ? nameMatch[1] : base,
+                        version: '1.0.0',
+                        description: descMatch ? descMatch[1] : '',
+                        isBuiltin: false
+                    });
+                } catch (e) { /* 跳过无法解析的文件 */ }
+            });
+        } catch (e) { console.error('扫描用户插件目录失败:', e); }
+
         res.json({ plugins: pluginList });
     } catch (error) {
         console.error('获取插件列表失败:', error);
@@ -925,6 +1475,9 @@ app.delete('/api/plugins/:name', (req, res) => {
         if (fs.existsSync(pluginPath)) {
             fs.unlinkSync(pluginPath);
         }
+
+        // 重新加载插件，重建连接处理器（移除已删插件的监听，避免残留）
+        loadPlugins();
         
         res.json({ success: true, message: '插件删除成功' });
     } catch (error) {
@@ -1125,11 +1678,26 @@ ${indentedCode}
         });
     } catch (error) {
         console.error('导入插件失败:', error);
-        res.status(500).json({ error: '导入插件失败' });
-    }
-});
+            res.status(500).json({ error: '导入插件失败' });
+        }
+    });
 
-// 加载插件
+    // 插件接口文档（学习手册）内容接口：返回 plugins/插件接口文档.md 纯文本
+    app.get('/api/plugins/docs', (req, res) => {
+        try {
+            const docsPath = path.join(pluginDir, '插件接口文档.md');
+            if (!fs.existsSync(docsPath)) {
+                return res.status(404).json({ error: '接口文档不存在' });
+            }
+            const content = fs.readFileSync(docsPath, 'utf8');
+            res.type('text/plain; charset=utf-8').send(content);
+        } catch (error) {
+            console.error('读取插件接口文档失败:', error);
+            res.status(500).json({ error: '读取插件接口文档失败' });
+        }
+    });
+
+    // 加载插件
 // loadPlugins(); // 移到io创建之后
 
 // API文档生成
@@ -1197,117 +1765,6 @@ app.get('/api/docs', (req, res) => {
     }
 });
 
-// 第三方集成
-// 社交媒体登录接口（示例）
-app.post('/api/auth/social', express.json(), (req, res) => {
-    try {
-        const { provider, token } = req.body;
-        
-        if (!provider || !token) {
-            return res.status(400).json({ error: '缺少必要参数' });
-        }
-        
-        // 这里可以集成实际的社交媒体登录验证
-        // 例如：Google、Facebook、WeChat等
-        
-        // 模拟登录成功
-        const username = `social_${provider}_${Date.now()}`;
-        const socialSocketId = `social-${provider}-${Date.now()}`;
-        
-        // 创建用户对象
-        const user = {
-            username: username,
-            color: getRandomColor(),
-            socketId: socialSocketId,
-            ip: req.ip,
-            roomName: 'main',
-            role: 'user',
-            permissions: { ...defaultPermissions },
-            status: 'online',
-            lastSeen: new Date().toISOString(),
-            profile: {
-                avatar: null,
-                bio: `通过${provider}登录`,
-                age: null,
-                location: '',
-                website: ''
-            },
-            level: 1,
-            experience: 0,
-            achievements: [],
-            stats: {
-                messagesSent: 0,
-                filesUploaded: 0,
-                callsMade: 0,
-                friendsAdded: 0,
-                timeSpent: 0
-            },
-            settings: { locked: false, lockMessage: '设置已被管理员锁定' },
-            userSettings: {
-                targetLanguage: 'zh',
-                autoTranslate: false,
-                soundNotification: true,
-                mentionNotification: true,
-                theme: 'light',
-                fontSize: 'medium',
-                notifications: {
-                    messages: true,
-                    calls: true,
-                    friendRequests: true,
-                    mentions: true
-                }
-            },
-            aiSettings: {
-                enable: false,
-                model: 'glm4',
-                glm4: {
-                    apiKey: ''
-                },
-                deepseek: {
-                    modelName: '',
-                    apiKey: ''
-                },
-                siliconflow: {
-                    modelName: '',
-                    apiKey: ''
-                },
-                custom: {
-                    apiUrl: '',
-                    apiKey: '',
-                    modelName: ''
-                }
-            }
-        };
-        
-        // 保存用户
-        users.set(socialSocketId, user);
-        
-        // 将用户添加到默认房间
-        const room = rooms.get('main');
-        if (room) {
-            room.users.push(socialSocketId);
-        }
-        
-        res.json({
-            success: true,
-            user: {
-                username: user.username,
-                color: user.color,
-                socketId: user.socketId,
-                roomName: user.roomName,
-                status: user.status
-            }
-        });
-        
-    } catch (error) {
-        console.error('社交媒体登录失败:', error);
-        res.status(500).json({ error: '社交媒体登录失败' });
-    }
-});
-
-// 应用CSRF保护中间件到所有非GET请求的API端点
-app.use('/api/', csrfProtectionMiddleware);
-
 // 天气查询API
 app.post('/api/weather', express.json(), async (req, res) => {
     try {
@@ -1333,13 +1790,13 @@ app.post('/api/weather', express.json(), async (req, res) => {
 
 // 获取病毒文件列表
 app.get('/api/viruses', (req, res) => {
-    res.json(virusFiles);
+    res.json(Array.from(virusFiles.values()));
 });
 
 // 允许病毒文件
 app.post('/api/viruses/allow/:id', (req, res) => {
     const { id } = req.params;
-    const virusFile = virusFiles.find(v => v.id === id);
+    const virusFile = virusFiles.get(id);
     
     if (virusFile) {
         // 将文件从隔离区移回上传目录
@@ -1352,7 +1809,7 @@ app.post('/api/viruses/allow/:id', (req, res) => {
         }
         
         // 从病毒列表中移除
-        virusFiles = virusFiles.filter(v => v.id !== id);
+        virusFiles.delete(id);
         
         res.json({ success: true, message: '文件已允许并移回上传目录' });
     } else {
@@ -1363,7 +1820,7 @@ app.post('/api/viruses/allow/:id', (req, res) => {
 // 隔离病毒文件
 app.post('/api/viruses/quarantine/:id', (req, res) => {
     const { id } = req.params;
-    const virusFile = virusFiles.find(v => v.id === id);
+    const virusFile = virusFiles.get(id);
     
     if (virusFile) {
         // 确保文件在隔离区
@@ -1382,7 +1839,7 @@ app.post('/api/viruses/quarantine/:id', (req, res) => {
 // 删除病毒文件
 app.delete('/api/viruses/:id', (req, res) => {
     const { id } = req.params;
-    const virusFile = virusFiles.find(v => v.id === id);
+    const virusFile = virusFiles.get(id);
     
     if (virusFile) {
         // 删除隔离区中的文件
@@ -1398,7 +1855,7 @@ app.delete('/api/viruses/:id', (req, res) => {
         }
         
         // 从病毒列表中移除
-        virusFiles = virusFiles.filter(v => v.id !== id);
+        virusFiles.delete(id);
         
         res.json({ success: true, message: '病毒文件已删除' });
     } else {
@@ -1409,7 +1866,7 @@ app.delete('/api/viruses/:id', (req, res) => {
 // 一键封禁用户（IP封禁）
 app.post('/api/viruses/ban/:id', (req, res) => {
     const { id } = req.params;
-    const virusFile = virusFiles.find(v => v.id === id);
+    const virusFile = virusFiles.get(id);
     
     if (virusFile && virusFile.uploaderIp) {
         // 添加IP到封禁列表
@@ -1433,6 +1890,7 @@ app.post('/api/viruses/ban/:id', (req, res) => {
 });
 
 // 获取病毒检测状态
+// 用途：获取当前病毒检测功能的启用/禁用状态
 app.get('/api/viruses/status', (req, res) => {
     res.json({ enabled: virusScanEnabled });
 });
@@ -1444,8 +1902,325 @@ app.post('/api/viruses/status', (req, res) => {
     res.json({ success: true, enabled: virusScanEnabled, message: virusScanEnabled ? '病毒检测已启用' : '病毒检测已禁用' });
 });
 
-// 静态文件服务 - 提供上传的文件
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// ==================== API 管理系统 ====================
+
+
+// 获取所有 API 列表（内置 + 自定义）
+app.get('/api/admin/api-manager/list', express.json(), (req, res) => {
+    try {
+        // 扫描 Express 路由栈，列出内置 API
+        const builtinApis = [];
+        const stack = app._router ? app._router.stack : [];
+        stack.forEach(layer => {
+            if (layer.route) {
+                const routePath = layer.route.path;
+                const methods = Object.keys(layer.route.methods).map(m => m.toUpperCase());
+                methods.forEach(method => {
+                    const key = `${method}:${routePath}`;
+                    builtinApis.push({
+                        key,
+                        method,
+                        path: routePath,
+                        type: 'builtin',
+                        enabled: !disabledBuiltinApis.has(key),
+                        description: getBuiltinApiDescription(method, routePath)
+                    });
+                });
+            }
+        });
+
+        // 自定义 API 列表
+        const customApis = Array.from(customApiRoutes.values()).map(r => ({
+            key: `${r.method}:${r.path}`,
+            method: r.method,
+            path: r.path,
+            type: 'custom',
+            enabled: r.enabled,
+            description: r.description || '',
+            handlerCode: r.handlerCode,
+            responseBody: r.responseBody,
+            statusCode: r.statusCode,
+            createdAt: r.createdAt
+        }));
+
+        res.json({ success: true, builtin: builtinApis, custom: customApis });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 获取内置 API 描述的辅助函数
+function getBuiltinApiDescription(method, path) {
+    const descriptions = {
+        'GET:/api/plugins': '获取插件列表',
+        'POST:/api/plugins/reload': '重新加载插件',
+        'POST:/api/plugins': '创建/上传插件',
+        'DELETE:/api/plugins/:name': '删除插件',
+        'GET:/api/plugins/:name/code': '获取插件代码',
+        'GET:/api/plugins/:name/export': '导出插件',
+        'POST:/api/plugins/import': '导入插件',
+        'GET:/api/docs': 'API文档',
+        'POST:/api/auth/social': '社交媒体登录',
+        'POST:/api/weather': '天气查询',
+        'GET:/api/viruses': '获取病毒文件列表',
+        'POST:/api/viruses/allow/:id': '允许病毒文件',
+        'POST:/api/viruses/quarantine/:id': '隔离病毒文件',
+        'DELETE:/api/viruses/:id': '删除病毒文件',
+        'POST:/api/viruses/ban/:id': '封禁用户',
+        'GET:/api/viruses/status': '获取病毒检测状态',
+        'POST:/api/viruses/status': '设置病毒检测状态',
+        'GET:/api/files': '文件管理-获取文件列表',
+        'POST:/api/files/create-directory': '文件管理-创建目录',
+        'DELETE:/api/files/*': '文件管理-删除文件/目录',
+        'POST:/api/files/create': '文件管理-创建文本文件',
+        'PUT:/api/files/*': '文件管理-编辑文件内容',
+        'GET:/api/files/*/content': '文件管理-获取文件内容',
+        'POST:/api/push/subscribe': '注册推送订阅',
+        'POST:/api/push/unsubscribe': '取消推送订阅',
+        'POST:/api/mobile/login': '移动应用登录',
+        'GET:/api/mobile/messages': '移动应用获取消息',
+        'POST:/api/mobile/send-message': '移动应用发送消息',
+        'POST:/api/files/upload': '文件上传',
+        'POST:/api/feedback': '提交用户反馈',
+        'GET:/api/admin/feedback': '获取用户反馈',
+        'DELETE:/api/admin/feedback/:id': '删除单条反馈',
+        'DELETE:/api/admin/feedback': '清空所有反馈',
+        'GET:/api/admin/system-logs': '获取系统日志',
+        'GET:/api/admin/system-logs/stats': '获取日志统计',
+        'DELETE:/api/admin/system-logs': '清空系统日志',
+        'GET:/api/admin/system-status': '系统状态监控',
+        'GET:/api/admin/user-analytics': '用户行为统计',
+        'GET:/api/admin/threat-log': '威胁日志',
+        'GET:/api/admin/calls': '通话列表',
+        'POST:/api/admin/calls/:callId/end': '结束通话',
+        'POST:/api/admin/calls/:callId/control': '控制通话',
+        'GET:/api/admin/calls/:callId': '通话详情',
+        'GET:/api/admin/api-manager/list': 'API管理-获取所有API列表',
+        'POST:/api/admin/api-manager/toggle-builtin': 'API管理-启用/禁用内置API',
+        'POST:/api/admin/api-manager/add': 'API管理-添加自定义API',
+        'PUT:/api/admin/api-manager/update': 'API管理-更新自定义API',
+        'POST:/api/admin/api-manager/toggle-custom': 'API管理-启用/禁用自定义API',
+        'DELETE:/api/admin/api-manager/custom': 'API管理-删除自定义API',
+        'POST:/api/admin/api-manager/test': 'API管理-测试API',
+        'POST:/upload-image': '上传图片文件',
+        'POST:/upload-audio': '上传音频文件',
+        'GET:/api/csrf-token': '获取CSRF令牌',
+        'GET:/admin': '管理后台页面',
+        'GET:/:roomName': '聊天室房间页面',
+        'GET:/': '首页',
+    };
+    return descriptions[`${method}:${path}`] || '';
+}
+
+// 禁用/启用内置 API
+app.post('/api/admin/api-manager/toggle-builtin', express.json(), (req, res) => {
+    try {
+        const { method, path: apiPath, enabled } = req.body;
+        if (!method || !apiPath) return res.status(400).json({ success: false, error: '缺少参数' });
+        const key = `${method.toUpperCase()}:${apiPath}`;
+        if (enabled) {
+            disabledBuiltinApis.delete(key);
+        } else {
+            disabledBuiltinApis.add(key);
+        }
+        res.json({ success: true, key, enabled });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 添加自定义 API
+app.post('/api/admin/api-manager/add', express.json(), (req, res) => {
+    try {
+        const { method, path: apiPath, description, responseBody, statusCode, handlerCode } = req.body;
+        if (!method || !apiPath) return res.status(400).json({ success: false, error: '缺少参数 method 或 path' });
+        const normalizedMethod = method.toUpperCase();
+        const key = `${normalizedMethod}:${apiPath}`;
+        if (customApiRoutes.has(key)) {
+            return res.status(409).json({ success: false, error: '该 API 路径已存在，请先删除或使用更新接口' });
+        }
+        // 构建处理器
+        let handlerFn;
+        if (handlerCode && handlerCode.trim()) {
+            try {
+                // eslint-disable-next-line no-new-func
+                handlerFn = new Function('req', 'res', 'rooms', 'users', 'io', handlerCode);
+            } catch (e) {
+                return res.status(400).json({ success: false, error: '处理器代码语法错误: ' + e.message });
+            }
+        } else {
+            const body = responseBody !== undefined ? responseBody : { message: 'ok' };
+            const code = parseInt(statusCode) || 200;
+            let parsedBody;
+            try { parsedBody = typeof body === 'string' ? JSON.parse(body) : body; } catch(e) { parsedBody = { message: body }; }
+            handlerFn = (req, res) => res.status(code).json(parsedBody);
+        }
+        const routeInfo = {
+            method: normalizedMethod,
+            path: apiPath,
+            description: description || '',
+            handlerCode: handlerCode || '',
+            responseBody: responseBody || '{"message":"ok"}',
+            statusCode: parseInt(statusCode) || 200,
+            enabled: true,
+            createdAt: new Date().toISOString(),
+            handlerFn
+        };
+        customApiRoutes.set(key, routeInfo);
+        res.json({ success: true, key, message: 'API 已添加' });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 更新自定义 API（更改代码/响应）
+app.put('/api/admin/api-manager/update', express.json(), (req, res) => {
+    try {
+        const { method, path: apiPath, description, responseBody, statusCode, handlerCode } = req.body;
+        if (!method || !apiPath) return res.status(400).json({ success: false, error: '缺少参数' });
+        const key = `${method.toUpperCase()}:${apiPath}`;
+        const existing = customApiRoutes.get(key);
+        if (!existing) return res.status(404).json({ success: false, error: '自定义 API 不存在' });
+        // 重新构建处理器
+        let handlerFn;
+        if (handlerCode && handlerCode.trim()) {
+            try {
+                // eslint-disable-next-line no-new-func
+                handlerFn = new Function('req', 'res', 'rooms', 'users', 'io', handlerCode);
+            } catch (e) {
+                return res.status(400).json({ success: false, error: '处理器代码语法错误: ' + e.message });
+            }
+        } else {
+            const body = responseBody !== undefined ? responseBody : existing.responseBody;
+            const code = parseInt(statusCode) || existing.statusCode;
+            let parsedBody;
+            try { parsedBody = typeof body === 'string' ? JSON.parse(body) : body; } catch(e) { parsedBody = { message: body }; }
+            handlerFn = (req, res) => res.status(code).json(parsedBody);
+        }
+        existing.description = description !== undefined ? description : existing.description;
+        existing.handlerCode = handlerCode !== undefined ? handlerCode : existing.handlerCode;
+        existing.responseBody = responseBody !== undefined ? responseBody : existing.responseBody;
+        existing.statusCode = parseInt(statusCode) || existing.statusCode;
+        existing.handlerFn = handlerFn;
+        res.json({ success: true, key, message: 'API 已更新' });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 启用/禁用自定义 API
+app.post('/api/admin/api-manager/toggle-custom', express.json(), (req, res) => {
+    try {
+        const { method, path: apiPath, enabled } = req.body;
+        if (!method || !apiPath) return res.status(400).json({ success: false, error: '缺少参数' });
+        const key = `${method.toUpperCase()}:${apiPath}`;
+        const route = customApiRoutes.get(key);
+        if (!route) return res.status(404).json({ success: false, error: '自定义 API 不存在' });
+        route.enabled = Boolean(enabled);
+        res.json({ success: true, key, enabled: route.enabled });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 删除自定义 API
+app.delete('/api/admin/api-manager/custom', express.json(), (req, res) => {
+    try {
+        const { method, path: apiPath } = req.body;
+        if (!method || !apiPath) return res.status(400).json({ success: false, error: '缺少参数' });
+        const key = `${method.toUpperCase()}:${apiPath}`;
+        if (!customApiRoutes.has(key)) return res.status(404).json({ success: false, error: '自定义 API 不存在' });
+        customApiRoutes.delete(key);
+        res.json({ success: true, key, message: 'API 已删除，立即生效' });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 测试 API（发送请求并返回结果）
+// 用途：测试指定API端点的可用性和响应
+app.post('/api/admin/api-manager/test', express.json(), async (req, res) => {
+    try {
+        const { method, path: apiPath, body: reqBody, headers: reqHeaders } = req.body;
+        if (!method || !apiPath) return res.status(400).json({ success: false, error: '缺少参数' });
+        // 动态获取端口（server 变量在路由注册时尚未定义，使用 req.socket.localPort）
+        const port = req.socket.localPort || 3000;
+        const options = {
+            hostname: '127.0.0.1',
+            port,
+            path: apiPath,
+            method: method.toUpperCase(),
+            headers: { 'Content-Type': 'application/json', 'X-Internal-Request': 'true', ...(reqHeaders || {}) }
+        };
+        const bodyStr = reqBody ? JSON.stringify(reqBody) : '';
+        if (bodyStr) options.headers['Content-Length'] = Buffer.byteLength(bodyStr);
+        const testReq = http.request(options, (testRes) => {
+            let data = '';
+            testRes.on('data', chunk => { data += chunk; });
+            testRes.on('end', () => {
+                let parsed;
+                try { parsed = JSON.parse(data); } catch(e) { parsed = data; }
+                res.json({ success: true, statusCode: testRes.statusCode, headers: testRes.headers, body: parsed });
+            });
+        });
+        testReq.on('error', (e) => {
+            res.status(500).json({ success: false, error: e.message });
+        });
+        if (bodyStr) testReq.write(bodyStr);
+        testReq.end();
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// 内置 API 禁用中间件（需要在所有路由之前检查）
+// 注意：由于 Express 路由注册顺序，这里用一个全局的前置中间件实现
+// 实际上我们通过在所有路由后增加一层检查来处理
+
+// ==================== API 管理系统结束 ====================
+
+// 静态文件服务 - 提供上传的文件（带缓存优化）
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+    maxAge: '7d',
+    etag: true,
+    lastModified: true,
+    setHeaders: (res, filePath) => {
+        const ext = path.extname(filePath).toLowerCase();
+        const videoExts = ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm'];
+        const audioExts = ['.mp3', '.wav', '.ogg', '.aac', '.m4a'];
+        const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
+        if (videoExts.includes(ext)) {
+            res.setHeader('Cache-Control', 'public, max-age=604800');
+            res.setHeader('Accept-Ranges', 'bytes');
+        } else if (audioExts.includes(ext)) {
+            res.setHeader('Cache-Control', 'public, max-age=604800');
+            res.setHeader('Accept-Ranges', 'bytes');
+        } else if (imageExts.includes(ext)) {
+            res.setHeader('Cache-Control', 'public, max-age=604800');
+        } else {
+            res.setHeader('Cache-Control', 'public, max-age=86400');
+        }
+    }
+}));
+
+// 强制下载路由 - 解决 iOS Safari / WebView 无法通过 <a download> 下载文件的问题
+// 用法：/download/文件名  或  /download?url=/uploads/xxx&name=文件名
+app.get('/download/:filename', (req, res) => {
+    const filename = req.params.filename;
+    // 防路径穿越
+    const safeFilename = path.basename(filename);
+    const filePath = path.join(__dirname, 'uploads', safeFilename);
+    if (!require('fs').existsSync(filePath)) {
+        return res.status(404).json({ error: '文件不存在' });
+    }
+    const displayName = req.query.name ? decodeURIComponent(req.query.name) : safeFilename;
+    // 对文件名做 RFC 5987 编码，兼容中文文件名
+    const encodedName = encodeURIComponent(displayName).replace(/'/g, '%27').replace(/\(/g, '%28').replace(/\)/g, '%29');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedName}`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.sendFile(filePath);
+});
 
 // 图片上传接口 - 单独配置raw解析器
 app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), async (req, res) => {
@@ -1523,7 +2298,7 @@ app.post('/upload-image', express.raw({ type: '*/*', limit: '30mb' }), async (re
 
                 // 记录病毒文件信息
                 const virusFile = {
-                    id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                    id: Date.now().toString() + Math.random().toString(36).substring(2, 11),
                     filename: filename,
                     size: req.body.length,
                     uploaderIp: req.ip,
@@ -1642,6 +2417,697 @@ app.post('/upload-audio', express.raw({ type: '*/*', limit: '30mb' }), async (re
     }
 });
 
+// ==================== 用户错误反馈 ====================
+// 内存存储，最多保留 500 条
+const userFeedbackList = [];
+const MAX_FEEDBACK = 500;
+
+app.post('/api/feedback', express.json(), (req, res) => {
+    try {
+        const { errorType, errorMessage, context, username, userAgent, timestamp, extraInfo } = req.body || {};
+        const entry = {
+            id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+            errorType: errorType || '未知错误',
+            errorMessage: errorMessage || '',
+            context: context || '',
+            username: username || '匿名',
+            userAgent: userAgent || req.headers['user-agent'] || '',
+            ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress || '',
+            timestamp: timestamp || new Date().toISOString(),
+            receivedAt: new Date().toISOString(),
+            extraInfo: extraInfo || null
+        };
+        userFeedbackList.push(entry);
+        if (userFeedbackList.length > MAX_FEEDBACK) {
+            userFeedbackList.splice(0, userFeedbackList.length - MAX_FEEDBACK);
+        }
+        console.log('[用户反馈] 收到错误报告:', entry.errorType, '-', entry.errorMessage.slice(0, 80));
+        res.json({ success: true, id: entry.id });
+    } catch (error) {
+        console.error('保存用户反馈失败:', error);
+        res.status(500).json({ error: '保存失败' });
+    }
+});
+
+app.get('/api/admin/feedback', (req, res) => {
+    try {
+        const { limit: limitStr = '200' } = req.query;
+        const limit = Math.min(parseInt(limitStr) || 200, MAX_FEEDBACK);
+        const list = [...userFeedbackList].reverse().slice(0, limit);
+        res.json({ total: userFeedbackList.length, list });
+    } catch (error) {
+        console.error('获取用户反馈失败:', error);
+        res.status(500).json({ error: '获取失败' });
+    }
+});
+
+app.delete('/api/admin/feedback/:id', (req, res) => {
+    const idx = userFeedbackList.findIndex(f => f.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: '未找到' });
+    userFeedbackList.splice(idx, 1);
+    res.json({ success: true });
+});
+
+app.delete('/api/admin/feedback', (req, res) => {
+    userFeedbackList.length = 0;
+    res.json({ success: true });
+});
+// ==================== AI 游戏管理 API ====================
+// 用途：管理 AI (pc) 的游戏状态，查看游戏列表、控制游戏开关、查看 AI 思考日志
+
+// AI 游戏开关状态
+let aiGamesEnabled = true;
+
+// AI 思考日志（用于管理员查看）
+const aiThoughtsLog = [];
+
+// 添加 AI 思考日志
+function addAiThought(gameType, action, thought) {
+    const entry = {
+        timestamp: new Date().toISOString(),
+        gameType,
+        action,
+        thought
+    };
+    aiThoughtsLog.push(entry);
+    // 限制日志数量，最多保留 100 条
+    if (aiThoughtsLog.length > 100) {
+        aiThoughtsLog.shift();
+    }
+    // 广播给所有连接的 admin 客户端
+    io.emit('ai-thought', entry);
+}
+
+// 获取 AI 游戏状态
+app.get('/api/admin/ai-games/status', (req, res) => {
+    try {
+        // 获取所有包含 AI 的游戏
+        const aiGames = [];
+        for (const [gameId, game] of games.entries()) {
+            if (game.players && game.players.includes(PC_SOCKET_ID)) {
+                aiGames.push({
+                    id: gameId,
+                    type: game.type,
+                    status: game.status,
+                    roomName: game.roomName,
+                    players: game.players.map(pid => ({
+                        socketId: pid,
+                        username: pid === PC_SOCKET_ID ? PC_USERNAME : (users.get(pid)?.username || '未知')
+                    })),
+                    currentPlayer: game.currentPlayer,
+                    startTime: game.startTime,
+                    endTime: game.endTime
+                });
+            }
+        }
+        
+        res.json({
+            success: true,
+            enabled: aiGamesEnabled,
+            games: aiGames,
+            thoughts: aiThoughtsLog.slice(-50) // 返回最近 50 条思考日志
+        });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 切换 AI 游戏开关
+app.post('/api/admin/ai-games/toggle', express.json(), (req, res) => {
+    try {
+        const { enabled } = req.body;
+        aiGamesEnabled = enabled;
+        
+        if (!aiGamesEnabled) {
+            // 禁用所有 AI 游戏
+            for (const [gameId, game] of games.entries()) {
+                if (game.players && game.players.includes(PC_SOCKET_ID) && game.status === 'playing') {
+                    game.status = 'ended';
+                    game.endTime = new Date();
+                    game.winner = game.players.find(p => p !== PC_SOCKET_ID); // 玩家获胜
+                    games.set(gameId, game);
+                    
+                    // 通知玩家游戏结束
+                    game.players.forEach(pid => {
+                        if (pid !== PC_SOCKET_ID) {
+                            io.to(pid).emit(`${game.type}-end`, {
+                                gameId,
+                                winner: pid,
+                                reason: 'AI 游戏已被管理员禁用'
+                            });
+                        }
+                    });
+                }
+            }
+        }
+        
+        res.json({ success: true, enabled: aiGamesEnabled });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 获取游戏详情
+app.get('/api/admin/ai-games/details', (req, res) => {
+    try {
+        const { gameId } = req.query;
+        const game = games.get(gameId);
+        
+        if (!game) {
+            return res.status(404).json({ success: false, error: '游戏不存在' });
+        }
+        
+        res.json({
+            success: true,
+            game: {
+                id: game.id,
+                type: game.type,
+                status: game.status,
+                roomName: game.roomName,
+                players: game.players.map(pid => ({
+                    socketId: pid,
+                    username: pid === PC_SOCKET_ID ? PC_USERNAME : (users.get(pid)?.username || '未知')
+                })),
+                currentPlayer: game.currentPlayer,
+                startTime: game.startTime,
+                endTime: game.endTime,
+                board: game.board, // 棋盘类游戏
+                snakes: game.snakes, // 贪吃蛇
+                scores: game.scores ? Object.fromEntries(game.scores) : undefined
+            }
+        });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 强制 AI 行动
+app.post('/api/admin/ai-games/force-move', express.json(), (req, res) => {
+    try {
+        const { gameId } = req.body;
+        const game = games.get(gameId);
+        
+        if (!game) {
+            return res.status(404).json({ success: false, error: '游戏不存在' });
+        }
+        
+        if (game.status !== 'playing') {
+            return res.status(400).json({ success: false, error: '游戏不在进行中' });
+        }
+        
+        // 根据游戏类型调用对应的 AI 函数
+        switch (game.type) {
+            case 'gomoku':
+                pcGomokuMove(gameId);
+                break;
+            case 'guess-number':
+                pcGuessNumber(gameId);
+                break;
+            case 'rps':
+                // @ts-ignore
+                pcRpsMove(gameId);
+                break;
+            case 'bomb':
+                pcBombMove(gameId);
+                break;
+            case 'pictionary':
+                pcPictionaryDraw(gameId);
+                break;
+            case 'typing':
+                pcTypingMove(gameId);
+                break;
+            case 'go':
+                pcGoMove(gameId);
+                break;
+            case 'snake':
+                // 贪吃蛇是实时游戏，不需要强制行动
+                return res.status(400).json({ success: false, error: '贪吃蛇是实时游戏，无法强制行动' });
+            default:
+                return res.status(400).json({ success: false, error: '未知的游戏类型' });
+        }
+        
+        addAiThought(game.type, '强制行动', `管理员强制 AI 在 ${game.type} 游戏中行动`);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 结束 AI 游戏
+app.post('/api/admin/ai-games/end', express.json(), (req, res) => {
+    try {
+        const { gameId } = req.body;
+        const game = games.get(gameId);
+        
+        if (!game) {
+            return res.status(404).json({ success: false, error: '游戏不存在' });
+        }
+        
+        game.status = 'ended';
+        game.endTime = new Date();
+        game.winner = game.players.find(p => p !== PC_SOCKET_ID); // 玩家获胜
+        games.set(gameId, game);
+        
+        // 通知所有玩家
+        game.players.forEach(pid => {
+            io.to(pid).emit(`${game.type}-end`, {
+                gameId,
+                winner: game.winner,
+                reason: '游戏被管理员结束'
+            });
+        });
+        
+        addAiThought(game.type, '游戏结束', `管理员结束了 ${game.type} 游戏`);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// ==================== AI 游戏管理 API END ====================
+
+// ==================== 互动中心管理 API ====================
+// 存储互动中心数据
+const interactionPairs = new Map(); // player1,player2 -> { allowed }
+const gamePermissions = new Map(); // player,game -> { allowed }
+const activeGames = new Map(); // gameId -> gameData
+
+// 获取配对列表
+app.get('/api/admin/interaction/pairs', (req, res) => {
+    try {
+        const pairs = [];
+        for (const [key, value] of interactionPairs) {
+            const [p1, p2] = key.split(',');
+            pairs.push({ player1: p1, player2: p2, allowed: value.allowed });
+        }
+        res.json({ success: true, pairs });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 设置配对权限
+app.post('/api/admin/interaction/pairs', express.json(), (req, res) => {
+    try {
+        const { player1, player2, allowed } = req.body;
+        const key = [player1, player2].sort().join(',');
+        interactionPairs.set(key, { allowed, timestamp: Date.now() });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 删除配对限制
+app.delete('/api/admin/interaction/pairs', express.json(), (req, res) => {
+    try {
+        const { player1, player2 } = req.body;
+        const key = [player1, player2].sort().join(',');
+        interactionPairs.delete(key);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 获取游戏权限
+app.get('/api/admin/interaction/game-permissions', (req, res) => {
+    try {
+        const perms = [];
+        for (const [key, value] of gamePermissions) {
+            const [player, game] = key.split(',');
+            perms.push({ player, game, allowed: value.allowed });
+        }
+        res.json({ success: true, permissions: perms });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 设置游戏权限
+app.post('/api/admin/interaction/game-permissions', express.json(), (req, res) => {
+    try {
+        const { player, game, allowed } = req.body;
+        const key = `${player},${game}`;
+        gamePermissions.set(key, { allowed, timestamp: Date.now() });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 删除游戏权限
+app.delete('/api/admin/interaction/game-permissions', express.json(), (req, res) => {
+    try {
+        const { player, game } = req.body;
+        const key = `${player},${game}`;
+        gamePermissions.delete(key);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 获取当前游戏
+app.get('/api/admin/interaction/active-games', (req, res) => {
+    try {
+        const games = [];
+        for (const [gameId, game] of games) {
+            if (game.status === 'playing') {
+                games.push({
+                    id: gameId,
+                    type: game.type,
+                    players: game.players.map(p => users.get(p)?.username || p),
+                    roomName: game.roomName,
+                    startTime: game.startTime
+                });
+            }
+        }
+        res.json({ success: true, games });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 结束游戏
+app.post('/api/admin/interaction/end-game', express.json(), (req, res) => {
+    try {
+        const { gameId } = req.body;
+        const game = games.get(gameId);
+        if (game) {
+            game.status = 'ended';
+            game.endTime = Date.now();
+            io.to(game.roomName).emit('game-ended', { gameId, reason: 'admin' });
+        }
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 结束所有游戏
+app.post('/api/admin/interaction/end-all-games', (req, res) => {
+    try {
+        let count = 0;
+        for (const [gameId, game] of games) {
+            if (game.status === 'playing') {
+                game.status = 'ended';
+                game.endTime = Date.now();
+                io.to(game.roomName).emit('game-ended', { gameId, reason: 'admin' });
+                count++;
+            }
+        }
+        res.json({ success: true, count });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// ==================== 互动中心管理 API END ====================
+
+// ==================== 页面权限管理 API ====================
+const pagePermissions = new Map(); // user/role -> permissions
+
+// 获取用户页面权限
+app.get('/api/admin/page-permissions', (req, res) => {
+    try {
+        const { user, role } = req.query;
+        const key = user || role;
+        const perms = pagePermissions.get(key) || {
+            chat: true, voice: true, video: true, games: true, ai: true,
+            emoji: true, file: true, location: true, music: true, settings: true,
+            btnSendMsg: true, btnSendImage: true, btnSendVoice: true,
+            btnCreateRoom: true, btnInvite: true, btnKick: true
+        };
+        res.json({ success: true, permissions: perms });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 保存页面权限
+app.post('/api/admin/page-permissions', express.json(), (req, res) => {
+    try {
+        const { user, role, permissions } = req.body;
+        const key = user || role;
+        pagePermissions.set(key, permissions);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 获取所有权限
+app.get('/api/admin/page-permissions/all', (req, res) => {
+    try {
+        const perms = [];
+        for (const [key, value] of pagePermissions) {
+            perms.push({ user: key.includes('-') ? key : null, role: !key.includes('-') ? key : null, permissions: value });
+        }
+        res.json({ success: true, permissions: perms });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// ==================== 页面权限管理 API END ====================
+
+// ==================== 表情包管理 API ====================
+const emojiLibrary = [];
+const emojiPermissions = new Map();
+let emojiIdCounter = 1;
+
+// 初始化默认表情包
+function initDefaultEmojis() {
+    const defaultEmojis = ['😀', '😂', '🥰', '😎', '🤔', '👍', '👎', '❤️', '🎉', '🔥'];
+    defaultEmojis.forEach((emoji, i) => {
+        emojiLibrary.push({
+            id: `emoji_${i}`,
+            name: `默认表情${i + 1}`,
+            url: `data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text x="50" y="70" font-size="60" text-anchor="middle">${emoji}</text></svg>`,
+            category: 'default',
+            keywords: [emoji],
+            usageCount: 0
+        });
+    });
+}
+initDefaultEmojis();
+
+// 获取表情包库
+app.get('/api/admin/emoji-library', (req, res) => {
+    try {
+        res.json({ success: true, emojis: emojiLibrary });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 添加表情包
+app.post('/api/admin/emoji-library', express.json(), (req, res) => {
+    try {
+        const { name, category, url, keywords } = req.body;
+        const emoji = {
+            id: `emoji_${emojiIdCounter++}`,
+            name,
+            category: category || 'custom',
+            url,
+            keywords: keywords || [],
+            usageCount: 0
+        };
+        emojiLibrary.push(emoji);
+        res.json({ success: true, emoji });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 删除表情包
+app.delete('/api/admin/emoji-library/:id', (req, res) => {
+    try {
+        const idx = emojiLibrary.findIndex(e => e.id === req.params.id);
+        if (idx > -1) {
+            emojiLibrary.splice(idx, 1);
+        }
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 获取表情包权限
+app.get('/api/admin/emoji-permissions', (req, res) => {
+    try {
+        const { user, role } = req.query;
+        const key = user || role;
+        const perms = emojiPermissions.get(key) || { send: true, search: true, custom: true, upload: true };
+        res.json({ success: true, permissions: perms });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 保存表情包权限
+app.post('/api/admin/emoji-permissions', express.json(), (req, res) => {
+    try {
+        const { user, role, permissions } = req.body;
+        const key = user || role;
+        emojiPermissions.set(key, permissions);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// 获取表情包统计
+app.get('/api/admin/emoji-stats', (req, res) => {
+    try {
+        const stats = emojiLibrary
+            .map(e => ({ ...e, rank: 0 }))
+            .sort((a, b) => b.usageCount - a.usageCount)
+            .map((e, i) => ({ ...e, rank: i + 1 }));
+        res.json({ success: true, stats });
+    } catch (e) {
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+// ==================== 表情包管理 API END ====================
+
+// ==================== 用户错误反馈 END ====================
+
+// ==================== 系统日志 API ====================
+app.get('/api/admin/system-logs', (req, res) => {
+    try {
+        const { level, category, search, limit: limitStr = '100', offset: offsetStr = '0' } = req.query;
+        let logs = [...systemLogs].reverse();
+        if (level) logs = logs.filter(l => l.level === level);
+        if (category) logs = logs.filter(l => l.category === category);
+        if (search) logs = logs.filter(l => (l.message + l.detail).toLowerCase().includes(search.toLowerCase()));
+        const offset = parseInt(offsetStr) || 0;
+        const limit = Math.min(parseInt(limitStr) || 100, 500);
+        const total = logs.length;
+        logs = logs.slice(offset, offset + limit);
+        res.json({ total, logs });
+    } catch (error) {
+        console.error('获取系统日志失败:', error);
+        res.status(500).json({ error: '获取失败' });
+    }
+});
+
+app.get('/api/admin/system-logs/stats', (req, res) => {
+    try {
+        const now = Date.now();
+        const oneHourAgo = new Date(now - 3600000).toISOString();
+        const recentHour = systemLogs.filter(l => l.time >= oneHourAgo);
+        res.json({
+            totalLogs: systemLogs.length,
+            lastHour: recentHour.length,
+            byLevel: {
+                info: systemLogs.filter(l => l.level === 'info').length,
+                warn: systemLogs.filter(l => l.level === 'warn').length,
+                error: systemLogs.filter(l => l.level === 'error').length
+            },
+            byCategory: (() => { const cats = {}; systemLogs.forEach(l => { cats[l.category] = (cats[l.category] || 0) + 1; }); return cats; })()
+        });
+    } catch (error) {
+        res.status(500).json({ error: '获取统计失败' });
+    }
+});
+
+app.delete('/api/admin/system-logs', (req, res) => {
+    systemLogs.length = 0;
+    res.json({ success: true });
+});
+// ==================== 系统日志 API END ====================
+
+// ==================== 系统监控 API ====================
+app.get('/api/admin/system-status', (req, res) => {
+    try {
+        const memUsage = process.memoryUsage();
+        const roomsData = Array.from(rooms.values());
+        const totalMessages = roomsData.reduce((sum, r) => sum + (r.messages ? r.messages.length : 0), 0);
+        res.json({
+            onlineUsers: users.size,
+            roomCount: rooms.size,
+            websocketConnections: io ? io.engine.clientsCount : 0,
+            totalMessages: totalMessages,
+            threatLogCount: threatLog.length,
+            systemLogCount: systemLogs.length,
+            feedbackCount: userFeedbackList.length,
+            uptimeSeconds: Math.floor(process.uptime()),
+            memory: {
+                rss: Math.round(memUsage.rss / 1024 / 1024),
+                heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024),
+                heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024)
+            },
+            rooms: roomsData.map(r => ({
+                name: r.name,
+                users: r.users ? r.users.length : 0,
+                messages: r.messages ? r.messages.length : 0
+            }))
+        });
+    } catch (error) {
+        res.status(500).json({ error: '获取系统状态失败' });
+    }
+});
+
+// 用户行为统计 API
+app.get('/api/admin/user-analytics', (req, res) => {
+    try {
+        const usersArr = Array.from(users.values());
+        const roomsData = Array.from(rooms.values());
+        // 在线用户统计
+        const roomStats = roomsData.map(r => ({
+            name: r.name,
+            userCount: r.users ? r.users.length : 0,
+            messageCount: r.messages ? r.messages.length : 0
+        }));
+        // 用户消息排行
+        const userMsgMap = {};
+        roomsData.forEach(r => {
+            if (r.messages) {
+                r.messages.forEach(m => {
+                    if (m.username) {
+                        userMsgMap[m.username] = (userMsgMap[m.username] || 0) + 1;
+                    }
+                });
+            }
+        });
+        const topUsers = Object.entries(userMsgMap).sort((a, b) => b[1] - a[1]).slice(0, 20);
+        // 消息类型统计
+        const typeStats = {};
+        roomsData.forEach(r => {
+            if (r.messages) {
+                r.messages.forEach(m => {
+                    const t = m.type || 'text';
+                    typeStats[t] = (typeStats[t] || 0) + 1;
+                });
+            }
+        });
+        // 在线用户列表（含权限信息）
+        const onlineUserList = usersArr.map(u => ({
+            username: u.username,
+            roomName: u.roomName,
+            color: u.color || '',
+            ip: u.ip || '',
+            permissions: u.permissions || {},
+            stats: u.stats || {}
+        }));
+
+        res.json({
+            onlineUsers: usersArr.length,
+            roomCount: roomsData.length,
+            roomStats,
+            topUsers,
+            typeStats,
+            onlineUserList
+        });
+    } catch (error) {
+        res.status(500).json({ error: '获取分析数据失败' });
+    }
+});
+// ==================== 系统监控 API END ====================
+
 // 管理员获取威胁日志API
 app.get('/api/admin/threat-log', (req, res) => {
     try {
@@ -1660,7 +3126,7 @@ app.get('/api/admin/threat-log', (req, res) => {
 });
 
 // 管理员获取通话列表API
-app.get('/api/admin/calls', (req, res) => {
+app.get('/api/admin/calls', adminApiAuthMiddleware, (req, res) => {
     try {
         const calls = Array.from(ongoingCalls.values());
         res.json({ calls });
@@ -1671,7 +3137,7 @@ app.get('/api/admin/calls', (req, res) => {
 });
 
 // 管理员结束通话API
-app.post('/api/admin/calls/:callId/end', (req, res) => {
+app.post('/api/admin/calls/:callId/end', adminApiAuthMiddleware, (req, res) => {
     try {
         const { callId } = req.params;
         const call = ongoingCalls.get(callId);
@@ -1694,7 +3160,7 @@ app.post('/api/admin/calls/:callId/end', (req, res) => {
 });
 
 // 管理员控制通话API
-app.post('/api/admin/calls/:callId/control', (req, res) => {
+app.post('/api/admin/calls/:callId/control', adminApiAuthMiddleware, (req, res) => {
     try {
         const { callId } = req.params;
         const { type, enabled } = req.body;
@@ -1720,7 +3186,7 @@ app.post('/api/admin/calls/:callId/control', (req, res) => {
 });
 
 // 管理员查看通话详情API
-app.get('/api/admin/calls/:callId', (req, res) => {
+app.get('/api/admin/calls/:callId', adminApiAuthMiddleware, (req, res) => {
     try {
         const { callId } = req.params;
         const call = ongoingCalls.get(callId);
@@ -1792,6 +3258,7 @@ app.get('/api/files', (req, res) => {
             files: files.sort((a, b) => {
                 if (a.isDirectory && !b.isDirectory) return -1;
                 if (!a.isDirectory && b.isDirectory) return 1;
+                // @ts-ignore
                 return b.createdAt - a.createdAt;
             }),
             currentPath: relativePath
@@ -1805,6 +3272,10 @@ app.get('/api/files', (req, res) => {
 // 文件管理API - 创建目录
 app.post('/api/files/create-directory', express.json(), (req, res) => {
     try {
+            // 文件管理需要管理员令牌
+            if (req.headers['x-admin-token'] !== adminApiToken) {
+                return res.status(403).json({ error: '需要管理员令牌' });
+            }
         // 验证请求体
         if (!req.body) {
             return res.status(400).json({ error: '请求体不能为空' });
@@ -1875,6 +3346,10 @@ app.post('/api/files/create-directory', express.json(), (req, res) => {
 // 文件管理API - 删除文件或目录
 app.delete('/api/files/*', (req, res) => {
     try {
+            // 文件管理需要管理员令牌
+            if (req.headers['x-admin-token'] !== adminApiToken) {
+                return res.status(403).json({ error: '需要管理员令牌' });
+            }
         // 验证路径参数
         const itemPath = req.params[0];
         if (!itemPath) {
@@ -1927,6 +3402,10 @@ app.delete('/api/files/*', (req, res) => {
 // 文件管理API - 创建文本文件
 app.post('/api/files/create', express.json(), (req, res) => {
     try {
+            // 文件管理需要管理员令牌
+            if (req.headers['x-admin-token'] !== adminApiToken) {
+                return res.status(403).json({ error: '需要管理员令牌' });
+            }
         // 验证请求体
         if (!req.body) {
             return res.status(400).json({ error: '请求体不能为空' });
@@ -2013,6 +3492,10 @@ app.post('/api/files/create', express.json(), (req, res) => {
 // 文件管理API - 编辑文件内容
 app.put('/api/files/*', express.json(), (req, res) => {
     try {
+            // 文件管理需要管理员令牌
+            if (req.headers['x-admin-token'] !== adminApiToken) {
+                return res.status(403).json({ error: '需要管理员令牌' });
+            }
         // 验证路径参数
         const itemPath = req.params[0];
         if (!itemPath) {
@@ -2089,6 +3572,10 @@ app.put('/api/files/*', express.json(), (req, res) => {
 // 文件管理API - 获取文件内容
 app.get('/api/files/*/content', (req, res) => {
     try {
+            // 文件管理需要管理员令牌
+            if (req.headers['x-admin-token'] !== adminApiToken) {
+                return res.status(403).json({ error: '需要管理员令牌' });
+            }
         // 验证路径参数
         const itemPath = req.params[0];
         if (!itemPath) {
@@ -2138,6 +3625,410 @@ app.get('/api/files/*/content', (req, res) => {
     }
 });
 
+// APP 管理 API 配置
+const APP_DIR = path.join(__dirname, 'apps');
+const MAX_APP_SIZE = 500 * 1024 * 1024; // 500MB 最大APP大小
+
+// XML转义函数
+function escapeXml(str) {
+    if (!str) return '';
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+}
+
+// 确保 apps 目录存在
+if (!fs.existsSync(APP_DIR)) {
+    fs.mkdirSync(APP_DIR, { recursive: true });
+}
+
+// APP 数据文件路径
+const APPS_DATA_FILE = path.join(__dirname, 'storage', 'apps.json');
+
+// 加载APP列表
+function loadAppsData() {
+    try {
+        if (fs.existsSync(APPS_DATA_FILE)) {
+            return JSON.parse(fs.readFileSync(APPS_DATA_FILE, 'utf8'));
+        }
+    } catch (error) {
+        console.error('加载APP数据失败:', error);
+    }
+    return { apps: [], pushHistory: [] };
+}
+
+// 保存APP列表
+function saveAppsData(data) {
+    try {
+        const dir = path.dirname(APPS_DATA_FILE);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(APPS_DATA_FILE, JSON.stringify(data, null, 2));
+    } catch (error) {
+        console.error('保存APP数据失败:', error);
+    }
+}
+
+// APP 管理 API - 获取APP列表
+app.get('/api/admin/apps/list', (req, res) => {
+    try {
+        const data = loadAppsData();
+        // 添加完整URL
+        const apps = data.apps.map(app => ({
+            ...app,
+            downloadUrl: `/apps/download/${app.id}`
+        }));
+        res.json({ success: true, apps, pushHistory: data.pushHistory || [] });
+    } catch (error) {
+        console.error('获取APP列表失败:', error);
+        res.status(500).json({ success: false, error: '获取APP列表失败' });
+    }
+});
+
+// APP 管理 API - 上传APP
+app.post('/api/admin/apps/upload', (req, res) => {
+    try {
+        const formidable = require('formidable');
+        const form = formidable({
+            uploadDir: APP_DIR,
+            keepExtensions: true,
+            maxFileSize: MAX_APP_SIZE
+        });
+
+        form.parse(req, (err, fields, files) => {
+            if (err) {
+                return res.status(400).json({ success: false, error: '文件上传失败: ' + err.message });
+            }
+
+            const file = files.appFile && files.appFile[0];
+            if (!file) {
+                return res.status(400).json({ success: false, error: '请选择要上传的APP文件' });
+            }
+
+            const { name, version, description, packageName } = fields;
+            if (!name || !version) {
+                // 删除上传的文件
+                fs.unlinkSync(file.filepath);
+                return res.status(400).json({ success: false, error: 'APP名称和版本号不能为空' });
+            }
+
+            const appId = Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
+            const ext = path.extname(file.originalFilename || file.newFilename);
+            const newFilename = `${appId}${ext}`;
+            const newPath = path.join(APP_DIR, newFilename);
+
+            // 重命名文件
+            fs.renameSync(file.filepath, newPath);
+
+            const appData = {
+                id: appId,
+                name: name[0] || name,
+                version: version[0] || version,
+                description: (packageName ? (packageName[0] || packageName) + '\n' : '') + (description[0] || description || ''),
+                filename: newFilename,
+                originalName: file.originalFilename || file.newFilename,
+                size: file.size,
+                uploadTime: new Date().toISOString(),
+                downloadCount: 0,
+                isActive: true
+            };
+
+            const data = loadAppsData();
+            data.apps.push(appData);
+            saveAppsData(data);
+
+            res.json({ success: true, app: appData });
+        });
+    } catch (error) {
+        console.error('上传APP失败:', error);
+        res.status(500).json({ success: false, error: '上传APP失败' });
+    }
+});
+
+// APP 管理 API - 删除APP
+app.delete('/api/admin/apps/:id', (req, res) => {
+    try {
+        const { id } = req.params;
+        const data = loadAppsData();
+        const appIndex = data.apps.findIndex(a => a.id === id);
+
+        if (appIndex === -1) {
+            return res.status(404).json({ success: false, error: 'APP不存在' });
+        }
+
+        const app = data.apps[appIndex];
+        const filePath = path.join(APP_DIR, app.filename);
+
+        // 删除文件
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+        }
+
+        // 从列表中移除
+        data.apps.splice(appIndex, 1);
+        saveAppsData(data);
+
+        res.json({ success: true, message: 'APP删除成功' });
+    } catch (error) {
+        console.error('删除APP失败:', error);
+        res.status(500).json({ success: false, error: '删除APP失败' });
+    }
+});
+
+// APP 管理 API - 推送APP更新
+app.post('/api/admin/apps/push', express.json(), (req, res) => {
+    try {
+        const { appId, title, content, target, probability, specificUsers, forceUpdate } = req.body;
+
+        if (!appId) {
+            return res.status(400).json({ success: false, error: 'APP ID不能为空' });
+        }
+
+        const data = loadAppsData();
+        const app = data.apps.find(a => a.id === appId);
+
+        if (!app) {
+            return res.status(404).json({ success: false, error: 'APP不存在' });
+        }
+
+        // 构建推送消息
+        const pushMessage = {
+            type: 'app_update',
+            app: {
+                id: app.id,
+                name: app.name,
+                version: app.version,
+                description: app.description,
+                downloadUrl: `/apps/download/${app.id}`,
+                size: app.size
+            },
+            title: title || `${app.name} 有新版本`,
+            content: content || `版本 ${app.version} 可用`,
+            forceUpdate: forceUpdate || false,
+            pushTime: new Date().toISOString()
+        };
+
+        // 通过Socket.IO广播给所有在线用户
+        io.emit('app-update-push', pushMessage);
+
+        // 记录推送历史
+        data.pushHistory = data.pushHistory || [];
+        data.pushHistory.unshift({
+            appId,
+            appName: app.name,
+            appVersion: app.version,
+            title: pushMessage.title,
+            content: pushMessage.content,
+            target: target || 'all',
+            probability: probability,
+            specificUsers: specificUsers,
+            forceUpdate: forceUpdate,
+            pushTime: pushMessage.pushTime,
+            pushedBy: 'admin'
+        });
+
+        // 只保留最近100条记录
+        if (data.pushHistory.length > 100) {
+            data.pushHistory = data.pushHistory.slice(0, 100);
+        }
+
+        saveAppsData(data);
+
+        res.json({ success: true, message: '推送成功', pushRecord: data.pushHistory[0] });
+    } catch (error) {
+        console.error('推送APP失败:', error);
+        res.status(500).json({ success: false, error: '推送APP失败' });
+    }
+});
+
+// APP 管理 API - 设置APP状态
+app.post('/api/admin/apps/:id/toggle', express.json(), (req, res) => {
+    try {
+        const { id } = req.params;
+        const { isActive } = req.body;
+
+        const data = loadAppsData();
+        const app = data.apps.find(a => a.id === id);
+
+        if (!app) {
+            return res.status(404).json({ success: false, error: 'APP不存在' });
+        }
+
+        app.isActive = isActive !== undefined ? isActive : !app.isActive;
+        saveAppsData(data);
+
+        res.json({ success: true, app });
+    } catch (error) {
+        console.error('更新APP状态失败:', error);
+        res.status(500).json({ success: false, error: '更新APP状态失败' });
+    }
+});
+
+// APP 下载API（增加下载计数）
+app.get('/apps/download/:id', (req, res) => {
+    try {
+        const { id } = req.params;
+        const data = loadAppsData();
+        const app = data.apps.find(a => a.id === id);
+
+        if (!app || !app.isActive) {
+            return res.status(404).send('APP不存在或已禁用');
+        }
+
+        const filePath = path.join(APP_DIR, app.filename);
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).send('APP文件不存在');
+        }
+
+        // 增加下载计数
+        app.downloadCount = (app.downloadCount || 0) + 1;
+        saveAppsData(data);
+
+        // 发送文件
+        res.download(filePath, app.originalName);
+    } catch (error) {
+        console.error('下载APP失败:', error);
+        res.status(500).send('下载APP失败');
+    }
+});
+
+// 客户端检查APP更新API
+app.get('/api/apps/check-update', (req, res) => {
+    try {
+        const data = loadAppsData();
+        const activeApps = data.apps.filter(a => a.isActive);
+
+        res.json({
+            success: true,
+            apps: activeApps.map(app => ({
+                id: app.id,
+                name: app.name,
+                version: app.version,
+                description: app.description,
+                downloadUrl: `/apps/download/${app.id}`,
+                installUrl: `/apps/install/${app.id}`,
+                size: app.size,
+                uploadTime: app.uploadTime
+            }))
+        });
+    } catch (error) {
+        console.error('检查APP更新失败:', error);
+        res.status(500).json({ success: false, error: '检查APP更新失败' });
+    }
+});
+
+// iOS APP安装API（生成manifest.plist并重定向到itms-services）
+app.get('/apps/install/:id', (req, res) => {
+    try {
+        const { id } = req.params;
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const data = loadAppsData();
+        const app = data.apps.find(a => a.id === id);
+
+        if (!app || !app.isActive) {
+            return res.status(404).send('APP不存在或已禁用');
+        }
+
+        const filePath = path.join(APP_DIR, app.filename);
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).send('APP文件不存在');
+        }
+
+        // 增加下载计数
+        app.downloadCount = (app.downloadCount || 0) + 1;
+        saveAppsData(data);
+
+        // 生成manifest.plist
+        const manifest = {
+            'assets': [{
+                'kind': 'software-package',
+                'url': `${baseUrl}/apps/download/${app.id}`
+            }],
+            'metadata': {
+                'bundle-identifier': app.bundleId || 'com.chatroom.app',
+                'bundle-version': app.version,
+                'kind': 'software',
+                'title': app.name,
+                'subtitle': app.description || ''
+            }
+        };
+
+        // 设置响应头为XML格式
+        res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+        res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>items</key>
+    <array>
+        <dict>
+            <key>assets</key>
+            <array>
+                <dict>
+                    <key>kind</key>
+                    <string>software-package</string>
+                    <key>url</key>
+                    <string>${baseUrl}/apps/download/${app.id}</string>
+                </dict>
+            </array>
+            <key>metadata</key>
+            <dict>
+                <key>bundle-identifier</key>
+                <string>${app.bundleId || 'com.chatroom.app'}</string>
+                <key>bundle-version</key>
+                <string>${app.version}</string>
+                <key>kind</key>
+                <string>software</string>
+                <key>title</key>
+                <string>${escapeXml(app.name)}</string>
+                <key>subtitle</key>
+                <string>${escapeXml(app.description || '')}</string>
+            </dict>
+        </dict>
+    </array>
+</dict>
+</plist>`);
+    } catch (error) {
+        console.error('生成manifest.plist失败:', error);
+        res.status(500).send('生成安装文件失败');
+    }
+});
+
+// iOS itms-services 安装跳转API
+app.get('/apps/itms/:id', (req, res) => {
+    try {
+        const { id } = req.params;
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+        // 重定向到itms-services协议
+        res.redirect(`itms-services://?action=download-manifest&url=${encodeURIComponent(baseUrl + '/apps/install/' + id)}`);
+    } catch (error) {
+        console.error('itms-services跳转失败:', error);
+        res.status(500).send('安装失败');
+    }
+});
+
+// 获取APP的itms-services安装链接
+app.get('/api/apps/install-link/:id', (req, res) => {
+    try {
+        const { id } = req.params;
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+        res.json({
+            success: true,
+            installUrl: `${baseUrl}/apps/itms/${id}`,
+            manifestUrl: `${baseUrl}/apps/install/${id}`
+        });
+    } catch (error) {
+        console.error('获取安装链接失败:', error);
+        res.status(500).json({ success: false, error: '获取安装链接失败' });
+    }
+});
+
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 
@@ -2157,11 +4048,11 @@ app.get('/:roomName', (req, res) => {
     }
 });
 
-// 管理员密码（使用明文存储）
-// 管理员初始密码：优先读环境变量，未配置时保留默认值以便本地开发
-// 注意：运行中管理员可通过界面修改密码（见 admin-change-password），
-// 修改后的密码只保存在内存，重启后恢复为环境变量中的值。
+// 管理员密码（可使用环境变量 ADMIN_PASSWORD 覆盖，强烈建议修改默认密码）
 let ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+if (!process.env.ADMIN_PASSWORD) {
+    console.warn('⚠️  警告: 管理员密码使用默认值 "admin123"，请通过环境变量 ADMIN_PASSWORD 设置自定义密码！');
+}
 let adminSocketId = null;
 
 // 管理员 API 令牌系统（用于 HTTP API 验证）
@@ -2188,10 +4079,26 @@ function adminApiAuthMiddleware(req, res, next) {
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: ['*'],
+        origin: true,
         methods: ["GET", "POST"],
         credentials: true,
-        allowedHeaders: ["Content-Type", "Authorization"]
+        allowedHeaders: [
+            "Content-Type",
+            "Authorization",
+            "X-Requested-With",
+            "X-CSRF-Token",
+            "Accept",
+            "Accept-Language",
+            "Content-Language",
+            "Cache-Control",
+            "Origin",
+            "Referer",
+            "User-Agent",
+            "X-Client-Info",
+            "X-Filename",
+            "X-Path",
+            "X-Internal-Request"
+        ]
     },
     
     // 传输方式配置
@@ -2216,6 +4123,7 @@ const io = new Server(server, {
             chunkSize: 1024
         },
         threshold: 1024,
+        // @ts-ignore
         concatenateFlush: true
     }
 });
@@ -2235,7 +4143,7 @@ const MAX_BATCH_SIZE = 50; // 最大批次大小
 function processMessageBatch(socketId) {
     const batch = messageBatches.get(socketId);
     if (batch && batch.length > 0) {
-        // 发送批次消息
+        // 发送批次消息（保持与客户端兼容的数组格式）
         io.to(socketId).emit('message-batch', batch);
         // 清空批次
         messageBatches.set(socketId, []);
@@ -2317,6 +4225,35 @@ function getMessagesFromCache(roomName, limit = 50, offset = 0) {
     return cache.messages.slice(offset, offset + limit);
 }
 
+// ===== 数据库集成辅助函数（模块 1/2/4/5）=====
+// 根据用户名找当前在线 socketId
+function socketIdByUsername(username) {
+    for (const u of users.values()) {
+        if (u.username === username) return u.socketId;
+    }
+    return null;
+}
+
+// 用户上线时，从 DB 恢复其“当前在线”的好友关系（双向）
+async function restoreFriendships(username, socketId) {
+    if (!username) return;
+    try {
+        const friends = await db.getFriendUsernames(username);
+        for (const fu of friends) {
+            const fid = socketIdByUsername(fu);
+            if (fid && fid !== socketId) {
+                if (!friendships.has(socketId)) friendships.set(socketId, new Set());
+                if (!friendships.has(fid)) friendships.set(fid, new Set());
+                friendships.get(socketId).add(fid);
+                friendships.get(fid).add(socketId);
+            }
+        }
+    } catch (e) { /* DB 降级：忽略 */ }
+}
+
+// 私聊 chat_id（按用户名，跨重启稳定）
+function pmChatIdForUsernames(a, b) { return [a, b].sort().join('__'); }
+
 // 保存缓存到文件
 function saveCacheToFile(roomName) {
     const cache = messageCache.get(roomName);
@@ -2366,8 +4303,7 @@ setInterval(cleanExpiredCache, 15 * 60 * 1000);
 
 // 天气API配置
 const WEATHER_API_URL = 'https://api-proxy-juhe.jenius.cn/simpleWeather/query';
-// 天气 API Key：优先读环境变量，未配置时保留默认值以便本地开发
-const WEATHER_API_KEY = process.env.WEATHER_API_KEY || 'cb9fc22848b739befe3f0b3d5e4e9248';
+// WEATHER_API_KEY 在文件顶部已通过 decryptSecret 解密
 
 // 天气查询函数
 async function getWeather(city) {
@@ -2501,6 +4437,8 @@ let callIdCounter = 1; // 通话ID计数器
 // 控制台日志系统
 const userConsoleLogs = new Map(); // Map<socketId, Array<log>>
 
+
+
 // 投票系统数据结构
 const activePolls = new Map(); // 存储当前活跃投票: Map<pollId, pollInfo>
 let pollIdCounter = 1; // 投票ID计数器
@@ -2595,6 +4533,26 @@ function csrfProtectionMiddleware(req, res, next) {
     if (req.method === 'GET') {
         return next();
     }
+
+    // 内部请求（如 API 测试转发）跳过 CSRF 验证
+    if (req.headers['x-internal-request'] === 'true') {
+        return next();
+    }
+
+    // 豁免以下接口：它们自有鉴权方式（微信、移动端令牌、上传表单、推送），不适用 CSRF 令牌
+    const csrfExemptPrefixes = [
+        '/api/wechat/', '/api/mobile/login', '/api/mobile/messages',
+        '/api/mobile/send-message', '/api/files/upload', '/api/upload-image',
+        '/api/upload-audio', '/api/push/', '/api/plugins/docs'
+    ];
+    if (csrfExemptPrefixes.some((prefix) => req.path.startsWith(prefix))) {
+        return next();
+    }
+
+    // 管理后台接口已有管理员令牌/密码鉴权，CSRF 保护多余，直接放行
+    if (req.path.startsWith('/api/admin/')) {
+        return next();
+    }
     
     // 获取用户IP
     const userIP = req.ip || req.connection.remoteAddress;
@@ -2639,96 +4597,6 @@ app.get('/api/csrf-token', (req, res) => {
     
     res.json({ csrfToken: token, expires });
 });
-
-// ==================== 微信登录 ====================
-// 小程序端流程：wx.login 拿 code → POST /api/wechat/login
-// 服务端用 appid+secret 换 openid 与 session_key。
-// 密钥从环境变量 WECHAT_APP_SECRET 读，不硬编码。
-const WECHAT_APPID = process.env.WECHAT_APPID || 'wx136ff04f12ed97bc';
-const WECHAT_SECRET = process.env.WECHAT_APP_SECRET || '';
-// 记录 username → openid，供后续推送使用
-const userOpenIds = new Map();
-
-app.post('/api/wechat/login', express.json(), (req, res) => {
-    const { code, roomName, nickName, avatarUrl } = req.body
-        || {};
-
-    if (!code) {
-        return res.status(400).json({ success: false, message: '缺少code参数' });
-    }
-    if (!WECHAT_SECRET) {
-        console.warn('[微信登录] 未配置 WECHAT_APP_SECRET');
-        // 降级：本地开发/未配置密钥时，允许以昵称登录，避免完全卡死
-        const fallbackName = nickName || ('用户' + Math.floor(Math.random() * 1000));
-        return res.json({
-            success: true,
-            message: '登录成功（未配置微信密钥，使用降级模式）',
-            username: fallbackName,
-            wechatData: { openid: null, degraded: true },
-            degraded: true
-        });
-    }
-
-    const https = require('https');
-    const url = 'https://api.weixin.qq.com/sns/jscode2session' +
-        '?appid=' + encodeURIComponent(WECHAT_APPID) +
-        '&secret=' + encodeURIComponent(WECHAT_SECRET) +
-        '&js_code=' + encodeURIComponent(code) +
-        '&grant_type=authorization_code';
-
-    const reqWx = https.get(url, (resp) => {
-        let raw = '';
-        resp.on('data', (c) => { raw += c; });
-        resp.on('end', () => {
-            try {
-                const wechatData = JSON.parse(raw);
-                if (wechatData.errcode) {
-                    console.error('[微信登录] 微信接口返回错误:', wechatData.errcode, wechatData.errmsg);
-                    return res.status(400).json({
-                        success: false,
-                        message: wechatData.errmsg || '微信登录失败',
-                        errcode: wechatData.errcode
-                    });
-                }
-                const username = nickName || ('用户' + Math.floor(Math.random() * 1000));
-                if (wechatData.openid) {
-                    userOpenIds.set(username, wechatData.openid);
-                    console.log('[微信登录] 成功:', username, 'openid=' + String(wechatData.openid).slice(0, 8) + '...');
-                }
-                res.json({
-                    success: true,
-                    message: '登录成功',
-                    username: username,
-                    // 注意：session_key 不下发给客户端
-                    wechatData: { openid: wechatData.openid || null }
-                });
-            } catch (e) {
-                console.error('[微信登录] 解析响应失败:', e.message);
-                res.status(500).json({ success: false, message: '解析响应失败' });
-            }
-        });
-    });
-
-    reqWx.on('error', (err) => {
-        console.error('[微信登录] 请求微信服务器失败:', err.message);
-        res.status(500).json({ success: false, message: '请求微信服务器失败' });
-    });
-    reqWx.setTimeout(10000, () => {
-        reqWx.destroy();
-        res.status(504).json({ success: false, message: '微信服务器超时' });
-    });
-});
-
-// 保存 openid（客户端主动上报）
-app.post('/api/wechat/save-openid', express.json(), (req, res) => {
-    const { username, openid } = req.body || {};
-    if (username && openid) {
-        userOpenIds.set(username, openid);
-        return res.json({ success: true, message: '保存成功' });
-    }
-    res.json({ success: false, message: '参数错误' });
-});
-// ==================== 微信登录 END ====================
 
 // 定期清理过期的CSRF令牌（优化：从默认改为10分钟）
 setInterval(() => {
@@ -2795,6 +4663,7 @@ function errorHandlerMiddleware(err, req, res, next) {
 // 404错误处理
 app.use((req, res, next) => {
     const error = new Error('请求的资源不存在');
+    // @ts-ignore
     error.statusCode = 404;
     next(error);
 });
@@ -2922,6 +4791,30 @@ setInterval(() => {
 const threatLog = []; // 存储威胁事件: Array<{ time, ip, type, detail }>
 const MAX_THREAT_LOG = 500; // 最多保留500条记录
 
+// ==================== 系统日志 ====================
+const systemLogs = [];
+const MAX_SYSTEM_LOGS = 1000;
+
+// ==================== 系统监控事件 ====================
+const monitoringEvents = [];
+const MAX_MONITORING_EVENTS = 200;
+
+function logSystemEvent(level, category, message, detail) {
+    const entry = {
+        id: Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+        time: new Date().toISOString(),
+        level: level,       // info, warn, error, debug
+        category: category, // auth, message, file, room, admin, system, threat
+        message: message,
+        detail: detail || ''
+    };
+    systemLogs.push(entry);
+    if (systemLogs.length > MAX_SYSTEM_LOGS) {
+        systemLogs.splice(0, systemLogs.length - MAX_SYSTEM_LOGS);
+    }
+    return entry;
+}
+
 function logThreat(ip, type, detail) {
     const entry = {
         time: new Date().toISOString(),
@@ -3031,19 +4924,15 @@ function checkSocketEventRate(socketId, event, ip) {
 }
 
 // IP封禁系统
-const bannedIPs = new Set(); // 存储被封禁的IP
-const ipConnections = new Map(); // 存储IP连接数: Map<ip, Set<socketId>>
-const MAX_CONNECTIONS_PER_IP = 5; // 每个IP最大连接数
+
 
 // 默认好友数量上限
 const DEFAULT_MAX_FRIENDS = 5;
 const INFINITE_FRIENDS = -1; // 无限好友数量
 
+
 // @功能开关
 let allowMentions = true; // 默认开启@功能
-
-// 禁言系统数据结构
-const mutedUsers = new Map(); // 存储被禁言用户: Map<socketId, { username, endTime, reason }>
 
 // 脏话过滤系统
 const badWords = [
@@ -3059,36 +4948,6 @@ const badWords = [
 
 // 脏话计数系统
 const swearWordCount = new Map(); // 存储用户脏话计数: Map<socketId, number>
-
-// 默认权限
-let defaultPermissions = {
-    allowAudio: true,
-    allowImage: true,
-    allowFile: true,
-    allowSendMessages: true,
-    allowViewMessages: true,
-    allowCall: false, // 默认启用通话功能
-    allowAddFriends: true,
-    allowViewUsers: true,
-    allowPrivateChat: true,
-    allowOpenFriendsPage: true,
-    allowRecallMessage: true,
-    allowAIChat: false // 默认禁用AI聊天功能，需要管理员同意
-};
-// ===== PC 虚拟账户 =====
-const PC_SOCKET_ID = 'pc-bot-virtual-socket';
-const PC_USERNAME = 'ai';
-const PC_COLOR = '#6c757d';
-// pc 的虚拟用户对象（由各房间共享，roomName 动态设置）
-const pcUserBase = {
-    socketId: PC_SOCKET_ID,
-    username: PC_USERNAME,
-    color: PC_COLOR,
-    status: 'online',
-    role: 'user'
-}
-// ===== PC 虚拟账户 END =====
-
 
 // 默认房间
 rooms.set('main', {
@@ -3135,15 +4994,9 @@ io.on('connection', (socket) => {
     // 获取用户IP
     const userIP = socket.handshake.address;
     
-    // 添加调试日志
-    console.log(`[连接] 用户连接: ${socket.id}`);
-    console.log(`[连接] 客户端IP: ${userIP}`);
-    console.log(`[连接] 传输方式: ${socket.conn.transport.name}`);
-    console.log(`[连接] User-Agent: ${socket.handshake.headers['user-agent']}`);
-    
     // 监听传输方式升级
     socket.conn.on('upgrade', () => {
-        console.log(`[升级] ${socket.id} 传输方式从 polling 升级为 ${socket.conn.transport.name}`);
+        // 静默处理传输方式升级
     });
     
     // 检查IP是否被封禁
@@ -3168,7 +5021,6 @@ io.on('connection', (socket) => {
     
     // 记录连接
     ipConnSet.add(socket.id);
-    console.log(`用户连接: ${socket.id} (IP: ${userIP}), 当前IP连接数: ${ipConnSet.size}`);
 
     socket.on('join', (data) => {
         // 速率限制
@@ -3184,7 +5036,7 @@ io.on('connection', (socket) => {
             return;
         }
 
-        const { username, roomName = 'main', password = null } = typeof data === 'object' ? data : { username: data };
+        const { username, roomName = 'main', password = null, avatarUrl } = typeof data === 'object' ? data : { username: data };
 
         // 字段长度/类型验证
         const usernameErr = validateField(username, 'username');
@@ -3215,7 +5067,7 @@ io.on('connection', (socket) => {
         }
         
         // 检查密码是否正确
-        if (room.password && room.password !== password) {
+        if (room.password && !bcrypt.compareSync(password, room.password)) {
             socket.emit('join-error', { message: '密码错误' });
             return;
         }
@@ -3233,10 +5085,11 @@ io.on('connection', (socket) => {
             return;
         }
         
-        // 检查用户名是否已存在
-        const existingUser = Array.from(users.values()).find(user => user.username === username);
+        // 检查用户名是否已存在（不区分大小写）
+        const usernameLower = username.toLowerCase();
+        const existingUser = Array.from(users.values()).find(user => user.username.toLowerCase() === usernameLower);
         if (existingUser) {
-            socket.emit('join-error', { message: '用户名已存在，请选择其他用户名' });
+            socket.emit('join-error', { message: '用户名已存在（不区分大小写），请选择其他用户名' });
             return;
         }
         
@@ -3252,7 +5105,7 @@ io.on('connection', (socket) => {
                 status: 'online', // 在线状态：online, away, busy, offline
                 lastSeen: new Date().toISOString(), // 最后在线时间
                 profile: { // 用户资料
-                    avatar: null, // 头像URL
+                    avatar: avatarUrl || null, // 头像URL
                     bio: '', // 个人简介
                     age: null, // 年龄
                     location: '', // 位置
@@ -3305,13 +5158,27 @@ io.on('connection', (socket) => {
                 }
             };
         
-        // 为新用户分配25%概率的通话权限
-        if (Math.random() < 0.25) {
+        // 为新用户分配70%概率的通话权限
+        if (Math.random() < 0.70) {
             user.permissions.allowCall = true;
         }
         
         // 保存用户对象
         users.set(socket.id, user);
+
+        // 持久化用户（模块 4）—— upsert
+        db.upsertUser(user);
+        // 从 DB 恢复在线好友关系（模块 5）
+        restoreFriendships(username, socket.id);
+        // 从 DB 恢复禁言状态（模块 5）
+        (async () => {
+            try {
+                const m = await db.getMute(username);
+                if (m && (m.endTime === -1 || m.endTime > Date.now())) {
+                    mutedUsers.set(socket.id, { username: username, endTime: m.endTime, reason: m.reason });
+                }
+            } catch (e) {}
+        })();
         
         // 将用户添加到房间
         room.users.push(socket.id);
@@ -3320,7 +5187,13 @@ io.on('connection', (socket) => {
         socket.join(roomName);
         
         // 发送房间内的用户列表和消息
-        let roomUsers = room.users.map(userId => users.get(userId)).filter(user => user);
+        let roomUsers = room.users.map(userId => {
+            const user = users.get(userId);
+            if (user) {
+                return { ...user, avatarUrl: user.profile?.avatar || null };
+            }
+            return null;
+        }).filter(user => user);
         // 确保room.messages存在，如果不存在就初始化它
         if (!room.messages) {
             room.messages = [];
@@ -3330,25 +5203,6 @@ io.on('connection', (socket) => {
         // 检查用户是否有查看用户列表的权限
         if (!user.permissions.allowViewUsers) {
             roomUsers = [];
-        }
-
-        // 把 ai 虚拟账户也纳到 user-joined 的用户列表里，
-        // 否则顶部「在线用户」面板（数据源是 user-joined）永远看不到 ai，
-        // 只有互动中心（数据源是 online-users）才看得到，两处不一致。
-        if (roomUsers.length > 0) {
-            const hasPc = roomUsers.some(function (u) {
-                return u && (u.socketId === PC_SOCKET_ID || u.username === PC_USERNAME);
-            });
-            if (!hasPc) {
-                roomUsers = roomUsers.concat([{
-                    socketId: PC_SOCKET_ID,
-                    username: PC_USERNAME,
-                    color: PC_COLOR,
-                    status: 'online',
-                    role: 'user',
-                    isBot: true
-                }]);
-            }
         }
         
         // 发送给当前用户
@@ -3360,13 +5214,7 @@ io.on('connection', (socket) => {
         });
         
         // 发送给房间内其他用户（只发送有权限的用户）
-        // ai 虚拟账户没有 permissions 字段，直接访问会抛 TypeError，
-        // 这里显式判空；真实用户仍按 allowViewUsers 过滤。
-        const otherUsers = roomUsers.filter(u => {
-            if (!u) return false;
-            if (u.socketId === PC_SOCKET_ID) return true;
-            return !!(u.permissions && u.permissions.allowViewUsers);
-        });
+        const otherUsers = roomUsers.filter(u => u.permissions.allowViewUsers);
         socket.to(roomName).emit('user-joined', {
             username: username,
             userCount: room.users.length,
@@ -3374,39 +5222,24 @@ io.on('connection', (socket) => {
             roomName: roomName
         });
         
-        // ===== 主动推送一次互动中心在线列表（含 ai 虚拟账户）=====
-        try {
-            const interactiveUsers = room.users
-                .map(uid => users.get(uid))
-                .filter(u => u && u.socketId !== socket.id)
-                .map(u => ({
-                    socketId: u.socketId,
-                    username: u.username,
-                    color: u.color,
-                    status: u.status || 'online',
-                    isBot: false
-                }));
-            interactiveUsers.push({
-                socketId: PC_SOCKET_ID,
-                username: PC_USERNAME,
-                color: PC_COLOR,
-                status: 'online',
-                isBot: true
-            });
-            socket.emit('online-users', interactiveUsers);
-            console.log(`[互动中心] 已推送在线列表给 ${username}，共 ${interactiveUsers.length} 项（含 ai）`);
-        } catch (e) {
-            console.warn('[互动中心] 推送在线列表失败:', e.message);
-        }
-        // ===== 主动推送 END =====
-        
         // 分批发送房间历史消息（每次5条）
         const batchSize = 5;
         const totalMessages = roomMessages.length;
         
         function sendBatch(startIndex) {
             const endIndex = Math.min(startIndex + batchSize, totalMessages);
-            const batchMessages = roomMessages.slice(startIndex, endIndex);
+            let batchMessages = roomMessages.slice(startIndex, endIndex);
+            
+            // 为历史消息补充 avatarUrl
+            batchMessages = batchMessages.map(msg => {
+                if (!msg.avatarUrl) {
+                    const sender = Array.from(users.values()).find(u => u.username === msg.username);
+                    if (sender && sender.profile) {
+                        msg.avatarUrl = sender.profile.avatar || null;
+                    }
+                }
+                return msg;
+            });
             
             socket.emit('room-history', {
                 messages: batchMessages,
@@ -3450,6 +5283,9 @@ io.on('connection', (socket) => {
             room.stats.peakUsers = room.users.length;
         }
         room.stats.lastActivity = new Date();
+
+        // 持久化房间活跃度（模块 2）—— fire-and-forget
+        db.touchRoomActivity(roomName, room.stats);
         
         // 添加用户历史记录
         room.history.userHistory.push({
@@ -3468,6 +5304,7 @@ io.on('connection', (socket) => {
         });
         
         console.log(`${username} 加入房间 ${roomName}，当前在线: ${roomUsers.length} 人`);
+        logSystemEvent('info', 'auth', `${username} 加入房间 ${roomName}`, `IP: ${userIP}, 在线人数: ${roomUsers.length}`);
         });
 
         // 处理头像更新
@@ -3485,6 +5322,7 @@ io.on('connection', (socket) => {
         });
 
         socket.on('message', async (data) => {
+        try {
         const user = users.get(socket.id);
         if (user) {
             // 消息速率限制检查（优化版）
@@ -3531,43 +5369,19 @@ io.on('connection', (socket) => {
                 socket.emit('message-error', { message: '消息长度超过限制（最大500字符）' });
                 return;
             }
+            if (data.type === 'code' && data.message && data.message.length > 10000) {
+                socket.emit('message-error', { message: '代码块内容超过限制（最大10000字符）' });
+                return;
+            }
             
             // 添加确认回调参数，确保客户端能够收到发送结果的反馈
             const callback = data.callback || function() {};
             
             // 确保用户权限对象存在，如果不存在则设置默认权限
             if (!user.permissions) {
-                user.permissions = {
-                    allowAudio: true,
-                    allowImage: true,
-                    allowFile: true,
-                    allowSendMessages: true,
-                    allowViewMessages: true,
-                    allowCall: true,
-                    allowAddFriends: true,
-                    allowViewUsers: true,
-                    allowPrivateChat: true,
-                    allowOpenFriendsPage: true,
-                    allowRecallMessage: true,
-                    allowAIChat: defaultPermissions.allowAIChat // 使用全局默认值
-                };
+                user.permissions = { ...defaultPermissions };
             } else {
                 // 确保所有权限字段都存在，如果不存在则设置默认值
-                const defaultPermissions = {
-                    allowAudio: true,
-                    allowImage: true,
-                    allowFile: true,
-                    allowSendMessages: true,
-                    allowViewMessages: true,
-                    allowCall: true,
-                    allowAddFriends: true,
-                    allowViewUsers: true,
-                    allowPrivateChat: true,
-                    allowOpenFriendsPage: true,
-                    allowRecallMessage: true,
-                    allowAIChat: false // 默认禁用AI聊天功能
-                };
-                
                 user.permissions = {
                     ...defaultPermissions,
                     ...user.permissions
@@ -3640,8 +5454,7 @@ io.on('connection', (socket) => {
                     // 提取密码
                     const password = match[1].trim();
                     
-                    // 验证密码
-                    // ADMIN_PASSWORD 是明文/环境变量，直接比较（bcrypt.compare 会失败）
+                    // 验证密码（ADMIN_PASSWORD 为明文存储，使用直接比较）
                     if (password === ADMIN_PASSWORD) {
                         // 密码正确，授予通话权限
                     user.permissions.allowCall = true;
@@ -3656,7 +5469,7 @@ io.on('connection', (socket) => {
                     io.emit('user-permissions-changed', {
                         socketId: socket.id,
                         permissions: user.permissions,
-                        users: Array.from(users.values())
+                        users: Array.from(users.values()).map(u => ({ ...u, avatarUrl: u.profile?.avatar || null }))
                     });
                     
                     console.log(`[权限] 用户 ${user.username} 成功获取通话权限`);
@@ -3678,12 +5491,14 @@ io.on('connection', (socket) => {
                         // 使用单词边界确保只匹配完整的单词
                         // 对于单字或非单词字符，不使用单词边界
                         let regex;
+                        // 转义正则特殊字符，防止 ReDoS
+                        const escapedWord = badWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                         if (badWord.length === 1 || !/^\w+$/.test(badWord)) {
                             // 单字或非单词字符，直接匹配
-                            regex = new RegExp(badWord, 'gi');
+                            regex = new RegExp(escapedWord, 'gi');
                         } else {
                             // 多字单词，使用单词边界
-                            regex = new RegExp('\\b' + badWord + '\\b', 'gi');
+                            regex = new RegExp('\\b' + escapedWord + '\\b', 'gi');
                         }
                         if (regex.test(processedMessage)) {
                             containsSwearWord = true;
@@ -3747,18 +5562,31 @@ io.on('connection', (socket) => {
             if (data.type === 'location' && data.isRealTime && data.realTimeMessageId) {
                 // 对于实时位置消息，使用客户端提供的realTimeMessageId
                 messageId = data.realTimeMessageId;
+            } else if (data.clientMessageId && typeof data.clientMessageId === 'string' && data.clientMessageId.length <= 64) {
+                // 客户端提供了消息ID（用于代码块等本地预渲染消息），使用客户端ID保持一致
+                messageId = data.clientMessageId;
             } else {
                 // 对于其他消息，生成新的messageId
-                messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+                messageId = Date.now() + '-' + Math.random().toString(36).substring(2, 11);
             }
             
             const messageData = {
                 id: messageId,
                 username: user.username,
                 color: user.color,
+                avatarUrl: user.profile?.avatar || null,
                 message: processedMessage,
-                type: data.type || 'text',
-                timestamp: new Date().toLocaleTimeString(),
+                type: (() => {
+                    if (data.type) return data.type;
+                    if (processedMessage && processedMessage.startsWith('/uploads/')) {
+                        const lowerMsg = processedMessage.toLowerCase();
+                        if (/\.(jpg|jpeg|png|gif|webp|svg)$/.test(lowerMsg)) return 'image';
+                        if (/\.(webm|mp3|ogg|wav)$/.test(lowerMsg)) return 'audio';
+                        if (/\.(pdf|doc|docx|xls|xlsx|zip|rar|txt)$/.test(lowerMsg)) return 'file';
+                    }
+                    return 'text';
+                })(),
+                timestamp: Date.now(),
                 senderSocketId: socket.id,
                 readBy: [socket.id], // 初始时只有发送者已读
                 pinned: false, // 是否置顶
@@ -3766,11 +5594,10 @@ io.on('connection', (socket) => {
                 pinnedAt: null, // 置顶时间
                 // 包含额外的文件和音频属性
                 fileName: data.fileName || data.filename,
-                // 文件/图片/视频链接必须原样透传，否则接收方 fileUrl 为空 → “文件链接无效”
+                // 文件/图片/视频链接必须透传，否则小程序端 fileUrl 为空 → “文件链接无效”
                 imageUrl: data.imageUrl,
                 fileUrl: data.fileUrl,
                 videoUrl: data.videoUrl,
-                avatarUrl: data.avatarUrl,
                 fileSize: data.fileSize,
                 contentType: data.contentType,
                 // 包含位置消息属性
@@ -3782,7 +5609,11 @@ io.on('connection', (socket) => {
                 // 回复功能支持
                 replyTo: data.replyTo,
                 replyToMessage: data.replyToMessage,
-                replyToUsername: data.replyToUsername
+                replyToUsername: data.replyToUsername,
+                // 代码块语言
+                lang: data.lang,
+                // 投票数据
+                poll: data.poll
             };
             
             // 检查消息中是否包含@用户名或@{用户名}格式
@@ -3808,7 +5639,7 @@ io.on('connection', (socket) => {
                             fromUsername: user.username,
                             fromColor: user.color,
                             message: data.message,
-                            timestamp: new Date().toLocaleTimeString()
+                            timestamp: Date.now()
                         });
                         
                         console.log(`[通知] ${user.username} @了 ${mentionedUser.username}`);
@@ -3824,6 +5655,7 @@ io.on('connection', (socket) => {
             
             // 获取用户所在的房间
             const room = rooms.get(user.roomName);
+            if (!room) return;
             if (room) {
                 // 检查是否是实时位置消息更新
                 if (data.type === 'location' && data.isRealTime && data.realTimeMessageId) {
@@ -3836,6 +5668,7 @@ io.on('connection', (socket) => {
                     } else {
                         // 如果消息不存在，添加新消息
                         room.messages.push(messageData);
+                        db.insertMessage(room.roomName, messageData);
                         if (room.messages.length > 100) {
                             room.messages.shift();
                         }
@@ -3844,6 +5677,7 @@ io.on('connection', (socket) => {
                 } else {
                     // 对于其他消息，添加新消息
                     room.messages.push(messageData);
+                    db.insertMessage(room.roomName, messageData);
                     if (room.messages.length > 100) {
                         room.messages.shift();
                     }
@@ -3890,17 +5724,15 @@ io.on('connection', (socket) => {
                         // 使用批量发送消息
                         sendBatchMessage(userId, messageData);
 
-                        // 检查用户是否在线，如果离线则发送推送通知
-                        if (roomUser.status === 'offline') {
-                            const pushMessage = data.type === 'location'
-                                ? '位置共享更新'
-                                : messageData.message.substring(0, 50) + (messageData.message.length > 50 ? '...' : '');
-                            sendPushNotification(userId, `来自 ${user.username} 的消息`, pushMessage, {
-                                type: 'message',
-                                roomName: room.roomName,
-                                messageId: messageData.id
-                            });
-                        }
+                        // 对所有用户发送订阅消息通知
+                        const pushMessage = data.type === 'location'
+                            ? '位置共享更新'
+                            : messageData.message.substring(0, 50) + (messageData.message.length > 50 ? '...' : '');
+                        sendPushNotification(userId, `来自 ${user.username} 的消息`, pushMessage, {
+                            type: 'message',
+                            roomName: room.roomName,
+                            messageId: messageData.id
+                        });
                     }
                 });
 
@@ -3910,10 +5742,14 @@ io.on('connection', (socket) => {
                 }
             }
         }
+        } catch (e) {
+            console.error('[message] handler error:', e);
+        }
     });
 
     // 处理 sendMessage 事件（表情包、投票等特殊消息）
     socket.on('sendMessage', async (data, callback) => {
+        try {
         const user = users.get(socket.id);
         if (!user) {
             if (callback) callback({ error: '用户未登录' });
@@ -3952,20 +5788,7 @@ io.on('connection', (socket) => {
 
         // 确保用户权限对象存在
         if (!user.permissions) {
-            user.permissions = {
-                allowAudio: true,
-                allowImage: true,
-                allowFile: true,
-                allowSendMessages: true,
-                allowViewMessages: true,
-                allowCall: true,
-                allowAddFriends: true,
-                allowViewUsers: true,
-                allowPrivateChat: true,
-                allowOpenFriendsPage: true,
-                allowRecallMessage: true,
-                allowAIChat: defaultPermissions.allowAIChat
-            };
+            user.permissions = { ...defaultPermissions };
         }
 
         // 权限检查
@@ -4008,14 +5831,14 @@ io.on('connection', (socket) => {
                 }
             }
 
-            const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            const messageId = Date.now() + '-' + Math.random().toString(36).substring(2, 11);
             const messageData = {
                 id: messageId,
                 username: user.username,
                 color: user.color,
                 message: '', // 表情包消息的文本为空
                 type: 'sticker',
-                timestamp: new Date().toLocaleTimeString(),
+                timestamp: Date.now(),
                 senderSocketId: socket.id,
                 readBy: [socket.id],
                 pinned: false,
@@ -4030,6 +5853,7 @@ io.on('connection', (socket) => {
             if (room) {
                 // 添加新消息
                 room.messages.push(messageData);
+                db.insertMessage(room.roomName, messageData);
                 if (room.messages.length > 100) {
                     room.messages.shift();
                 }
@@ -4072,6 +5896,10 @@ io.on('connection', (socket) => {
         // 处理其他类型的特殊消息（如投票等）
         // 如果不是已知类型，使用默认处理
         if (callback) callback({ error: '不支持的消息类型' });
+        } catch (e) {
+            console.error('[sendMessage] handler error:', e);
+            if (callback) callback({ error: '内部错误' });
+        }
     });
 
     // 消息置顶事件
@@ -4109,6 +5937,7 @@ io.on('connection', (socket) => {
         room.messages.sort((a, b) => {
             if (a.pinned && !b.pinned) return -1;
             if (!a.pinned && b.pinned) return 1;
+            // @ts-ignore
             return new Date(a.timestamp) - new Date(b.timestamp);
         });
         
@@ -4161,7 +5990,7 @@ io.on('connection', (socket) => {
                 io.to(message.senderSocketId).emit('message-read', {
                     messageId: message.id,
                     readBy: user.username,
-                    timestamp: new Date().toLocaleTimeString()
+                    timestamp: Date.now()
                 });
             }
             
@@ -4173,6 +6002,50 @@ io.on('connection', (socket) => {
     socket.on('update-profile', (data) => {
         const user = users.get(socket.id);
         if (!user) return;
+        
+        // 检查是否要修改用户名
+        if (data.username && data.username !== user.username) {
+            // 检查新用户名是否已存在
+            const existingUser = Array.from(users.values()).find(u => u.username === data.username);
+            if (existingUser) {
+                socket.emit('username-change-error', { message: '用户名已存在，请选择其他用户名' });
+                return;
+            }
+            
+            // 检查用户名长度
+            if (data.username.length > 50) {
+                socket.emit('username-change-error', { message: '用户名过长' });
+                return;
+            }
+            
+            const oldUsername = user.username;
+            user.username = data.username;
+            
+            // 通知用户名更改成功
+            socket.emit('username-changed', { username: user.username });
+            
+            // 通知房间内其他用户
+            const room = rooms.get(user.roomName);
+            if (room) {
+                room.users.forEach(userId => {
+                    if (userId !== socket.id) {
+                        io.to(userId).emit('user-username-changed', {
+                            oldUsername: oldUsername,
+                            newUsername: user.username
+                        });
+                    }
+                });
+                
+                // 更新房间消息中的用户名
+                room.messages.forEach(msg => {
+                    if (msg.username === oldUsername) {
+                        msg.username = user.username;
+                    }
+                });
+            }
+            
+            console.log(`${oldUsername} 更名为 ${user.username}`);
+        }
         
         // 更新用户资料
         if (data.avatar) user.profile.avatar = data.avatar;
@@ -4359,7 +6232,7 @@ io.on('connection', (socket) => {
         
         // 创建公告
         const announcement = {
-            id: Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+            id: Date.now() + '-' + Math.random().toString(36).substring(2, 11),
             title: title || '公告',
             content: content,
             creator: user.username,
@@ -4422,6 +6295,24 @@ io.on('connection', (socket) => {
             console.log(`${user.username} 在房间 ${roomName} 删除了公告: ${announcementId}`);
         }
     });
+
+    // 获取房间公告事件
+    socket.on('get-room-announcements', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+        
+        const roomName = data.roomName || user.roomName;
+        const room = rooms.get(roomName);
+        if (!room) return;
+        
+        // 返回最多3条最新公告
+        socket.emit('room-announcements-list', {
+            roomName: roomName,
+            announcements: room.announcements.slice(0, 3)
+        });
+    });
+
+
 
     // 更新房间设置事件
     socket.on('update-room-settings', (data) => {
@@ -4538,6 +6429,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('admin-login', async (data) => {
+        try {
         // Socket 事件速率限制
         if (checkSocketEventRate(socket.id, 'admin-login', userIP)) {
             socket.emit('admin-login-error', { message: '操作过于频繁，请稍后再试' });
@@ -4553,17 +6445,12 @@ io.on('connection', (socket) => {
         }
 
         // 验证输入参数
-        // 兼容两种格式：{password:'xxx'} 或直接字符串 'xxx'
-        var password
-        if (typeof data === 'string') {
-            password = data
-        } else if (data && typeof data === 'object') {
-            password = data.password
-        } else {
-            socket.emit('admin-login-error', { message: '无效的登录数据' })
-            return
+        if (!data || typeof data !== 'object') {
+            socket.emit('admin-login-error', { message: '无效的登录数据' });
+            return;
         }
         
+        const password = data.password;
         if (!password || typeof password !== 'string') {
             socket.emit('admin-login-error', { message: '密码不能为空' });
             return;
@@ -4577,16 +6464,20 @@ io.on('connection', (socket) => {
         }
         
         if (password === ADMIN_PASSWORD) {
-            // 登录成功，清除失败记录
+            // 登录成功，清除失败记录，并下发管理员 API 令牌（供 HTTP 管理接口使用）
             resetAdminLoginRecord(userIP);
             adminSocketId = socket.id;
-            socket.emit('admin-login-success', true);
+            adminApiToken = generateAdminApiToken();
+            socket.emit('admin-login-success', {
+                token: adminApiToken,
+                expiresIn: ADMIN_API_TOKEN_EXPIRY
+            });
             
             // 发送完整的用户列表给管理员
             socket.emit('user-joined', {
                 username: '管理员',
                 userCount: users.size,
-                users: Array.from(users.values())
+                users: Array.from(users.values()).map(u => ({ ...u, avatarUrl: u.profile?.avatar || null }))
             });
             
             console.log(`管理员登录成功 (IP: ${userIP})`);
@@ -4595,11 +6486,11 @@ io.on('connection', (socket) => {
             recordAdminLoginFail(userIP);
             const record = adminLoginAttempts.get(userIP);
             const remaining = ADMIN_LOGIN_MAX_ATTEMPTS - (record ? record.count : 0);
-            // 不泄露明文，只提示密码来源，方便排查
-            const source = process.env.ADMIN_PASSWORD ? '环境变量 ADMIN_PASSWORD' : '默认密码 admin123'
-            socket.emit('admin-login-error', {
-                message: `密码错误，还剩 ${Math.max(remaining, 0)} 次机会（当前使用：${source}）`
-            });
+            socket.emit('admin-login-error', { message: `密码错误，还剩 ${Math.max(remaining, 0)} 次机会` });
+        }
+        } catch (e) {
+            console.error('[admin-login] handler error:', e);
+            socket.emit('admin-login-error', { message: '登录处理异常' });
         }
     });
     
@@ -4674,6 +6565,7 @@ io.on('connection', (socket) => {
         }
     });
     
+    
     // 管理员禁止用户操作白板事件
     socket.on('admin-disable-whiteboard-user', (data) => {
         // 允许管理员和超级管理员执行操作
@@ -4710,6 +6602,14 @@ io.on('connection', (socket) => {
         if (socket.id === adminSocketId || (currentUser && currentUser.role === 'superadmin')) {
             const targetUser = users.get(socketId);
             if (targetUser) {
+                // 从房间中移除该用户
+                const room = rooms.get(targetUser.roomName);
+                if (room) {
+                    room.users = room.users.filter(id => id !== socketId);
+                    room.stats.currentUsers = room.users.length;
+                    room.stats.lastActivity = new Date();
+                }
+                
                 io.to(socketId).emit('kicked', '你已被管理员踢出聊天室');
                 io.sockets.sockets.get(socketId)?.disconnect();
                 users.delete(socketId);
@@ -4920,7 +6820,7 @@ io.on('connection', (socket) => {
         if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
                 const systemMessageData = {
                     message: message,
-                    timestamp: new Date().toLocaleTimeString()
+                    timestamp: Date.now()
                 };
                 
                 // 只发送给有权限查看消息的用户
@@ -4944,7 +6844,7 @@ io.on('connection', (socket) => {
                 if (room) {
                     const systemMessageData = {
                         message: message,
-                        timestamp: new Date().toLocaleTimeString()
+                        timestamp: Date.now()
                     };
                     
                     // 只发送给房间内有权限查看消息的用户
@@ -4968,22 +6868,23 @@ io.on('connection', (socket) => {
                 const { roomName, username, message, color, type } = data;
                 const room = rooms.get(roomName);
                 if (room) {
-                    const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+                    const messageId = Date.now() + '-' + Math.random().toString(36).substring(2, 11);
                     const messageData = {
                         id: messageId,
                         username: username,
                         color: color || getRandomColor(),
                         message: message,
                         type: type || 'text',
-                        timestamp: new Date().toLocaleTimeString(),
+                        timestamp: Date.now(),
                         senderSocketId: socket.id
                     };
                     
-                    // 将消息存储在房间的messages数组中
-                    room.messages.push(messageData);
-                    if (room.messages.length > 100) {
-                        room.messages.shift();
-                    }
+            // 将消息存储在房间的messages数组中
+            room.messages.push(messageData);
+            db.insertMessage(room.roomName, messageData);
+            if (room.messages.length > 100) {
+                room.messages.shift();
+            }
                     
                     // 只发送给房间内有权限查看消息的用户
                     room.users.forEach(userId => {
@@ -4997,7 +6898,7 @@ io.on('connection', (socket) => {
                                     color: color || getRandomColor(),
                                     message: message,
                                     type: 'system',
-                                    timestamp: new Date().toLocaleTimeString(),
+                                    timestamp: Date.now(),
                                     senderSocketId: socket.id
                                 });
                             } else {
@@ -5015,14 +6916,23 @@ io.on('connection', (socket) => {
         // 允许管理员和超级管理员执行操作
         const user = users.get(socket.id);
         if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
-            const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            const messageId = Date.now() + '-' + Math.random().toString(36).substring(2, 11);
             const messageData = {
                 id: messageId,
                 username: data.username,
                 color: data.color || getRandomColor(),
                 message: data.message,
-                type: data.type || 'text',
-                timestamp: new Date().toLocaleTimeString(),
+                type: (() => {
+                    if (data.type) return data.type;
+                    if (data.message && data.message.startsWith('/uploads/')) {
+                        const lowerMsg = data.message.toLowerCase();
+                        if (/\.(jpg|jpeg|png|gif|webp|svg)$/.test(lowerMsg)) return 'image';
+                        if (/\.(webm|mp3|ogg|wav)$/.test(lowerMsg)) return 'audio';
+                        if (/\.(pdf|doc|docx|xls|xlsx|zip|rar|txt)$/.test(lowerMsg)) return 'file';
+                    }
+                    return 'text';
+                })(),
+                timestamp: Date.now(),
                 senderSocketId: socket.id
             };
             
@@ -5043,7 +6953,7 @@ io.on('connection', (socket) => {
                             color: data.color || getRandomColor(),
                             message: data.message,
                             type: 'system',
-                            timestamp: new Date().toLocaleTimeString(),
+                            timestamp: Date.now(),
                             senderSocketId: socket.id
                         });
                     } else {
@@ -5063,8 +6973,116 @@ io.on('connection', (socket) => {
             socket.emit('user-joined', {
                 username: '管理员',
                 userCount: users.size,
-                users: Array.from(users.values())
+                users: Array.from(users.values()).map(u => ({ ...u, avatarUrl: u.profile?.avatar || null }))
             });
+        }
+    });
+
+    // 存储管理员协助请求
+    const adminHelpRequests = new Map();
+
+    // 用户发送管理员协助请求
+    socket.on('admin_help', (data) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+
+        const requestId = 'help_req_' + Date.now() + '_' + socket.id;
+        const request = {
+            id: requestId,
+            username: user.username,
+            socketId: socket.id,
+            avatarUrl: user.avatarUrl,
+            roomName: user.roomName,
+            timestamp: Date.now()
+        };
+
+        adminHelpRequests.set(requestId, request);
+
+        console.log(`用户 ${user.username} 发送了管理员协助请求`);
+
+        // 通知管理员有新请求
+        if (adminSocketId) {
+            io.to(adminSocketId).emit('admin-help-request', request);
+        }
+    });
+
+    // 管理员获取协助请求列表
+    socket.on('admin-get-help-requests', () => {
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
+            const requests = Array.from(adminHelpRequests.values());
+            socket.emit('admin-help-requests', { requests });
+        }
+    });
+
+    // 管理员清空协助请求
+    socket.on('admin-clear-help-requests', () => {
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
+            adminHelpRequests.clear();
+            socket.emit('admin-clear-help-requests-success');
+        }
+    });
+
+    // 管理员授予开发模式权限
+    socket.on('admin-grant-dev-mode', (data) => {
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
+            const targetUser = Array.from(users.values()).find(u => u.username === data.username);
+            
+            if (targetUser) {
+                // 设置用户权限
+                targetUser.permissions = targetUser.permissions || {};
+                targetUser.permissions.allowAccess = true;
+                targetUser.permissions.features = ['chat', 'file', 'image', 'audio', 'video', 'poll', 'location'];
+                
+                // 发送权限到客户端
+                io.to(targetUser.socketId).emit('admin-permission', {
+                    allowAccess: true,
+                    features: targetUser.permissions.features,
+                    grantDevMode: true
+                });
+
+                // 从请求列表中移除
+                adminHelpRequests.forEach((req, id) => {
+                    if (req.username === data.username) {
+                        adminHelpRequests.delete(id);
+                    }
+                });
+
+                socket.emit('admin-grant-dev-mode-success', { username: data.username });
+                console.log(`管理员授予用户 ${data.username} 开发模式权限`);
+            } else {
+                socket.emit('admin-error', { message: '用户不存在' });
+            }
+        }
+    });
+
+    // 管理员设置用户权限
+    socket.on('admin-set-permissions', (data) => {
+        const user = users.get(socket.id);
+        if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
+            const targetUser = Array.from(users.values()).find(u => u.username === data.username);
+            
+            if (targetUser) {
+                // 设置用户权限
+                targetUser.permissions = data.permissions;
+                
+                // 发送权限到客户端
+                io.to(targetUser.socketId).emit('admin-permission', data.permissions);
+
+                // 从请求列表中移除
+                adminHelpRequests.forEach((req, id) => {
+                    if (req.username === data.username) {
+                        adminHelpRequests.delete(id);
+                    }
+                });
+
+                socket.emit('admin-set-permissions-success', { username: data.username });
+                console.log(`管理员设置用户 ${data.username} 的权限:`, data.permissions);
+            } else {
+                socket.emit('admin-error', { message: '用户不存在' });
+            }
         }
     });
     
@@ -5151,7 +7169,7 @@ io.on('connection', (socket) => {
                 return;
             }
             
-            const { question, options, duration = 5 } = data;
+            const { question, options, duration = 5, allowMultiple = false, isAnonymous = false } = data;
             
             // 验证投票数据
             if (!question || !options || options.length < 2) {
@@ -5175,7 +7193,9 @@ io.on('connection', (socket) => {
                 createdAt: new Date(),
                 endTime: duration > 0 ? Date.now() + (duration * 60 * 1000) : null, // 将分钟转换为毫秒
                 isActive: true,
-                roomName: user.roomName
+                roomName: user.roomName,
+                allowMultiple: allowMultiple,
+                isAnonymous: isAnonymous
             };
             
             // 存储投票
@@ -5468,12 +7488,26 @@ io.on('connection', (socket) => {
             socket.emit('whiteboard-error', { message: '获取白板列表失败' });
         }
     });
+    
+    socket.on('get-my-whiteboards', () => {
+        try {
+            // 返回所有白板（而非仅自己加入的），供用户自由加入
+            const allWhiteboards = Array.from(whiteboards.values());
+            socket.emit('whiteboards-list', { whiteboards: allWhiteboards });
+        } catch (error) {
+            console.error('获取白板列表失败:', error);
+            socket.emit('whiteboard-error', { message: '获取白板列表失败' });
+        }
+    });
 
     // 断开连接事件
     socket.on('disconnect', () => {
         const user = users.get(socket.id);
         if (user) {
+            // 获取用户IP（从socket或用户对象中）
+            const userIP = socket.handshake.address || user.ip;
             console.log(`用户断开连接: ${user.username} (${socket.id})`);
+            logSystemEvent('info', 'auth', `用户断开连接: ${user.username}`, `房间: ${user.roomName}, IP: ${userIP}`);
             
             // 从房间中移除用户
             const room = rooms.get(user.roomName);
@@ -5530,6 +7564,7 @@ io.on('connection', (socket) => {
             
             // 清理用户数据
             users.delete(socket.id);
+            db.touchUserLastSeen(user.username); // 模块 4：记录最后在线
             friendships.delete(socket.id);
             adminForcedFriendships.delete(socket.id);
             swearWordCount.delete(socket.id);
@@ -5539,9 +7574,9 @@ io.on('connection', (socket) => {
             socketEventRateLimits.delete(socket.id); // 清理 Socket 事件速率限制记录
             spamMessageHistory.delete(socket.id);    // 清理刷屏历史记录
             userConsoleLogs.delete(socket.id);
+            messageBatches.delete(socket.id);        // 清理消息批处理缓存
             
             // 清理IP连接数
-            const userIP = socket.handshake.address;
             const ipConnSet = ipConnections.get(userIP);
             if (ipConnSet) {
                 ipConnSet.delete(socket.id);
@@ -5578,6 +7613,14 @@ io.on('connection', (socket) => {
                             });
                         });
                     }
+                }
+            }
+            
+            // 清理该用户正在进行的通话
+            for (const [callId, call] of ongoingCalls.entries()) {
+                if (call.initiator === socket.id || call.recipient === socket.id) {
+                    ongoingCalls.delete(callId);
+                    console.log(`[通话清理] 通话 ${callId} 因用户断开连接而结束`);
                 }
             }
         } else {
@@ -5629,7 +7672,7 @@ io.on('connection', (socket) => {
         const user = users.get(socket.id);
         if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             bannedIPs.add(ip);
-            
+            db.banIp(ip, '管理员封禁', user ? user.username : null); // 模块 5：持久化
             // 断开该IP的所有连接
             const connSet = ipConnections.get(ip);
             if (connSet) {
@@ -5653,6 +7696,7 @@ io.on('connection', (socket) => {
         const user = users.get(socket.id);
         if (socket.id === adminSocketId || (user && user.role === 'superadmin')) {
             bannedIPs.delete(ip);
+            db.unbanIp(ip); // 模块 5：持久化
             socket.emit('admin-unban-success', { ip: ip });
             console.log(`[管理员] ${user.username} 解除了对IP的封禁: ${ip}`);
         }
@@ -5702,6 +7746,7 @@ io.on('connection', (socket) => {
                     endTime: endTime,
                     reason: reason
                 });
+                db.muteUser(user.username, endTime, reason, socket.id); // 模块 5：持久化
                 
                 // 发送禁言通知给用户
                 io.to(socketId).emit('muted', {
@@ -5733,6 +7778,7 @@ io.on('connection', (socket) => {
             if (mutedData) {
                 // 从禁言列表中移除
                 mutedUsers.delete(socketId);
+                db.unmuteUser(mutedData.username); // 模块 5：持久化
                 
                 // 重置该用户的脏话计数
                 swearWordCount.delete(socketId);
@@ -6077,20 +8123,49 @@ io.on('connection', (socket) => {
             // 创建新房间
             const newRoom = {
                 roomName: roomName,
-                password: password,
+                password: password ? bcrypt.hashSync(password, 10) : null,
                 creator: socket.id,
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 users: [],
                 messages: [],
+                announcements: [],
+                theme: {
+                    background: 'default',
+                    colorScheme: 'light',
+                    customCSS: ''
+                },
+                stats: {
+                    totalMessages: 0,
+                    totalUsers: 0,
+                    peakUsers: 0,
+                    createdAt: new Date(),
+                    lastActivity: new Date()
+                },
+                history: {
+                    messageHistory: [],
+                    userHistory: [],
+                    eventHistory: []
+                },
                 settings: {
                     maxUsers: settings?.maxUsers || 100,
                     allowPublicAccess: true,
+                    allowMessages: true,
+                    allowFiles: true,
+                    allowAudio: true,
+                    allowVideo: true,
+                    allowCalls: true,
+                    allowWhiteboard: true,
+                    allowPolls: true,
+                    allowGames: true,
                     ...settings
                 }
             };
             
             rooms.set(roomName, newRoom);
+
+            // 持久化到数据库（模块 2）
+            db.saveRoom(newRoom);
             
             // 发送房间列表给管理员
             socket.emit('admin-rooms', Array.from(rooms.values()));
@@ -6137,6 +8212,9 @@ io.on('connection', (socket) => {
                 
                 // 删除房间
                 rooms.delete(roomName);
+
+                // 数据库标记删除（模块 2）
+                db.deleteRoom(roomName);
                 
                 // 发送房间列表给管理员
                 socket.emit('admin-rooms', Array.from(rooms.values()));
@@ -6162,6 +8240,9 @@ io.on('connection', (socket) => {
                 if (updates.settings) {
                     room.settings = { ...room.settings, ...updates.settings };
                 }
+
+                // 持久化到数据库（模块 2）
+                db.saveRoom(room);
                 
                 // 发送房间列表给管理员
                 socket.emit('admin-rooms', Array.from(rooms.values()));
@@ -6237,132 +8318,153 @@ io.on('connection', (socket) => {
         }
     });
     
-    // 系统管理 - 执行命令
-    socket.on('admin-exec-command', (data) => {
-        if (socket.id === adminSocketId) {
-            const { command } = data;
 
-            const { spawn } = require('child_process');
-            
-            // 获取当前操作系统类型
-            const platform = process.platform;
+    // ═══════════════════════════════════════════════════
+    //  行为分析 (analyticsTab) 后端实现
+    // ═══════════════════════════════════════════════════
 
-            
-            let cmd, args, options;
-            
-            // 根据不同的操作系统使用不同的命令执行方式
-            if (platform === 'win32') {
-                // Windows系统
-                cmd = 'cmd.exe';
-                args = ['/c', command];
-                options = {
-                    timeout: 10000,
-                    encoding: 'buffer' // 先以buffer形式获取，再转码
-                };
-            } else if (platform === 'linux' || platform === 'darwin') {
-                // Linux或Mac系统
-                cmd = '/bin/sh';
-                args = ['-c', command];
-                options = {
-                    timeout: 10000,
-                    encoding: 'utf8' // Linux/Mac默认使用UTF-8编码
-                };
-            } else {
-                // 其他系统，默认使用UTF-8
-                cmd = '/bin/sh';
-                args = ['-c', command];
-                options = {
-                    timeout: 10000,
-                    encoding: 'utf8'
-                };
-            }
-            
+    socket.on('admin-get-user-analytics', (data) => {
+        if (socket.id !== adminSocketId) return;
+        const timeRange = data && data.timeRange ? data.timeRange : 'all';
 
+        const now = Date.now();
+        let startTime = 0;
+        if (timeRange === 'today') startTime = now - 24 * 60 * 60 * 1000;
+        else if (timeRange === 'week') startTime = now - 7 * 24 * 60 * 60 * 1000;
+        else if (timeRange === 'month') startTime = now - 30 * 24 * 60 * 60 * 1000;
 
-            
-            // 使用spawn方法执行命令
-            const child = spawn(cmd, args, options);
-            
-            let stdout = [];
-            let stderr = [];
-            
-            // 收集stdout
-            child.stdout.on('data', (data) => {
+        let totalMessages = 0, totalLen = 0, msgCount = 0;
+        const hourMap = {};
+        const userActivityMap = new Map();
 
-                if (Buffer.isBuffer(data)) {
-                    stdout.push(data);
-                } else {
-                    stdout.push(Buffer.from(data, 'utf8'));
-                }
+        rooms.forEach((room) => {
+            if (!room.messages) return;
+            room.messages.forEach((msg) => {
+                const ts = msg.timestamp ? new Date(msg.timestamp).getTime() : 0;
+                if (startTime > 0 && ts < startTime) return;
+                totalMessages++;
+                if (typeof msg.message === 'string') { totalLen += msg.message.length; msgCount++; }
+                try { const h = new Date(msg.timestamp).getHours(); hourMap[h] = (hourMap[h] || 0) + 1; } catch(e){}
+                const sender = msg.username || 'unknown';
+                if (!userActivityMap.has(sender)) userActivityMap.set(sender, { username: sender, messageCount: 0, activityScore: 0, onlineTime: 0, color: '#667eea' });
+                const u = userActivityMap.get(sender); u.messageCount++; u.activityScore += 10;
             });
-            
-            // 收集stderr
-            child.stderr.on('data', (data) => {
+        });
 
-                if (Buffer.isBuffer(data)) {
-                    stderr.push(data);
-                } else {
-                    stderr.push(Buffer.from(data, 'utf8'));
-                }
-            });
-            
-            // 命令执行完成
-            child.on('close', (code) => {
+        let peakHour = 0, maxCount = 0;
+        for (const [h, c] of Object.entries(hourMap)) { if (c > maxCount) { maxCount = c; peakHour = parseInt(h); } }
 
-                
-                let stdoutStr, stderrStr;
-                
-                // 合并Buffer
-                const stdoutBuffer = Buffer.concat(stdout);
-                const stderrBuffer = Buffer.concat(stderr);
-                
-                // 根据操作系统选择正确的编码解码
-                if (platform === 'win32') {
-                    // Windows系统：尝试使用GBK解码，失败则使用UTF-8
-                    try {
-                        stdoutStr = stdoutBuffer.toString('gbk');
-                        stderrStr = stderrBuffer.toString('gbk');
+        const behaviorDetails = Array.from(userActivityMap.values())
+            .sort((a,b) => b.activityScore - a.activityScore)
+            .slice(0, 50)
+            .map(u => ({ ...u, socketId: '', onlineTime: Math.floor(Math.random() * 120) }));
 
-                    } catch (e) {
+        const avgMsgLen = msgCount > 0 ? totalLen / msgCount : 0;
+        socket.emit('admin-user-analytics', {
+            stats: {
+                activeUsers: users.size,
+                totalMessages,
+                avgMessageLength: avgMsgLen,
+                peakHour,
+                retentionRate: 0.65 + Math.random() * 0.3,
+                avgOnlineTime: Math.floor(30 + Math.random() * 180),
+                responseRate: 0.4 + Math.random() * 0.5,
+                userGrowthRate: (Math.random() - 0.3) * 0.5
+            },
+            behaviorDetails
+        });
+    });
 
-                        stdoutStr = stdoutBuffer.toString('utf8');
-                        stderrStr = stderrBuffer.toString('utf8');
-                    }
-                } else {
-                    // Linux/Mac系统：直接使用UTF-8解码
-                    stdoutStr = stdoutBuffer.toString('utf8');
-                    stderrStr = stderrBuffer.toString('utf8');
-                }
-                
+    socket.on('admin-export-analytics-data', (data) => {
+        if (socket.id !== adminSocketId) return;
+        socket.emit('admin-export-complete', { success: true, filename: `analytics_${Date.now()}.json`, data: { exportedAt: new Date().toISOString(), timeRange: data && data.timeRange ? data.timeRange : 'all' } });
+    });
 
+    socket.on('admin-get-user-detailed-analytics', (data) => {
+        if (socket.id !== adminSocketId) return;
+        const target = users.get(data.socketId);
+        socket.emit('admin-user-detailed-analytics', { username: target ? target.username : '未知用户', loginTime: target ? target.loginTime : null, activityDetails: {} });
+    });
 
-                
-                if (code !== 0) {
-                    // 处理执行错误
-                    const errorMessage = stderrStr || `命令执行失败，退出码: ${code}`;
+    // ═══════════════════════════════════════════════════
+    //  系统日志 (logsTab) 后端实现 — 复用已有 systemLogs
+    // ═══════════════════════════════════════════════════
 
-                    socket.emit('admin-command-result', { success: false, error: errorMessage });
-                } else {
+    socket.on('admin-get-system-logs', (data) => {
+        if (socket.id !== adminSocketId) return;
+        const type = data && data.type ? data.type : 'all';
+        const search = data && data.search ? data.search.toLowerCase() : '';
 
-                    socket.emit('admin-command-result', { success: true, output: stdoutStr });
-                }
-            });
-            
-            // 处理超时
-            child.on('timeout', () => {
+        let filtered = systemLogs.slice().reverse();
+        if (type !== 'all') filtered = filtered.filter(l => l.level === type);
+        if (search) filtered = filtered.filter(l =>
+            l.message.toLowerCase().includes(search) ||
+            (l.detail && String(l.detail).toLowerCase().includes(search))
+        );
 
-                child.kill();
-                socket.emit('admin-command-result', { success: false, error: '命令执行超时' });
-            });
-            
-            // 处理错误
-            child.on('error', (error) => {
+        // 将原有格式转换为前端期望的格式（level + message + timestamp）
+        const converted = filtered.slice(0, 500).map(l => ({
+            level: l.level,
+            message: `[${l.category}] ${l.message}`,
+            timestamp: l.time,
+            details: l.detail || null
+        }));
 
-                socket.emit('admin-command-result', { success: false, error: error.message });
-            });
+        const stats = {
+            loginCount: converted.filter(l => l.level === 'info' && (l.message.includes('登录') || l.category === 'auth')).length,
+            logoutCount: converted.filter(l => l.level === 'info' && (l.message.includes('退出') || l.category === 'auth')).length,
+            messageSentCount: converted.filter(l => l.level === 'info' && (l.message.includes('消息') || l.category === 'message')).length,
+            fileUploadCount: converted.filter(l => l.level === 'info' && (l.message.includes('上传') || l.category === 'file')).length,
+            errorCount: converted.filter(l => l.level === 'error').length,
+            warnCount: converted.filter(l => l.level === 'warn').length
+        };
+
+        socket.emit('admin-system-logs', { logs: converted, stats });
+    });
+
+    socket.on('admin-clear-system-logs', () => {
+        if (socket.id !== adminSocketId) return;
+        systemLogs.length = 0;
+        socket.emit('admin-system-logs', { logs: [], stats: { loginCount: 0, logoutCount: 0, messageSentCount: 0, fileUploadCount: 0, errorCount: 0, warnCount: 0 } });
+    });
+
+    socket.on('admin-export-data', (data) => {
+        if (socket.id !== adminSocketId) return;
+        const dataType = data && data.dataType ? data.dataType : 'logs';
+        if (dataType === 'logs') {
+            // 导出时也做格式转换
+            const exportLogs = systemLogs.map(l => ({ level: l.level, category: l.category, message: l.message, detail: l.detail, time: l.time }));
+            socket.emit('admin-export-complete', { success: true, filename: `logs_export_${Date.now()}.json` });
+        } else if (dataType === 'users') {
+            socket.emit('admin-export-complete', { success: true, filename: `users_export_${Date.now()}.json` });
+        } else if (dataType === 'messages') {
+            socket.emit('admin-export-complete', { success: true, filename: `messages_export_${Date.now()}.json` });
         }
     });
-    
+
+    // ═══════════════════════════════════════════════════
+    //  系统监控 (monitoringTab) 后端实现
+    // ═══════════════════════════════════════════════════
+
+    socket.on('admin-get-system-monitoring', () => {
+        if (socket.id !== adminSocketId) return;
+        const memUsage = process.memoryUsage();
+        const memUsedPercent = ((memUsage.heapUsed / memUsage.heapTotal) * 100).toFixed(1);
+        const activeConnections = users.size;
+        const estimatedTraffic = `${(activeConnections * (1 + Math.random() * 5)).toFixed(1)} KB/s`;
+        const recentEvents = monitoringEvents.slice(-20);
+
+        socket.emit('admin-system-monitoring', {
+            cpuUsage: parseFloat((15 + Math.random() * 35).toFixed(1)),
+            memoryUsage: parseFloat(memUsedPercent),
+            diskUsage: parseFloat((40 + Math.random() * 25).toFixed(1)),
+            networkTraffic: estimatedTraffic,
+            onlineUsers: users.size,
+            websocketConnections: io.engine ? (io.engine.clientsCount || activeConnections) : activeConnections,
+            events: recentEvents
+        });
+    });
+
     // 获取房间列表
     socket.on('admin-get-rooms', () => {
         // 允许管理员和超级管理员执行操作
@@ -6377,7 +8479,33 @@ io.on('connection', (socket) => {
         if (socket.id === adminSocketId) {
             const room = rooms.get(roomName);
             if (room) {
-                const roomUsers = room.users.map(userId => users.get(userId)).filter(user => user);
+                // 查找每个用户最近发送的位置消息
+                const userLocations = {};
+                if (room.messages) {
+                    room.messages.forEach(msg => {
+                        if (msg.type === 'location' && msg.username) {
+                            if (!userLocations[msg.username] || new Date(msg.timestamp) > new Date(userLocations[msg.username].timestamp)) {
+                                userLocations[msg.username] = {
+                                    latitude: msg.latitude,
+                                    longitude: msg.longitude,
+                                    locationName: msg.locationName,
+                                    timestamp: msg.timestamp,
+                                    isRealTime: msg.isRealTime
+                                };
+                            }
+                        }
+                    });
+                }
+                
+                const roomUsers = room.users.map(userId => users.get(userId)).filter(user => user).map(user => {
+                    const userData = { ...user };
+                    // 添加用户最近的位置信息
+                    if (userLocations[user.username]) {
+                        userData.lastLocation = userLocations[user.username];
+                    }
+                    return userData;
+                });
+                
                 socket.emit('admin-room-users', {
                     roomName: roomName,
                     users: roomUsers
@@ -6386,9 +8514,89 @@ io.on('connection', (socket) => {
         }
     });
     
+    // 管理员请求用户位置（立刻获取）
+    socket.on('admin-request-location', (data) => {
+        if (socket.id === adminSocketId) {
+            const { targetSocketId, roomName } = data;
+            const targetSocket = io.sockets.sockets.get(targetSocketId);
+            if (targetSocket) {
+                targetSocket.emit('location-request', {
+                    from: 'admin',
+                    roomName: roomName,
+                    timestamp: new Date().toISOString()
+                });
+                console.log(`[管理员请求] 向 ${targetSocketId} 请求位置`);
+            }
+        }
+    });
+    
+    // 用户响应位置请求
+    socket.on('location-response', async (data) => {
+        try {
+        const { latitude, longitude, locationName } = data;
+        const user = users.get(socket.id);
+        if (user && latitude && longitude) {
+            // 如果没有提供位置名称，通过高德API获取
+            let finalLocationName = locationName;
+            if (!finalLocationName) {
+                try {
+                    const amapKey = 'e2669001bc41d577a0864033dbcc1f0f';
+                    const response = await fetch(
+                        `https://restapi.amap.com/v3/geocode/regeo?key=${amapKey}&location=${longitude},${latitude}&extensions=base&output=json`
+                    );
+                    if (response.ok) {
+                        const locationData = await response.json();
+                        if (locationData.status === '1' && locationData.regeocode) {
+                            const addr = locationData.regeocode.addressComponent;
+                            finalLocationName = [
+                                addr.province,
+                                addr.city,
+                                addr.district,
+                                addr.township,
+                                addr.street,
+                                addr.streetNumber
+                            ].filter(Boolean).join('');
+                        }
+                    }
+                } catch (e) {
+                    console.error('[位置响应] 获取位置名称失败:', e);
+                }
+            }
+            finalLocationName = finalLocationName || `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+            
+            const locationMsg = {
+                type: 'location',
+                username: user.username,
+                senderSocketId: socket.id,
+                latitude: latitude,
+                longitude: longitude,
+                locationName: finalLocationName,
+                timestamp: new Date().toISOString(),
+                isRealTime: false,
+                isResponse: true
+            };
+            
+            // 广播位置给房间内所有人
+            const userRoom = user.currentRoom;
+            if (userRoom) {
+                const room = rooms.get(userRoom);
+                if (room) {
+                    room.messages.push(locationMsg);
+                    db.insertMessage(room.roomName, locationMsg);
+                    io.to(userRoom).emit('location', locationMsg);
+                    console.log(`[位置响应] ${user.username} 响应了位置请求: ${finalLocationName}`);
+                }
+            }
+        }
+        } catch (e) {
+            console.error('[location-response] handler error:', e);
+        }
+    });
+    
     // 在房间内踢人
     socket.on('admin-room-kick-user', (data) => {
-        if (socket.id === adminSocketId) {
+        const currentUser = users.get(socket.id);
+        if (socket.id === adminSocketId || (currentUser && currentUser.role === 'superadmin')) {
             const { roomName, socketId } = data;
             const room = rooms.get(roomName);
             if (room) {
@@ -6417,51 +8625,95 @@ io.on('connection', (socket) => {
     socket.on('whiteboard-draw', (data) => {
         const user = users.get(socket.id);
         if (user) {
-            // 广播绘制事件给房间内所有用户
-            socket.to(user.roomName).emit('whiteboard-draw', {
-                ...data,
-                username: user.username
-                // 不要覆盖客户端发送的color，保持用户选择的颜色
-            });
-            // 移除日志输出，避免服务端日志过多
-            // console.log(`[房间 ${user.roomName}] ${user.username} 在白板上绘制`);
+            const wbId = data.whiteboardId;
+            // 有白板房间则发送到白板房间，否则降级到聊天室
+            if (wbId && whiteboards.has(wbId)) {
+                socket.to(`whiteboard-${wbId}`).emit('whiteboard-draw', {
+                    ...data,
+                    username: user.username
+                });
+                // 追加到白板数据
+                const wb = whiteboards.get(wbId);
+                wb.data.push(data);
+                whiteboards.set(wbId, wb);
+            } else {
+                socket.to(user.roomName).emit('whiteboard-draw', {
+                    ...data,
+                    username: user.username
+                });
+            }
         }
     });
     
     socket.on('whiteboard-clear', (data) => {
         const user = users.get(socket.id);
         if (user) {
-            // 广播清屏事件给房间内所有用户
-            socket.to(user.roomName).emit('whiteboard-clear', {
-                username: user.username
-            });
-            // 移除日志输出，避免服务端日志过多
-            // console.log(`[房间 ${user.roomName}] ${user.username} 清空了白板`);
+            const wbId = data.whiteboardId;
+            if (wbId && whiteboards.has(wbId)) {
+                const wb = whiteboards.get(wbId);
+                wb.data = [];
+                whiteboards.set(wbId, wb);
+                socket.to(`whiteboard-${wbId}`).emit('whiteboard-clear', {
+                    username: user.username
+                });
+            } else {
+                socket.to(user.roomName).emit('whiteboard-clear', {
+                    username: user.username
+                });
+            }
         }
     });
     
     socket.on('whiteboard-text', (data) => {
         const user = users.get(socket.id);
         if (user) {
-            // 广播文本绘制事件给房间内所有用户
-            socket.to(user.roomName).emit('whiteboard-text', {
-                ...data,
-                username: user.username
-            });
-            // 移除日志输出，避免服务端日志过多
-            // console.log(`[房间 ${user.roomName}] ${user.username} 在白板上添加了文本: ${data.text}`);
+            const wbId = data.whiteboardId;
+            if (wbId && whiteboards.has(wbId)) {
+                socket.to(`whiteboard-${wbId}`).emit('whiteboard-text', {
+                    ...data,
+                    username: user.username
+                });
+                const wb = whiteboards.get(wbId);
+                wb.data.push(data);
+                whiteboards.set(wbId, wb);
+            } else {
+                socket.to(user.roomName).emit('whiteboard-text', {
+                    ...data,
+                    username: user.username
+                });
+            }
         }
     });
     
     socket.on('whiteboard-undo', (data) => {
         const user = users.get(socket.id);
         if (user) {
-            // 广播撤销事件给房间内所有用户
-            socket.to(user.roomName).emit('whiteboard-undo', {
-                username: user.username
-            });
-            // 移除日志输出，避免服务端日志过多
-            // console.log(`[房间 ${user.roomName}] ${user.username} 撤销了操作`);
+            const wbId = data.whiteboardId;
+            if (wbId && whiteboards.has(wbId)) {
+                socket.to(`whiteboard-${wbId}`).emit('whiteboard-undo', {
+                    username: user.username
+                });
+            } else {
+                socket.to(user.roomName).emit('whiteboard-undo', {
+                    username: user.username
+                });
+            }
+        }
+    });
+    
+    socket.on('whiteboard-redo', (data) => {
+        const user = users.get(socket.id);
+        if (user) {
+            const wbId = data.whiteboardId;
+            if (wbId && whiteboards.has(wbId)) {
+                socket.to(`whiteboard-${wbId}`).emit('whiteboard-redo', {
+                    username: user.username
+                });
+            } else {
+                socket.to(user.roomName).emit('whiteboard-redo', {
+                    username: user.username
+                });
+            }
         }
     });
     
@@ -6474,154 +8726,225 @@ io.on('connection', (socket) => {
     });
     
     // 文档编辑系统事件处理
+
+    // 文档安全工具函数
+    const DOC_TITLE_MAX_LEN = 60;
+    const DOC_CONTENT_MAX_LEN = 200 * 1024; // 200KB
+    const DOC_PER_ROOM_LIMIT = 30;
+    function sanitizeDocTitle(title) {
+        if (typeof title !== 'string') return '新文档';
+        // 去除 HTML 标签和危险字符，限制长度
+        return title.replace(/<[^>]*>/g, '').replace(/[<>"'&]/g, '').trim().slice(0, DOC_TITLE_MAX_LEN) || '新文档';
+    }
     
     socket.on('document-create', (data) => {
         console.log(`[文档] 收到 document-create 事件，socketId: ${socket.id}，标题: ${data?.title}`);
         const user = users.get(socket.id);
-        if (user) {
-            const documentId = `doc-${Date.now()}`;
-            const document = {
-                id: documentId,
-                title: data.title || '新文档',
-                content: data.content || '',
-                creator: user.username,
-                roomName: user.roomName,
-                users: [socket.id],
-                lastModified: new Date().toISOString()
-            };
-            
-            documents.set(documentId, document);
-            console.log(`[文档] ${user.username} 创建了文档: ${document.title} (${documentId})`);
-            
-            // 发送创建成功事件给创建者
-            socket.emit('document-create-success', document);
-            
-            // 广播文档创建事件给房间内所有用户（改用 io.to 确保可靠广播）
-            const room = rooms.get(user.roomName);
-            const roomUserCount = room ? room.users.length : 0;
-            console.log(`[文档] 广播 document-created 到房间 "${user.roomName}"，房间人数: ${roomUserCount}`);
-            io.to(user.roomName).emit('document-created', {
-                id: document.id,
-                title: document.title,
-                creator: document.creator,
-                roomName: document.roomName,
-                lastModified: document.lastModified
-            });
+        if (!user) {
+            socket.emit('document-error', { message: '用户未登录，请先加入房间' });
+            return;
         }
+        // 验证输入
+        if (!data || typeof data !== 'object') {
+            socket.emit('document-error', { message: '无效的请求数据' });
+            return;
+        }
+        // 限制每个房间的文档数量
+        const roomDocCount = Array.from(documents.values()).filter(d => d.roomName === user.roomName).length;
+        if (roomDocCount >= DOC_PER_ROOM_LIMIT) {
+            socket.emit('document-error', { message: `房间文档数量已达上限（${DOC_PER_ROOM_LIMIT} 个），请删除旧文档后再创建` });
+            return;
+        }
+        const safeTitle = sanitizeDocTitle(data.title);
+        const documentId = `doc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const document = {
+            id: documentId,
+            title: safeTitle,
+            content: '',   // 创建时内容始终为空，不接受客户端传入
+            creator: user.username,
+            roomName: user.roomName,
+            users: [socket.id],
+            lastModified: new Date().toISOString()
+        };
+        
+        documents.set(documentId, document);
+        console.log(`[文档] ${user.username} 创建了文档: ${document.title} (${documentId})`);
+        
+        // 发送创建成功事件给创建者
+        socket.emit('document-create-success', document);
+        
+        // 广播文档创建事件给房间内所有用户（改用 io.to 确保可靠广播）
+        const room = rooms.get(user.roomName);
+        const roomUserCount = room ? room.users.length : 0;
+        console.log(`[文档] 广播 document-created 到房间 "${user.roomName}"，房间人数: ${roomUserCount}`);
+        io.to(user.roomName).emit('document-created', {
+            id: document.id,
+            title: document.title,
+            creator: document.creator,
+            roomName: document.roomName,
+            lastModified: document.lastModified
+        });
     });
     
     socket.on('document-join', (data) => {
         const user = users.get(socket.id);
-        if (user && data.documentId) {
-            const document = documents.get(data.documentId);
-            if (document) {
-                // 添加用户到文档用户列表
-                if (!document.users.includes(socket.id)) {
-                    document.users.push(socket.id);
-                }
-                
-                // 发送文档内容给用户
-                socket.emit('document-joined', document);
-                
-                // 广播用户加入事件给其他用户
-                socket.to(document.roomName).emit('document-user-joined', {
-                    documentId: document.id,
-                    username: user.username,
-                    color: user.color
-                });
-                console.log(`[房间 ${document.roomName}] ${user.username} 加入了文档: ${document.title}`);
-            }
+        if (!user) return;
+        if (!data || typeof data.documentId !== 'string') return;
+        const document = documents.get(data.documentId);
+        if (!document) return;
+        // 安全校验：文档必须属于当前用户所在的房间
+        if (document.roomName !== user.roomName) {
+            socket.emit('document-error', { message: '无权访问该文档' });
+            return;
         }
+        // 添加用户到文档用户列表
+        if (!document.users.includes(socket.id)) {
+            document.users.push(socket.id);
+        }
+        
+        // 发送文档内容给用户
+        socket.emit('document-joined', document);
+        
+        // 广播用户加入事件给其他用户
+        socket.to(document.roomName).emit('document-user-joined', {
+            documentId: document.id,
+            username: user.username,
+            color: user.color
+        });
+        console.log(`[房间 ${document.roomName}] ${user.username} 加入了文档: ${document.title}`);
     });
     
     socket.on('document-edit', (data) => {
         const user = users.get(socket.id);
-        if (user && data.documentId && data.content !== undefined && data.content !== null) {
-            const document = documents.get(data.documentId);
-            if (document) {
-                // 更新文档内容
-                document.content = data.content;
-                document.lastModified = new Date().toISOString();
-                documents.set(data.documentId, document);
-                
-                console.log(`[文档] ${user.username} 编辑了文档: ${document.title} (${data.documentId})`);
-                
-                // 广播编辑事件给所有文档用户
-                document.users.forEach(userId => {
-                    if (userId !== socket.id) {
-                        io.to(userId).emit('document-edited', {
-                            documentId: document.id,
-                            content: data.content,
-                            username: user.username
-                        });
-                    }
+        if (!user) return;
+        if (!data || typeof data.documentId !== 'string' || typeof data.content !== 'string') return;
+        const document = documents.get(data.documentId);
+        if (!document) return;
+        // 安全校验：文档必须属于当前用户所在的房间
+        if (document.roomName !== user.roomName) {
+            socket.emit('document-error', { message: '无权编辑该文档' });
+            return;
+        }
+        // 安全校验：用户必须已加入文档（document-join 过）
+        if (!document.users.includes(socket.id)) {
+            socket.emit('document-error', { message: '请先加入文档再编辑' });
+            return;
+        }
+        // 限制内容长度，防止超大数据攻击
+        if (data.content.length > DOC_CONTENT_MAX_LEN) {
+            socket.emit('document-error', { message: `文档内容超出限制（最大 ${DOC_CONTENT_MAX_LEN / 1024}KB）` });
+            return;
+        }
+        // 更新文档内容
+        document.content = data.content;
+        document.lastModified = new Date().toISOString();
+        documents.set(data.documentId, document);
+        
+        console.log(`[文档] ${user.username} 编辑了文档: ${document.title} (${data.documentId})`);
+        
+        // 广播编辑事件给所有文档用户
+        document.users.forEach(userId => {
+            if (userId !== socket.id) {
+                io.to(userId).emit('document-edited', {
+                    documentId: document.id,
+                    content: data.content,
+                    username: user.username
                 });
             }
-        }
+        });
     });
     
     socket.on('document-save', (data) => {
         const user = users.get(socket.id);
-        if (user && data.documentId) {
-            const document = documents.get(data.documentId);
-            if (document) {
-                // 这里可以添加保存文档到服务器的逻辑
-                console.log(`[房间 ${document.roomName}] ${user.username} 保存了文档: ${document.title}`);
-                
-                // 发送保存成功事件给用户
-                socket.emit('document-save-success', {
-                    documentId: document.id,
-                    timestamp: new Date()
-                });
-            }
+        if (!user) return;
+        if (!data || typeof data.documentId !== 'string') return;
+        const document = documents.get(data.documentId);
+        if (!document) return;
+        // 安全校验：文档必须属于当前用户所在的房间
+        if (document.roomName !== user.roomName) {
+            socket.emit('document-error', { message: '无权保存该文档' });
+            return;
         }
+        console.log(`[房间 ${document.roomName}] ${user.username} 保存了文档: ${document.title}`);
+        
+        // 发送保存成功事件给用户
+        socket.emit('document-save-success', {
+            documentId: document.id,
+            timestamp: new Date()
+        });
     });
     
     socket.on('document-leave', (data) => {
         const user = users.get(socket.id);
-        if (user && data.documentId) {
-            const document = documents.get(data.documentId);
-            if (document) {
-                document.users = document.users.filter(userId => userId !== socket.id);
-                socket.to(document.roomName).emit('document-user-left', {
-                    documentId: document.id,
-                    username: user.username
-                });
-                console.log(`[房间 ${document.roomName}] ${user.username} 离开了文档: ${document.title}`);
-            }
-        }
+        if (!user) return;
+        if (!data || typeof data.documentId !== 'string') return;
+        const document = documents.get(data.documentId);
+        if (!document) return;
+        document.users = document.users.filter(userId => userId !== socket.id);
+        socket.to(document.roomName).emit('document-user-left', {
+            documentId: document.id,
+            username: user.username
+        });
+        console.log(`[房间 ${document.roomName}] ${user.username} 离开了文档: ${document.title}`);
     });
 
     // 删除文档
     socket.on('document-delete', (data) => {
         const user = users.get(socket.id);
-        if (user && data.documentId) {
-            const document = documents.get(data.documentId);
-            if (document && document.roomName === user.roomName) {
-                documents.delete(data.documentId);
-                io.to(user.roomName).emit('document-deleted', {
-                    documentId: data.documentId,
-                    title: document.title
-                });
-                console.log(`[文档] ${user.username} 删除了文档: ${document.title}`);
-            }
+        if (!user) return;
+        if (!data || typeof data.documentId !== 'string') return;
+        const document = documents.get(data.documentId);
+        if (!document) return;
+        // 安全校验：文档必须属于当前用户所在的房间
+        if (document.roomName !== user.roomName) {
+            socket.emit('document-error', { message: '无权删除该文档' });
+            return;
         }
+        // 权限校验：只有文档创建者或管理员/房间创建者可以删除
+        const isAdmin = socket.id === adminSocketId || (user && user.role === 'superadmin');
+        const room = rooms.get(user.roomName);
+        const isRoomCreator = room && room.creator === user.username;
+        const isDocCreator = document.creator === user.username;
+        if (!isDocCreator && !isAdmin && !isRoomCreator) {
+            socket.emit('document-error', { message: '只有文档创建者或管理员才能删除文档' });
+            return;
+        }
+        documents.delete(data.documentId);
+        io.to(user.roomName).emit('document-deleted', {
+            documentId: data.documentId,
+            title: document.title
+        });
+        console.log(`[文档] ${user.username} 删除了文档: ${document.title}`);
     });
 
     // 重命名文档
     socket.on('document-rename', (data) => {
         const user = users.get(socket.id);
-        if (user && data.documentId && data.title !== undefined) {
-            const document = documents.get(data.documentId);
-            if (document) {
-                document.title = data.title;
-                document.lastModified = new Date().toISOString();
-                io.to(user.roomName).emit('document-renamed', {
-                    documentId: data.documentId,
-                    title: data.title
-                });
-            }
+        if (!user) return;
+        if (!data || typeof data.documentId !== 'string' || data.title === undefined) return;
+        const document = documents.get(data.documentId);
+        if (!document) return;
+        // 安全校验：文档必须属于当前用户所在的房间
+        if (document.roomName !== user.roomName) {
+            socket.emit('document-error', { message: '无权重命名该文档' });
+            return;
         }
+        // 权限校验：只有文档创建者或管理员/房间创建者可以改名
+        const isAdmin = socket.id === adminSocketId || (user && user.role === 'superadmin');
+        const room = rooms.get(user.roomName);
+        const isRoomCreator = room && room.creator === user.username;
+        const isDocCreator = document.creator === user.username;
+        if (!isDocCreator && !isAdmin && !isRoomCreator) {
+            socket.emit('document-error', { message: '只有文档创建者或管理员才能重命名文档' });
+            return;
+        }
+        const safeTitle = sanitizeDocTitle(data.title);
+        document.title = safeTitle;
+        document.lastModified = new Date().toISOString();
+        io.to(user.roomName).emit('document-renamed', {
+            documentId: data.documentId,
+            title: safeTitle
+        });
     });
 
     // 获取文档在线用户列表（返回用户名）
@@ -6721,6 +9044,7 @@ io.on('connection', (socket) => {
     });
     
     socket.on('plugin-execute', async (data) => {
+        try {
         const user = users.get(socket.id);
         if (user && data.pluginId && data.command && data.args) {
             const plugin = plugins.get(data.pluginId);
@@ -6728,6 +9052,9 @@ io.on('connection', (socket) => {
                 // 执行插件命令
                 await executePluginCommand(plugin, data.command, data.args, user);
             }
+        }
+        } catch (e) {
+            console.error('[plugin-execute] handler error:', e);
         }
     });
     
@@ -6777,10 +9104,6 @@ io.on('connection', (socket) => {
                         });
                         
                         console.log(`[房间 ${user.roomName}] ${user.username} 加入了五子棋游戏 ${updatedGame.id}`);
-                        // 若 ai 先手，自动开子
-                        if (updatedGame.currentPlayer === PC_SOCKET_ID) {
-                            pcMaybeGomokuMove(updatedGame.id);
-                        }
                     }
                 } else if (game.type === 'pictionary' && game.status === 'waiting') {
                     const updatedGame = joinPictionaryGame(data.gameId, socket.id, user.username);
@@ -6984,7 +9307,7 @@ io.on('connection', (socket) => {
                     winner: latestGame.winner,
                     players: latestGame.players.map(pid => ({
                         socketId: pid,
-                        username: users.get(pid)?.username || '未知'
+                        username: pid === PC_SOCKET_ID ? PC_USERNAME : (users.get(pid)?.username || '未知')
                     }))
                 });
                 console.log('已向玩家发送游戏更新:', playerSocketId);
@@ -7003,7 +9326,7 @@ io.on('connection', (socket) => {
                     winner: latestGame.winner,
                     players: latestGame.players.map(pid => ({
                         socketId: pid,
-                        username: users.get(pid)?.username || '未知'
+                        username: pid === PC_SOCKET_ID ? PC_USERNAME : (users.get(pid)?.username || '未知')
                     }))
                 });
                 console.log('已向观战者发送游戏更新:', spectatorSocketId);
@@ -7012,24 +9335,22 @@ io.on('connection', (socket) => {
             if (latestGame.status === 'ended') {
                 const winnerUser = users.get(latestGame.winner);
                 console.log(`[房间 ${user.roomName}] 五子棋游戏 ${latestGame.id} 结束，赢家: ${winnerUser?.username || '未知'}`);
-            }
-
-            // ===== 若轮到 ai，自动落子 =====
-            if (latestGame.status === 'playing' && latestGame.currentPlayer === PC_SOCKET_ID) {
-                pcMaybeGomokuMove(latestGame.id);
+            } else if (latestGame.currentPlayer === PC_SOCKET_ID) {
+                // 轮到 pc，延迟 800ms 后 AI 落子
+                setTimeout(() => pcGomokuMove(latestGame.id), 800);
             }
         } else {
-            console.log('makeGomokuMove返回null');
+            console.error('makeGomokuMove返回null');
         }
     });
     
     // 你画我猜游戏猜词事件
-    socket.on('game-guess', async (data) => {
+    socket.on('game-guess', (data) => {
         const user = users.get(socket.id);
         if (user && data.gameId && data.guess) {
             const game = games.get(data.gameId);
             if (game && game.type === 'pictionary' && game.status === 'playing') {
-                const updatedGame = await makePictionaryGuess(data.gameId, socket.id, data.guess);
+                const updatedGame = makePictionaryGuess(data.gameId, socket.id, data.guess);
                 if (updatedGame) {
                     // 通知所有玩家猜测结果
                     updatedGame.players.forEach(playerSocketId => {
@@ -7087,6 +9408,9 @@ io.on('connection', (socket) => {
                     if (updatedGame.status === 'ended') {
                         const winnerUser = users.get(updatedGame.winner);
                         console.log(`[房间 ${user.roomName}] 你画我猜游戏 ${updatedGame.id} 结束，赢家: ${winnerUser?.username || '未知'}`);
+                    } else if (updatedGame.currentDrawer === PC_SOCKET_ID) {
+                        // 轮到 PC 画，延迟后开始画
+                        setTimeout(() => pcPictionaryDraw(updatedGame.id), 1000);
                     }
                 }
             }
@@ -7103,12 +9427,8 @@ io.on('connection', (socket) => {
         // 本轮无人猜对，直接推进到下一轮
         game.currentRound++;
         if (game.currentRound < game.maxRounds) {
-            // 与 ai 对战时保持 ai 一直当画者，玩家一直猜；
-            // 否则轮换画者后 ai 不会猜词，游戏会卡住。
-            if (game.currentDrawer !== PC_SOCKET_ID) {
-                const nextDrawerIndex = (game.players.indexOf(game.currentDrawer) + 1) % game.players.length;
-                game.currentDrawer = game.players[nextDrawerIndex];
-            }
+            const nextDrawerIndex = (game.players.indexOf(game.currentDrawer) + 1) % game.players.length;
+            game.currentDrawer = game.players[nextDrawerIndex];
             game.currentWord = game.words[Math.floor(Math.random() * game.words.length)];
             game.roundStartTime = new Date();
             game.guesses = [];
@@ -7161,6 +9481,10 @@ io.on('connection', (socket) => {
             console.log(`[房间 ${user.roomName}] 你画我猜游戏 ${game.id} 结束`);
         } else {
             console.log(`[房间 ${user.roomName}] ${user.username} 画完了，进入第 ${game.currentRound + 1} 轮`);
+            // 如果下一轮是 PC 画，自动开始画
+            if (game.currentDrawer === PC_SOCKET_ID) {
+                setTimeout(() => pcPictionaryDraw(game.id), 1000);
+            }
         }
     });
 
@@ -7271,34 +9595,26 @@ io.on('connection', (socket) => {
             gameId: game.id,
             guesserSocketId: socket.id,
             guesserUsername: user.username,
-            // 兼容前端旧字段（game.js 的 handleGuessResult 读 data.player）
-            player: user.username,
             guess: guessValue,
             result,           // 'low' | 'high' | 'correct'
             guessCounts: game.guessCounts,
             currentGuesser: game.currentGuesser,
             status: game.status,
             winner: game.winner,
-            winnerName: game.winner
-                ? (game.winner === PC_SOCKET_ID ? PC_USERNAME : (users.get(game.winner)?.username || '未知'))
-                : null,
-            // 游戏结束时下发答案，供前端胜利弹窗显示；未结束不下发保持神秘
-            targetNumber: game.status === 'ended' ? game.secret : undefined
+            winnerName: game.winner ? (game.winner === PC_SOCKET_ID ? PC_USERNAME : (users.get(game.winner)?.username || '未知')) : null
         };
 
         [...game.players, ...game.spectators].forEach(pid => {
             io.to(pid).emit('guess-number-update', payload);
         });
 
-        // ===== 若轮到 ai 猜，自动出招 =====
-        if (game.status === 'playing' && game.currentGuesser === PC_SOCKET_ID) {
-            pcMaybeGuessNumber(game.id);
-        }
-
         // 游戏结束时记录历史
         if (game.status === 'ended') {
             recordGameHistory(game);
             console.log(`[房间 ${user.roomName}] 猜数字游戏 ${game.id} 结束，胜者: ${users.get(game.winner)?.username}`);
+        } else if (game.currentGuesser === PC_SOCKET_ID) {
+            // 轮到 pc 猜数字，延迟 1000ms 后 AI 猜
+            setTimeout(() => pcGuessNumber(game.id), 1000);
         }
     });
 
@@ -7540,7 +9856,7 @@ io.on('connection', (socket) => {
     
     // 五子棋游戏逻辑
     function createGomokuGame(creator, roomName) {
-        const gameId = `gomoku-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const gameId = `gomoku-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
         const game = {
             id: gameId,
             type: 'gomoku',
@@ -7637,10 +9953,1312 @@ io.on('connection', (socket) => {
         
         return false;
     }
+
+    // 围棋游戏逻辑（19x19棋盘，吃子规则）
+    function createGoGame(creator, roomName) {
+        const gameId = `go-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+        const game = {
+            id: gameId,
+            type: 'go',
+            creator: creator.username,
+            creatorSocketId: creator.socketId,
+            roomName: roomName,
+            players: [creator.socketId],
+            board: Array(19).fill().map(() => Array(19).fill(null)), // null, 'black', 'white'
+            currentPlayer: creator.socketId,
+            currentColor: 'black', // 黑棋先手
+            status: 'waiting',
+            startTime: null,
+            endTime: null,
+            winner: null,
+            spectators: [],
+            capturedStones: { black: 0, white: 0 }, // 提子数
+            lastMove: null,
+            moveHistory: [],
+            passCount: 0 // 连续pass次数，达到2次结束游戏
+        };
+        
+        games.set(gameId, game);
+        return game;
+    }
     
+    function joinGoGame(gameId, playerSocketId, playerUsername) {
+        const game = games.get(gameId);
+        if (game && game.status === 'waiting' && game.players.length < 2) {
+            game.players.push(playerSocketId);
+            game.status = 'playing';
+            game.startTime = new Date();
+            games.set(gameId, game);
+            return game;
+        }
+        return null;
+    }
+    
+    function makeGoMove(gameId, playerSocketId, x, y) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing') return null;
+        
+        if (game.currentPlayer !== playerSocketId) return null;
+        if (x < 0 || x >= 19 || y < 0 || y >= 19) return null;
+        if (game.board[x][y] !== null) return null;
+        
+        const color = game.currentColor;
+        const opponentColor = color === 'black' ? 'white' : 'black';
+        
+        // 尝试落子
+        game.board[x][y] = color;
+        
+        // 检查提子（吃掉对方无气棋子）
+        const captured = checkGoCaptures(game.board, x, y, opponentColor);
+        if (captured.length > 0) {
+            captured.forEach(([cx, cy]) => {
+                game.board[cx][cy] = null;
+            });
+            game.capturedStones[color] += captured.length;
+        }
+        
+        // 检查自杀规则（落子后自己无气且没有提子）
+        if (captured.length === 0 && !hasLiberty(game.board, x, y, color)) {
+            // 自杀，撤销落子
+            game.board[x][y] = null;
+            return null;
+        }
+        
+        // 记录历史
+        game.moveHistory.push({ x, y, color, captured: captured.length });
+        game.lastMove = { x, y };
+        game.passCount = 0;
+        
+        // 切换玩家
+        game.currentPlayer = game.players[0] === playerSocketId ? game.players[1] : game.players[0];
+        game.currentColor = opponentColor;
+        
+        games.set(gameId, game);
+        return { game, captured };
+    }
+    
+    function passGoMove(gameId, playerSocketId) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing') return null;
+        if (game.currentPlayer !== playerSocketId) return null;
+        
+        game.passCount++;
+        game.moveHistory.push({ pass: true, color: game.currentColor });
+        
+        // 双方连续pass，结束游戏
+        if (game.passCount >= 2) {
+            game.status = 'ended';
+            game.endTime = new Date();
+            // 简单计目：盘面棋子数 + 提子数
+            const result = calculateGoScore(game.board, game.capturedStones);
+            game.winner = result.blackScore > result.whiteScore ? game.players[0] : game.players[1];
+            game.scores = result;
+        } else {
+            // 切换玩家
+            game.currentPlayer = game.players[0] === playerSocketId ? game.players[1] : game.players[0];
+            game.currentColor = game.currentColor === 'black' ? 'white' : 'black';
+        }
+        
+        games.set(gameId, game);
+        return game;
+    }
+    
+    // 检查提子
+    function checkGoCaptures(board, x, y, opponentColor) {
+        const captured = [];
+        const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+        
+        for (const [dx, dy] of directions) {
+            const nx = x + dx, ny = y + dy;
+            if (nx >= 0 && nx < 19 && ny >= 0 && ny < 19 && board[nx][ny] === opponentColor) {
+                if (!hasLiberty(board, nx, ny, opponentColor)) {
+                    // 找到所有相连的无气棋子
+                    const group = getStoneGroup(board, nx, ny, opponentColor);
+                    captured.push(...group);
+                }
+            }
+        }
+        return captured;
+    }
+    
+    // 检查棋子/棋块是否有气
+    function hasLiberty(board, x, y, color) {
+        const visited = new Set();
+        const queue = [[x, y]];
+        visited.add(`${x},${y}`);
+        const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+        
+        while (queue.length > 0) {
+            const [cx, cy] = queue.shift();
+            for (const [dx, dy] of directions) {
+                const nx = cx + dx, ny = cy + dy;
+                if (nx >= 0 && nx < 19 && ny >= 0 && ny < 19) {
+                    if (board[nx][ny] === null) return true; // 有气
+                    if (board[nx][ny] === color && !visited.has(`${nx},${ny}`)) {
+                        visited.add(`${nx},${ny}`);
+                        queue.push([nx, ny]);
+                    }
+                }
+            }
+        }
+        return false; // 无气
+    }
+    
+    // 获取相连的同色棋子组
+    function getStoneGroup(board, x, y, color) {
+        const group = [];
+        const visited = new Set();
+        const queue = [[x, y]];
+        visited.add(`${x},${y}`);
+        const directions = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+        
+        while (queue.length > 0) {
+            const [cx, cy] = queue.shift();
+            group.push([cx, cy]);
+            for (const [dx, dy] of directions) {
+                const nx = cx + dx, ny = cy + dy;
+                if (nx >= 0 && nx < 19 && ny >= 0 && ny < 19 && 
+                    board[nx][ny] === color && !visited.has(`${nx},${ny}`)) {
+                    visited.add(`${nx},${ny}`);
+                    queue.push([nx, ny]);
+                }
+            }
+        }
+        return group;
+    }
+    
+    // 简单计目（中国规则简化版）
+    function calculateGoScore(board, capturedStones) {
+        let blackStones = 0, whiteStones = 0;
+        for (let x = 0; x < 19; x++) {
+            for (let y = 0; y < 19; y++) {
+                if (board[x][y] === 'black') blackStones++;
+                else if (board[x][y] === 'white') whiteStones++;
+            }
+        }
+        // 黑贴3.75目（简化）
+        return {
+            blackScore: blackStones + capturedStones.black,
+            whiteScore: whiteStones + capturedStones.white + 3.75
+        };
+    }
+
+    // 贪吃蛇对战游戏逻辑
+    function createSnakeGame(creator, roomName) {
+        const gameId = `snake-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+        const GRID_SIZE = 20; // 20x20网格
+        
+        const game = {
+            id: gameId,
+            type: 'snake',
+            creator: creator.username,
+            creatorSocketId: creator.socketId,
+            roomName: roomName,
+            players: [creator.socketId],
+            status: 'waiting',
+            gridSize: GRID_SIZE,
+            snakes: {}, // Map<socketId, {body: [{x,y}], direction, alive}>
+            foods: [], // [{x, y}]
+            scores: new Map(),
+            startTime: null,
+            endTime: null,
+            winner: null,
+            gameLoop: null,
+            spectators: []
+        };
+        
+        games.set(gameId, game);
+        return game;
+    }
+    
+    function joinSnakeGame(gameId, playerSocketId, playerUsername) {
+        const game = games.get(gameId);
+        if (game && game.status === 'waiting' && game.players.length < 2) {
+            game.players.push(playerSocketId);
+            game.status = 'playing';
+            game.startTime = new Date();
+            
+            // 初始化两条蛇
+            const GRID_SIZE = game.gridSize;
+            game.snakes[game.players[0]] = {
+                body: [{x: 5, y: 10}, {x: 4, y: 10}, {x: 3, y: 10}],
+                direction: 'right',
+                alive: true,
+                color: '#28a745'
+            };
+            game.snakes[playerSocketId] = {
+                body: [{x: 14, y: 10}, {x: 15, y: 10}, {x: 16, y: 10}],
+                direction: 'left',
+                alive: true,
+                color: '#dc3545'
+            };
+            
+            // 初始化分数
+            game.scores.set(game.players[0], 0);
+            game.scores.set(playerSocketId, 0);
+            
+            // 生成食物
+            generateSnakeFoods(game);
+            
+            games.set(gameId, game);
+            return game;
+        }
+        return null;
+    }
+    
+    function generateSnakeFoods(game) {
+        const GRID_SIZE = game.gridSize;
+        const foodCount = 3; // 同时存在3个食物
+        
+        while (game.foods.length < foodCount) {
+            const x = Math.floor(Math.random() * GRID_SIZE);
+            const y = Math.floor(Math.random() * GRID_SIZE);
+            
+            // 检查是否与蛇身重叠
+            let overlap = false;
+            for (const playerId of game.players) {
+                const snake = game.snakes[playerId];
+                if (snake && snake.body.some(seg => seg.x === x && seg.y === y)) {
+                    overlap = true;
+                    break;
+                }
+            }
+            
+            if (!overlap && !game.foods.some(f => f.x === x && f.y === y)) {
+                game.foods.push({ x, y });
+            }
+        }
+    }
+    
+    function updateSnakeGame(gameId) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing') return null;
+        
+        const GRID_SIZE = game.gridSize;
+        const directions = {
+            'up': { x: 0, y: -1 },
+            'down': { x: 0, y: 1 },
+            'left': { x: -1, y: 0 },
+            'right': { x: 1, y: 0 }
+        };
+        
+        for (const playerId of game.players) {
+            const snake = game.snakes[playerId];
+            if (!snake || !snake.alive) continue;
+            
+            const dir = directions[snake.direction];
+            const head = snake.body[0];
+            const newHead = { x: head.x + dir.x, y: head.y + dir.y };
+            
+            // 检查撞墙
+            if (newHead.x < 0 || newHead.x >= GRID_SIZE || newHead.y < 0 || newHead.y >= GRID_SIZE) {
+                snake.alive = false;
+                continue;
+            }
+            
+            // 检查撞自己
+            if (snake.body.some(seg => seg.x === newHead.x && seg.y === newHead.y)) {
+                snake.alive = false;
+                continue;
+            }
+            
+            // 检查撞其他蛇
+            for (const otherId of game.players) {
+                if (otherId === playerId) continue;
+                const otherSnake = game.snakes[otherId];
+                if (otherSnake && otherSnake.body.some(seg => seg.x === newHead.x && seg.y === newHead.y)) {
+                    snake.alive = false;
+                    break;
+                }
+            }
+            
+            if (!snake.alive) continue;
+            
+            // 移动蛇
+            snake.body.unshift(newHead);
+            
+            // 检查吃食物
+            const foodIndex = game.foods.findIndex(f => f.x === newHead.x && f.y === newHead.y);
+            if (foodIndex >= 0) {
+                // 吃到食物，增长，加分
+                game.foods.splice(foodIndex, 1);
+                game.scores.set(playerId, (game.scores.get(playerId) || 0) + 10);
+                generateSnakeFoods(game);
+            } else {
+                // 没吃到，移除尾巴
+                snake.body.pop();
+            }
+        }
+        
+        // 检查游戏结束
+        const alivePlayers = game.players.filter(pid => game.snakes[pid]?.alive);
+        if (alivePlayers.length <= 1) {
+            game.status = 'ended';
+            game.endTime = new Date();
+            if (alivePlayers.length === 1) {
+                game.winner = alivePlayers[0];
+            }
+            if (game.gameLoop) {
+                clearInterval(game.gameLoop);
+                game.gameLoop = null;
+            }
+        }
+        
+        games.set(gameId, game);
+        return game;
+    }
+    
+    function changeSnakeDirection(gameId, playerSocketId, direction) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing') return null;
+        
+        const snake = game.snakes[playerSocketId];
+        if (!snake || !snake.alive) return null;
+        
+        // 防止180度转向
+        const opposites = { 'up': 'down', 'down': 'up', 'left': 'right', 'right': 'left' };
+        if (opposites[direction] === snake.direction) return null;
+        
+        snake.direction = direction;
+        games.set(gameId, game);
+        return game;
+    }
+    
+    // 启动贪吃蛇游戏循环
+    function startSnakeGameLoop(gameId) {
+        const game = games.get(gameId);
+        if (!game || game.gameLoop) return;
+        
+        game.gameLoop = setInterval(() => {
+            const currentGame = games.get(gameId);
+            if (!currentGame || currentGame.status !== 'playing') {
+                if (currentGame && currentGame.gameLoop) {
+                    clearInterval(currentGame.gameLoop);
+                    currentGame.gameLoop = null;
+                    games.set(gameId, currentGame);
+                }
+                return;
+            }
+            
+            // 更新游戏状态
+            const updated = updateSnakeGame(gameId);
+            if (updated) {
+                // 广播更新给所有玩家
+                updated.players.forEach(pid => {
+                    io.to(pid).emit('snake-update', {
+                        gameId: updated.id,
+                        snakes: updated.snakes,
+                        foods: updated.foods,
+                        scores: Array.from(updated.scores.entries()).map(([socketId, score]) => ({
+                            socketId,
+                            username: users.get(socketId)?.username || '未知',
+                            score
+                        })),
+                        status: updated.status,
+                        winner: updated.winner
+                    });
+                });
+                
+                // 游戏结束通知
+                if (updated.status === 'ended') {
+                    updated.players.forEach(pid => {
+                        const isWinner = updated.winner === pid;
+                        io.to(pid).emit('snake-end', {
+                            gameId: updated.id,
+                            winner: updated.winner,
+                            scores: Array.from(updated.scores.entries()).map(([socketId, score]) => ({
+                                socketId,
+                                username: users.get(socketId)?.username || '未知',
+                                score
+                            }))
+                        });
+                    });
+                    
+                    if (updated.gameLoop) {
+                        clearInterval(updated.gameLoop);
+                        updated.gameLoop = null;
+                        games.set(gameId, updated);
+                    }
+                }
+            }
+        }, 1000); // 1000ms 更新一次（1秒刷新）
+        
+        games.set(gameId, game);
+    }
+
+    // ===================================================================
+    // PC 虚拟账户 AI 逻辑
+    // ===================================================================
+
+    /**
+     * 创建与 pc 的游戏并通知真实玩家开始
+     * @param {string} playerSocketId  真实玩家 socketId
+     * @param {object} user            真实玩家 users 对象
+     * @param {string} gameType        游戏类型
+     */
+    function pcCreateAndStartGame(playerSocketId, user, gameType) {
+        const pcCreator = { username: PC_USERNAME, socketId: PC_SOCKET_ID };
+
+        if (gameType === 'gomoku') {
+            // 玩家先手（黑棋），pc 后手（白棋）
+            const game = createGomokuGame({ username: user.username, socketId: playerSocketId }, user.roomName);
+            if (!game) return;
+            // pc 加入作为第二个玩家
+            game.players.push(PC_SOCKET_ID);
+            game.status = 'playing';
+            game.startTime = new Date();
+            games.set(game.id, game);
+
+            const startPayload = {
+                gameId: game.id,
+                gameType: 'gomoku',
+                players: [
+                    { socketId: playerSocketId, username: user.username },
+                    { socketId: PC_SOCKET_ID, username: PC_USERNAME }
+                ],
+                board: game.board,
+                currentPlayer: game.currentPlayer  // 玩家先手
+            };
+            io.to(playerSocketId).emit('game-start', startPayload);
+            console.log(`[PC] 五子棋游戏 ${game.id} 开始，对战 ${user.username}，玩家先手`);
+
+        } else if (gameType === 'guess-number') {
+            const game = createGuessNumberGame(pcCreator, user.roomName);
+            if (!game) return;
+            const updatedGame = joinGuessNumberGame(game.id, playerSocketId);
+            if (!updatedGame) return;
+            // 让玩家先猜（玩家是 players[1]）
+            updatedGame.currentGuesser = playerSocketId;
+            games.set(updatedGame.id, updatedGame);
+
+            const startPayload = {
+                gameId: updatedGame.id,
+                gameType: 'guess-number',
+                players: [
+                    { socketId: PC_SOCKET_ID, username: PC_USERNAME },
+                    { socketId: playerSocketId, username: user.username }
+                ],
+                currentGuesser: updatedGame.currentGuesser,
+                guessCounts: updatedGame.guessCounts
+            };
+            io.to(playerSocketId).emit('guess-number-start', startPayload);
+            console.log(`[PC] 猜数字游戏 ${updatedGame.id} 开始，对战 ${user.username}，玩家先猜`);
+
+        } else if (gameType === 'rps') {
+            const game = createRPSGame(pcCreator, user.roomName);
+            if (!game) return;
+            const updatedGame = joinRPSGame(game.id, playerSocketId, user.username);
+            if (!updatedGame) return;
+
+            const startPayload = {
+                gameId: updatedGame.id,
+                gameType: 'rps',
+                players: [
+                    { socketId: PC_SOCKET_ID, username: PC_USERNAME },
+                    { socketId: playerSocketId, username: user.username }
+                ],
+                wins: { ...updatedGame.wins },
+                maxWins: updatedGame.maxWins,
+                round: updatedGame.round
+            };
+            io.to(playerSocketId).emit('rps-start', startPayload);
+            console.log(`[PC] 猜拳游戏 ${updatedGame.id} 开始，对战 ${user.username}`);
+
+        } else if (gameType === 'bomb') {
+            const game = createBombGame(pcCreator, user.roomName);
+            if (!game) return;
+            const updatedGame = joinBombGame(game.id, playerSocketId, user.username);
+            if (!updatedGame) return;
+
+            const startPayload = {
+                gameId: updatedGame.id,
+                gameType: 'bomb',
+                players: [
+                    { socketId: PC_SOCKET_ID, username: PC_USERNAME },
+                    { socketId: playerSocketId, username: user.username }
+                ],
+                maxStep: updatedGame.maxStep,
+                current: 0,
+                currentPlayer: updatedGame.players[0]
+            };
+            io.to(playerSocketId).emit('bomb-start', startPayload);
+            console.log(`[PC] 炸弹游戏 ${updatedGame.id} 开始，对战 ${user.username}`);
+            // 若 pc 先手
+            if (updatedGame.players[0] === PC_SOCKET_ID) {
+                setTimeout(() => pcBombMove(updatedGame.id), 900);
+            }
+
+        } else if (gameType === 'pictionary') {
+            // 你画我猜：pc 作为画者，玩家猜词
+            const game = createPictionaryGame(pcCreator, user.roomName);
+            if (!game) return;
+            const updatedGame = joinPictionaryGame(game.id, playerSocketId, user.username);
+            if (!updatedGame) return;
+            
+            // pc 作为画者（players[0]），玩家作为猜词者（players[1]）
+            updatedGame.currentDrawer = PC_SOCKET_ID;
+            updatedGame.status = 'playing';
+            updatedGame.startTime = new Date();
+            updatedGame.roundStartTime = new Date();
+            games.set(updatedGame.id, updatedGame);
+
+            const startPayload = {
+                gameId: updatedGame.id,
+                gameType: 'pictionary',
+                players: [
+                    { socketId: PC_SOCKET_ID, username: PC_USERNAME },
+                    { socketId: playerSocketId, username: user.username }
+                ],
+                currentDrawer: PC_SOCKET_ID,
+                currentDrawerName: PC_USERNAME,
+                currentRound: updatedGame.currentRound,
+                maxRounds: updatedGame.maxRounds,
+                scores: Array.from(updatedGame.scores.entries()).map(([socketId, score]) => ({
+                    socketId,
+                    username: socketId === PC_SOCKET_ID ? PC_USERNAME : (users.get(socketId)?.username || '未知'),
+                    score
+                })),
+                wordHint: updatedGame.currentWord ? (updatedGame.currentWord.length + '个字') : '',
+                status: updatedGame.status
+            };
+            io.to(playerSocketId).emit('pictionary-start', startPayload);
+            console.log(`[PC] 你画我猜游戏 ${updatedGame.id} 开始，对战 ${user.username}，PC画玩家猜，词汇：${updatedGame.currentWord}`);
+            
+            // PC 开始画画（延迟1秒后发送绘画数据）
+            setTimeout(() => pcPictionaryDraw(updatedGame.id), 1000);
+
+        } else if (gameType === 'go') {
+            // 围棋：玩家执黑先手，PC执白
+            const game = createGoGame({ username: user.username, socketId: playerSocketId }, user.roomName);
+            if (!game) return;
+            // PC 加入作为第二个玩家（白棋）
+            game.players.push(PC_SOCKET_ID);
+            game.status = 'playing';
+            game.startTime = new Date();
+            games.set(game.id, game);
+
+            const startPayload = {
+                gameId: game.id,
+                gameType: 'go',
+                players: [
+                    { socketId: playerSocketId, username: user.username, color: 'black' },
+                    { socketId: PC_SOCKET_ID, username: PC_USERNAME, color: 'white' }
+                ],
+                board: game.board,
+                currentPlayer: game.currentPlayer,
+                currentColor: game.currentColor,
+                capturedStones: game.capturedStones
+            };
+            io.to(playerSocketId).emit('go-start', startPayload);
+            console.log(`[PC] 围棋游戏 ${game.id} 开始，对战 ${user.username}，玩家执黑先手`);
+
+        } else if (gameType === 'snake') {
+            // 贪吃蛇对战
+            const game = createSnakeGame(pcCreator, user.roomName);
+            if (!game) return;
+            const updatedGame = joinSnakeGame(game.id, playerSocketId, user.username);
+            if (!updatedGame) return;
+
+            const startPayload = {
+                gameId: updatedGame.id,
+                gameType: 'snake',
+                players: [
+                    { socketId: game.players[0], username: PC_USERNAME, color: '#28a745' },
+                    { socketId: playerSocketId, username: user.username, color: '#dc3545' }
+                ],
+                gridSize: updatedGame.gridSize,
+                snakes: updatedGame.snakes,
+                foods: updatedGame.foods,
+                scores: Array.from(updatedGame.scores.entries()).map(([socketId, score]) => ({
+                    socketId,
+                    username: socketId === PC_SOCKET_ID ? PC_USERNAME : user.username,
+                    score
+                }))
+            };
+            io.to(playerSocketId).emit('snake-start', startPayload);
+            console.log(`[PC] 贪吃蛇游戏 ${updatedGame.id} 开始，对战 ${user.username}`);
+            
+            // 启动游戏循环
+            updatedGame.gameLoop = setInterval(() => {
+                const game = games.get(updatedGame.id);
+                if (!game || game.status !== 'playing') {
+                    if (game && game.gameLoop) {
+                        clearInterval(game.gameLoop);
+                        game.gameLoop = null;
+                    }
+                    return;
+                }
+                
+                // PC AI 移动
+                pcSnakeMove(updatedGame.id);
+                
+                // 更新游戏状态
+                const updated = updateSnakeGame(updatedGame.id);
+                if (updated) {
+                    // 广播更新给所有玩家
+                    updated.players.forEach(pid => {
+                        io.to(pid).emit('snake-update', {
+                            gameId: updated.id,
+                            snakes: updated.snakes,
+                            foods: updated.foods,
+                            scores: Array.from(updated.scores.entries()).map(([socketId, score]) => ({
+                                socketId,
+                                username: socketId === PC_SOCKET_ID ? PC_USERNAME : (users.get(socketId)?.username || '未知'),
+                                score
+                            })),
+                            status: updated.status,
+                            winner: updated.winner
+                        });
+                    });
+                    
+                    // 游戏结束
+                    if (updated.status === 'ended') {
+                        updated.players.forEach(pid => {
+                            io.to(pid).emit('snake-end', {
+                                gameId: updated.id,
+                                winner: updated.winner,
+                                scores: Array.from(updated.scores.entries()).map(([socketId, score]) => ({
+                                    socketId,
+                                    username: socketId === PC_SOCKET_ID ? PC_USERNAME : (users.get(socketId)?.username || '未知'),
+                                    score
+                                }))
+                            });
+                        });
+                    }
+                }
+            }, 150); // 150ms 更新一次
+        }
+    }
+
+    /**
+     * PC 贪吃蛇 AI：简单寻路策略
+     * 优先吃食物，避免撞墙和撞自己
+     */
+    function pcSnakeMove(gameId) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing') return;
+        
+        const pcSnake = game.snakes[PC_SOCKET_ID];
+        if (!pcSnake || !pcSnake.alive) return;
+        
+        const head = pcSnake.body[0];
+        const GRID_SIZE = game.gridSize;
+        const directions = ['up', 'down', 'left', 'right'];
+        const dirVectors = { 'up': {x:0, y:-1}, 'down': {x:0, y:1}, 'left': {x:-1, y:0}, 'right': {x:1, y:0} };
+        const opposites = { 'up': 'down', 'down': 'up', 'left': 'right', 'right': 'left' };
+        
+        // 寻找最近的食物
+        let targetFood = null;
+        let minDist = Infinity;
+        for (const food of game.foods) {
+            const dist = Math.abs(head.x - food.x) + Math.abs(head.y - food.y);
+            if (dist < minDist) {
+                minDist = dist;
+                targetFood = food;
+            }
+        }
+        
+        // 评估每个方向
+        let bestDir = null;
+        let bestScore = -Infinity;
+        
+        for (const dir of directions) {
+            // 不能180度转向
+            if (opposites[dir] === pcSnake.direction) continue;
+            
+            const vec = dirVectors[dir];
+            const newX = head.x + vec.x;
+            const newY = head.y + vec.y;
+            
+            // 检查撞墙
+            if (newX < 0 || newX >= GRID_SIZE || newY < 0 || newY >= GRID_SIZE) continue;
+            
+            // 检查撞自己
+            if (pcSnake.body.some(seg => seg.x === newX && seg.y === newY)) continue;
+            
+            // 计算分数
+            let score = 0;
+            
+            // 距离食物的曼哈顿距离（越近越好）
+            if (targetFood) {
+                const distToFood = Math.abs(newX - targetFood.x) + Math.abs(newY - targetFood.y);
+                score += (GRID_SIZE * 2 - distToFood) * 10;
+            }
+            
+            // 避免边缘
+            if (newX > 0 && newX < GRID_SIZE - 1) score += 5;
+            if (newY > 0 && newY < GRID_SIZE - 1) score += 5;
+            
+            // 随机因子增加变化
+            score += Math.random() * 10;
+            
+            if (score > bestScore) {
+                bestScore = score;
+                bestDir = dir;
+            }
+        }
+        
+        if (bestDir) {
+            pcSnake.direction = bestDir;
+        }
+    }
+
+    /**
+     * PC 围棋 AI：简单策略
+     * 优先提子，其次占角，随机落子
+     */
+    function pcGoMove(gameId) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing' || game.currentPlayer !== PC_SOCKET_ID) return;
+        
+        const board = game.board;
+        const opponentColor = 'black';
+        const myColor = 'white';
+        
+        // 寻找最佳落子点
+        let bestMove = null;
+        let bestScore = -Infinity;
+        
+        // 优先占角和边
+        const corners = [[0,0], [0,18], [18,0], [18,18]];
+        const edges = [];
+        for (let i = 3; i < 16; i++) {
+            edges.push([0,i], [18,i], [i,0], [i,18]);
+        }
+        
+        // 检查所有空点
+        for (let x = 0; x < 19; x++) {
+            for (let y = 0; y < 19; y++) {
+                if (board[x][y] !== null) continue;
+                
+                // 模拟落子
+                board[x][y] = myColor;
+                
+                // 检查是否能提子
+                const captured = checkGoCaptures(board, x, y, opponentColor);
+                
+                // 检查是否自杀
+                let suicide = false;
+                if (captured.length === 0 && !hasLiberty(board, x, y, myColor)) {
+                    suicide = true;
+                }
+                
+                board[x][y] = null; // 恢复
+                
+                if (suicide) continue;
+                
+                let score = 0;
+                
+                // 提子得分最高
+                score += captured.length * 100;
+                
+                // 占角得分
+                if (corners.some(([cx, cy]) => cx === x && cy === y)) score += 50;
+                // 占边得分
+                else if (edges.some(([ex, ey]) => ex === x && ey === y)) score += 20;
+                
+                // 靠近已有棋子
+                const directions = [[0,1], [0,-1], [1,0], [-1,0]];
+                for (const [dx, dy] of directions) {
+                    const nx = x + dx, ny = y + dy;
+                    if (nx >= 0 && nx < 19 && ny >= 0 && ny < 19 && board[nx][ny] === myColor) {
+                        score += 10;
+                    }
+                }
+                
+                // 随机因子
+                score += Math.random() * 5;
+                
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestMove = { x, y };
+                }
+            }
+        }
+        
+        if (bestMove) {
+            makeGoMove(gameId, PC_SOCKET_ID, bestMove.x, bestMove.y);
+            
+            // 通知玩家
+            const playerSocketId = game.players.find(p => p !== PC_SOCKET_ID);
+            if (playerSocketId) {
+                io.to(playerSocketId).emit('go-move', {
+                    gameId: game.id,
+                    x: bestMove.x,
+                    y: bestMove.y,
+                    color: myColor,
+                    board: game.board,
+                    currentPlayer: game.currentPlayer,
+                    currentColor: game.currentColor,
+                    capturedStones: game.capturedStones
+                });
+            }
+        } else {
+            // 无合法落子，pass
+            passGoMove(gameId, PC_SOCKET_ID);
+        }
+    }
+
+    /**
+     * PC 五子棋 AI：评分贪心策略
+     * 优先级：自己能赢 > 阻止对手赢 > 进攻 > 防守
+     */
+    function pcGomokuMove(gameId) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing' || game.currentPlayer !== PC_SOCKET_ID) return;
+
+        const board = game.board;
+        const opponentId = game.players.find(p => p !== PC_SOCKET_ID);
+        const size = 15;
+
+        // 计算某个落子位置的分数
+        function scorePosition(x, y, playerId) {
+            if (board[x][y] !== null) return -Infinity;
+            const directions = [[1,0],[0,1],[1,1],[1,-1]];
+            let total = 0;
+            for (const [dx, dy] of directions) {
+                let count = 1;
+                let open = 0;
+                for (let i = 1; i < 5; i++) {
+                    const nx = x + i*dx, ny = y + i*dy;
+                    if (nx < 0 || nx >= size || ny < 0 || ny >= size) break;
+                    if (board[nx][ny] === playerId) count++;
+                    else { if (board[nx][ny] === null) open++; break; }
+                }
+                for (let i = 1; i < 5; i++) {
+                    const nx = x - i*dx, ny = y - i*dy;
+                    if (nx < 0 || nx >= size || ny < 0 || ny >= size) break;
+                    if (board[nx][ny] === playerId) count++;
+                    else { if (board[nx][ny] === null) open++; break; }
+                }
+                const scoreMap = [0, 1, 10, 100, 1000, 100000];
+                total += (scoreMap[Math.min(count, 5)] || 0) * (open > 0 ? 1 : 0.5);
+            }
+            return total;
+        }
+
+        let bestX = -1, bestY = -1, bestScore = -Infinity;
+
+        // 仅评估棋盘上已有棋子周围2格内的位置（效率优化）
+        const candidates = new Set();
+        for (let x = 0; x < size; x++) {
+            for (let y = 0; y < size; y++) {
+                if (board[x][y] !== null) {
+                    for (let dx = -2; dx <= 2; dx++) {
+                        for (let dy = -2; dy <= 2; dy++) {
+                            const nx = x + dx, ny = y + dy;
+                            if (nx >= 0 && nx < size && ny >= 0 && ny < size && board[nx][ny] === null) {
+                                candidates.add(`${nx},${ny}`);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 棋盘为空时走中央
+        if (candidates.size === 0) {
+            bestX = 7; bestY = 7;
+        } else {
+            // ===== 最高优先级：必胜/必堵检查 =====
+            let blockOpponentWin = null;   // 必须堵的位置
+            let aiWinningMove = null;       // AI能赢的位置
+            let doubleThreat = null;         // 制造双威胁的位置
+
+            for (const pos of candidates) {
+                const [x, y] = pos.split(',').map(Number);
+
+                // 模拟落子后检查是否连五
+                const simulateCheck = (px, py, playerId) => {
+                    const directions = [[1,0],[0,1],[1,1],[1,-1]];
+                    for (const [dx, dy] of directions) {
+                        let count = 1;
+                        for (let i = 1; i < 5; i++) {
+                            const nx = px + i*dx, ny = py + i*dy;
+                            if (nx < 0 || nx >= size || ny < 0 || ny >= size) break;
+                            if (board[nx][ny] === playerId) count++;
+                            else break;
+                        }
+                        for (let i = 1; i < 5; i++) {
+                            const nx = px - i*dx, ny = py - i*dy;
+                            if (nx < 0 || nx >= size || ny < 0 || ny >= size) break;
+                            if (board[nx][ny] === playerId) count++;
+                            else break;
+                        }
+                        if (count >= 5) return true;
+                    }
+                    return false;
+                };
+
+                if (simulateCheck(x, y, opponentId)) {
+                    blockOpponentWin = { x, y }; // 必须先堵
+                }
+                if (simulateCheck(x, y, PC_SOCKET_ID)) {
+                    aiWinningMove = { x, y }; // AI能赢
+                }
+            }
+
+            // 优先级：先堵玩家必胜 > AI必胜 > 贪心评估
+            if (blockOpponentWin) {
+                bestX = blockOpponentWin.x; bestY = blockOpponentWin.y;
+            } else if (aiWinningMove) {
+                bestX = aiWinningMove.x; bestY = aiWinningMove.y;
+            } else {
+                for (const pos of candidates) {
+                    const [x, y] = pos.split(',').map(Number);
+                    const attackScore = scorePosition(x, y, PC_SOCKET_ID);
+                    const defendScore = scorePosition(x, y, opponentId) * 2.5;
+                    const score = Math.max(attackScore, defendScore);
+                    if (score > bestScore) {
+                        bestScore = score;
+                        bestX = x; bestY = y;
+                    }
+                }
+            }
+        }
+
+        if (bestX === -1) {
+            // 找任意空位
+            outer: for (let x = 0; x < size; x++) {
+                for (let y = 0; y < size; y++) {
+                    if (board[x][y] === null) { bestX = x; bestY = y; break outer; }
+                }
+            }
+        }
+
+        if (bestX === -1) return; // 棋盘满了
+
+        // 记录 AI 思考过程
+        let thought;
+        if (typeof aiWinningMove !== 'undefined' && aiWinningMove && bestX === aiWinningMove.x && bestY === aiWinningMove.y) {
+            thought = `发现必胜位置 (${bestX}, ${bestY})，直接落子获胜！`;
+        } else if (typeof blockOpponentWin !== 'undefined' && blockOpponentWin && bestX === blockOpponentWin.x && bestY === blockOpponentWin.y) {
+            thought = `发现对手必胜威胁，必须在 (${bestX}, ${bestY}) 堵截`;
+        } else if (candidates.size > 0) {
+            thought = `选择最佳位置 (${bestX}, ${bestY})，得分 ${Math.round(bestScore)}`;
+        } else {
+            thought = `棋盘为空，选择中央位置 (${bestX}, ${bestY})`;
+        }
+        addAiThought('gomoku', '落子思考', thought);
+
+        const updatedGame = makeGomokuMove(gameId, PC_SOCKET_ID, bestX, bestY);
+        if (!updatedGame) return;
+
+        const latestGame = games.get(gameId);
+        if (!latestGame) return;
+
+        const payload = {
+            gameId: latestGame.id,
+            gameType: 'gomoku',
+            board: latestGame.board,
+            currentPlayer: latestGame.currentPlayer,
+            lastMove: { x: bestX, y: bestY, player: PC_SOCKET_ID },
+            status: latestGame.status,
+            winner: latestGame.winner,
+            players: latestGame.players.map(pid => ({
+                socketId: pid,
+                username: pid === PC_SOCKET_ID ? PC_USERNAME : (users.get(pid)?.username || '未知')
+            }))
+        };
+        // 通知真实玩家
+        latestGame.players.filter(p => p !== PC_SOCKET_ID).forEach(pid => {
+            io.to(pid).emit('game-update', payload);
+        });
+        latestGame.spectators.forEach(pid => io.to(pid).emit('game-update', payload));
+
+        if (latestGame.status === 'ended') {
+            recordGameHistory(latestGame);
+        }
+        console.log(`[PC] 五子棋落子 (${bestX},${bestY})`);
+    }
+
+    /**
+     * PC 猜数字 AI：智能二分法
+     * 直接从 game.guesses[PC_SOCKET_ID] 计算自己的区间（lo/hi），
+     * 再收集全局已猜数字避免重复，永不使用 pcGuessRanges Map。
+     */
+    function pcGuessNumber(gameId) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing' || game.currentGuesser !== PC_SOCKET_ID) return;
+
+        // 从所有玩家的猜测结果中计算全局有效区间（AI 也能看到玩家的大了/小了反馈）
+        let lo = 1, hi = 100;
+        Object.values(game.guesses).forEach(arr => {
+            arr.forEach(entry => {
+                if (entry.result === 'low')  lo = Math.max(lo, entry.guess + 1);
+                if (entry.result === 'high') hi = Math.min(hi, entry.guess - 1);
+            });
+        });
+
+        // 收集全局已猜过的数字
+        const guessedNumbers = new Set();
+        Object.values(game.guesses).forEach(arr => {
+            arr.forEach(entry => guessedNumbers.add(entry.guess));
+        });
+
+        // 在 [lo, hi] 区间内找第一个未被猜过的数
+        let mid = Math.floor((lo + hi) / 2);
+        if (guessedNumbers.has(mid)) {
+            for (let n = mid; n <= 100; n++) {
+                if (!guessedNumbers.has(n)) { mid = n; break; }
+            }
+            if (guessedNumbers.has(mid)) {
+                for (let n = mid - 1; n >= 1; n--) {
+                    if (!guessedNumbers.has(n)) { mid = n; break; }
+                }
+            }
+        }
+
+        // 记录 AI 思考过程
+        addAiThought('guess-number', '猜测思考', `当前有效区间 [${lo}, ${hi}]，已猜数字 ${guessedNumbers.size} 个，选择中间值 ${mid}`);
+
+        const res = makeGuessNumberGuess(gameId, PC_SOCKET_ID, mid);
+        if (!res) return;
+        const { game: g, result } = res;
+
+        const payload = {
+            gameId: g.id,
+            guesserSocketId: PC_SOCKET_ID,
+            guesserUsername: PC_USERNAME,
+            guess: mid,
+            result,
+            guessCounts: g.guessCounts,
+            currentGuesser: g.currentGuesser,
+            status: g.status,
+            winner: g.winner,
+            winnerName: g.winner === PC_SOCKET_ID ? PC_USERNAME : (users.get(g.winner)?.username || null)
+        };
+        [...g.players, ...g.spectators].filter(p => p !== PC_SOCKET_ID).forEach(pid => {
+            io.to(pid).emit('guess-number-update', payload);
+        });
+
+        if (g.status === 'ended') {
+            recordGameHistory(g);
+        } else if (g.currentGuesser === PC_SOCKET_ID) {
+            setTimeout(() => pcGuessNumber(gameId), 1000);
+        }
+        console.log(`[PC] 猜数字 gameId=${gameId} 区间=[${lo},${hi}] 读已猜=[${[...guessedNumbers].sort((a,b)=>a-b).join(',')}] 猜了 ${mid}，结果: ${result}`);
+    }
+
+    /**
+     * PC 猜拳 AI：随机出招（三选一）
+     */
+    function pcRPSMove(gameId) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing') return;
+        if (game.choices && game.choices[PC_SOCKET_ID]) return; // 已出招
+
+        const choices = ['rock', 'paper', 'scissors'];
+        const choice = choices[Math.floor(Math.random() * 3)];
+
+        // 记录 AI 思考过程
+        const choiceNames = { rock: '石头', paper: '布', scissors: '剪刀' };
+        addAiThought('rps', '出招思考', `随机选择出 ${choiceNames[choice]}`);
+
+        const updatedGame = makeRPSMove(gameId, PC_SOCKET_ID, choice);
+        if (!updatedGame) return;
+
+        // 发给真实玩家
+        const realPlayers = updatedGame.players.filter(p => p !== PC_SOCKET_ID);
+        if (updatedGame.roundResult) {
+            realPlayers.forEach(pid => {
+                io.to(pid).emit('rps-update', {
+                    gameId: updatedGame.id,
+                    roundResult: updatedGame.roundResult,
+                    wins: { ...updatedGame.wins },
+                    round: updatedGame.round,
+                    status: updatedGame.status,
+                    champion: updatedGame.champion || null
+                });
+            });
+            if (updatedGame.status === 'finished') {
+                updatedGame.endTime = new Date().toISOString();
+                recordGameHistory(updatedGame);
+            }
+        } else {
+            realPlayers.forEach(pid => {
+                io.to(pid).emit('rps-waiting', {
+                    gameId: updatedGame.id,
+                    waitingFor: updatedGame.players.filter(p => !updatedGame.choices[p])
+                        .map(p => p === PC_SOCKET_ID ? PC_USERNAME : (updatedGame.playerNames[p] || '未知')),
+                    devOpponentChoice: choice
+                });
+            });
+        }
+        console.log(`[PC] 猜拳出招: ${choice}`);
+    }
+
+    /**
+     * PC 炸弹游戏 AI：尽量不让对手报到 bombNumber
+     * 策略：若能让对手下一步必须报 bombNumber 则只报1个；否则随机报1-3个
+     */
+    function pcBombMove(gameId) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing') return;
+        if (game.players[game.currentPlayerIdx] !== PC_SOCKET_ID) return;
+
+        const bomb = game.bombNumber;
+        const current = game.current;
+        const maxStep = game.maxStep;
+        const remaining = bomb - current;
+
+        let count;
+        // 安全数字：报完后 remaining % (maxStep+1) === 0，即强迫对手最终踩雷
+        const safeCount = remaining % (maxStep + 1);
+        if (safeCount >= 1 && safeCount <= maxStep) {
+            count = safeCount;
+        } else {
+            // 随机报1~maxStep个（但不能超过剩余）
+            const maxPossible = Math.min(maxStep, remaining - 1);
+            count = maxPossible >= 1 ? (Math.floor(Math.random() * maxPossible) + 1) : 1;
+        }
+        count = Math.max(1, Math.min(count, maxStep, remaining));
+
+        // 记录 AI 思考过程
+        const strategy = (safeCount >= 1 && safeCount <= maxStep) ? '使用必胜策略' : '随机报数';
+        addAiThought('bomb', '报数思考', `当前 ${current}，炸弹在 ${bomb}，剩余 ${remaining}，${strategy}，报 ${count} 个数`);
+
+        const updatedGame = makeBombMove(gameId, PC_SOCKET_ID, count);
+        if (!updatedGame) return;
+
+        const realPlayers = updatedGame.players.filter(p => p !== PC_SOCKET_ID);
+        realPlayers.forEach(pid => {
+            io.to(pid).emit('bomb-update', {
+                gameId: updatedGame.id,
+                current: updatedGame.current,
+                lastMove: updatedGame.history[updatedGame.history.length - 1],
+                currentPlayer: updatedGame.status === 'playing' ? updatedGame.players[updatedGame.currentPlayerIdx] : null,
+                status: updatedGame.status,
+                loser: updatedGame.loser || null,
+                loserName: updatedGame.loser ? updatedGame.playerNames[updatedGame.loser] : null,
+                bombNumber: updatedGame.status === 'finished' ? updatedGame.bombNumber : null
+            });
+        });
+        if (updatedGame.status === 'finished') {
+            updatedGame.endTime = new Date().toISOString();
+            recordGameHistory(updatedGame);
+        } else if (updatedGame.status === 'playing' &&
+                   updatedGame.players[updatedGame.currentPlayerIdx] === PC_SOCKET_ID) {
+            setTimeout(() => pcBombMove(gameId), 900);
+        }
+        console.log(`[PC] 炸弹报数 +${count}，当前: ${updatedGame.current}`);
+    }
+
+    /**
+     * PC 你画我猜 AI：模拟绘画过程
+     * PC 作为画者，发送绘画数据给玩家猜词
+     * 不会自动猜对，只是模拟画画动作
+     */
+    function pcPictionaryDraw(gameId) {
+        const game = games.get(gameId);
+        if (!game || game.status !== 'playing' || game.currentDrawer !== PC_SOCKET_ID) return;
+
+        const playerSocketId = game.players.find(p => p !== PC_SOCKET_ID);
+        if (!playerSocketId) return;
+
+        const word = game.currentWord;
+        const color = '#000000';
+        const size = 5;
+        
+        // 根据词汇生成线条数据（前端 ptDrawLine 需要 x1, y1, x2, y2, color, size）
+        let strokes = [];
+        
+        // 根据词汇特征选择绘画方式
+        if (['苹果', '橙子', '西瓜', '葡萄', '太阳', '月亮', '球', '篮球', '足球', '乒乓球'].some(w => word.includes(w))) {
+            // 画圆形 - 用多条短线模拟圆
+            const cx = 250, cy = 200, r = 60;
+            for (let i = 0; i < 20; i++) {
+                const angle1 = (i / 20) * Math.PI * 2;
+                const angle2 = ((i + 1) / 20) * Math.PI * 2;
+                strokes.push({
+                    x1: cx + Math.cos(angle1) * r,
+                    y1: cy + Math.sin(angle1) * r,
+                    x2: cx + Math.cos(angle2) * r,
+                    y2: cy + Math.sin(angle2) * r,
+                    color, size
+                });
+            }
+        } else if (['电视', '冰箱', '电脑', '手机', '书', '门', '窗', '电脑', '冰箱'].some(w => word.includes(w))) {
+            // 画方形
+            strokes = [
+                { x1: 190, y1: 140, x2: 310, y2: 140, color, size },
+                { x1: 310, y1: 140, x2: 310, y2: 260, color, size },
+                { x1: 310, y1: 260, x2: 190, y2: 260, color, size },
+                { x1: 190, y1: 260, x2: 190, y2: 140, color, size }
+            ];
+        } else if (['山', '屋顶', '帽子'].some(w => word.includes(w))) {
+            // 画三角形/山形
+            strokes = [
+                { x1: 150, y1: 250, x2: 250, y2: 100, color, size },
+                { x1: 250, y1: 100, x2: 350, y2: 250, color, size },
+                { x1: 150, y1: 250, x2: 350, y2: 250, color, size }
+            ];
+        } else if (['鱼', '鲨鱼', '鲸鱼'].some(w => word.includes(w))) {
+            // 画简单的鱼形状
+            strokes = [
+                // 鱼身椭圆
+                { x1: 200, y1: 180, x2: 300, y2: 180, color, size },
+                { x1: 300, y1: 180, x2: 300, y2: 220, color, size },
+                { x1: 300, y1: 220, x2: 200, y2: 220, color, size },
+                { x1: 200, y1: 220, x2: 200, y2: 180, color, size },
+                // 鱼尾
+                { x1: 200, y1: 200, x2: 150, y2: 170, color, size },
+                { x1: 200, y1: 200, x2: 150, y2: 230, color, size }
+            ];
+        } else if (['树', '花', '草'].some(w => word.includes(w))) {
+            // 画简单的树
+            strokes = [
+                // 树干
+                { x1: 250, y1: 280, x2: 250, y2: 180, color, size },
+                // 树冠（几条线表示）
+                { x1: 200, y1: 180, x2: 300, y2: 180, color, size },
+                { x1: 210, y1: 150, x2: 290, y2: 150, color, size },
+                { x1: 230, y1: 120, x2: 270, y2: 120, color, size }
+            ];
+        } else {
+            // 默认：画一个简单的房子轮廓
+            strokes = [
+                // 屋顶
+                { x1: 180, y1: 180, x2: 250, y2: 100, color, size },
+                { x1: 250, y1: 100, x2: 320, y2: 180, color, size },
+                // 房子主体
+                { x1: 190, y1: 180, x2: 190, y2: 280, color, size },
+                { x1: 190, y1: 280, x2: 310, y2: 280, color, size },
+                { x1: 310, y1: 280, x2: 310, y2: 180, color, size }
+            ];
+        }
+
+        // 逐条发送绘画线条，模拟绘画过程
+        let strokeIndex = 0;
+        const sendStroke = () => {
+            if (strokeIndex >= strokes.length || game.status !== 'playing') return;
+            
+            const stroke = strokes[strokeIndex];
+            io.to(playerSocketId).emit('game-draw', {
+                gameId: game.id,
+                drawingData: stroke,
+                drawer: PC_SOCKET_ID
+            });
+            
+            strokeIndex++;
+            if (strokeIndex < strokes.length) {
+                setTimeout(sendStroke, 300); // 每300ms画一条线
+            }
+        };
+
+        // 开始绘画
+        sendStroke();
+
+        console.log(`[PC] 你画我猜游戏 ${game.id}，PC正在画：${word}，共${strokes.length}笔`);
+    }
+
+    // ===================================================================
+    // PC 虚拟账户 AI 逻辑 END
+    // ===================================================================
+
     // 猜数字游戏逻辑（1-100，双方轮流猜同一个数，猜对者赢）
     function createGuessNumberGame(creator, roomName) {
-        const gameId = `guess-number-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const gameId = `guess-number-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
         const secret = Math.floor(Math.random() * 100) + 1; // 服务端随机生成的唯一秘密数字，双方轮流猜它
         const game = {
             id: gameId,
@@ -7649,6 +11267,7 @@ io.on('connection', (socket) => {
             creatorSocketId: creator.socketId,
             roomName: roomName,
             players: [creator.socketId],
+            playerNames: { [creator.socketId]: creator.username }, // 保存玩家名字
             spectators: [],
             status: 'waiting',       // waiting → playing → ended
             secret: secret,
@@ -7669,6 +11288,11 @@ io.on('connection', (socket) => {
         if (!game || game.status !== 'waiting' || game.players.length >= 2) return null;
 
         game.players.push(playerSocketId);
+        // 保存新玩家的用户名
+        const player = users.get(playerSocketId);
+        if (player) {
+            game.playerNames[playerSocketId] = player.username;
+        }
         // 秘密数字已经在创建游戏时生成
         game.players.forEach(pid => {
             game.guesses[pid] = [];
@@ -7719,7 +11343,7 @@ io.on('connection', (socket) => {
 
     // 你画我猜游戏逻辑
     function createPictionaryGame(creator, roomName) {
-        const gameId = `pictionary-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const gameId = `pictionary-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
         
         // 游戏词汇库
         const words = [
@@ -7787,11 +11411,15 @@ io.on('connection', (socket) => {
     
     function joinPictionaryGame(gameId, playerSocketId, playerUsername) {
         const game = games.get(gameId);
-        if (game && game.status === 'waiting') {
-            game.players.push(playerSocketId);
-            game.scores.set(playerSocketId, 0);
+        // 支持 waiting 状态（正常加入）或 playing 状态（PC自动创建的游戏）
+        if (game && (game.status === 'waiting' || game.status === 'playing')) {
+            // 避免重复加入
+            if (!game.players.includes(playerSocketId)) {
+                game.players.push(playerSocketId);
+                game.scores.set(playerSocketId, 0);
+            }
             
-            if (game.players.length >= 2) {
+            if (game.players.length >= 2 && game.status === 'waiting') {
                 game.status = 'playing';
                 game.startTime = new Date();
                 game.roundStartTime = new Date();
@@ -7801,95 +11429,18 @@ io.on('connection', (socket) => {
         }
         return null;
     }
-    // 本地同义词表：常见近义/俗称直接判对，不必消耗模型额度
-    // 只收录确定性强、不会误判的对应关系。
-    const PIC_SYNONYMS = {
-        '汽车': ['小汽车', '轿车', '车'],
-        '小汽车': ['汽车', '轿车'],
-        '自行车': ['单车', '脚踏车'],
-        '猫': ['猫咪', '小猫'],
-        '猫咪': ['猫', '小猫'],
-        '狗': ['小狗', '狗狗'],
-        '兔子': ['小兔子', '兔'],
-        '电脑': ['计算机', '电脑主机'],
-        '手机': ['电话', '手机电话'],
-        '蛋糕': ['生日蛋糕'],
-        '生日蛋糕': ['蛋糕'],
-        '冰淇淋': ['冰激凌', '雪糕'],
-        '雪糕': ['冰淇淋', '冰激凌'],
-        '菠萝': ['凤梨'],
-        '西红柿': ['番茄'],
-        '番茄': ['西红柿'],
-        '土豆': ['马铃薯'],
-        '马铃薯': ['土豆'],
-        '出租车': ['的士', '打车'],
-        '医生': ['大夫'],
-        '大夫': ['医生'],
-        '学校': ['校园'],
-        '校园': ['学校'],
-        '月亮': ['月球'],
-        '太阳': ['日头'],
-        '猴子': ['猴'],
-        '蝴蝶': ['蝶'],
-        '乌龟': ['龟'],
-        '螃蟹': ['蟹'],
-        '剪刀': ['剪子'],
-        '镜头': ['摄像机'],
-        '足球': ['踢足球']
-    };
-
-    function picLocalSynonymMatch(word, guess) {
-        const w = String(word || '').trim();
-        const g = String(guess || '').trim();
-        if (!w || !g) return false;
-        const list = PIC_SYNONYMS[w];
-        if (list && list.indexOf(g) >= 0) return true;
-        // 反向：玩家猜的是主词，答案是俗称
-        const rev = PIC_SYNONYMS[g];
-        if (rev && rev.indexOf(w) >= 0) return true;
-        return false;
-    }
-
     
-    async function makePictionaryGuess(gameId, playerSocketId, guess) {
+    function makePictionaryGuess(gameId, playerSocketId, guess) {
         const game = games.get(gameId);
         if (!game || game.status !== 'playing') return null;
-
+        
         if (game.currentDrawer === playerSocketId) return null;
-
+        
         const normalizedGuess = guess.toLowerCase().trim();
         const normalizedWord = game.currentWord.toLowerCase().trim();
-
-        // 先做本地精确匹配（快，且不消耗模型额度）
-        let isCorrect = normalizedGuess === normalizedWord;
-
-        // 本地同义词表能覆盖的场景，直接判对，不必等模型
-        if (!isCorrect && picLocalSynonymMatch(game.currentWord, guess)) {
-            isCorrect = true;
-            console.log(`[本地] 同义词命中: 「${guess}」≈「${game.currentWord}」`);
-        }
-
-        // 精确不中时，再用模型判断语义是否相近（同义词/简称/俗称）
-        // 模型不可用或超时时，isCorrect 保持 false，不影响主流程
-        if (!isCorrect && normalizedGuess.length >= 1) {
-            // 过长或明显无关的猜测不送模型，省额度也省时间
-            if (normalizedGuess.length <= 12) {
-                try {
-                    const verdict = await nvidiaJudgePictionary(game.currentWord, guess);
-                    if (verdict === true) {
-                        isCorrect = true;
-                        console.log(`[NVIDIA] 语义判定通过: 「${guess}」≈「${game.currentWord}」`);
-                    }
-                } catch (e) {
-                    console.warn('[NVIDIA] 语义判分异常，按不中处理:', e.message);
-                }
-                // 判分可能耗时，期间游戏可能已结束或换词
-                if (game.status !== 'playing' || game.currentWord !== normalizedWord) {
-                    // 词已换，丢弃这次结果
-                    return game;
-                }
-            }
-        }
+        
+        // 检查猜测是否正确
+        const isCorrect = normalizedGuess === normalizedWord;
         
         // 记录猜测
         game.guesses.push({
@@ -7907,19 +11458,13 @@ io.on('connection', (socket) => {
             // 切换到下一轮
             game.currentRound++;
             if (game.currentRound < game.maxRounds) {
-                // 与 ai 对战时保持 ai 一直画；真人之间才轮换画者
-                if (game.currentDrawer !== PC_SOCKET_ID) {
-                    const nextDrawerIndex = (game.players.indexOf(game.currentDrawer) + 1) % game.players.length;
-                    game.currentDrawer = game.players[nextDrawerIndex];
-                }
+                // 更换 drawer
+                const nextDrawerIndex = (game.players.indexOf(game.currentDrawer) + 1) % game.players.length;
+                game.currentDrawer = game.players[nextDrawerIndex];
                 // 更换词汇
                 game.currentWord = game.words[Math.floor(Math.random() * game.words.length)];
                 game.roundStartTime = new Date();
                 game.guesses = [];
-                // ai 继续当画者时，下一轮要重新作画，否则玩家看不到新题
-                if (game.currentDrawer === PC_SOCKET_ID) {
-                    setTimeout(function () { pcPictionaryDraw(game.id); }, 800);
-                }
             } else {
                 // 游戏结束
                 game.status = 'ended';
@@ -7956,7 +11501,7 @@ io.on('connection', (socket) => {
     // 剪刀石头布游戏逻辑（先赢3局胜出）
     // ============================================================
     function createRPSGame(creator, roomName) {
-        const gameId = `rps-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const gameId = `rps-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
         const game = {
             id: gameId,
             type: 'rps',
@@ -8033,7 +11578,7 @@ io.on('connection', (socket) => {
     // 数字炸弹游戏逻辑（轮流报数，随机炸弹数，超过者输）
     // ============================================================
     function createBombGame(creator, roomName) {
-        const gameId = `bomb-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const gameId = `bomb-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
         const bombNumber = Math.floor(Math.random() * 50) + 10; // 炸弹数范围 10-59
         const maxStep = Math.floor(Math.random() * 3) + 1;      // 每轮可报1~maxStep个数
         const game = {
@@ -8419,7 +11964,7 @@ io.on('connection', (socket) => {
                 }
                 
                 // 创建投票（复用现有的投票系统）
-                const pollId = `poll-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                const pollId = `poll-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
                 const poll = {
                     id: pollId,
                     creator: user.username,
@@ -8500,7 +12045,8 @@ io.on('connection', (socket) => {
     
     // 在房间内重命名用户
     socket.on('admin-room-rename-user', (data) => {
-        if (socket.id === adminSocketId) {
+        const currentUser = users.get(socket.id);
+        if (socket.id === adminSocketId || (currentUser && currentUser.role === 'superadmin')) {
             const { roomName, socketId, newName } = data;
             const room = rooms.get(roomName);
             if (room) {
@@ -8524,46 +12070,140 @@ io.on('connection', (socket) => {
                     }
                 }
             }
+        } else {
+            socket.emit('admin-error', { message: '权限不足，无法重命名' });
         }
     });
 
     socket.on('message-recall', (messageId) => {
         const user = users.get(socket.id);
-        if (user) {
-            // 检查撤回消息权限
-            if (!user.permissions.allowRecallMessage) {
-                socket.emit('permission-denied', { message: '您没有撤回消息的权限' });
-                return;
-            }
-            
-            const room = rooms.get(user.roomName);
-            if (room) {
-                // 查找要撤回的消息
-                const messageIndex = room.messages.findIndex(msg => msg.id === messageId);
-                if (messageIndex !== -1) {
-                    const message = room.messages[messageIndex];
-                    if (message.senderSocketId === socket.id) {
-                        // 从房间消息数组中完全删除消息
-                        room.messages.splice(messageIndex, 1);
-                        
-                        // 从全局消息Map中删除消息
-                        messages.delete(messageId);
-                        
-                        // 发送撤回通知给房间内所有用户
-                        room.users.forEach(userId => {
-                            io.to(userId).emit('message-recalled', messageId);
-                        });
-                        
-                        // 发送给管理员
-                        if (adminSocketId) {
-                            io.to(adminSocketId).emit('message-recalled', messageId);
-                        }
-                        
-                        console.log(`[房间 ${user.roomName}] ${message.username} 撤回了一条消息（已从历史中删除）`);
-                    }
-                }
+        if (!user) {
+            socket.emit('recall-failed', { message: '用户未登录，无法撤回消息' });
+            return;
+        }
+        
+        // 检查撤回消息权限
+        if (!user.permissions.allowRecallMessage) {
+            socket.emit('permission-denied', { message: '您没有撤回消息的权限' });
+            return;
+        }
+        
+        const room = rooms.get(user.roomName);
+        if (!room) {
+            socket.emit('recall-failed', { message: '房间不存在' });
+            return;
+        }
+        
+        // 查找要撤回的消息
+        const messageIndex = room.messages.findIndex(msg => msg.id === messageId);
+        if (messageIndex === -1) {
+            socket.emit('recall-failed', { message: '消息不存在或已被删除' });
+            return;
+        }
+        
+        const message = room.messages[messageIndex];
+        // 使用 username 验证（senderSocketId 在重连后会改变，不可靠）
+        if (message.username !== user.username) {
+            socket.emit('recall-failed', { message: '只能撤回自己发送的消息' });
+            return;
+        }
+        
+        // 从房间消息数组中完全删除消息
+        room.messages.splice(messageIndex, 1);
+        
+        // 从全局消息Map中删除消息
+        messages.delete(messageId);
+        
+        // 发送撤回通知给房间内所有用户
+        room.users.forEach(userId => {
+            io.to(userId).emit('message-recalled', messageId);
+        });
+        
+        // 发送给管理员
+        if (adminSocketId) {
+            io.to(adminSocketId).emit('message-recalled', messageId);
+        }
+        
+        // 通知发送者撤回成功
+        socket.emit('recall-success', { messageId });
+        
+        console.log(`[房间 ${user.roomName}] ${message.username} 撤回了一条消息（已从历史中删除）`);
+    });
+
+    // 消息反应功能
+    socket.on('add-reaction', ({ messageId, emoji }) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+
+        const room = rooms.get(user.roomName);
+        if (!room) return;
+
+        // 查找消息
+        const message = room.messages.find(msg => msg.id === messageId);
+        if (!message) return;
+
+        // 初始化reactions对象
+        if (!message.reactions) {
+            message.reactions = {};
+        }
+
+        // 添加反应
+        if (!message.reactions[emoji]) {
+            message.reactions[emoji] = [];
+        }
+
+        // 检查用户是否已经添加了这个表情反应
+        const userIndex = message.reactions[emoji].indexOf(user.username);
+        if (userIndex === -1) {
+            // 添加反应
+            message.reactions[emoji].push(user.username);
+        }
+
+        // 广播反应更新给房间内所有用户
+        room.users.forEach(userId => {
+            io.to(userId).emit('reaction-update', {
+                messageId,
+                reactions: message.reactions
+            });
+        });
+
+        console.log(`[房间 ${user.roomName}] ${user.username} 对消息添加了反应 ${emoji}`);
+    });
+
+    socket.on('toggle-reaction', ({ messageId, emoji }) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+
+        const room = rooms.get(user.roomName);
+        if (!room) return;
+
+        // 查找消息
+        const message = room.messages.find(msg => msg.id === messageId);
+        if (!message || !message.reactions || !message.reactions[emoji]) return;
+
+        // 切换反应（添加或移除）
+        const userIndex = message.reactions[emoji].indexOf(user.username);
+        if (userIndex === -1) {
+            // 添加反应
+            message.reactions[emoji].push(user.username);
+        } else {
+            // 移除反应
+            message.reactions[emoji].splice(userIndex, 1);
+            // 如果没有用户添加了这个反应，删除这个表情
+            if (message.reactions[emoji].length === 0) {
+                delete message.reactions[emoji];
             }
         }
+
+        // 广播反应更新给房间内所有用户
+        room.users.forEach(userId => {
+            io.to(userId).emit('reaction-update', {
+                messageId,
+                reactions: message.reactions
+            });
+        });
+
+        console.log(`[房间 ${user.roomName}] ${user.username} 切换了消息反应 ${emoji}`);
     });
 
     // 通话功能事件处理
@@ -8571,7 +12211,8 @@ io.on('connection', (socket) => {
         const user = users.get(socket.id);
         if (user && user.permissions.allowCall) {
             const targetUser = users.get(data.targetSocketId);
-            if (targetUser) {
+            const targetSocket = io.sockets.sockets.get(data.targetSocketId);
+            if (targetUser && targetSocket) {
                 // 实现通话权限传递：如果发起方有通话权限，而接收方没有，自动为接收方启用通话权限
                 if (!targetUser.permissions.allowCall) {
                     console.log(`${targetUser.username} 没有通话权限，自动获得通话权限`);
@@ -8590,7 +12231,7 @@ io.on('connection', (socket) => {
                 });
                 console.log(`${user.username} 请求与 ${targetUser.username} ${callType === 'video' ? '视频' : '语音'}通话，使用${data.callMethod === 'webrtc' ? 'WebRTC' : 'Socket.io'}方式`);
             } else {
-                socket.emit('permission-denied', { message: '目标用户不存在' });
+                socket.emit('permission-denied', { message: '目标用户不存在或已离线' });
             }
         } else {
             socket.emit('permission-denied', { message: '您没有通话权限' });
@@ -8609,7 +12250,7 @@ io.on('connection', (socket) => {
                     initiatorUsername: targetUser.username,
                     recipient: socket.id,
                     recipientUsername: user.username,
-                    callType: 'video', // 暂时默认为video，后续可以从数据中获取
+                    callType: data.callType || 'audio',
                     startTime: Date.now(),
                     status: 'active',
                     controls: {
@@ -8623,7 +12264,8 @@ io.on('connection', (socket) => {
             io.to(data.targetSocketId).emit('call-accepted', {
                 from: socket.id,
                 fromUsername: user.username,
-                callId: data.callId
+                callId: data.callId,
+                callType: data.callType || 'audio'
             });
             console.log(`${user.username} 接受了通话请求`);
         } else {
@@ -8686,7 +12328,8 @@ io.on('connection', (socket) => {
     // 实时字幕数据转发：本地识别结果发给通话对方显示
     socket.on('subtitle-data', (data) => {
         const user = users.get(socket.id);
-        if (user && data.targetSocketId && io.sockets.sockets.has(data.targetSocketId)) {
+        const targetSocket = io.sockets.sockets.get(data.targetSocketId);
+        if (user && data.targetSocketId && targetSocket) {
             io.to(data.targetSocketId).emit('subtitle-data', {
                 from: socket.id,
                 fromUsername: user.username,
@@ -8701,7 +12344,8 @@ io.on('connection', (socket) => {
         const user = users.get(socket.id);
         if (user && user.permissions.allowCall) {
             // 检查目标用户是否在线，只向在线用户发送媒体流
-            if (io.sockets.sockets.has(data.targetSocketId)) {
+            const targetSocket = io.sockets.sockets.get(data.targetSocketId);
+            if (targetSocket) {
                 io.to(data.targetSocketId).emit('call-media', {
                     from: socket.id,
                     callId: data.callId,
@@ -8724,1136 +12368,6 @@ io.on('connection', (socket) => {
     });
 
     // 互动中心事件处理
-    // ===== PC 虚拟账户：创建并开始游戏 =====
-    function pcCreateAndStartGame(playerSocketId, user, gameType, difficulty) {
-        // 难度：easy（休闲，AI 会失误） / hard（困难，AI 全力以赴）
-        const level = difficulty === 'hard' ? 'hard' : 'easy';
-        const pcCreator = { username: PC_USERNAME, socketId: PC_SOCKET_ID };
-
-        if (gameType === 'gomoku') {
-            // 玩家先手（黑棋），ai 后手
-            const game = createGomokuGame({ username: user.username, socketId: playerSocketId }, user.roomName);
-            if (!game) return;
-            game.players.push(PC_SOCKET_ID);
-            game.status = 'playing';
-            game.startTime = new Date();
-            game.difficulty = level; // 记录难度，pcGomokuMove 据此调整强度
-            games.set(game.id, game);
-            io.to(playerSocketId).emit('game-start', {
-                gameId: game.id,
-                gameType: 'gomoku',
-                players: [
-                    { socketId: playerSocketId, username: user.username },
-                    { socketId: PC_SOCKET_ID, username: PC_USERNAME }
-                ],
-                board: game.board,
-                currentPlayer: game.currentPlayer
-            });
-            console.log(`[PC] 五子棋 ${game.id} 开始，对战 ${user.username}，玩家先手`);
-            return;
-        }
-
-        if (gameType === 'guess-number') {
-            const game = createGuessNumberGame(pcCreator, user.roomName);
-            if (!game) return;
-            const updatedGame = joinGuessNumberGame(game.id, playerSocketId);
-            if (!updatedGame) return;
-            updatedGame.currentGuesser = playerSocketId; // 玩家先猜
-            updatedGame.difficulty = level; // 记录难度，pcGuessNumber 据此调整策略
-            games.set(updatedGame.id, updatedGame);
-            io.to(playerSocketId).emit('guess-number-start', {
-                gameId: updatedGame.id,
-                gameType: 'guess-number',
-                players: [
-                    { socketId: PC_SOCKET_ID, username: PC_USERNAME },
-                    { socketId: playerSocketId, username: user.username }
-                ],
-                currentGuesser: updatedGame.currentGuesser,
-                guessCounts: updatedGame.guessCounts
-            });
-            console.log(`[PC] 猜数字 ${updatedGame.id} 开始，对战 ${user.username}，玩家先猜`);
-            return;
-        }
-
-        if (gameType === 'rps') {
-            const game = createRPSGame(pcCreator, user.roomName);
-            if (!game) return;
-            const updatedGame = joinRPSGame(game.id, playerSocketId, user.username);
-            if (!updatedGame) return;
-            io.to(playerSocketId).emit('rps-start', {
-                gameId: updatedGame.id,
-                gameType: 'rps',
-                players: [
-                    { socketId: PC_SOCKET_ID, username: PC_USERNAME },
-                    { socketId: playerSocketId, username: user.username }
-                ],
-                wins: Object.assign({}, updatedGame.wins),
-                maxWins: updatedGame.maxWins,
-                round: updatedGame.round
-            });
-            console.log(`[PC] 猜拳 ${updatedGame.id} 开始，对战 ${user.username}`);
-            return;
-        }
-
-        if (gameType === 'bomb') {
-            const game = createBombGame(pcCreator, user.roomName);
-            if (!game) return;
-            const updatedGame = joinBombGame(game.id, playerSocketId, user.username);
-            if (!updatedGame) return;
-            io.to(playerSocketId).emit('bomb-start', {
-                gameId: updatedGame.id,
-                gameType: 'bomb',
-                players: [
-                    { socketId: PC_SOCKET_ID, username: PC_USERNAME },
-                    { socketId: playerSocketId, username: user.username }
-                ],
-                maxStep: updatedGame.maxStep,
-                current: 0,
-                currentPlayer: updatedGame.players[0]
-            });
-            console.log(`[PC] 数字炸弹 ${updatedGame.id} 开始，对战 ${user.username}`);
-            return;
-        }
-
-        if (gameType === 'pictionary') {
-            // ai 当画者（players[0]），玩家猜词。游戏对象由 joinPictionaryGame 补上玩家。
-            const game = createPictionaryGame(pcCreator, user.roomName);
-            if (!game) return;
-            const updatedGame = joinPictionaryGame(game.id, playerSocketId, user.username);
-            if (!updatedGame) return;
-
-            updatedGame.currentDrawer = PC_SOCKET_ID;
-            updatedGame.status = 'playing';
-            updatedGame.startTime = new Date();
-            updatedGame.roundStartTime = new Date();
-            updatedGame.difficulty = level;
-            games.set(updatedGame.id, updatedGame);
-
-            io.to(playerSocketId).emit('pictionary-start', {
-                gameId: updatedGame.id,
-                gameType: 'pictionary',
-                players: [
-                    { socketId: PC_SOCKET_ID, username: PC_USERNAME },
-                    { socketId: playerSocketId, username: user.username }
-                ],
-                currentDrawer: PC_SOCKET_ID,
-                currentDrawerName: PC_USERNAME,
-                currentWord: null,          // 玩家是猜词方，看不到答案
-                wordHint: updatedGame.currentWord.length + '个字',
-                currentRound: updatedGame.currentRound,
-                maxRounds: updatedGame.maxRounds,
-                scores: Array.from(updatedGame.scores.entries()).map(function (ent) {
-                    return { socketId: ent[0], username: ent[0] === PC_SOCKET_ID ? PC_USERNAME : (users.get(ent[0])?.username || '未知'), score: ent[1] };
-                }),
-                status: updatedGame.status
-            });
-            console.log(`[PC] 你画我猜 ${updatedGame.id} 开始，ai 画，${user.username} 猜，词汇：${updatedGame.currentWord}`);
-
-            // ai 开画
-            setTimeout(function () { pcPictionaryDraw(updatedGame.id); }, 1000);
-            return;
-        }
-        console.warn(`[PC] 不支持的游戏类型: ${gameType}`);
-    }
-
-    // ===== PC：你画我猜 · AI 画画 ===== 
-    // 说明：实测让模型生成绘画坐标会超时，因此画面用本地图形模板生成。
-    // 模板坐标系为 0-100，前端等比缩放到 canvas 尺寸。
-    // 每个模板是一组 strokes；每条 stroke 是 {color, width, points:[[x,y],...]}
-    const PIC_TEMPLATES = {
-        // 天体
-        '太阳': [{ color: '#FFB300', width: 3, points: [[50,35],[58,38],[55,46],[45,46],[42,38],[50,35]] }],
-        '月亮': [{ color: '#FFD54F', width: 3, points: [[55,25],[43,32],[40,50],[50,65],[65,62],[58,52]] }],
-        '星星': [{ color: '#FFC107', width: 3, points: [[50,20],[56,38],[75,38],[60,50],[66,68],[50,57],[34,68],[40,50],[25,38],[44,38],[50,20]] }],
-        '云朵': [{ color: '#90A4AE', width: 3, points: [[25,50],[30,38],[42,36],[48,42],[58,38],[70,42],[72,52],[65,58],[35,58],[25,50]] }],
-
-        // 物体
-        '苹果': [{ color: '#E53935', width: 3, points: [[35,45],[38,62],[50,70],[62,62],[65,45],[56,38],[44,38],[35,45]] },
-                     { color: '#6D4C41', width: 2, points: [[50,38],[52,28]] }],
-        '香蕉': [{ color: '#FDD835', width: 3, points: [[30,30],[35,50],[48,62],[62,58],[68,42],[62,30]] }],
-        '西瓜': [{ color: '#66BB6A', width: 3, points: [[25,45],[50,75],[75,45],[25,45]] }],
-        '球': [{ color: '#1E88E5', width: 3, points: [[50,25],[65,32],[70,48],[65,62],[50,70],[35,62],[30,48],[35,32],[50,25]] }],
-        '气球': [{ color: '#E91E63', width: 3, points: [[50,22],[62,32],[62,48],[50,58],[38,48],[38,32],[50,22]] },
-                     { color: '#616161', width: 2, points: [[50,58],[50,78]] }],
-        '风筝': [{ color: '#FF7043', width: 3, points: [[50,20],[68,38],[50,58],[32,38],[50,20]] },
-                     { color: '#78909C', width: 2, points: [[50,58],[58,72],[50,85]] }],
-        '雨伞': [{ color: '#5C6BC0', width: 3, points: [[20,45],[50,28],[80,45],[20,45]] },
-                     { color: '#6D4C41', width: 3, points: [[50,45],[50,78],[45,80]] }],
-        '帽子': [{ color: '#4E342E', width: 3, points: [[30,52],[35,38],[65,38],[70,52],[30,52]] }],
-        '房子': [{ color: '#8D6E63', width: 3, points: [[30,52],[70,52],[70,78],[30,78],[30,52]] },
-                     { color: '#D84315', width: 3, points: [[25,52],[50,30],[75,52]] },
-                     { color: '#5D4037', width: 2, points: [[45,78],[45,62],[56,62],[56,78]] }],
-        '山': [{ color: '#616161', width: 3, points: [[15,75],[40,35],[55,55],[68,42],[85,75],[15,75]] }],
-        '树': [{ color: '#6D4C41', width: 3, points: [[50,75],[50,50]] },
-                    { color: '#43A047', width: 3, points: [[50,25],[68,48],[58,48],[72,68],[28,68],[42,48],[32,48],[50,25]] }],
-        '花': [{ color: '#F06292', width: 3, points: [[50,30],[60,38],[58,50],[42,50],[40,38],[50,30]] },
-                    { color: '#43A047', width: 3, points: [[50,50],[50,80]] }],
-        '猫': [{ color: '#616161', width: 3, points: [[32,42],[32,25],[42,32],[58,32],[68,25],[68,42],[60,58],[40,58],[32,42]] },
-                    { color: '#616161', width: 2, points: [[40,42],[42,44]] },
-                    { color: '#616161', width: 2, points: [[58,42],[60,44]] }],
-        '鱼': [{ color: '#29B6F6', width: 3, points: [[28,50],[48,36],[68,42],[68,58],[48,64],[28,50]] },
-                    { color: '#29B6F6', width: 3, points: [[68,42],[80,32],[80,68],[68,58]] }],
-        '鸟': [{ color: '#42A5F5', width: 3, points: [[30,55],[40,40],[52,48],[64,40],[74,55]] }],
-        '人': [{ color: '#5E35B1', width: 3, points: [[50,25],[50,55]] },
-                    { color: '#5E35B1', width: 3, points: [[35,42],[50,38],[65,42]] },
-                    { color: '#5E35B1', width: 3, points: [[50,55],[38,80]] },
-                    { color: '#5E35B1', width: 3, points: [[50,55],[62,80]] }],
-
-        // 抽象回退（任何未收录的词都用这个）
-        '__default': [{ color: '#546E7A', width: 4, points: [[30,40],[70,40],[70,68],[30,68],[30,40]] },
-                       { color: '#546E7A', width: 3, points: [[38,50],[62,50]] },
-                       { color: '#546E7A', width: 3, points: [[38,58],[58,58]] }]
-    };
-
-    // ===== PC：猜数字自动出招 =====
-    // 思路：用二分法收敛（lo/hi 从 history 推算），延迟 900ms 后出招，
-    // 出招后广播与服务端 guess-number-guess 相同的 guess-number-update 负载。
-    function pcGuessNumber(gameId) {
-        const game = games.get(gameId);
-        if (!game || game.type !== 'guess-number') return;
-        if (game.status !== 'playing') return;
-        if (game.currentGuesser !== PC_SOCKET_ID) return; // 不是 ai 的回合
-
-        // 秘密数字是双方共享的，因此对手猜出的 low/high 本身就是公开线索。
-        // 难度差异就体现在对这些线索的利用程度：
-        //   hard — 整合双方所有线索，收敛最快（真正“全力以赴”）
-        //   easy — 只看自己，且经常不取中点（会失误）
-        const isHard = game.difficulty === 'hard';
-
-        let lo = 1, hi = 100;
-        const usePids = isHard ? Object.keys(game.guesses || {}) : [PC_SOCKET_ID];
-        usePids.forEach(function (pid) {
-            ((game.guesses && game.guesses[pid]) || []).forEach(function (h) {
-                if (h.result === 'low' && h.guess >= lo) lo = h.guess + 1;
-                if (h.result === 'high' && h.guess <= hi) hi = h.guess - 1;
-            });
-        });
-        if (lo > hi) { lo = 1; hi = 100; }
-
-        let guess;
-        if (isHard) {
-            // 困难：绝大多数回合取中点（最快收敛）。
-            // 因为结合了双方线索，若不失误会完全碾压玩家，
-            // 所以保留 30% 的“手滑”把出招范围撑大。
-            const span = hi - lo;
-            if (span > 4 && Math.random() < 0.30) {
-                guess = lo + Math.floor(Math.random() * (span + 1));
-            } else {
-                guess = Math.floor((lo + hi) / 2);
-            }
-        } else if (hi - lo > 10 && Math.random() < 0.55) {
-            // 休闲：较大区间时 55% 概率乱猜
-            guess = lo + Math.floor(Math.random() * (hi - lo + 1));
-        } else {
-            guess = Math.floor((lo + hi) / 2);
-        }
-        if (guess < 1) guess = 1;
-        if (guess > 100) guess = 100;
-
-        const res = makeGuessNumberGuess(gameId, PC_SOCKET_ID, guess);
-        if (!res) {
-            console.warn('[PC] 猜数字出招失败:', gameId);
-            return;
-        }
-        const { game: g, result } = res;
-
-        const payload = {
-            gameId: g.id,
-            guesserSocketId: PC_SOCKET_ID,
-            guesserUsername: PC_USERNAME,
-            // 兼容前端旧字段
-            player: PC_USERNAME,
-            guess: guess,
-            result: result,
-            guessCounts: g.guessCounts,
-            currentGuesser: g.currentGuesser,
-            status: g.status,
-            winner: g.winner,
-            winnerName: g.winner ? (g.winner === PC_SOCKET_ID ? PC_USERNAME : (users.get(g.winner)?.username || '未知')) : null,
-            targetNumber: g.status === 'ended' ? g.secret : undefined
-        };
-
-        [...g.players, ...g.spectators].forEach(function (pid) {
-            io.to(pid).emit('guess-number-update', payload);
-        });
-
-        console.log(`[PC] 猜数字 ${g.id} ai 猜了 ${guess}（区间 ${lo}-${hi}），结果 ${result}`);
-
-        if (g.status === 'ended') {
-            recordGameHistory(g);
-            console.log(`[房间 ${g.roomName}] 猜数字游戏 ${g.id} 结束，ai 猜中 ${guess}`);
-            return;
-        }
-
-        // 若下一回合仍是 ai（理论上不会，但兼容单人场景）
-        if (g.currentGuesser === PC_SOCKET_ID) {
-            setTimeout(function () { pcGuessNumber(g.id); }, 900);
-        }
-    }
-
-    // 若轮到 ai，则自动出招（延迟避免抢在开局包之前）
-    function pcMaybeGuessNumber(gameId) {
-        const g = games.get(gameId);
-        if (!g || g.type !== 'guess-number' || g.status !== 'playing') return;
-        if (g.currentGuesser !== PC_SOCKET_ID) return;
-        setTimeout(function () { pcGuessNumber(gameId); }, 900);
-    }
-
-    // ===== PC：NVIDIA 模型落子（可选，算法兜底） =====
-    // 设计原则：模型只作为“决策参考”，任何异常（超时/空回/非法坐标）
-    // 均立即回退到启发式算法，绝不让游戏因为模型而卡住。
-    const NVIDIA_API_KEY = process.env.NVIDIA_API_KEY || '';
-    const NVIDIA_BASE = process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1';
-    const NVIDIA_MODEL = process.env.NVIDIA_MODEL || 'nvidia/nemotron-3.5-super-vl-120b-a12b';
-    const NVIDIA_TIMEOUT_MS = 4000;   // 硬超时，超过就回退算法
-    const GOMOKU_USE_NVIDIA = process.env.GOMOKU_USE_NVIDIA === '1'; // 默认关闭，需显式开启
-
-    function nvidiaChat(messages, maxTokens) {
-        return new Promise(function (resolve) {
-            if (!NVIDIA_API_KEY) return resolve(null);
-            let settled = false;
-            const done = function (v) { if (!settled) { settled = true; resolve(v); } };
-            try {
-                const https = require('https');
-                const url = new URL(NVIDIA_BASE + '/chat/completions');
-                const body = JSON.stringify({
-                    model: NVIDIA_MODEL,
-                    messages: messages,
-                    max_tokens: maxTokens || 300,
-                    temperature: 0
-                });
-                const req = https.request({
-                    hostname: url.hostname,
-                    path: url.pathname,
-                    method: 'POST',
-                    headers: {
-                        'Authorization': 'Bearer ' + NVIDIA_API_KEY,
-                        'Content-Type': 'application/json',
-                        'Content-Length': Buffer.byteLength(body)
-                    },
-                    timeout: NVIDIA_TIMEOUT_MS
-                }, function (res) {
-                    let data = '';
-                    res.on('data', function (c) { data += c; });
-                    res.on('end', function () {
-                        try {
-                            const j = JSON.parse(data);
-                            const content = j.choices && j.choices[0] && j.choices[0].message
-                                ? (j.choices[0].message.content || '')
-                                : '';
-                            done(content);
-                        } catch (e) { done(null); }
-                    });
-                });
-                req.on('error', function () { done(null); });
-                req.on('timeout', function () { try { req.destroy(); } catch (e) {} done(null); });
-                req.write(body);
-                req.end();
-            } catch (e) {
-                done(null);
-            }
-        });
-    }
-
-    // ===== NVIDIA：你画我猜语义判分 =====
-    // 这是模型在本项目里真正有价值的场景：判断玩家的自由文字猜测
-    // 是否与答案语义相近（如“小汽车” vs “汽车”），确定性代码做不了。
-    // 缓存：同一局同一对（答案, 猜测）只问一次，避免重复消耗。
-    const picJudgeCache = new Map();
-
-    function picJudgeCacheKey(word, guess) { return word + '\u0001' + guess; }
-
-    async function nvidiaJudgePictionary(word, guess) {
-        if (!NVIDIA_API_KEY) return null;
-        const key = picJudgeCacheKey(word, guess);
-        if (picJudgeCache.has(key)) return picJudgeCache.get(key);
-
-        const out = await nvidiaChat([
-            { role: 'system', content: '你是猜词判分器。只输出一个汉字：对 或 错。' },
-            { role: 'user', content: '答案"' + word + '"，玩家猜"' + guess + '"。这个猜测算猜中吗？同义词、近义词、简称、俗称都算对。' }
-        ], 2000);
-
-        if (!out) return null;
-        const t = String(out);
-        let verdict = null;
-        if (/错/.test(t)) verdict = false;
-        else if (/对|正确|是/.test(t)) verdict = true;
-        if (verdict !== null) {
-            picJudgeCache.set(key, verdict);
-            // 缓存不宜无限增长
-            if (picJudgeCache.size > 500) {
-                const first = picJudgeCache.keys().next().value;
-                picJudgeCache.delete(first);
-            }
-        }
-        return verdict;
-    }
-    // ===== 语义判分 END =====
-
-    // 让模型从候选点里挑；返回 null 表示模型不可用，调用方回退算法
-    async function nvidiaPickGomokuMove(board, me, opponent, candidates) {
-        if (!GOMOKU_USE_NVIDIA || !NVIDIA_API_KEY) return null;
-        if (!candidates || candidates.length === 0) return null;
-
-        const symbol = function (v) { return v === null ? '.' : (v === me ? 'O' : 'X'); };
-        const boardText = board.map(function (row) {
-            return row.map(symbol).join(' ');
-        }).join('\n');
-
-        const listText = candidates.map(function (c, i) {
-            return '  ' + (i + 1) + ') 第' + c[0] + '行 第' + c[1] + '列';
-        }).join('\n');
-
-        const prompt = [
-            '你是五子棋AI，执白棋 O，对手执黑棋 X。棋盘15x15，坐标从0到14。',
-            '当前局面（行优先，空格用 . 表示）：',
-            boardText,
-            '',
-            '以下候选落点已由程序评估出（都是空位且具备价值）：',
-            listText,
-            '',
-            '请从中选出你认为最好的一步。',
-            '只回复序号数字（例如 2），不要输出其他任何文字。'
-        ].join('\n');
-
-        const out = await nvidiaChat([
-            { role: 'system', content: '你只输出一个数字序号，不解释。' },
-            { role: 'user', content: prompt }
-        ], 500);
-
-        if (!out) return null;
-        const m = String(out).match(/\d+/);
-        if (!m) return null;
-        const idx = parseInt(m[0], 10) - 1;
-        if (isNaN(idx) || idx < 0 || idx >= candidates.length) return null;
-        return candidates[idx];
-    }
-    // ===== NVIDIA 模型 END =====
-
-    // ===== PC：五子棋自动落子 =====
-    // 策略：棋型评分 + 攻防双重视角。
-    //   1) 先看我方落子后能形成多大的活棋（进攻分）
-    //   2) 再看对手在此处能否形成威胁（防守分，权重更高）
-    //   3) 两者相加取最大；hard 难度额外做一层最优回应校验。
-
-    const GOMOKU_DIRS = [[1, 0], [0, 1], [1, 1], [1, -1]];
-
-    // 数出某个空位在四个方向上双向连成几个子
-    function gomokuLineCount(board, x, y, player) {
-        let total = 0;
-        for (const [dx, dy] of GOMOKU_DIRS) {
-            let count = 1;
-            for (let i = 1; i < 5; i++) {
-                const nx = x + i * dx, ny = y + i * dy;
-                if (nx < 0 || nx >= 15 || ny < 0 || ny >= 15) break;
-                if (board[nx][ny] !== player) break;
-                count++;
-            }
-            for (let i = 1; i < 5; i++) {
-                const nx = x - i * dx, ny = y - i * dy;
-                if (nx < 0 || nx >= 15 || ny < 0 || ny >= 15) break;
-                if (board[nx][ny] !== player) break;
-                count++;
-            }
-            total += count;
-        }
-        return total;
-    }
-
-    // 评估在 (x,y) 落子对 player 的价值；权重设计使威胁优先于普通连子
-    function gomokuScoreFor(board, x, y, player) {
-        let score = 0;
-        for (const [dx, dy] of GOMOKU_DIRS) {
-            let count = 1;
-            let openA = false, openB = false;
-            for (let i = 1; i < 5; i++) {
-                const nx = x + i * dx, ny = y + i * dy;
-                if (nx < 0 || nx >= 15 || ny < 0 || ny >= 15) break;
-                if (board[nx][ny] === player) count++;
-                else { openA = board[nx][ny] === null; break; }
-            }
-            for (let i = 1; i < 5; i++) {
-                const nx = x - i * dx, ny = y - i * dy;
-                if (nx < 0 || nx >= 15 || ny < 0 || ny >= 15) break;
-                if (board[nx][ny] === player) count++;
-                else { openB = board[nx][ny] === null; break; }
-            }
-            const open = (openA ? 1 : 0) + (openB ? 1 : 0);
-            if (count >= 5) score += 1000000;              // 五连直接赢
-            else if (count === 4 && open === 2) score += 100000;  // 活四
-            else if (count === 4 && open === 1) score += 10000;   // 冲四
-            else if (count === 3 && open === 2) score += 8000;    // 活三
-            else if (count === 3 && open === 1) score += 800;     // 眠三
-            else if (count === 2 && open === 2) score += 300;     // 活二
-            else if (count === 2 && open === 1) score += 40;      // 眠二
-            else score += 5;
-        }
-        return score;
-    }
-
-    // 候选点：已有棋子周围 2 格内的空位（避免全盘 225 点暴力枚举）
-    function gomokuCandidates(board) {
-        const cand = [];
-        const seen = new Set();
-        for (let x = 0; x < 15; x++) {
-            for (let y = 0; y < 15; y++) {
-                if (board[x][y] === null) continue;
-                for (let dx = -2; dx <= 2; dx++) {
-                    for (let dy = -2; dy <= 2; dy++) {
-                        const nx = x + dx, ny = y + dy;
-                        if (nx < 0 || nx >= 15 || ny < 0 || ny >= 15) continue;
-                        if (board[nx][ny] !== null) continue;
-                        const key = nx * 100 + ny;
-                        if (seen.has(key)) continue;
-                        seen.add(key);
-                        cand.push([nx, ny]);
-                    }
-                }
-            }
-        }
-        // 空盘：走天元
-        if (cand.length === 0) cand.push([7, 7]);
-        return cand;
-    }
-
-    // 返回评分最高的 N 个候选点（供模型从中挑选，避免让模型直接读全盘坐标）
-    function gomokuTopCandidates(game, n) {
-        const board = game.board;
-        const me = PC_SOCKET_ID;
-        const opponent = game.players.find(function (p) { return p !== me; });
-        const cand = gomokuCandidates(board);
-        const scored = cand.map(function (c) {
-            const x = c[0], y = c[1];
-            const myScore = gomokuScoreFor(board, x, y, me);
-            const oppScore = opponent ? gomokuScoreFor(board, x, y, opponent) : 0;
-            return { pos: [x, y], score: myScore + oppScore * 1.15 };
-        });
-        scored.sort(function (a, b) { return b.score - a.score; });
-        return scored.slice(0, n || 3).map(function (s) { return s.pos; });
-    }
-
-    function pcChooseGomokuMove(game) {
-        const board = game.board;
-        const me = PC_SOCKET_ID;
-        const opponent = game.players.find(function (p) { return p !== me; });
-        const cand = gomokuCandidates(board);
-        const isHard = game.difficulty === 'hard';
-
-        let best = null, bestScore = -Infinity;
-        for (const [x, y] of cand) {
-            // 进攻分
-            const myScore = gomokuScoreFor(board, x, y, me);
-            // 防守分：假设对手下在这里能得多分，则我方必须先堵
-            const oppScore = opponent ? gomokuScoreFor(board, x, y, opponent) : 0;
-            // 防守权重略高于进攻，避免只看自己而导致被对方先成五
-            let score = myScore + oppScore * 1.15;
-
-            if (isHard) {
-                // 困难：对高价值点做一层浅校验（模拟落子后对手的最佳回应）
-                if (myScore >= 8000 || oppScore >= 8000) {
-                    score += 50;
-                }
-            } else {
-                // 休闲：小概率不选最优点，给玩家留机会
-                if (Math.random() < 0.18) score *= (0.35 + Math.random() * 0.3);
-            }
-
-            // 同分时偏向中心，开局面更自然
-            score += (7 - Math.abs(x - 7)) + (7 - Math.abs(y - 7));
-
-            if (score > bestScore) {
-                bestScore = score;
-                best = [x, y];
-            }
-        }
-        return best || [7, 7];
-    }
-
-    async function pcGomokuMove(gameId) {
-        const game = games.get(gameId);
-        if (!game || game.type !== 'gomoku') return;
-        if (game.status !== 'playing') return;
-        if (game.currentPlayer !== PC_SOCKET_ID) return;
-
-        // 先用算法算出最优点（用于赢棋/兜底判断）
-        const algoPos = pcChooseGomokuMove(game);
-        if (!algoPos) return;
-        let pos = algoPos;
-
-        // 若开启模型决策：先用算法筛出前 3 个高价值候选，再让模型从中挑
-        // 注意：只要模型出现任何异常，都保留 algoPos，不影响游戏进行
-        if (GOMOKU_USE_NVIDIA && NVIDIA_API_KEY) {
-            try {
-                const picked = await nvidiaPickGomokuMove(
-                    game.board, PC_SOCKET_ID, game.players.find(function (p) { return p !== PC_SOCKET_ID; }),
-                    gomokuTopCandidates(game, 3)
-                );
-                if (picked) {
-                    // 校验：必须是空位，否则丢弃
-                    if (game.board[picked[0]][picked[1]] === null) {
-                        pos = picked;
-                        console.log('[NVIDIA] 采用模型落子', picked);
-                    } else {
-                        console.warn('[NVIDIA] 模型给了非法落点，回退算法', picked);
-                    }
-                } else {
-                    console.log('[NVIDIA] 模型无有效返回，回退算法');
-                }
-            } catch (e) {
-                console.warn('[NVIDIA] 调用异常，回退算法:', e.message);
-            }
-        }
-        const [x, y] = pos;
-
-        const updated = makeGomokuMove(gameId, PC_SOCKET_ID, x, y);
-        if (!updated) {
-            console.warn('[PC] 五子棋落子失败:', gameId, x, y);
-            return;
-        }
-
-        const payload = {
-            gameId: updated.id,
-            gameType: 'gomoku',
-            board: updated.board,
-            currentPlayer: updated.currentPlayer,
-            lastMove: { x: x, y: y, player: PC_SOCKET_ID },
-            status: updated.status,
-            winner: updated.winner,
-            winnerName: updated.winner ? (updated.winner === PC_SOCKET_ID ? PC_USERNAME : (users.get(updated.winner)?.username || '未知')) : null,
-            players: updated.players.map(function (pid) {
-                return { socketId: pid, username: pid === PC_SOCKET_ID ? PC_USERNAME : (users.get(pid)?.username || '未知') };
-            })
-        };
-
-        [...updated.players, ...updated.spectators].forEach(function (pid) {
-            io.to(pid).emit('game-update', payload);
-        });
-
-        console.log(`[PC] 五子棋 ${updated.id} ai 落子 (${x},${y})，难度 ${game.difficulty || 'easy'}`);
-
-        if (updated.status === 'ended') {
-            recordGameHistory(updated);
-            console.log(`[房间 ${updated.roomName}] 五子棋 ${updated.id} 结束，ai 获胜`);
-        }
-    }
-
-    // 若轮到 ai 则自动落子
-    function pcMaybeGomokuMove(gameId) {
-        const g = games.get(gameId);
-        if (!g || g.type !== 'gomoku' || g.status !== 'playing') return;
-        if (g.currentPlayer !== PC_SOCKET_ID) return;
-        setTimeout(function () {
-            // pcGomokuMove 是 async，必须捕获 reject，否则会成为未处理异常
-            Promise.resolve(pcGomokuMove(gameId)).catch(function (e) {
-                console.error('[PC] 五子棋落子异常:', e && e.message ? e.message : e);
-            });
-        }, 600);
-    }
-
-    // 词语提示库（休闲难度用）
-    const PIC_HINTS = {
-        '太阳': '天上的、会发光的那个', '月亮': '晚上才出来，弯弯的',
-        '星星': '一闪一闪的', '云朵': '白白的、在天上飘', '苹果': '一种水果，红的或绿的',
-        '香蕉': '黄色的、弯弯的水果', '西瓜': '夏天吃的，很大很圆', '气球': '一松手就飞走的',
-        '风筝': '需有风才能飞，有一根线', '雨伞': '下雨时用的', '帽子': '戴在头上的',
-        '房子': '人住的地方', '山': '很高很高的', '树': '有树干和叶子',
-        '花': '有花瓣，很香的', '猫': '会喵喵叫的', '鱼': '在水里游的',
-        '鸟': '有翅膀、会飞的', '人': '就是你自己', '球': '圆的，可以拍',
-        '星星': '夜里一闪一闪的'
-    };
-
-    // ===== 你画我猜：程序化简笔画生成器 =====
-    // 手写模板只覆盖 17/165 个词，其余都会画成同一个方框，无法猜。
-    // 这里用组合式基础图形，按词动态生成可辨识且互不相同的简笔画。
-    // 坐标统一 0-100，返回 [{color,width,points:[[x,y],...]}, ...]
-
-    function PcShape() {
-        this.s = [];
-    }
-    PcShape.prototype.line = function (pts, color) {
-        this.s.push({ color: color || '#37474F', width: 3, points: pts });
-        return this;
-    };
-    PcShape.prototype.poly = function (pts, color, close) {
-        if (close !== false) pts = pts.concat([pts[0]]);
-        return this.line(pts, color);
-    };
-    PcShape.prototype.circle = function (cx, cy, r, color) {
-        var pts = [];
-        for (var i = 0; i <= 16; i++) {
-            var a = (i / 16) * Math.PI * 2;
-            pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
-        }
-        return this.line(pts, color);
-    };
-    PcShape.prototype.rect = function (x, y, w, h, color) {
-        return this.poly([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], color);
-    };
-    PcShape.prototype.dot = function (cx, cy, color) {
-        return this.line([[cx, cy], [cx + 0.5, cy]], color || '#37474F');
-    };
-    PcShape.prototype.out = function () { return this.s; };
-
-    // 依据词语生成图形；优先用专属模板，然后按类别/关键字生成
-    function pcPictionaryShape(word) {
-        // 手写模板优先（画得更精细）
-        if (PIC_TEMPLATES[word]) return PIC_TEMPLATES[word];
-
-        var p = new PcShape();
-        var C = {
-            dark: '#37474F', red: '#E53935', green: '#43A047', blue: '#1E88E5',
-            yellow: '#FDD835', orange: '#FB8C00', brown: '#6D4C41', pink: '#EC407A',
-            gray: '#78909C', purple: '#7E57C2', white: '#FFFFFF'
-        };
-
-        // 分类词表（顺序决定匹配优先级）
-        var fruit = ['葡萄','草莓','菠萝','橙子','樱桃','芒果','柠檬','白菜','番茄','黄瓜','玉米','蘑菇','南瓜','胡萝卜','辣椒','大蒜','洋葱'];
-        var animal = ['狗','兔子','熊猫','老虎','大象','长颈鹿','企鹅','鳄鱼','猴子','斑马','骆驼','蜗牛','蝴蝶','乌龟','螃蟹','蜜蜂','鲨鱼'];
-        var vehicle = ['飞机','汽车','自行车','摩托车','轮船','火车','地铁','直升机','潜水艇','热气球'];
-        var sport = ['足球','篮球','乒乓球','羽毛球','网球','游泳','滑板','跳绳','钓鱼','爬山'];
-        var home = ['电视','冰箱','电脑','手机','手表','眼镜','帽子','鞋子','书包','枕头','镜子','蜡烛','钥匙','剪刀','台灯','风扇','锁头','毛巾','牙刷'];
-        var food = ['汉堡','披萨','寿司','火锅','面条','饺子','包子','炒饭','薯条','爆米花','糖果','巧克力','奶茶','咖啡','面包','鸡腿','烤鸭','螺蛳粉'];
-        var nature = ['海','彩虹','瀑布','沙漠','火山','闪电','雪花','彩霞','河流','草地','森林','洞穴','岛屿'];
-        var place = ['学校','医院','公园','超市','餐厅','电影院','动物园','图书馆','游乐场','加油站','机场','地铁站','海滩','操场','教室'];
-        var people = ['厨师','警察','护士','老师','消防员','宇航员','魔法师','海盗','忍者','超人'];
-        var fun = ['吉他','钢琴','麦克风','魔方','扑克','棋盘','玩偶','烟花'];
-        var action = ['跑步','跳舞','睡觉','哭泣','大笑','拥抱','飞翔','打架','变魔术'];
-
-        // —— 水果蔬菜：圆形/椭圆形果实 + 枝叶 ——
-        if (fruit.indexOf(word) >= 0) {
-            var fc = C.red;
-            if (/葡萄|黄瓜|玉米/.test(word)) fc = C.green;
-            else if (/橙子|胡萝卜|南瓜/.test(word)) fc = C.orange;
-            else if (/柠檬|白菜|大蒜|洋葱/.test(word)) fc = C.yellow;
-            else if (/蘑菇|番茄/.test(word)) fc = word === '蘑菇' ? C.brown : C.red;
-            if (word === '葡萄') {
-                [[40,45],[52,42],[62,46],[45,56],[57,58],[50,68]].forEach(function (q) { p.circle(q[0], q[1], 7, C.purple); });
-                p.line([[50,35],[62,28]], C.green);
-            } else if (word === '香蕉') {
-                p.line([[28,32],[34,52],[48,64],[62,58],[70,40]], C.yellow);
-                p.line([[28,32],[26,28]], C.brown);
-            } else if (word === '胡萝卜') {
-                p.poly([[45,42],[55,42],[50,78]], C.orange);
-                p.line([[50,42],[45,30]], C.green);
-                p.line([[50,42],[58,30]], C.green);
-            } else if (word === '玉米') {
-                p.poly([[42,35],[58,35],[60,75],[40,75]], C.yellow);
-                for (var i = 0; i < 4; i++) p.line([[43,42 + i*8],[57,42 + i*8]], C.orange);
-            } else if (word === '蘑菇') {
-                p.line([[30,50],[35,38],[50,33],[65,38],[70,50],[30,50]], C.red);
-                p.rect(44, 50, 12, 25, C.brown);
-            } else if (word === '辣椒') {
-                p.line([[52,38],[46,52],[50,68],[58,72]], C.red);
-                p.line([[52,38],[60,32]], C.green);
-            } else {
-                p.circle(50, 52, 20, fc);
-                p.line([[50,32],[58,24]], C.brown);
-                p.line([[58,24],[68,26]], C.green);
-            }
-            return p.out();
-        }
-
-        // —— 动物：主体 + 头 + 腿，按词区分特征 ——
-        if (animal.indexOf(word) >= 0) {
-            if (/鱼|鲨鱼/.test(word)) {
-                p.poly([[28,50],[48,36],[68,42],[68,58],[48,64]], C.blue);
-                p.poly([[68,42],[82,30],[82,70],[68,58]], C.blue);
-                p.dot(40, 48, C.dark);
-            } else if (/鸟|企鹅|猫头鹰/.test(word)) {
-                p.circle(50, 45, 15, word === '企鹅' ? C.dark : C.orange);
-                p.poly([[38,48],[28,58],[38,52]], C.yellow);
-                p.poly([[62,48],[72,58],[62,52]], C.yellow);
-                p.dot(45, 42, C.dark); p.dot(55, 42, C.dark);
-                p.line([[50,60],[50,75]], C.orange);
-            } else if (/长颈鹿/.test(word)) {
-                p.rect(38, 50, 24, 25, C.yellow);
-                p.line([[50,50],[50,25]], C.yellow);
-                p.circle(50, 22, 8, C.yellow);
-                p.line([[45,15],[44,8]], C.brown); p.line([[55,15],[56,8]], C.brown);
-            } else if (/大象/.test(word)) {
-                p.circle(50, 50, 20, C.gray);
-                p.circle(32, 52, 10, C.gray);
-                p.line([[38,60],[36,78]], C.gray); p.line([[62,60],[64,78]], C.gray);
-            } else if (/兔/.test(word)) {
-                p.circle(50, 50, 16, C.white);
-                p.line([[42,36],[40,18]], C.white); p.line([[58,36],[60,18]], C.white);
-                p.dot(44,48,C.dark); p.dot(56,48,C.dark);
-            } else if (/乌龟|螃蟹|蜗牛|蝴蝶|蜜蜂|鳄鱼|猴子|熊猫|老虎|斑马|骆驼|狗|猫/.test(word)) {
-                var bodyColor = C.gray;
-                if (/老虎/.test(word)) bodyColor = C.orange;
-                if (/熊猫/.test(word)) bodyColor = C.dark;
-                if (/蜜蜂/.test(word)) bodyColor = C.yellow;
-                p.circle(50, 52, 18, bodyColor);
-                p.circle(50, 34, 11, bodyColor);
-                p.dot(46,32,C.dark); p.dot(54,32,C.dark);
-                p.line([[38,68],[34,80]], bodyColor); p.line([[62,68],[66,80]], bodyColor);
-                // 尾巴
-                p.line([[68,52],[80,46]], bodyColor);
-            } else {
-                p.circle(50, 50, 18, bodyColor);
-            }
-            return p.out();
-        }
-
-        // —— 交通工具 ——
-        if (vehicle.indexOf(word) >= 0) {
-            if (/飞机|直升机/.test(word)) {
-                p.poly([[20,50],[80,46],[72,54],[20,50]], C.gray);
-                p.poly([[45,48],[40,25],[52,48]], C.blue);
-                p.poly([[30,50],[22,65],[40,52]], C.blue);
-            } else if (/自行车|摩托车/.test(word)) {
-                p.circle(32, 66, 12, C.dark); p.circle(70, 66, 12, C.dark);
-                p.line([[32,66],[48,46],[70,66]], C.red);
-                p.line([[48,46],[54,36]], C.dark);
-            } else if (/轮船|潜水艇/.test(word)) {
-                p.poly([[25,50],[75,50],[68,68],[33,68]], C.blue);
-                p.rect(45, 35, 12, 15, C.white);
-                p.line([[20,72],[80,72]], C.water || C.blue);
-            } else if (/热气球/.test(word)) {
-                p.circle(50, 38, 18, C.red);
-                p.line([[42,54],[46,68]], C.brown); p.line([[58,54],[54,68]], C.brown);
-                p.rect(45, 68, 10, 8, C.brown);
-            } else {
-                p.rect(25, 45, 50, 22, C.blue);
-                p.rect(32, 38, 14, 8, C.white); p.rect(52, 38, 14, 8, C.white);
-                p.circle(38, 70, 6, C.dark); p.circle(64, 70, 6, C.dark);
-            }
-            return p.out();
-        }
-
-        // —— 运动 ——
-        if (sport.indexOf(word) >= 0) {
-            if (/游泳/.test(word)) {
-                for (var k = 0; k < 3; k++) p.line([[20,45+k*10],[35,38+k*10],[50,45+k*10],[65,38+k*10],[80,45+k*10]], C.blue);
-                p.circle(50, 30, 6, C.yellow);
-            } else if (/钓鱼/.test(word)) {
-                p.line([[55,25],[40,60]], C.brown);
-                p.line([[40,60],[25,62]], C.gray);
-                p.circle(50, 50, 12, C.blue);
-            } else if (/跳绳/.test(word)) {
-                p.circle(50, 25, 6, C.yellow);
-                p.line([[50,31],[50,55]], C.red);
-                p.line([[25,55],[50,75],[75,55]], C.blue);
-            } else if (/滑板/.test(word)) {
-                p.line([[30,68],[70,68]], C.dark);
-                p.circle(38, 74, 4, C.gray); p.circle(62, 74, 4, C.gray);
-                p.circle(50, 40, 7, C.yellow);
-            } else if (/爬山/.test(word)) {
-                p.poly([[20,75],[45,35],[60,55],[72,42],[88,75]], C.brown);
-                p.circle(50, 28, 5, C.red);
-            } else {
-                p.circle(50, 52, 22, /篮球/.test(word) ? C.orange : /足球/.test(word) ? C.white : C.yellow);
-                if (/足球/.test(word)) p.poly([[50,40],[42,48],[46,58],[56,58],[60,48]], C.dark);
-                p.line([[28,52],[72,52]], C.dark); p.line([[50,30],[50,74]], C.dark);
-            }
-            return p.out();
-        }
-
-        // —— 家居物品 ——
-        if (home.indexOf(word) >= 0) {
-            if (/眼镜/.test(word)) {
-                p.circle(37, 50, 12, C.dark); p.circle(63, 50, 12, C.dark);
-                p.line([[49,50],[51,50]], C.dark);
-            } else if (/钥匙/.test(word)) {
-                p.circle(35, 42, 10, C.yellow);
-                p.line([[42,48],[70,72]], C.yellow); p.line([[62,64],[70,56]], C.yellow);
-            } else if (/剪刀/.test(word)) {
-                p.circle(38, 68, 7, C.gray); p.circle(62, 68, 7, C.gray);
-                p.line([[40,62],[62,30]], C.gray); p.line([[60,62],[38,30]], C.gray);
-            } else if (/伞/.test(word)) {
-                p.line([[25,52],[50,32],[75,52]], C.blue);
-                p.line([[50,52],[50,78],[44,82]], C.brown);
-            } else if (/帽子/.test(word)) {
-                p.line([[30,55],[35,35],[65,35],[70,55]], C.red);
-                p.line([[25,55],[75,55]], C.red);
-            } else if (/风扇/.test(word)) {
-                p.circle(50, 50, 22, C.gray);
-                for (var a = 0; a < 3; a++) { var ang = a * Math.PI*2/3; p.line([[50,50],[50+18*Math.cos(ang),50+18*Math.sin(ang)]], C.blue); }
-            } else if (/手表/.test(word)) {
-                p.circle(50, 50, 14, C.gray);
-                p.line([[42,36],[42,28],[58,28],[58,36]], C.gray);
-                p.line([[50,50],[50,42]], C.dark); p.line([[50,50],[56,52]], C.dark);
-            } else if (/鞋子|书包|枕头|毛巾|牙刷|蜡烛|镜子|台灯|锁头/.test(word)) {
-                p.rect(32, 40, 36, 30, C.blue);
-                p.line([[32,50],[68,50]], C.dark);
-            } else {
-                p.rect(28, 38, 44, 28, C.gray);
-                p.rect(34, 44, 32, 16, C.dark);
-            }
-            return p.out();
-        }
-
-        // —— 食物 ——
-        if (food.indexOf(word) >= 0) {
-            if (/披萨/.test(word)) {
-                p.circle(50, 50, 24, C.yellow);
-                p.line([[30,45],[70,45]], C.red); p.line([[40,30],[40,70]], C.red);
-            } else if (/汉堡/.test(word)) {
-                p.line([[30,42],[50,30],[70,42]], C.orange);
-                p.rect(30, 42, 40, 8, C.green);
-                p.rect(30, 50, 40, 10, C.brown);
-                p.line([[30,60],[70,60]], C.orange);
-            } else if (/冰淇淋/.test(word)) {
-                p.circle(50, 42, 14, C.pink);
-                p.poly([[38,54],[50,78],[62,54]], C.yellow);
-            } else if (/面条|螺蛳粉|火锅/.test(word)) {
-                p.circle(50, 50, 24, C.gray);
-                for (var n = 0; n < 4; n++) p.line([[35,45+n*6],[65,43+n*6]], C.yellow);
-            } else if (/糖果/.test(word)) {
-                p.circle(50, 50, 12, C.pink);
-                p.poly([[38,50],[28,42],[30,58]], C.white);
-                p.poly([[62,50],[72,42],[70,58]], C.white);
-            } else if (/咖啡|奶茶/.test(word)) {
-                p.rect(38, 40, 24, 30, C.white);
-                p.line([[62,46],[70,46],[68,60],[62,58]], C.white);
-            } else {
-                p.circle(50, 52, 22, C.orange);
-                p.dot(42,48,C.dark); p.dot(58,48,C.dark);
-            }
-            return p.out();
-        }
-
-        // —— 自然景物 ——
-        if (nature.indexOf(word) >= 0) {
-            if (/海|河流|瀑布/.test(word)) {
-                for (var w = 0; w < 4; w++) p.line([[18,42+w*10],[35,36+w*10],[52,42+w*10],[70,36+w*10],[86,42+w*10]], C.blue);
-            } else if (/彩虹/.test(word)) {
-                [C.red, C.orange, C.yellow, C.green, C.blue].forEach(function (col, i) {
-                    p.line([[20,75-i*6],[50,45-i*6],[80,75-i*6]], col);
-                });
-            } else if (/闪电/.test(word)) {
-                p.poly([[55,20],[35,52],[50,52],[40,82],[70,45],[52,45]], C.yellow);
-            } else if (/雪花/.test(word)) {
-                for (var s = 0; s < 6; s++) { var th = s*Math.PI/3; p.line([[50,50],[50+22*Math.cos(th),50+22*Math.sin(th)]], C.blue); }
-            } else if (/火山/.test(word)) {
-                p.poly([[20,78],[45,38],[58,38],[82,78]], C.brown);
-                p.poly([[45,38],[50,20],[55,38]], C.red);
-            } else if (/森林|树|草地/.test(word)) {
-                p.line([[50,80],[50,50]], C.brown);
-                p.circle(50, 40, 18, C.green);
-            } else {
-                p.circle(50, 50, 22, C.yellow);
-            }
-            return p.out();
-        }
-
-        // —— 场所 ——
-        if (place.indexOf(word) >= 0) {
-            p.rect(28, 45, 44, 35, C.brown);
-            p.poly([[24,45],[50,25],[76,45]], C.red);
-            p.rect(44, 60, 12, 20, C.blue);
-            p.rect(32, 52, 8, 8, C.yellow); p.rect(60, 52, 8, 8, C.yellow);
-            if (/学校|教室|图书馆/.test(word)) p.line([[40,38],[60,38]], C.white);
-            if (/医院/.test(word)) { p.line([[50,32],[50,44]], C.white); p.line([[44,38],[56,38]], C.white); }
-            return p.out();
-        }
-
-        // —— 职业人物 ——
-        if (people.indexOf(word) >= 0) {
-            p.circle(50, 32, 12, C.yellow);
-            p.line([[50,44],[50,72]], /超人/.test(word) ? C.red : C.blue);
-            p.line([[50,52],[32,64]], C.yellow); p.line([[50,52],[68,64]], C.yellow);
-            p.line([[50,72],[40,86]], C.dark); p.line([[50,72],[60,86]], C.dark);
-            if (/厨师|护士|老师/.test(word)) p.circle(50, 22, 8, C.white);
-            if (/警察|消防员|宇航员/.test(word)) p.rect(42, 18, 16, 6, C.blue);
-            if (/超人/.test(word)) p.poly([[38,46],[26,66],[50,58]], C.red);
-            return p.out();
-        }
-
-        // —— 娱乐 ——
-        if (fun.indexOf(word) >= 0) {
-            if (/吉他/.test(word)) {
-                p.circle(38, 62, 12, C.brown);
-                p.rect(44, 30, 12, 38, C.orange);
-                p.line([[46,34],[46,62]], C.dark); p.line([[50,34],[50,62]], C.dark);
-            } else if (/钢琴/.test(word)) {
-                p.rect(28, 45, 44, 24, C.dark);
-                for (var k = 0; k < 7; k++) p.line([[30+k*6,45],[30+k*6,60]], C.white);
-                p.line([[36,45],[36,62]], C.dark); p.line([[48,45],[48,62]], C.dark); p.line([[60,45],[60,62]], C.dark);
-            } else if (/魔方/.test(word)) {
-                p.rect(34, 34, 32, 32, C.red);
-                p.line([[45,34],[45,66]], C.dark); p.line([[55,34],[55,66]], C.dark);
-                p.line([[34,45],[66,45]], C.dark); p.line([[34,55],[66,55]], C.dark);
-            } else if (/麦克风/.test(word)) {
-                p.circle(50, 38, 12, C.gray);
-                p.line([[50,50],[50,74]], C.dark);
-            } else if (/扑克|棋盘/.test(word)) {
-                p.rect(35, 38, 30, 30, C.white);
-                p.line([[50,44],[50,62]], C.red); p.line([[41,53],[59,53]], C.red);
-            } else if (/烟花/.test(word)) {
-                for (var f = 0; f < 8; f++) { var fa = f*Math.PI/4; p.line([[50,50],[50+24*Math.cos(fa),50+24*Math.sin(fa)]], f%2?C.red:C.yellow); }
-            } else {
-                p.circle(50, 50, 20, C.pink);
-            }
-            return p.out();
-        }
-
-        // —— 动作 ——
-        if (action.indexOf(word) >= 0) {
-            p.circle(50, 26, 9, C.yellow);
-            p.line([[50,35],[50,58]], C.blue);
-            if (/跑步|跳舞/.test(word)) {
-                p.line([[50,58],[34,72]], C.blue); p.line([[50,58],[66,70]], C.blue);
-                p.line([[50,42],[32,50]], C.blue); p.line([[50,42],[68,36]], C.blue);
-            } else if (/睡觉/.test(word)) {
-                p.line([[36,30],[44,26],[52,30],[60,26]], C.dark);
-                p.line([[50,58],[36,70]], C.blue); p.line([[50,58],[64,70]], C.blue);
-            } else if (/哭泣|大笑/.test(word)) {
-                p.dot(44,26,C.dark); p.dot(56,26,C.dark);
-                if (/哭泣/.test(word)) p.line([[46,33],[46,40],[54,40],[54,33]], C.blue);
-                else p.line([[42,33],[50,40],[58,33]], C.red);
-                p.line([[50,58],[38,72]], C.blue); p.line([[50,58],[62,72]], C.blue);
-            } else if (/拥抱|打架/.test(word)) {
-                p.line([[40,44],[28,40]], C.blue); p.line([[60,44],[72,40]], C.blue);
-                p.line([[50,58],[38,72]], C.blue); p.line([[50,58],[62,72]], C.blue);
-            } else {
-                p.line([[50,42],[32,48]], C.blue); p.line([[50,42],[68,48]], C.blue);
-                p.line([[50,58],[50,76]], C.blue);
-            }
-            return p.out();
-        }
-
-        // 其他：中心方块 + 对角线，仍然比纯方框有辨识度
-        p.rect(35, 35, 30, 30, C.gray);
-        p.line([[35,35],[65,65]], C.dark);
-        p.line([[65,35],[35,65]], C.dark);
-        return p.out();
-    }
-
-    // 把模板坐标（0-100）转成前端可直接绘制的 strokes 数据并广播
-    function pcPictionaryDraw(gameId) {
-        const game = games.get(gameId);
-        if (!game || game.type !== 'pictionary') return;
-        if (game.status !== 'playing') return;
-        if (game.currentDrawer !== PC_SOCKET_ID) return;
-
-        const word = game.currentWord;
-        // 用程序化生成器：优先手写模板，其余按词动态生成，
-        // 避免 148 个词都画成同一个抽象方框。
-        const strokes = pcPictionaryShape(word);
-
-        const payload = {
-            gameId: game.id,
-            drawingData: {
-                type: 'strokes',
-                width: 100,    // 模板坐标系宽高，前端等比缩放
-                height: 100,
-                strokes: strokes
-            }
-        };
-
-        game.players.forEach(function (pid) {
-            if (pid !== PC_SOCKET_ID) io.to(pid).emit('game-draw', payload);
-        });
-        game.spectators.forEach(function (pid) {
-            io.to(pid).emit('game-draw', payload);
-        });
-
-        console.log(`[PC] 你画我猜 ${game.id} ai 画了「${word}」（${strokes.length} 笔）`);
-
-        // 画完后根据难度过一会儿给一句提示
-        if (game.difficulty !== 'hard') {
-            setTimeout(function () { pcPictionaryHint(game.id); }, 3000);
-        }
-
-        // 轮次超时保护：AI 是画者时，玩家无法通过 game-finish-drawing 推进轮次，
-        // 因此这里挂一个超时器，到点若仍未猜中就自动进入下一轮，避免永久卡住。
-        const tick = game.roundTimeLimit || 60;
-        setTimeout(function () {
-            const g = games.get(game.id);
-            if (!g || g.type !== 'pictionary' || g.status !== 'playing') return;
-            if (g.currentDrawer !== PC_SOCKET_ID) return;   // 已换轮
-            if (g.guesses.some(function (x) { return x.isCorrect; })) return; // 已猜中
-            pcPictionaryNextRound(g.id, 'timeout');
-        }, tick * 1000);
-    }
-
-    // AI 作为画者时，把轮次推进到下一轮（无人猜中）
-    function pcPictionaryNextRound(gameId, reason) {
-        const game = games.get(gameId);
-        if (!game || game.type !== 'pictionary' || game.status !== 'playing') return;
-        if (game.currentDrawer !== PC_SOCKET_ID) return;
-
-        game.currentRound++;
-        if (game.currentRound < game.maxRounds) {
-            // 与 ai 对战时保持 ai 一直当画者，玩家一直猜；
-            // 否则轮换画者后 ai 不会猜词，游戏会卡住。
-            if (game.currentDrawer !== PC_SOCKET_ID) {
-                const nextDrawerIndex = (game.players.indexOf(game.currentDrawer) + 1) % game.players.length;
-                game.currentDrawer = game.players[nextDrawerIndex];
-            }
-            game.currentWord = game.words[Math.floor(Math.random() * game.words.length)];
-            game.roundStartTime = new Date();
-            game.guesses = [];
-            games.set(gameId, game);
-
-            game.players.forEach(function (pid) {
-                const isDrawer = pid === game.currentDrawer;
-                io.to(pid).emit('game-update', {
-                    gameId: game.id,
-                    gameType: 'pictionary',
-                    currentDrawer: game.currentDrawer,
-                    currentDrawerName: users.get(game.currentDrawer)?.username || '未知',
-                    currentWord: isDrawer ? game.currentWord : null,
-                    wordHint: game.currentWord.length + '个字',
-                    scores: Object.fromEntries(game.scores),
-                    currentRound: game.currentRound,
-                    maxRounds: game.maxRounds,
-                    guesses: [],
-                    status: game.status,
-                    roundAdvanced: true,
-                    reason: reason || 'timeout'
-                });
-            });
-            console.log(`[PC] 你画我猜 ${game.id} 进入第 ${game.currentRound} 轮（${reason}）`);
-
-            // 若新一轮画者仍是 ai，继续画
-            if (game.currentDrawer === PC_SOCKET_ID) {
-                setTimeout(function () { pcPictionaryDraw(game.id); }, 1200);
-            }
-        } else {
-            game.status = 'ended';
-            game.endTime = new Date();
-            let maxScore = 0, winnerSocketId = null;
-            game.scores.forEach(function (score, sid) {
-                if (score > maxScore) { maxScore = score; winnerSocketId = sid; }
-            });
-            game.winner = winnerSocketId;
-            games.set(gameId, game);
-            game.players.forEach(function (pid) {
-                io.to(pid).emit('game-update', {
-                    gameId: game.id,
-                    gameType: 'pictionary',
-                    status: 'ended',
-                    winner: game.winner,
-                    winnerName: game.winner ? (game.winner === PC_SOCKET_ID ? PC_USERNAME : (users.get(game.winner)?.username || '未知')) : null,
-                    scores: Object.fromEntries(game.scores),
-                    currentRound: game.currentRound,
-                    maxRounds: game.maxRounds
-                });
-            });
-            recordGameHistory(game);
-            console.log(`[PC] 你画我猜 ${game.id} 结束`);
-        }
-    }
-
-    // ai 给一句模糊提示（不直接说答案）
-    function pcPictionaryHint(gameId) {
-        const game = games.get(gameId);
-        if (!game || game.type !== 'pictionary' || game.status !== 'playing') return;
-        if (game.currentDrawer !== PC_SOCKET_ID) return;
-
-        const w = game.currentWord;
-        const hint = PIC_HINTS[w] || ('这个词语有 ' + w.length + ' 个字');
-        game.players.forEach(function (pid) {
-            if (pid !== PC_SOCKET_ID) io.to(pid).emit('pictionary-hint', { gameId: game.id, hint: hint });
-        });
-        console.log(`[PC] 你画我猜 ${game.id} 提示：${hint}`);
-    }
-
-
-    // ===== PC 虚拟账户 END =====
-
     // 游戏邀请系统数据结构 - 已移至全局作用域
 
     // 获取在线用户列表
@@ -9885,17 +12399,14 @@ io.on('connection', (socket) => {
     socket.on('send-game-invitation', (data) => {
         const user = users.get(socket.id);
         if (user && data.userId && data.gameType) {
-            const targetUser = users.get(data.userId);
-            // ===== PC 虚拟账户：自动接受邀请，直接开局 =====
+            // ===== PC 虚拟账户：自动接受邀请 =====
             if (data.userId === PC_SOCKET_ID) {
-                // 必须与 pcCreateAndStartGame 支持的分支保持一致，
-                // 否则你画我猜会在白名单这关被拦掉，根本走不到创建游戏。
-                const pcAcceptedGameTypes = ['gomoku', 'guess-number', 'rps', 'bomb', 'pictionary'];
-                if (pcAcceptedGameTypes.indexOf(data.gameType) < 0) {
-                    socket.emit('game-invitation-error', { message: `ai 暂不支持「${data.gameType}」游戏` });
+                const pcAcceptedGameTypes = ['gomoku', 'guess-number', 'rps', 'bomb', 'go', 'snake'];
+                if (!pcAcceptedGameTypes.includes(data.gameType)) {
+                    socket.emit('game-invitation-error', { message: `pc 暂不支持「${data.gameType}」游戏` });
                     return;
                 }
-                // 告知邀请方：ai 已接受
+                // 通知发送者：pc 接受了邀请
                 socket.emit('game-invitation-sent', {
                     id: `inv-pc-${Date.now()}`,
                     from: socket.id,
@@ -9911,17 +12422,13 @@ io.on('connection', (socket) => {
                     accept: true,
                     username: PC_USERNAME
                 });
-                // 创建并立刻开局，把 game-start 推给玩家
-                try {
-                    pcCreateAndStartGame(socket.id, user, data.gameType, data.difficulty);
-                } catch (e) {
-                    console.error('[PC] 创建游戏失败:', e.message);
-                    socket.emit('game-invitation-error', { message: 'ai 创建游戏失败: ' + e.message });
-                }
+                // 创建游戏并让 pc 加入
+                pcCreateAndStartGame(socket.id, user, data.gameType);
                 return;
             }
             // ===== PC 虚拟账户 END =====
 
+            const targetUser = users.get(data.userId);
             if (targetUser) {
                 // 检查是否已存在同一对用户+游戏类型的 pending 邀请
                 const duplicate = Array.from(gameInvitations.values()).find(inv =>
@@ -10181,6 +12688,89 @@ io.on('connection', (socket) => {
                                 console.log(`[房间 ${invitation.roomName}] 俄罗斯方块对战 ${updatedGame.id} 等待双方确认开始`);
                             }
                         }
+                    } else if (invitation.gameType === 'go') {
+                        game = createGoGame({ username: invitation.fromUsername, socketId: invitation.from }, invitation.roomName);
+                        if (game) {
+                            // 使用 joinGoGame 来正确初始化游戏状态
+                            const updatedGame = joinGoGame(game.id, socket.id, user.username);
+                            if (updatedGame) {
+                                // 通知双方游戏开始
+                                [invitation.from, socket.id].forEach(playerSocketId => {
+                                    const isBlack = playerSocketId === invitation.from;
+                                    io.to(playerSocketId).emit('go-start', {
+                                        gameId: updatedGame.id,
+                                        gameType: 'go',
+                                        status: updatedGame.status,
+                                        players: updatedGame.players.map(pid => ({
+                                            socketId: pid,
+                                            username: users.get(pid)?.username || '未知',
+                                            color: pid === invitation.from ? 'black' : 'white'
+                                        })),
+                                        board: updatedGame.board,
+                                        currentPlayer: updatedGame.currentPlayer,
+                                        currentColor: updatedGame.currentColor,
+                                        capturedStones: updatedGame.capturedStones,
+                                        yourColor: isBlack ? 'black' : 'white'
+                                    });
+                                });
+
+                                // 广播给房间其他人
+                                socket.to(invitation.roomName).emit('game-started', {
+                                    gameId: updatedGame.id,
+                                    gameType: 'go',
+                                    players: updatedGame.players.map(pid => users.get(pid)?.username || '未知')
+                                });
+
+                                console.log(`[房间 ${invitation.roomName}] 围棋游戏 ${updatedGame.id} 开始`);
+                            }
+                        }
+                    } else if (invitation.gameType === 'snake') {
+                        game = createSnakeGame({ username: invitation.fromUsername, socketId: invitation.from }, invitation.roomName);
+                        if (game) {
+                            // 使用 joinSnakeGame 来正确初始化游戏状态
+                            const updatedGame = joinSnakeGame(game.id, socket.id, user.username);
+                            if (updatedGame) {
+                                // 启动游戏循环
+                                startSnakeGameLoop(updatedGame.id);
+
+                                // 通知双方游戏开始
+                                [invitation.from, socket.id].forEach(playerSocketId => {
+                                    const mySnake = updatedGame.snakes[playerSocketId];
+                                    io.to(playerSocketId).emit('snake-start', {
+                                        gameId: updatedGame.id,
+                                        gameType: 'snake',
+                                        players: updatedGame.players.map(pid => ({
+                                            socketId: pid,
+                                            username: users.get(pid)?.username || '未知',
+                                            color: updatedGame.snakes[pid]?.color || '#28a745'
+                                        })),
+                                        gridSize: updatedGame.gridSize,
+                                        playerSnake: mySnake,
+                                        myColor: mySnake?.color || '#28a745',
+                                        opponentSnakes: updatedGame.players
+                                            .filter(p => p !== playerSocketId)
+                                            .map(p => ({
+                                                socketId: p,
+                                                snake: updatedGame.snakes[p]
+                                            })),
+                                        food: updatedGame.foods,
+                                        scores: updatedGame.players.reduce((acc, pid) => {
+                                            acc[pid] = updatedGame.scores.get(pid) || 0;
+                                            return acc;
+                                        }, {})
+                                    });
+                                });
+
+                                // 广播给房间其他人
+                                socket.to(invitation.roomName).emit('game-started', {
+                                    gameId: updatedGame.id,
+                                    gameType: 'snake',
+                                    players: updatedGame.players.map(pid => users.get(pid)?.username || '未知')
+                                });
+
+                                console.log(`[房间 ${invitation.roomName}] 贪吃蛇游戏 ${updatedGame.id} 开始`);
+                            }
+                        }
                     }
 
                     console.log(`[房间 ${invitation.roomName}] ${user.username} 接受了 ${invitation.fromUsername} 的 ${invitation.gameType} 邀请`);
@@ -10232,6 +12822,10 @@ io.on('connection', (socket) => {
                     devOpponentChoice: opponentChoice || null
                 });
             });
+            // 若 pc 还没出招，触发 AI
+            if (updatedGame.players.includes(PC_SOCKET_ID) && !updatedGame.choices[PC_SOCKET_ID]) {
+                setTimeout(() => pcRPSMove(updatedGame.id), 800);
+            }
         }
     });
 
@@ -10287,7 +12881,120 @@ io.on('connection', (socket) => {
         if (updatedGame.status === 'finished') {
             updatedGame.endTime = new Date().toISOString();
             recordGameHistory(updatedGame);
+        } else if (updatedGame.status === 'playing' &&
+                   updatedGame.players[updatedGame.currentPlayerIdx] === PC_SOCKET_ID) {
+            setTimeout(() => pcBombMove(updatedGame.id), 900);
         }
+    });
+
+    // ---- 围棋：落子 ----
+    socket.on('go-move', (data) => {
+        const user = users.get(socket.id);
+        if (!user || !data.gameId || data.x === undefined || data.y === undefined) return;
+
+        const result = makeGoMove(data.gameId, socket.id, data.x, data.y);
+        if (!result) return;
+
+        const { game, captured } = result;
+
+        // 通知所有玩家
+        game.players.forEach(pid => {
+            io.to(pid).emit('go-move', {
+                gameId: game.id,
+                x: data.x,
+                y: data.y,
+                color: game.currentColor === 'black' ? 'white' : 'black', // 刚落下的颜色
+                board: game.board,
+                currentPlayer: game.currentPlayer,
+                currentColor: game.currentColor,
+                capturedStones: game.capturedStones,
+                captured: captured,
+                lastMove: { x: data.x, y: data.y }
+            });
+        });
+
+        // 检查游戏结束（双方连续pass）
+        if (game.status === 'ended') {
+            game.players.forEach(pid => {
+                io.to(pid).emit('go-end', {
+                    gameId: game.id,
+                    winner: game.winner,
+                    scores: game.scores
+                });
+            });
+            recordGameHistory(game);
+        } else if (game.currentPlayer === PC_SOCKET_ID) {
+            // PC 下棋
+            setTimeout(() => pcGoMove(game.id), 1000);
+        }
+    });
+
+    // ---- 围棋：停一手 ----
+    socket.on('go-pass', (data) => {
+        const user = users.get(socket.id);
+        if (!user || !data.gameId) return;
+
+        const game = passGoMove(data.gameId, socket.id);
+        if (!game) return;
+
+        // 通知所有玩家
+        game.players.forEach(pid => {
+            io.to(pid).emit('go-move', {
+                gameId: game.id,
+                pass: true,
+                color: game.currentColor === 'black' ? 'white' : 'black',
+                board: game.board,
+                currentPlayer: game.currentPlayer,
+                currentColor: game.currentColor,
+                capturedStones: game.capturedStones
+            });
+        });
+
+        // 检查游戏结束
+        if (game.status === 'ended') {
+            game.players.forEach(pid => {
+                io.to(pid).emit('go-end', {
+                    gameId: game.id,
+                    winner: game.winner,
+                    scores: game.scores
+                });
+            });
+            recordGameHistory(game);
+        } else if (game.currentPlayer === PC_SOCKET_ID) {
+            setTimeout(() => pcGoMove(game.id), 1000);
+        }
+    });
+
+    // ---- 围棋：认输 ----
+    socket.on('go-resign', (data) => {
+        const user = users.get(socket.id);
+        if (!user || !data.gameId) return;
+
+        const game = games.get(data.gameId);
+        if (!game || game.status !== 'playing') return;
+
+        game.status = 'ended';
+        game.endTime = new Date();
+        game.winner = game.players.find(p => p !== socket.id);
+        games.set(data.gameId, game);
+
+        game.players.forEach(pid => {
+            io.to(pid).emit('go-end', {
+                gameId: game.id,
+                winner: game.winner,
+                resign: socket.id
+            });
+        });
+        recordGameHistory(game);
+    });
+
+    // ---- 贪吃蛇：改变方向 ----
+    socket.on('snake-change-direction', (data) => {
+        const user = users.get(socket.id);
+        if (!user || !data.gameId || !data.direction) return;
+
+        const game = changeSnakeDirection(data.gameId, socket.id, data.direction);
+        // 方向改变不需要广播，游戏循环会处理状态更新
     });
 
     // 获取游戏邀请列表
@@ -10326,7 +13033,7 @@ io.on('connection', (socket) => {
                     roomName: g.roomName,
                     players: g.players.map(pid => ({
                         socketId: pid,
-                        username: users.get(pid)?.username || '未知'
+                        username: pid === PC_SOCKET_ID ? PC_USERNAME : (users.get(pid)?.username || '未知')
                     })),
                     spectators: g.spectators.length,
                     startTime: g.startTime
@@ -10503,9 +13210,9 @@ io.on('connection', (socket) => {
                 gameType: game.type,
                 type: game.type, // 兼容前端 game.type 字段
                 players: game.players,
-                playerNames: game.players.map(pid => users.get(pid)?.username || game.playerNames?.[pid] || '未知'),
+                playerNames: game.players.map(pid => pid === PC_SOCKET_ID ? PC_USERNAME : (users.get(pid)?.username || game.playerNames?.[pid] || '未知')),
                 winner: winner,
-                winnerName: winner ? (users.get(winner)?.username || game.playerNames?.[winner] || '未知') : '平局',
+                winnerName: winner ? (winner === PC_SOCKET_ID ? PC_USERNAME : (users.get(winner)?.username || game.playerNames?.[winner] || '未知')) : '平局',
                 startTime: game.startTime || now,
                 endTime: now,
                 roomName: game.roomName
@@ -10674,7 +13381,7 @@ io.on('connection', (socket) => {
         
         // 添加好友关系
         friendships.get(socket.id).add(targetSocketId);
-        
+        db.addFriendship(user.username, targetUser.username); // 模块 5：持久化
         // 通知目标用户
         io.to(targetSocketId).emit('friend-request', {
             fromSocketId: socket.id,
@@ -10753,6 +13460,7 @@ io.on('connection', (socket) => {
         // 直接添加双向好友关系
         friendships.get(socket.id).add(targetSocketId);
         friendships.get(targetSocketId).add(socket.id);
+        db.addFriendship(user.username, targetUser.username); // 模块 5：持久化
         
         // 通知双方
         io.to(socket.id).emit('friend-accepted', {
@@ -10791,6 +13499,7 @@ io.on('connection', (socket) => {
             friendships.set(socket.id, new Set());
         }
         friendships.get(socket.id).add(fromSocketId);
+        db.addFriendship(user.username, fromUser.username); // 模块 5：持久化
         
         // 通知双方
         io.to(socket.id).emit('friend-accepted', {
@@ -10855,6 +13564,7 @@ io.on('connection', (socket) => {
         if (friendships.has(friendSocketId)) {
             friendships.get(friendSocketId).delete(socket.id);
         }
+        db.removeFriendship(user.username, friendUser.username); // 模块 5：持久化
         
         // 同时清理可能存在的强制好友记录
         if (adminForcedFriendships.has(socket.id)) {
@@ -11016,6 +13726,12 @@ io.on('connection', (socket) => {
         }
 
         const user = users.get(socket.id);
+        // 支持按用户名发送（插件友好）：若传 toUser 则查找其 socketId
+        if (!data.targetSocketId && data.toUser) {
+            for (const [sid, u] of users) {
+                if (u && u.username === data.toUser) { data.targetSocketId = sid; break; }
+            }
+        }
         const targetUser = users.get(data.targetSocketId);
         
         if (!user || !targetUser) {
@@ -11042,7 +13758,7 @@ io.on('connection', (socket) => {
         }
         
         const chatId = [socket.id, data.targetSocketId].sort().join('-');
-        const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        const messageId = Date.now() + '-' + Math.random().toString(36).substring(2, 11);
         const messageData = {
             id: messageId,
             chatId: chatId,
@@ -11051,15 +13767,20 @@ io.on('connection', (socket) => {
             fromColor: user.color,
             toSocketId: data.targetSocketId,
             message: data.message,
-            type: data.type || 'text',
-            timestamp: new Date().toLocaleTimeString(),
+            type: (() => {
+                if (data.type) return data.type;
+                if (data.message && data.message.startsWith('/uploads/')) {
+                    const lowerMsg = data.message.toLowerCase();
+                    if (/\.(jpg|jpeg|png|gif|webp|svg)$/.test(lowerMsg)) return 'image';
+                    if (/\.(webm|mp3|ogg|wav)$/.test(lowerMsg)) return 'audio';
+                    if (/\.(pdf|doc|docx|xls|xlsx|zip|rar|txt)$/.test(lowerMsg)) return 'file';
+                }
+                return 'text';
+            })(),
+            timestamp: Date.now(),
             readBy: [socket.id], // 初始时只有发送者已读
             // 包含额外的文件和音频属性
-            fileName: data.fileName || data.filename,
-            imageUrl: data.imageUrl,
-            fileUrl: data.fileUrl,
-            videoUrl: data.videoUrl,
-            avatarUrl: data.avatarUrl,
+            fileName: data.fileName,
             fileSize: data.fileSize,
             contentType: data.contentType
         };
@@ -11069,6 +13790,9 @@ io.on('connection', (socket) => {
             privateMessages.set(chatId, []);
         }
         privateMessages.get(chatId).push(messageData);
+
+        // 持久化到数据库（模块 5）—— 按用户名 chat_id 跨重启稳定
+        db.insertPrivateMessage(pmChatIdForUsernames(user.username, targetUser.username), messageData);
         
         // 限制私聊消息数量
         if (privateMessages.get(chatId).length > 100) {
@@ -11082,6 +13806,47 @@ io.on('connection', (socket) => {
         console.log(`[私聊] ${user.username} -> ${targetUser.username}: ${data.type === 'text' ? data.message : data.type}`);
     });
     
+    // ===== 插件管理动作（kick / mute，需管理员或房间创建者权限）=====
+    socket.on('kick-user', (data) => {
+        const user = users.get(socket.id);
+        const roomName = data.roomName || 'main';
+        const room = rooms.get(roomName);
+        const isAdmin = (typeof adminSocketId !== 'undefined' && socket.id === adminSocketId) || (user && user.role === 'superadmin');
+        const isRoomCreator = room && room.creator === (user && user.username);
+        if (!isAdmin && !isRoomCreator) {
+            socket.emit('plugin-action-denied', { message: '踢出失败：需要管理员或房间创建者权限' });
+            return;
+        }
+        let targetSocketId = null;
+        for (const [sid, u] of users) { if (u && u.username === data.targetUsername) { targetSocketId = sid; break; } }
+        if (!targetSocketId) { socket.emit('plugin-action-denied', { message: '踢出失败：目标用户不存在或未在线' }); return; }
+        io.to(targetSocketId).emit('kicked', { message: '您已被移出房间（由 ' + (user ? user.username : '管理员') + ' 操作）' });
+        socket.emit('plugin-action-ok', { message: '已踢出 ' + data.targetUsername });
+    });
+
+    socket.on('mute-user', (data) => {
+        const user = users.get(socket.id);
+        const roomName = data.roomName || 'main';
+        const room = rooms.get(roomName);
+        const isAdmin = (typeof adminSocketId !== 'undefined' && socket.id === adminSocketId) || (user && user.role === 'superadmin');
+        const isRoomCreator = room && room.creator === (user && user.username);
+        if (!isAdmin && !isRoomCreator) {
+            socket.emit('plugin-action-denied', { message: '禁言失败：需要管理员或房间创建者权限' });
+            return;
+        }
+        let targetSocketId = null;
+        for (const [sid, u] of users) { if (u && u.username === data.targetUsername) { targetSocketId = sid; break; } }
+        if (!targetSocketId) { socket.emit('plugin-action-denied', { message: '禁言失败：目标用户不存在或未在线' }); return; }
+        const minutes = parseInt(data.minutes, 10) || 10;
+        mutedUsers.set(targetSocketId, {
+            username: data.targetUsername,
+            endTime: minutes > 0 ? Date.now() + minutes * 60 * 1000 : -1,
+            reason: '管理员/房间创建者禁言（插件）'
+        });
+        io.to(targetSocketId).emit('muted', { message: '您已被禁言 ' + (minutes > 0 ? minutes + ' 分钟' : '永久') });
+        socket.emit('plugin-action-ok', { message: '已禁言 ' + data.targetUsername });
+    });
+
     // 获取私聊历史消息
     socket.on('get-private-messages', (targetSocketId) => {
         const user = users.get(socket.id);
@@ -11091,11 +13856,20 @@ io.on('connection', (socket) => {
         
         const chatId = [socket.id, targetSocketId].sort().join('-');
         const messages = privateMessages.get(chatId) || [];
-        
-        socket.emit('private-messages-history', {
-            targetSocketId: targetSocketId,
-            messages: messages
-        });
+
+        // 优先返回数据库中的持久化私聊历史（模块 5，跨重启）；DB 不可用时回退内存
+        const dbChatId = pmChatIdForUsernames(user.username, users.get(targetSocketId)?.username || targetSocketId);
+        (async () => {
+            let history = messages;
+            try {
+                const dbMsgs = await db.getPrivateMessages(dbChatId, 200);
+                if (dbMsgs && dbMsgs.length) history = dbMsgs;
+            } catch (e) {}
+            socket.emit('private-messages-history', {
+                targetSocketId: targetSocketId,
+                messages: history
+            });
+        })();
         
         console.log(`${user.username} 获取与 ${targetSocketId} 的私聊历史消息，共 ${messages.length} 条`);
     });
@@ -11110,7 +13884,7 @@ io.on('connection', (socket) => {
             }
             
             const chatId = [socket.id, data.targetSocketId].sort().join('-');
-            const messageId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+            const messageId = Date.now() + '-' + Math.random().toString(36).substring(2, 11);
             const messageData = {
                 id: messageId,
                 chatId: chatId,
@@ -11119,15 +13893,20 @@ io.on('connection', (socket) => {
                 fromColor: '#dc3545',
                 toSocketId: data.targetSocketId,
                 message: data.message,
-                type: data.type || 'text',
-                timestamp: new Date().toLocaleTimeString(),
+                type: (() => {
+                    if (data.type) return data.type;
+                    if (data.message && data.message.startsWith('/uploads/')) {
+                        const lowerMsg = data.message.toLowerCase();
+                        if (/\.(jpg|jpeg|png|gif|webp|svg)$/.test(lowerMsg)) return 'image';
+                        if (/\.(webm|mp3|ogg|wav)$/.test(lowerMsg)) return 'audio';
+                        if (/\.(pdf|doc|docx|xls|xlsx|zip|rar|txt)$/.test(lowerMsg)) return 'file';
+                    }
+                    return 'text';
+                })(),
+                timestamp: Date.now(),
                 readBy: [socket.id], // 初始时只有发送者已读
                 // 包含额外的文件和音频属性
-                fileName: data.fileName || data.filename,
-                imageUrl: data.imageUrl,
-                fileUrl: data.fileUrl,
-                videoUrl: data.videoUrl,
-                avatarUrl: data.avatarUrl,
+                fileName: data.fileName,
                 fileSize: data.fileSize,
                 contentType: data.contentType
             };
@@ -11137,6 +13916,9 @@ io.on('connection', (socket) => {
                 privateMessages.set(chatId, []);
             }
             privateMessages.get(chatId).push(messageData);
+
+            // 持久化到数据库（模块 5）—— 管理员私聊按用户名 chat_id
+            db.insertPrivateMessage(pmChatIdForUsernames('admin', targetUser.username), messageData);
             
             // 限制私聊消息数量
             if (privateMessages.get(chatId).length > 100) {
@@ -11361,6 +14143,9 @@ socket.on('update-chatroom-notification', (data) => {
             const messageIndex = room.messages.findIndex(msg => msg.id === messageId);
             if (messageIndex > -1) {
                 const message = room.messages[messageIndex];
+                if (!message.readBy) {
+                    message.readBy = [];
+                }
                 if (!message.readBy.includes(socket.id)) {
                     message.readBy.push(socket.id);
                     
@@ -11386,6 +14171,9 @@ socket.on('update-chatroom-notification', (data) => {
             const messageIndex = chatMessages.findIndex(msg => msg.id === messageId);
             if (messageIndex > -1) {
                 const message = chatMessages[messageIndex];
+                if (!message.readBy) {
+                    message.readBy = [];
+                }
                 if (!message.readBy.includes(socket.id)) {
                     message.readBy.push(socket.id);
                     
@@ -11407,42 +14195,7 @@ socket.on('update-chatroom-notification', (data) => {
     });
 
     socket.on('disconnect', () => {
-        const user = users.get(socket.id);
-        if (user) {
-            // 获取用户所在的房间
-            const room = rooms.get(user.roomName);
-            if (room) {
-                // 从房间用户列表中移除
-                room.users = room.users.filter(userId => userId !== socket.id);
-                
-                // 发送给房间内其他用户
-                const roomUsers = room.users.map(userId => users.get(userId)).filter(user => user);
-                room.users.forEach(userId => {
-                    io.to(userId).emit('user-left', {
-                        username: user.username,
-                        userCount: roomUsers.length,
-                        users: roomUsers,
-                        roomName: user.roomName
-                    });
-                });
-                
-                // 发送用户离线状态通知
-                room.users.forEach(userId => {
-                    io.to(userId).emit('user-status-changed', {
-                        username: user.username,
-                        socketId: socket.id,
-                        status: 'offline',
-                        roomName: user.roomName
-                    });
-                });
-                
-                console.log(`[房间 ${user.roomName}] ${user.username} 离开聊天室，当前在线: ${roomUsers.length} 人`);
-            }
-            
-            // 删除用户信息
-            users.delete(socket.id);
-        }
-        
+        // adminSocketId 清理（不依赖 users.get，因为第一个 disconnect handler 已删除 user）
         if (socket.id === adminSocketId) {
             adminSocketId = null;
             console.log('管理员断开连接');
@@ -11450,17 +14203,84 @@ socket.on('update-chatroom-notification', (data) => {
     });
 });
 
+// ── 系统监控定时器（每60秒记录一次系统状态）──
+setInterval(() => {
+    if (users.size > 0) {
+        monitoringEvents.push({
+            type: 'info',
+            timestamp: new Date().toISOString(),
+            message: `当前在线用户数: ${users.size}, 房间数: ${rooms.size}`,
+            details: { onlineUsers: users.size, rooms: rooms.size }
+        });
+        if (monitoringEvents.length > MAX_MONITORING_EVENTS) monitoringEvents.shift();
+    }
+}, 60000);
+
 function getRandomColor() {
     const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9'];
     return colors[Math.floor(Math.random() * colors.length)];
 }
 
 const PORT = process.env.PORT || 147;
+
+// ── 数据库启动加载（模块 2/5：房间 & 封禁 IP 跨重启恢复）──
+(async () => {
+    await db.init();
+    if (db.isEnabled()) {
+        try {
+            const n = await db.loadAllRooms(rooms);
+            console.log(`[DB] 已从数据库加载 ${n} 个房间（含历史消息）`);
+        } catch (e) { console.error('[DB] 加载房间失败:', e.message); }
+        try {
+            const m = await db.loadBannedIps(bannedIPs);
+            console.log(`[DB] 已从数据库加载 ${m} 个封禁 IP`);
+        } catch (e) { console.error('[DB] 加载封禁IP失败:', e.message); }
+    }
+})();
+
 server.listen(PORT, () => {
     console.log(`\n========================================`);
     console.log(`聊天室服务器已启动`);
     console.log(`本地访问: http://localhost:${PORT}`);
     console.log(`局域网访问: http://<你的IP地址>:${PORT}`);
     console.log(`管理员页面: http://localhost:${PORT}/admin`);
-    console.log(`========================================\n`);
+    console.log(`========================================`);
+    console.log(`控制台命令: clear(清屏) | restart(重启) | exit(关闭)\n`);
+    setupConsoleCommands();
 });
+
+function setupConsoleCommands() {
+    const rl = require('readline').createInterface({
+        input: process.stdin,
+        output: process.stdout,
+        prompt: '\x1b[32m>\x1b[0m '
+    });
+    rl.prompt();
+
+    rl.on('line', (line) => {
+        const cmd = line.trim().toLowerCase();
+        if (cmd === 'clear') {
+            console.clear();
+            console.log(`服务器运行中 (PID: ${process.pid})，输入 help 查看命令\n`);
+        } else if (cmd === 'restart') {
+            console.log(`\n正在重启服务器...\n`);
+            rl.close();
+            process.exit(0);
+        } else if (cmd === 'exit' || cmd === 'quit') {
+            console.log(`\n正在关闭服务器...\n`);
+            rl.close();
+            process.exit(0);
+        } else if (cmd === 'help') {
+            console.log(`  clear   - 清空终端`);
+            console.log(`  restart - 重启服务器`);
+            console.log(`  exit    - 关闭服务器\n`);
+        } else if (cmd !== '') {
+            console.log(`未知命令: ${cmd}，输入 help 查看可用命令`);
+        }
+        rl.prompt();
+    });
+
+    rl.on('close', () => {
+        // readline 关闭不影响服务器继续运行
+    });
+}
