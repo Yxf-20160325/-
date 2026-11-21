@@ -1610,7 +1610,20 @@ Page({
     that.data.audioContexts = that.data.audioContexts || {}
     that.data.audioContexts[audioId] = ctx
     ctx.onPlay(function () { console.log('本地音频开始播放:', audioId) })
-    ctx.onEnded(function () { that._updateAudioStatus(audioId, 'stopped') })
+    // 关键：onTimeUpdate 驱动进度条，onCanplay 拿到总时长
+    ctx.onCanplay(function () {
+      var d = ctx.duration || 0
+      if (d > 0) that._updateAudioStatus(audioId, 'playing', { duration: d })
+    })
+    ctx.onTimeUpdate(function () {
+      that._updateAudioStatus(audioId, 'playing', {
+        currentTime: ctx.currentTime || 0,
+        duration: ctx.duration || 0,
+      })
+    })
+    ctx.onEnded(function () {
+      that._updateAudioStatus(audioId, 'stopped', { currentTime: 0 })
+    })
     ctx.onError(function (err) {
       console.error('音频播放失败:', err)
       that._updateAudioStatus(audioId, 'error')
