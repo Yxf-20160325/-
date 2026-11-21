@@ -320,6 +320,8 @@ app.post('/upload', function (req, res, next) {
             return res.status(400).json({ error: '没有收到文件' });
         }
         let originalName = req.file.originalname || ('file-' + Date.now());
+        // multer 按 latin1 解析 multipart filename，中文会乱码；先还原 UTF-8
+        try { originalName = Buffer.from(originalName, 'latin1').toString('utf8'); } catch (e) {}
         try { originalName = decodeURIComponent(originalName); } catch (e) {}
         // 安全：只取文件名部分，禁止危险字符
         originalName = path.basename(originalName).replace(/[\/\\:*?"<>|]/g, '_');
