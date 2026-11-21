@@ -2507,7 +2507,8 @@ app.delete('/api/admin/feedback', (req, res) => {
 // 用途：管理 AI (pc) 的游戏状态，查看游戏列表、控制游戏开关、查看 AI 思考日志
 
 // AI 游戏开关状态
-let aiGamesEnabled = true;
+// 默认启用；可用 AI_GAMES_ENABLED=0 让禁用状态跨重启保持
+let aiGamesEnabled = process.env.AI_GAMES_ENABLED !== '0';
 
 // AI 思考日志（用于管理员查看）
 const aiThoughtsLog = [];
@@ -10723,6 +10724,7 @@ io.on('connection', (socket) => {
     function pcGoMove(gameId) {
     registerPcHandler('go', pcGoMove);
         const game = games.get(gameId);
+        if (!aiGamesEnabled) return; // 管理员禁用 AI 游戏后立即停手
         if (!game || game.status !== 'playing' || game.currentPlayer !== PC_SOCKET_ID) return;
         
         const board = game.board;
@@ -10820,6 +10822,7 @@ io.on('connection', (socket) => {
     function pcGomokuMove(gameId) {
     registerPcHandler('gomoku', pcGomokuMove);
         const game = games.get(gameId);
+        if (!aiGamesEnabled) return; // 管理员禁用 AI 游戏后立即停手
         if (!game || game.status !== 'playing' || game.currentPlayer !== PC_SOCKET_ID) return;
 
         const board = game.board;
@@ -11004,6 +11007,7 @@ io.on('connection', (socket) => {
     function pcGuessNumber(gameId) {
     registerPcHandler('guess-number', pcGuessNumber);
         const game = games.get(gameId);
+        if (!aiGamesEnabled) return; // 管理员禁用 AI 游戏后立即停手
         if (!game || game.status !== 'playing' || game.currentGuesser !== PC_SOCKET_ID) return;
 
         // 从所有玩家的猜测结果中计算全局有效区间（AI 也能看到玩家的大了/小了反馈）
@@ -11078,6 +11082,7 @@ io.on('connection', (socket) => {
     function pcRPSMove(gameId) {
     registerPcHandler('rps', pcRPSMove);
         const game = games.get(gameId);
+        if (!aiGamesEnabled) return; // 管理员禁用 AI 游戏后立即停手
         if (!game || game.status !== 'playing') return;
         if (game.choices && game.choices[PC_SOCKET_ID]) return; // 已出招
 
@@ -11135,6 +11140,7 @@ io.on('connection', (socket) => {
     function pcBombMove(gameId) {
     registerPcHandler('bomb', pcBombMove);
         const game = games.get(gameId);
+        if (!aiGamesEnabled) return; // 管理员禁用 AI 游戏后立即停手
         if (!game || game.status !== 'playing') return;
         if (game.players[game.currentPlayerIdx] !== PC_SOCKET_ID) return;
 
@@ -11200,6 +11206,7 @@ io.on('connection', (socket) => {
     function pcPictionaryDraw(gameId) {
     registerPcHandler('pictionary', pcPictionaryDraw);
         const game = games.get(gameId);
+        if (!aiGamesEnabled) return; // 管理员禁用 AI 游戏后立即停手
         if (!game || game.status !== 'playing' || game.currentDrawer !== PC_SOCKET_ID) return;
 
         const playerSocketId = game.players.find(p => p !== PC_SOCKET_ID);
@@ -12450,6 +12457,11 @@ io.on('connection', (socket) => {
         if (user && data.userId && data.gameType) {
             // ===== PC 虚拟账户：自动接受邀请 =====
             if (data.userId === PC_SOCKET_ID) {
+                // 管理员禁用 AI 游戏后，拒绝所有新邀请（否则禁用只结束旧局，新局照常创建）
+                if (!aiGamesEnabled) {
+                    socket.emit('game-invitation-error', { message: 'AI 游戏已被管理员禁用' });
+                    return;
+                }
                 const pcAcceptedGameTypes = ['gomoku', 'guess-number', 'rps', 'bomb', 'go', 'snake'];
                 if (!pcAcceptedGameTypes.includes(data.gameType)) {
                     socket.emit('game-invitation-error', { message: `pc 暂不支持「${data.gameType}」游戏` });
