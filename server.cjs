@@ -87,6 +87,10 @@ function log(level, message, data) {
 global.log = log;
 global.LOG_LEVELS = LOG_LEVELS;
 
+// 病毒扫描默认关闭：VirusTotal 需 15-60 秒，开启会拖慢上传。
+// 需要时用环境变量 VIRUS_SCAN_ENABLED=1 开启（后台异步，不阻塞上传）。
+let virusScanEnabled = process.env.VIRUS_SCAN_ENABLED === '1';
+
 // 导入病毒扫描器（添加错误处理）
 let virusScanner = null;
 try {
@@ -342,8 +346,7 @@ setInterval(() => {
     }
 }, 24 * 60 * 60 * 1000); // 每天清理一次
 
-// 病毒检测配置
-let virusScanEnabled = true;
+// 病毒检测配置已在文件开头声明（默认关闭，可用 VIRUS_SCAN_ENABLED=1 开启）
 
 // 本地存储配置
 
