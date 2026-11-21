@@ -1032,80 +1032,68 @@ Page({
       return
     }
     var fileName = displayName || tempFilePath.split('/').pop() || 'file'
-    // 用上传进度弹窗（showUploadModal），不再用 wx.showLoading
+    // 用上传进度弹窗，wx.uploadFile 提供真实进度回调
     that.setData({
       showUploadModal: true,
       uploadingFilename: fileName,
       uploadProgress: 0,
-      uploadStatus: '读取文件中...'
+      uploadStatus: '正在上传...'
     })
-    // 服务端 /api/files/upload 使用 express.raw，期望「原始二进制 + x-filename 头」；
-    // 用 wx.uploadFile 发 multipart 会解析失败（404/无 url）。这里改用 wx.request 发 ArrayBuffer。
-    var fsMgr = wx.getFileSystemManager()
-    fsMgr.readFile({
+    var uploadTask = wx.uploadFile({
+      url: that.getServerUrl() + '/upload',
       filePath: tempFilePath,
-      encoding: 'binary',
-      success: function(readRes) {
-        wx.request({
-          url: that.getServerUrl() + '/api/files/upload',
-          method: 'POST',
-          header: {
-            'Content-Type': 'application/octet-stream',
-            'X-Filename': encodeURIComponent(fileName)
-          },
-          data: readRes.data,
-          success: function(res) {
-            that.setData({ uploadProgress: 90, uploadStatus: '上传完成，正在发送...' })
-            var fileUrl = ''
-            try {
-              var data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data
-              fileUrl = data.url || data.fileUrl || (data.data && data.data.url) || ''
-            } catch (e) {
-              console.error('解析上传响应失败:', e)
-            }
-            if (!fileUrl) {
-              console.error('上传响应:', res.statusCode, res.data)
-              wx.showToast({ title: '上传失败：未获取到文件地址', icon: 'none' })
-              that.hideUploadModal()
-              return
-            }
-            // 相对路径转绝对 URL，否则 <image src> 显示不出来
-            if (fileUrl.charAt(0) === '/') fileUrl = that.getServerUrl() + fileUrl
-            var payload = JSON.stringify({
-              type: type,
-              content: type === 'image' ? '[图片]' : type === 'video' ? '[视频]' : fileName,
-              username: that.data.username,
-              roomName: that.data.roomName,
-              avatarUrl: that.data.avatarUrl || '',
-              imageUrl: type === 'image' ? fileUrl : '',
-              videoUrl: type === 'video' ? fileUrl : '',
-              fileUrl: type === 'file' ? fileUrl : '',
-              filename: fileName,
-              fileSize: ''
-            })
-            if (that.socket && that.socket.readyState === 1) {
-              that.socket.send({ data: '42["message",' + payload + ']' })
-              wx.showToast({ title: type === 'image' ? '图片已发送' : type === 'video' ? '视频已发送' : '文件已发送', icon: 'none' })
-            } else {
-              wx.showToast({ title: '已上传，但未连接，无法发送', icon: 'none' })
-            }
-            that.hideUploadModal()
-          },
-          fail: function(err) {
-            that.setData({ uploadStatus: '上传失败' })
-            that.hideUploadModal()
-            console.error('上传请求失败:', err)
-            wx.showToast({ title: '上传失败', icon: 'none' })
-          }
+      name: 'file',
+      formData: { filename: fileName },
+      success: function(res) {
+        that.setData({ uploadProgress: 100, uploadStatus: '上传完成' })
+        var fileUrl = ''
+        try {
+          var data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data
+          fileUrl = data.url || data.fileUrl || (data.data && data.data.url) || ''
+        } catch (e) {
+          console.error('解析上传响应失败:', e)
+        }
+        if (!fileUrl) {
+          console.error('上传响应:', res.statusCode, res.data)
+          wx.showToast({ title: '上传失败：未获取到文件地址', icon: 'none' })
+          that.hideUploadModal()
+          return
+        }
+        if (fileUrl.charAt(0) === '/') fileUrl = that.getServerUrl() + fileUrl
+        var payload = JSON.stringify({
+          type: type,
+          content: type === 'image' ? '[图片]' : type === 'video' ? '[视频]' : fileName,
+          username: that.data.username,
+          roomName: that.data.roomName,
+          avatarUrl: that.data.avatarUrl || '',
+          imageUrl: type === 'image' ? fileUrl : '',
+          videoUrl: type === 'video' ? fileUrl : '',
+          fileUrl: type === 'file' ? fileUrl : '',
+          filename: fileName,
+          fileSize: ''
         })
+        if (that.socket && that.socket.readyState === 1) {
+          that.socket.send({ data: '42["message",' + payload + ']' })
+          wx.showToast({ title: type === 'image' ? '图片已发送' : type === 'video' ? '视频已发送' : '文件已发送', icon: 'none' })
+        } else {
+          wx.showToast({ title: '已上传，但未连接，无法发送', icon: 'none' })
+        }
+        that.hideUploadModal()
       },
       fail: function(err) {
-        that.setData({ uploadStatus: '读取失败' })
+        that.setData({ uploadStatus: '上传失败' })
         that.hideUploadModal()
-        console.error('读取文件失败:', err)
-        wx.showToast({ title: '读取文件失败', icon: 'none' })
+        console.error('上传失败:', err)
+        wx.showToast({ title: '上传失败', icon: 'none' })
       }
     })
+    // 真实上传进度
+    if (uploadTask.onProgressUpdate) {
+      uploadTask.onProgressUpdate(function(res) {
+        that.setData({ uploadProgress: res.progress })
+      })
+    }
+    that.setData({ uploadTask: uploadTask })
   },
   showAudioControlPanel() {
     var that = this

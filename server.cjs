@@ -5,6 +5,16 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
+let uploadMultipart = null;
+try {
+    const multer = require('multer');
+    uploadMultipart = multer({
+        storage: multer.memoryStorage(),
+        limits: { fileSize: 30 * 1024 * 1024 }
+    });
+} catch (e) {
+    console.warn('[上传] multer 未安装，multipart 上传不可用:', e.message);
+}
 
 // ── 轻量 .env 加载（不依赖 dotenv；已存在的系统环境变量优先）──
 // Render 等平台用环境变量注入，本地开发用 .env，两者都支持。
@@ -291,6 +301,42 @@ app.post('/api/files/upload', express.raw({ type: '*/*', limit: '300mb' }), asyn
         });
     } catch (error) {
         console.error('上传文件失败:', error);
+        res.status(500).json({ error: '上传文件失败' });
+    }
+});
+
+// ── multipart 上传（wx.uploadFile，支持真实进度回调）──
+// 服务端默认走 raw 的 /api/files/upload；这里额外提供 multipart 版本，
+// 让小程序能用 wx.uploadFile 的 onProgressUpdate 显示真实进度条。
+// 若 multer 不可用，/upload 返回明确错误（不会拖垮服务）
+app.post('/upload', function (req, res, next) {
+    if (!uploadMultipart) {
+        return res.status(503).json({ error: 'multipart 上传不可用（缺少 multer 依赖）' });
+    }
+    next();
+}, uploadMultipart ? uploadMultipart.single('file') : function (req, res, next) { next(); }, (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: '没有收到文件' });
+        }
+        let originalName = req.file.originalname || ('file-' + Date.now());
+        try { originalName = decodeURIComponent(originalName); } catch (e) {}
+        // 安全：只取文件名部分，禁止危险字符
+        originalName = path.basename(originalName).replace(/[\/\\:*?"<>|]/g, '_');
+        if (!originalName) originalName = 'file';
+        const filename = Date.now() + '-' + Math.round(Math.random() * 1e9) + '-' + originalName;
+
+        const uploadsDir = path.join(__dirname, 'uploads');
+        if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+        const filePath = path.join(uploadsDir, filename);
+        fs.writeFileSync(filePath, req.file.buffer);
+        const stats = fs.statSync(filePath);
+        const fileUrl = '/uploads/' + filename;
+
+        console.log('[multipart上传]', filename, stats.size + ' bytes');
+        res.json({ name: filename, size: stats.size, url: fileUrl, scanResult: { safe: true, scanned: false } });
+    } catch (error) {
+        console.error('multipart 上传失败:', error);
         res.status(500).json({ error: '上传文件失败' });
     }
 });
