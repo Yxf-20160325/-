@@ -968,6 +968,15 @@ Page({
       that.isInitializingSocket = false
     })
   },
+
+  // 统一处理文件/图片 URL：相对路径补全为服务器绝对地址
+  normalizeFileUrl(url) {
+    if (!url || typeof url !== 'string') return ''
+    if (/^https?:/i.test(url)) return url
+    if (url.charAt(0) === '/') return this.getServerUrl() + url
+    if (/^uploads\//.test(url)) return this.getServerUrl() + '/' + url
+    return url
+  },
   handleNewMessage(msg) {
     if (!msg) {
       return
@@ -980,8 +989,9 @@ Page({
       avatarUrl: msg.avatarUrl || '',
       roomName: msg.roomName || this.data.roomName,
       time: msg.time || new Date().toLocaleTimeString(),
-      imageUrl: msg.imageUrl || msg.url || '',
-      fileUrl: msg.fileUrl || msg.url || '',
+      // 相对路径转绝对：老消息/服务端历史里的 /uploads/xxx 在这里统一处理
+      imageUrl: this.normalizeFileUrl(msg.imageUrl || msg.url || ''),
+      fileUrl: this.normalizeFileUrl(msg.fileUrl || msg.url || ''),
       filename: msg.filename || '',
       fileSize: msg.fileSize || '',
       latitude: msg.latitude,
@@ -1394,6 +1404,7 @@ Page({
       wx.showModal({ title: '提示', content: '文件链接无效', showCancel: false, confirmText: '确定' })
       return
     }
+    fileUrl = this.normalizeFileUrl(fileUrl)
     if (!/^https?:/.test(fileUrl)) {
       wx.showModal({ title: '提示', content: '文件链接格式不正确', showCancel: false, confirmText: '确定' })
       return
