@@ -265,9 +265,17 @@ Page({
         this.setData({ loading: false })
         wx.showModal({
           title: '提示',
-          content: 'CSRF 获取失败，请重试：' + (csrfErr.errMsg || '未知错误'),
-          showCancel: false,
-          confirmText: '确定'
+          content: 'CSRF 获取失败：' + (csrfErr.errMsg || '未知错误') + '\n\n是否重试？',
+          showCancel: true,
+          cancelText: '取消',
+          confirmText: '重试',
+          success: (modalRes) => {
+            if (modalRes.confirm) {
+              // code 是一次性的，重试必须重新 wx.login 拿新 code
+              console.log('[登录] 用户选择重试，重新登录')
+              this.doLogin(roomName, userInfo, password)
+            }
+          }
         })
       }
     })
