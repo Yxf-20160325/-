@@ -276,6 +276,12 @@ Page({
       console.log('页面恢复时检测到连接已断开，尝试重连')
       this.initSocket()
     }
+
+    // 从游戏页返回时，socket 可能仍连着（initSocket 会早退），
+    // 但在线用户列表需要重新拉取，否则 AI 可能显示不出来。
+    if (this.data.connected && this.socket && this.socket.readyState === 1) {
+      this.loadOnlineUsers()
+    }
     const pendingDownloads = this.data.downloads.filter(d =>
       d.status === '下载中' && d.progress < 100 && !d.isRestored
     )
@@ -816,7 +822,9 @@ Page({
               that.setData({ users: filtered })
             }
           } else if (event === 'online-users') {
-            that.setData({ onlineUsers: Array.isArray(msg) ? msg : [], onlineUsersLoaded: true })
+            var list = Array.isArray(msg) ? msg : []
+            // 同步更新顶部面板的 users，避免从游戏页返回后 AI 消失
+            that.setData({ onlineUsers: list, onlineUsersLoaded: true, users: list })
           } else if (event === 'active-games') {
             that.setData({ activeGames: Array.isArray(msg) ? msg : [] })
           } else if (event === 'game-invitations') {
