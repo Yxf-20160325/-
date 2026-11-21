@@ -4595,7 +4595,11 @@ io.on('connection', (socket) => {
             recordAdminLoginFail(userIP);
             const record = adminLoginAttempts.get(userIP);
             const remaining = ADMIN_LOGIN_MAX_ATTEMPTS - (record ? record.count : 0);
-            socket.emit('admin-login-error', { message: `密码错误，还剩 ${Math.max(remaining, 0)} 次机会` });
+            // 不泄露明文，只提示密码来源，方便排查
+            const source = process.env.ADMIN_PASSWORD ? '环境变量 ADMIN_PASSWORD' : '默认密码 admin123'
+            socket.emit('admin-login-error', {
+                message: `密码错误，还剩 ${Math.max(remaining, 0)} 次机会（当前使用：${source}）`
+            });
         }
     });
     
