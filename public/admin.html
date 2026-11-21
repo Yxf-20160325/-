@@ -8245,9 +8245,7 @@ if (typeof userSettings !== 'undefined') {
             return;
         }
 
-        if (confirm('确定要批量加入以下 ' + names.length + ' 个房间吗？
-' + names.join('
-'))) {
+        if (confirm('确定要批量加入以下 ' + names.length + ' 个房间吗？\n' + names.join('\n'))) {
             batchJoinRooms(names);
         }
     }
