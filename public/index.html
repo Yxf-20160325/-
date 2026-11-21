@@ -15227,10 +15227,13 @@ io.on('connection', (socket) => {
                 const isIOS = isIOSDevice() || isCapacitorApp();
 
                 const constraints = {
+                    // 音频约束读取用户设置，让降噪开关真正生效
                     audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true,
+                        echoCancellation: this.audioEchoCancellation !== false,
+                        noiseSuppression: this.audioNoiseSuppression !== false,
+                        autoGainControl: this.audioAutoGainControl !== false,
+                        // 降噪强度：浏览器原生不支持 level 参数，但可通过 channelCount 等微调；
+                        // 真正的强度控制在 Web Audio 噪声门（见噪声门增益）
                         sampleRate: isIOS ? 44100 : 48000,
                         channelCount: 1
                     },
@@ -15271,9 +15274,9 @@ io.on('connection', (socket) => {
 
                             const fallbackConstraints = {
                                 audio: {
-                                    echoCancellation: true,
-                                    noiseSuppression: true,
-                                    autoGainControl: true,
+                                    echoCancellation: this.audioEchoCancellation !== false,
+                                    noiseSuppression: this.audioNoiseSuppression !== false,
+                                    autoGainControl: this.audioAutoGainControl !== false,
                                     sampleRate: isIOS ? 44100 : 48000,
                                     channelCount: 1
                                 },
@@ -16414,22 +16417,29 @@ io.on('connection', (socket) => {
                     const audioTracks = inputStream.getAudioTracks();
                     if (audioTracks.length === 0) return inputStream;
                     
-                    // 直接添加原始音频轨道（浏览器原生的降噪和回声消除已经应用）
-                    audioTracks.forEach(track => destStream.addTrack(track));
-                    
-                    // 如果启用了增强处理，添加处理后的音频轨道
+                    // 未启用增强处理时，直接透传原始轨道（浏览器原生降噪）
+                    if (!this.isEnhancedAudioEnabled) {
+                        audioTracks.forEach(track => destStream.addTrack(track));
+                        return destStream;
+                    }
+                    // 如果启用了增强处理，接入处理链并输出处理后的音频轨道
                     if (this.isEnhancedAudioEnabled) {
                         const source = ctx.createMediaStreamSource(inputStream);
-                        
+
                         // 连接处理链
                         source.connect(this.audioProcessor);
                         this.audioProcessor.connect(this.noiseGateNode);
                         this.noiseGateNode.connect(this.compressorNode);
                         this.compressorNode.connect(ctx.destination);
-                        
+
+                        // 把处理后的音频轨道加入输出流
+                        ctx.destination.stream.getAudioTracks().forEach(t => destStream.addTrack(t));
+                        // 保留原视频轨道（否则视频通话会丢失画面）
+                        inputStream.getVideoTracks().forEach(t => destStream.addTrack(t));
+
                         console.log('增强音频处理已应用到媒体流');
                     }
-                    
+
                     return destStream;
                 } catch (error) {
                     console.error('应用增强音频处理失败:', error);
@@ -17928,6 +17938,31 @@ io.on('connection', (socket) => {
             
             // 显示本地视频流
             showLocalStream(stream) {
+                // 音频通话 + 用户设置中等以上降噪：启用增强降噪（无视频轨道，处理链安全）
+                if (stream && this.currentCallType === 'audio' &&
+                    this.audioNoiseSuppression !== false &&
+                    this.noiseSuppressionLevel && this.noiseSuppressionLevel !== 'low' &&
+                    !this.isEnhancedAudioEnabled) {
+                    this.isEnhancedAudioEnabled = true;
+                    this.applyEnhancedAudioToStream(stream).then(processed => {
+                        if (processed && processed.getAudioTracks().length) {
+                            // 用处理后的音频流替换发送流
+                            this.localStream = processed;
+                            // 若 WebRTC 已建立，替换发送轨道
+                            if (this.peerConnection) {
+                                this.peerConnection.getSenders().forEach(sender => {
+                                    if (sender.track && sender.track.kind === 'audio') {
+                                        sender.replaceTrack(processed.getAudioTracks()[0]).catch(() => {});
+                                    }
+                                });
+                            }
+                            console.log('增强降噪已启用（音频通话，强度:', this.noiseSuppressionLevel, '）');
+                        }
+                    }).catch(err => {
+                        this.isEnhancedAudioEnabled = false;
+                        console.warn('增强降噪启用失败，使用浏览器原生降噪:', err);
+                    });
+                }
                 const localVideo = document.getElementById('localVideo');
                 if (localVideo) {
                     localVideo.srcObject = stream;
