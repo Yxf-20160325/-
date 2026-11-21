@@ -2120,7 +2120,10 @@ app.get('/:roomName', (req, res) => {
 });
 
 // 管理员密码（使用明文存储）
-let ADMIN_PASSWORD = 'admin123';
+// 管理员初始密码：优先读环境变量，未配置时保留默认值以便本地开发
+// 注意：运行中管理员可通过界面修改密码（见 admin-change-password），
+// 修改后的密码只保存在内存，重启后恢复为环境变量中的值。
+let ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 let adminSocketId = null;
 
 // 管理员 API 令牌系统（用于 HTTP API 验证）
@@ -2325,7 +2328,8 @@ setInterval(cleanExpiredCache, 15 * 60 * 1000);
 
 // 天气API配置
 const WEATHER_API_URL = 'https://api-proxy-juhe.jenius.cn/simpleWeather/query';
-const WEATHER_API_KEY = 'cb9fc22848b739befe3f0b3d5e4e9248';
+// 天气 API Key：优先读环境变量，未配置时保留默认值以便本地开发
+const WEATHER_API_KEY = process.env.WEATHER_API_KEY || 'cb9fc22848b739befe3f0b3d5e4e9248';
 
 // 天气查询函数
 async function getWeather(city) {
