@@ -1018,8 +1018,14 @@ Page({
       })
       return
     }
-    wx.showLoading({ title: '上传中...' })
     var fileName = tempFilePath.split('/').pop() || 'file'
+    // 用上传进度弹窗（showUploadModal），不再用 wx.showLoading
+    that.setData({
+      showUploadModal: true,
+      uploadingFilename: fileName,
+      uploadProgress: 0,
+      uploadStatus: '读取文件中...'
+    })
     // 服务端 /api/files/upload 使用 express.raw，期望「原始二进制 + x-filename 头」；
     // 用 wx.uploadFile 发 multipart 会解析失败（404/无 url）。这里改用 wx.request 发 ArrayBuffer。
     var fsMgr = wx.getFileSystemManager()
@@ -1036,7 +1042,7 @@ Page({
           },
           data: readRes.data,
           success: function(res) {
-            wx.hideLoading()
+            that.setData({ uploadProgress: 90, uploadStatus: '上传完成，正在发送...' })
             var fileUrl = ''
             try {
               var data = typeof res.data === 'string' ? JSON.parse(res.data) : res.data
@@ -1047,6 +1053,7 @@ Page({
             if (!fileUrl) {
               console.error('上传响应:', res.statusCode, res.data)
               wx.showToast({ title: '上传失败：未获取到文件地址', icon: 'none' })
+              that.hideUploadModal()
               return
             }
             // 相对路径转绝对 URL，否则 <image src> 显示不出来
@@ -1069,16 +1076,19 @@ Page({
             } else {
               wx.showToast({ title: '已上传，但未连接，无法发送', icon: 'none' })
             }
+            that.hideUploadModal()
           },
           fail: function(err) {
-            wx.hideLoading()
+            that.setData({ uploadStatus: '上传失败' })
+            that.hideUploadModal()
             console.error('上传请求失败:', err)
             wx.showToast({ title: '上传失败', icon: 'none' })
           }
         })
       },
       fail: function(err) {
-        wx.hideLoading()
+        that.setData({ uploadStatus: '读取失败' })
+        that.hideUploadModal()
         console.error('读取文件失败:', err)
         wx.showToast({ title: '读取文件失败', icon: 'none' })
       }
