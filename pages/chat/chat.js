@@ -1452,33 +1452,78 @@ Page({
     that.downloadTasks[downloadId] = task
   },
 
+  // 先下载到本地再播放：远程音频直接播容易失败/卡顿
   playRemoteAudio(url, filename) {
     var that = this
+    if (!url) {
+      wx.showToast({ title: '音频链接无效', icon: 'none' })
+      return
+    }
+    url = this.normalizeFileUrl(url)
+    if (!/^https?:/.test(url)) {
+      wx.showToast({ title: '音频链接格式不正确', icon: 'none' })
+      return
+    }
+
     var audioId = 'remote_' + Date.now()
-    var ctx = wx.createInnerAudioContext()
-    ctx.src = url
+    // 先放一个「下载中」的条目，进度条可见
     var list = (that.data.playingAudios || []).slice()
     list.push({
       id: audioId,
       filename: filename || '音频',
       audioUrl: url,
-      status: 'playing',
+      status: 'downloading',
+      progress: 0,
       duration: 0,
       currentTime: 0
     })
     that.setData({ playingAudios: list, showAudioPlayer: true })
+
+    var dlTask = wx.downloadFile({
+      url: url,
+      success: function (res) {
+        if (res.statusCode !== 200 || !res.tempFilePath) {
+          that._updateAudioStatus(audioId, 'error')
+          wx.showToast({ title: '音频下载失败', icon: 'none' })
+          return
+        }
+        that._updateAudioStatus(audioId, 'playing', { progress: 100 })
+        // 用本地临时文件播放
+        that._playLocalAudio(audioId, res.tempFilePath, filename)
+      },
+      fail: function (err) {
+        console.error('音频下载失败:', err)
+        that._updateAudioStatus(audioId, 'error')
+        wx.showToast({ title: '音频下载失败', icon: 'none' })
+      }
+    })
+    if (dlTask && dlTask.onProgressUpdate) {
+      dlTask.onProgressUpdate(function (p) {
+        that._updateAudioStatus(audioId, 'downloading', { progress: p.progress })
+      })
+    }
+  },
+
+  _updateAudioStatus(id, status, extra) {
+    var self = this
+    var list = (this.data.playingAudios || []).map(function (a) {
+      if (a.id !== id) return a
+      return Object.assign({}, a, { status: status }, extra || {})
+    })
+    this.setData({ playingAudios: list })
+  },
+
+  _playLocalAudio(audioId, localPath, filename) {
+    var that = this
+    var ctx = wx.createInnerAudioContext()
+    ctx.src = localPath
     that.data.audioContexts = that.data.audioContexts || {}
     that.data.audioContexts[audioId] = ctx
-    ctx.onPlay(function () { console.log('音频开始播放:', audioId) })
-    ctx.onEnded(function () {
-      var updated = (that.data.playingAudios || []).map(function (a) {
-        if (a.id !== audioId) return a
-        return Object.assign({}, a, { status: 'stopped' })
-      })
-      that.setData({ playingAudios: updated })
-    })
+    ctx.onPlay(function () { console.log('本地音频开始播放:', audioId) })
+    ctx.onEnded(function () { that._updateAudioStatus(audioId, 'stopped') })
     ctx.onError(function (err) {
       console.error('音频播放失败:', err)
+      that._updateAudioStatus(audioId, 'error')
       wx.showToast({ title: '音频播放失败', icon: 'none' })
     })
     ctx.play()
@@ -1499,6 +1544,11 @@ Page({
     var ctx = this.data.audioContexts ? this.data.audioContexts[id] : null
     var target = audios.find(function (a) { return a.id === id })
     if (!target) return
+    // 下载中或加载失败时，点击播放按钮不做处理
+    if (target.status === 'downloading' || target.status === 'error') {
+      wx.showToast({ title: target.status === 'downloading' ? '音频下载中...' : '音频加载失败', icon: 'none' })
+      return
+    }
     if (target.status === 'playing') {
       if (ctx) { try { ctx.pause() } catch (err) {} }
       var paused = audios.map(function (a) {
