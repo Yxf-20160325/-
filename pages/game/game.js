@@ -339,7 +339,10 @@ Page({
       wx.showToast({ title: '连接未就绪', icon: 'none' })
       return
     }
-    var payload = JSON.stringify({ gameId: this.data.gameId, guess: guess })
+    // 直接把对象作为事件参数；不能先 JSON.stringify，
+    // 否则会被双重序列化，服务端 data 变成字符串，`data.gameId` 为 undefined
+    // 而直接 return，表现为「发送了猜测却没有任何反应」。
+    var payload = { gameId: this.data.gameId, guess: guess }
     this.safeSend('42' + JSON.stringify(['game-guess', payload]))
     // 本地立即占位，等待服务端回包
     var own = this.data.myName || '你'
