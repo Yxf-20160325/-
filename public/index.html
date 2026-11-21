@@ -14880,7 +14880,23 @@ io.on('connection', (socket) => {
                 console.log('字幕功能已成功停止');
             }
             
-            // 更新字幕显示
+            // 处理对方发来的实时字幕
+            handleRemoteSubtitle(data) {
+                if (!data || !data.text) return;
+                // 只显示当前通话对象的字幕，避免串音
+                if (this.currentCallTargetSocketId && data.from && data.from !== this.currentCallTargetSocketId) {
+                    return;
+                }
+                // 若本地字幕容器还没显示，自动显示，确保能看到对方字幕
+                if (!this.isSubtitlesEnabled) {
+                    this.isSubtitlesEnabled = true;
+                    this.isSubtitlesActive = true;
+                    this.showSubtitlesContainer();
+                }
+                // isFinal=false 是临时结果；说完一句话（true）写入历史
+                this.updateSubtitles(data.text, data.isFinal === false);
+            }
+
             updateSubtitles(text, isInterim = false) {
                 if (!this.isSubtitlesEnabled) {
                     return;
@@ -15057,6 +15073,11 @@ io.on('connection', (socket) => {
                 // 监听用户通话状态更新
                 this.socket.on('call-status', (data) => {
                     this.handleCallStatus(data);
+                });
+                
+                // 监听对方发来的实时字幕（对方识别到自己说话后经服务端转发）
+                this.socket.on('subtitle-data', (data) => {
+                    this.handleRemoteSubtitle(data);
                 });
             }
             
