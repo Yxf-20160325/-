@@ -10410,7 +10410,8 @@ io.on('connection', (socket) => {
      * @param {object} user            真实玩家 users 对象
      * @param {string} gameType        游戏类型
      */
-    function pcCreateAndStartGame(playerSocketId, user, gameType) {
+    function pcCreateAndStartGame(playerSocketId, user, gameType, difficulty) {
+        const aiDifficulty = difficulty || 'easy';
         const pcCreator = { username: PC_USERNAME, socketId: PC_SOCKET_ID };
 
         if (gameType === 'gomoku') {
@@ -10422,6 +10423,8 @@ io.on('connection', (socket) => {
             game.status = 'playing';
             game.startTime = new Date();
             games.set(game.id, game);
+            // 记录 AI 难度，供对应 AI 函数读取
+            game.difficulty = aiDifficulty;
 
             const startPayload = {
                 gameId: game.id,
@@ -10444,6 +10447,8 @@ io.on('connection', (socket) => {
             // 让玩家先猜（玩家是 players[1]）
             updatedGame.currentGuesser = playerSocketId;
             games.set(updatedGame.id, updatedGame);
+            // 记录 AI 难度，供对应 AI 函数读取
+            updatedGame.difficulty = aiDifficulty;
 
             const startPayload = {
                 gameId: updatedGame.id,
@@ -10515,6 +10520,8 @@ io.on('connection', (socket) => {
             updatedGame.startTime = new Date();
             updatedGame.roundStartTime = new Date();
             games.set(updatedGame.id, updatedGame);
+            // 记录 AI 难度，供对应 AI 函数读取
+            updatedGame.difficulty = aiDifficulty;
 
             const startPayload = {
                 gameId: updatedGame.id,
@@ -10550,6 +10557,8 @@ io.on('connection', (socket) => {
             game.status = 'playing';
             game.startTime = new Date();
             games.set(game.id, game);
+            // 记录 AI 难度，供对应 AI 函数读取
+            game.difficulty = aiDifficulty;
 
             const startPayload = {
                 gameId: game.id,
@@ -10968,6 +10977,18 @@ io.on('connection', (socket) => {
                 addAiThought('gomoku', '管理员指定', `管理员指定 AI 落子 (${moveX}, ${moveY})`);
             }
         }
+        // 难度：休闲模式有 40% 概率不选最优点，从候选里随机走（更像人）
+        if (game.difficulty === 'easy' && !forced && candidates && candidates.size > 1 && Math.random() < 0.4) {
+            const pool = Array.from(candidates).filter(p => {
+                const [px, py] = p.split(',').map(Number);
+                return game.board[px][py] === null;
+            });
+            if (pool.length > 0) {
+                const pick = pool[Math.floor(Math.random() * pool.length)].split(',').map(Number);
+                moveX = pick[0]; moveY = pick[1];
+                addAiThought('gomoku', '难度-休闲', `休闲模式随机落子 (${moveX}, ${moveY})`);
+            }
+        }
         const updatedGame = makeGomokuMove(gameId, PC_SOCKET_ID, moveX, moveY);
         if (!updatedGame) return;
 
@@ -11047,6 +11068,15 @@ io.on('connection', (socket) => {
         if (forced && typeof forced.guess === 'number' && forced.guess >= 1 && forced.guess <= 100) {
             guessNum = forced.guess;
             addAiThought('guess-number', '管理员指定', `管理员指定 AI 猜 ${guessNum}`);
+        }
+        // 难度：休闲模式 40% 概率随机猜一个未猜过的数，而不是最优中点
+        if (game.difficulty === 'easy' && !forced && Math.random() < 0.4) {
+            const available = [];
+            for (let n = lo; n <= hi; n++) if (!guessedNumbers.has(n)) available.push(n);
+            if (available.length > 0) {
+                guessNum = available[Math.floor(Math.random() * available.length)];
+                addAiThought('guess-number', '难度-休闲', `休闲模式随机猜 ${guessNum}`);
+            }
         }
         const res = makeGuessNumberGuess(gameId, PC_SOCKET_ID, guessNum);
         if (!res) return;
@@ -11152,7 +11182,7 @@ io.on('connection', (socket) => {
         let count;
         // 安全数字：报完后 remaining % (maxStep+1) === 0，即强迫对手最终踩雷
         const safeCount = remaining % (maxStep + 1);
-        if (safeCount >= 1 && safeCount <= maxStep) {
+        if (safeCount >= 1 && safeCount <= maxStep && game.difficulty !== 'easy') {
             count = safeCount;
         } else {
             // 随机报1~maxStep个（但不能超过剩余）
@@ -12406,7 +12436,9 @@ io.on('connection', (socket) => {
                     from: socket.id,
                     callId: data.callId,
                     type: data.type,
-                    data: data.data
+                    data: data.data,
+                    // Socket.io 视频流需要 mimeType 才能正确初始化 MediaSource
+                    mimeType: data.mimeType
                 });
             }
             
@@ -12417,6 +12449,7 @@ io.on('connection', (socket) => {
                     callId: data.callId,
                     type: data.type,
                     data: data.data,
+                    mimeType: data.mimeType,
                     isAdmin: true // 标记为管理员查看的媒体流
                 });
             }
@@ -12484,7 +12517,8 @@ io.on('connection', (socket) => {
                     username: PC_USERNAME
                 });
                 // 创建游戏并让 pc 加入
-                pcCreateAndStartGame(socket.id, user, data.gameType);
+                // 透传难度（easy/hard），AI 函数据此调整策略
+                pcCreateAndStartGame(socket.id, user, data.gameType, data.difficulty);
                 return;
             }
             // ===== PC 虚拟账户 END =====

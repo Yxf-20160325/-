@@ -6669,14 +6669,14 @@
                                     ${user.isBot ? '<span style="display:inline-flex;align-items:center;gap:3px;margin-left:5px;padding:2px 7px;background:linear-gradient(135deg,#667eea,#764ba2);color:white;font-size:11px;font-weight:bold;border-radius:10px;letter-spacing:0.5px;box-shadow:0 1px 4px rgba(102,126,234,0.4);">🤖 AI</span>' : ''}
                                 </div>
                                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                                    <button onclick="sendGameInvitation('${user.socketId}', 'gomoku')" style="padding: 5px 10px; background: #667eea; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">♟️ 五子棋</button>
-                                    <button onclick="sendGameInvitation('${user.socketId}', 'go')" style="padding: 5px 10px; background: #5a4fcf; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">⚫ 围棋</button>
-                                    <button onclick="sendGameInvitation('${user.socketId}', 'guess-number')" style="padding: 5px 10px; background: #f093fb; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">🔢 猜数字</button>
-                                    <button onclick="sendGameInvitation('${user.socketId}', 'pictionary')" style="padding: 5px 10px; background: #43b97f; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">🎨 你画我猜</button>
-                                    <button onclick="sendGameInvitation('${user.socketId}', 'rps')" style="padding: 5px 10px; background: #fd7e14; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">✊ 猜拳</button>
-                                    <button onclick="sendGameInvitation('${user.socketId}', 'snake')" style="padding: 5px 10px; background: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">🐍 贪吃蛇</button>
-                                    <button onclick="sendGameInvitation('${user.socketId}', 'typing')" style="padding: 5px 10px; background: #20c997; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">⌨️ 打字对战</button>
-                                    <button onclick="sendGameInvitation('${user.socketId}', 'tetris')" style="padding: 5px 10px; background: #ff6b6b; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">🧱 方块对战</button>
+                                    <button onclick="inviteUser('${user.socketId}', 'gomoku', ${user.isBot})" style="padding: 5px 10px; background: #667eea; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">♟️ 五子棋</button>
+                                    <button onclick="inviteUser('${user.socketId}', 'go', ${user.isBot})" style="padding: 5px 10px; background: #5a4fcf; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">⚫ 围棋</button>
+                                    <button onclick="inviteUser('${user.socketId}', 'guess-number', ${user.isBot})" style="padding: 5px 10px; background: #f093fb; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">🔢 猜数字</button>
+                                    <button onclick="inviteUser('${user.socketId}', 'pictionary', ${user.isBot})" style="padding: 5px 10px; background: #43b97f; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">🎨 你画我猜</button>
+                                    <button onclick="inviteUser('${user.socketId}', 'rps', ${user.isBot})" style="padding: 5px 10px; background: #fd7e14; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">✊ 猜拳</button>
+                                    <button onclick="inviteUser('${user.socketId}', 'snake', ${user.isBot})" style="padding: 5px 10px; background: #28a745; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">🐍 贪吃蛇</button>
+                                    <button onclick="inviteUser('${user.socketId}', 'typing', ${user.isBot})" style="padding: 5px 10px; background: #20c997; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">⌨️ 打字对战</button>
+                                    <button onclick="inviteUser('${user.socketId}', 'tetris', ${user.isBot})" style="padding: 5px 10px; background: #ff6b6b; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 12px;">🧱 方块对战</button>
                                 </div>
                             </div>
                         `).join('');
@@ -6860,17 +6860,28 @@
         }
 
         // 发送游戏邀请
-        function sendGameInvitation(userId, gameType) {
-            console.log('发送游戏邀请给用户:', userId, '游戏类型:', gameType);
+        // 发送游戏邀请（difficulty 仅 AI 对战时携带）
+        function sendGameInvitation(userId, gameType, difficulty) {
+            console.log('发送游戏邀请给用户:', userId, '游戏类型:', gameType, '难度:', difficulty || '无');
             if (typeof socket !== 'undefined' && socket) {
-                socket.emit('send-game-invitation', {
-                    userId: userId,
-                    gameType: gameType
-                });
+                const payload = { userId: userId, gameType: gameType };
+                if (difficulty) payload.difficulty = difficulty;
+                socket.emit('send-game-invitation', payload);
             } else {
                 console.error('Socket未初始化');
                 showNotification('Socket未初始化，无法发送邀请', 'error');
             }
+        }
+
+        // 邀请玩家：AI 先弹难度选择（与小程序一致），真人直接邀请
+        function inviteUser(userId, gameType, isBot) {
+            if (!isBot) {
+                sendGameInvitation(userId, gameType);
+                return;
+            }
+            // 使用浏览器确认框选难度：确定=困难，取消=休闲
+            const hard = window.confirm('与 AI 对战 - 选择难度\n\n【确定】困难（AI 全力以赴）\n【取消】休闲（AI 会失误）');
+            sendGameInvitation(userId, gameType, hard ? 'hard' : 'easy');
         }
 
         // 响应游戏邀请
