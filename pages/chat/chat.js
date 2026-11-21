@@ -795,6 +795,20 @@ Page({
             }
           } else if (event === 'user-joined') {
             that.setData({ connected: true, hasJoinedRoom: true })
+            // 入房成功后把连接共享给其他页面（游戏页）复用，
+            // 避免游戏页另开一条未注册的 socket 导致服务端不认人。
+            try {
+              var gd = getApp().globalData
+              if (gd) {
+                gd.socket = socket
+                gd.socketJoined = true
+                gd.roomName = that.data.roomName
+                gd.username = that.data.username
+                console.log('[Socket] 已共享连接给全局，供游戏页复用')
+              }
+            } catch (e) {
+              console.warn('[Socket] 共享连接失败:', e)
+            }
             if (msg && msg.users && Array.isArray(msg.users)) {
               var filtered = msg.users.filter(function(u) {
                 return u.username !== that.data.username

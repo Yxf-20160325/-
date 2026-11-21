@@ -44,6 +44,16 @@ Page({
     }
   },
 
+  onUnload() {
+    console.log('游戏页面卸载，清理连接与定时器')
+    this.stopGameHeartbeat()
+    if (this.socket && this.socketCreated) {
+      try { this.socket.close({ code: 1000, reason: '页面卸载' }) } catch (e) {}
+    }
+    this.socket = null
+    this.messageHandlerBound = false
+  },
+
   initGame(gameData) {
     console.log('初始化游戏:', gameData)
     
@@ -335,10 +345,9 @@ Page({
       this.socket.onOpen(() => {
         console.log('socket连接成功')
         this.clearSocketTimeout()
-        if (this.data.gameId) {
-          this.safeSend('42["join-room",{"roomName":"' + this.data.gameId + '"}]')
-        }
-        this.sendPendingMessages()
+        // 新建连接必须完成 socket.io 握手后再 join，否则服务端不认识这个 socket，
+        // 后续 guess-number-guess / game-move 等都会被静默丢弃。
+        // 握手由 onMessage 收到 '0{...}' 后回复 '40' 完成，join 在收到 '40' 后发出。
       })
       
       this.socket.onError((err) => {
@@ -400,6 +409,26 @@ Page({
       this.messageHandlerBound = true
       this.socket.onMessage((res) => {
         const data = res.data
+
+        // ===== socket.io 协议握手（仅新建的连接需要）=====
+        // '0{...}' 是 Engine.IO 握手包，必须回 '40' 才算建立命名空间；
+        // 收到 '40' 后再发 join，服务端才会把这条 socket 记入 users。
+        if (this.socketCreated) {
+          if (data.startsWith('0')) {
+            console.log('[Game] 收到握手包，回复 40')
+            try { this.socket.send({ data: '40' }) } catch (e) { console.error(e) }
+            return
+          }
+          if (data === '40' || data.startsWith('40{')) {
+            console.log('[Game] 命名空间已连接，发送 join')
+            this.sendGameJoin()
+            return
+          }
+          if (data === '2') {
+            try { this.socket.send({ data: '3' }) } catch (e) {}
+            return
+          }
+        }
         if (data.startsWith('42')) {
           try {
             const arr = JSON.parse(data.substring(2))
@@ -533,19 +562,73 @@ Page({
     }
   },
   
-  sendPendingMessages() {
-    if (this.pendingMessages && this.pendingMessages.length > 0) {
-      console.log('发送缓存的消息:', this.pendingMessages.length)
-      const messages = [...this.pendingMessages]
-      this.pendingMessages = []
-      messages.forEach(msg => {
-        try {
-          this.socket.send({ data: msg })
-        } catch (e) {
-          console.error('发送缓存消息失败:', e)
-        }
-      })
+  // 新建连接握手完成后调用：以当前用户身份入房，让服务端把这条 socket 记入 users。
+  // 游戏页是独立连接，必须自己 join，否则后续游戏事件都会被服务端当成未登录而丢弃。
+  sendGameJoin() {
+    const username = this.data.myName ||
+      (app.globalData && app.globalData.username) || ''
+    const roomName = (app.globalData && app.globalData.roomName) || 'main'
+    if (!username) {
+      console.warn('[Game] 缺少用户名，跳过 join')
+      return
     }
+    const joinPayload = JSON.stringify({
+      username: username,
+      roomName: roomName,
+      getHistory: false
+    })
+    try {
+      this.socket.send({ data: '42["join",' + joinPayload + ']' })
+      console.log('[Game] 已发送 join:', username, '@', roomName)
+    } catch (e) {
+      console.error('[Game] 发送 join 失败:', e)
+    }
+    // join 之后再把缓存消息发出去
+    setTimeout(() => this.sendPendingMessages(), 300)
+    // 启动心跳，避免长时间不出招被服务端 pingTimeout 断开
+    this.startGameHeartbeat()
+  },
+
+  startGameHeartbeat() {
+    this.stopGameHeartbeat()
+    this._heartbeat = setInterval(() => {
+      if (this.socket && this.socket.readyState === 1) {
+        try { this.socket.send({ data: '2' }) } catch (e) {}
+      }
+    }, 25000)
+  },
+
+  stopGameHeartbeat() {
+    if (this._heartbeat) {
+      clearInterval(this._heartbeat)
+      this._heartbeat = null
+    }
+  },
+
+  sendPendingMessages() {
+    if (!this.pendingMessages || this.pendingMessages.length === 0) return
+    // 未就绪时直接返回，保留队列等下次 onOpen 再发，
+    // 否则会抛 SocketTask.send:fail SocketTask.readyState is not OPEN
+    if (!this.socket || this.socket.readyState !== 1) {
+      console.log('连接未就绪，暂不发送缓存消息:', this.pendingMessages.length)
+      return
+    }
+    console.log('发送缓存的消息:', this.pendingMessages.length)
+    const messages = [...this.pendingMessages]
+    this.pendingMessages = []
+    messages.forEach(msg => {
+      try {
+        if (this.socket && this.socket.readyState === 1) {
+          this.socket.send({ data: msg })
+        } else {
+          // 中途断开，放回队列
+          this.pendingMessages.push(msg)
+        }
+      } catch (e) {
+        console.error('发送缓存消息失败:', e)
+        this.pendingMessages.push(msg)
+      }
+    })
   },
 
   isStarPoint(x, y) {
@@ -831,7 +914,13 @@ Page({
       wx.showToast({ title: '连接未建立', icon: 'none' })
       return
     }
-    
+
+    // 关键：未连上时不发虚假请求，否则本地会显示「等待结果」但服务端收不到
+    if (this.socket.readyState !== 1) {
+      wx.showToast({ title: '连接未就绪，请稍候', icon: 'none' })
+      return
+    }
+
     const num = parseInt(this.data.guessInput)
     
     if (isNaN(num) || num < this.data.guessMin || num > this.data.guessMax) {
