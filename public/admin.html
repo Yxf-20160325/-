@@ -425,6 +425,23 @@
             border: 1px solid #e9ecef;
             border-radius: 5px;
             background: #f8f9fa;
+            transition: all .2s;
+        }
+        /* 选中态：一眼看出是否启用 */
+        .permission-item.selected {
+            background: #e7f7ec;
+            border-color: #28a745;
+            box-shadow: inset 3px 0 0 #28a745;
+        }
+        .permission-item.selected > label {
+            font-weight: 600;
+            color: #1b7a36;
+        }
+        .permission-item.selected::after {
+            content: '✓ 已启用';
+            color: #28a745;
+            font-size: 12px;
+            font-weight: 600;
         }
 
         .permission-item > label {
@@ -4428,12 +4445,33 @@
             alert(data.message);
         });
         
+        // 根据当前消息列表填充「消息管理」顶部的统计卡片
+        function updateMessageStats(messages) {
+            const list = Array.isArray(messages) ? messages : [];
+            const today = new Date().toDateString();
+            const isToday = (m) => {
+                const t = m.timestamp || m.time;
+                if (!t) return false;
+                const d = new Date(typeof t === 'number' ? t : String(t));
+                return !isNaN(d.getTime()) && d.toDateString() === today;
+            };
+            const todayMsgs = list.filter(isToday);
+            const activeUsers = new Set(todayMsgs.map(m => m.username).filter(Boolean));
+            const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+            set('todayMessagesCount', todayMsgs.length);
+            set('activeMessagersCount', activeUsers.size);
+            set('todayImagesCount', list.filter(m => m.type === 'image').length);
+            set('todayFilesCount', list.filter(m => m.type === 'file').length);
+            set('textMessagesCount', list.filter(m => m.type === 'text' || !m.type).length);
+        }
+
         socket.on('admin-room-messages', (data) => {
             const roomMessages = {
                 active: data.messages.filter(m => !m.recalled),
                 deleted: data.messages.filter(m => m.recalled)
             };
             displayMessages(roomMessages, true);
+            updateMessageStats(data.messages);
         });
         
         socket.on('admin-password-success', (data) => {
@@ -7203,8 +7241,64 @@
             // 更新用户行为详情
             updateUserBehaviorList(data.behaviorDetails);
             
-            // 这里可以添加图表渲染代码，使用Chart.js或其他图表库
+            // 渲染三个图表（纯 HTML/CSS，无需外部库）
+            renderAnalyticsCharts(data);
         });
+
+        // 用户行为分析图表：用横向条形图展示，避免依赖外部图表库
+        function renderAnalyticsCharts(data) {
+            const stats = data.stats || {};
+            const details = data.behaviorDetails || [];
+            // 1) 用户活跃度：按 behaviorDetails 的 activityScore 画条形图
+            const actEl = document.getElementById('userActivityChart');
+            if (actEl) {
+                const top = details.slice(0, 10);
+                const max = Math.max(1, ...top.map(u => u.activityScore || 0));
+                actEl.innerHTML = top.length ? top.map(u => `
+                    <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+                        <span style="width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;">${escapeHtml(u.username)}</span>
+                        <div style="flex:1;background:#e9ecef;border-radius:4px;height:20px;">
+                            <div style="width:${Math.round((u.activityScore||0)/max*100)}%;height:100%;background:linear-gradient(90deg,#667eea,#764ba2);border-radius:4px;"></div>
+                        </div>
+                        <span style="width:50px;text-align:right;font-size:13px;">${u.activityScore||0}</span>
+                    </div>`).join('') : '<div class="empty-state">暂无活跃数据</div>';
+            }
+            // 2) 消息类型分布：用统计里的数字画饼状比例条
+            const typeEl = document.getElementById('messageTypeChart');
+            if (typeEl) {
+                const total = stats.totalMessages || 0;
+                const types = [
+                    { name: '文本消息', v: Number((document.getElementById('textMessagesCount') || {}).textContent) || 0, c: '#667eea' },
+                    { name: '图片消息', v: Number((document.getElementById('todayImagesCount') || {}).textContent) || 0, c: '#11998e' },
+                    { name: '文件消息', v: Number((document.getElementById('todayFilesCount') || {}).textContent) || 0, c: '#fc4a1a' }
+                ];
+                const sum = types.reduce((a, b) => a + b.v, 0) || 1;
+                typeEl.innerHTML = `
+                    <div style="display:flex;height:28px;border-radius:6px;overflow:hidden;margin-bottom:12px;">
+                    ${types.map(t => `<div style="width:${Math.round(t.v/sum*100)}%;background:${t.c};" title="${t.name}: ${t.v}"></div>`).join('')}
+                    </div>` + types.map(t => `
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;font-size:13px;">
+                        <span style="width:12px;height:12px;background:${t.c};border-radius:2px;"></span>
+                        <span style="flex:1;">${t.name}</span><b>${t.v}</b>
+                    </div>`).join('') + `<div style="margin-top:8px;color:#666;font-size:12px;">消息总数：${total}</div>`;
+            }
+            // 3) 用户留存率：用环形进度展示
+            const retEl = document.getElementById('userRetentionChart');
+            if (retEl) {
+                const rate = Math.round((stats.retentionRate || 0) * 100);
+                retEl.innerHTML = `
+                    <div style="display:flex;align-items:center;justify-content:center;gap:30px;">
+                        <div style="width:140px;height:140px;border-radius:50%;background:conic-gradient(#28a745 ${rate}%, #e9ecef 0);display:flex;align-items:center;justify-content:center;">
+                            <div style="width:100px;height:100px;border-radius:50%;background:white;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:bold;color:#28a745;">${rate}%</div>
+                        </div>
+                        <div style="font-size:13px;color:#666;line-height:1.8;">
+                            <div>平均在线：<b>${stats.avgOnlineTime || 0} 分钟</b></div>
+                            <div>响应率：<b>${Math.round((stats.responseRate || 0) * 100)}%</b></div>
+                            <div>活跃用户：<b>${stats.activeUsers || 0}</b></div>
+                        </div>
+                    </div>`;
+            }
+        }
         
         function updateUserBehaviorList(behaviorDetails) {
             const behaviorList = document.getElementById('userBehaviorList');
@@ -10882,11 +10976,19 @@ if (typeof userSettings !== 'undefined') {
     // ==================== 互动中心管理结束 ====================
 
     // ==================== 权限项点击切换函数 ====================
+    // 刷新所有权限项的选中视觉（checkbox 被隐藏，必须靠 CSS 类体现状态）
+    function refreshPermVisuals() {
+        document.querySelectorAll('.permission-item').forEach(function (el) {
+            const cb = el.querySelector('input[type=checkbox]');
+            if (cb) el.classList.toggle('selected', cb.checked);
+        });
+    }
+
     function togglePermItem(element, checkboxId) {
         const checkbox = document.getElementById(checkboxId);
         if (checkbox) {
             checkbox.checked = !checkbox.checked;
-            // 添加点击动画效果
+            refreshPermVisuals(); // 立即同步选中视觉
             element.style.transform = 'scale(0.98)';
             setTimeout(() => {
                 element.style.transform = 'scale(1)';
@@ -10940,6 +11042,7 @@ if (typeof userSettings !== 'undefined') {
             document.getElementById('permBtnCreateRoom').checked = perms.btnCreateRoom !== false;
             document.getElementById('permBtnInvite').checked = perms.btnInvite !== false;
             document.getElementById('permBtnKick').checked = perms.btnKick !== false;
+            refreshPermVisuals(); // 加载后同步选中态视觉
         } catch (e) { alert('加载失败: ' + e.message); }
     }
 
@@ -11005,6 +11108,7 @@ if (typeof userSettings !== 'undefined') {
     async function resetPagePermissions() {
         if (!confirm('确定要重置为默认权限吗？')) return;
         document.querySelectorAll('.page-perm-check, .btn-perm-check').forEach(cb => cb.checked = true);
+        refreshPermVisuals();
         await savePagePermissions();
         await saveButtonPermissions();
         showAdminNotif('权限已重置为默认');
