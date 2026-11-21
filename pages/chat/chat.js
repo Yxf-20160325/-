@@ -1441,15 +1441,8 @@ Page({
       success: function (res) {
         wx.hideLoading()
         if (res.statusCode === 200) {
-          wx.openDocument({
-            filePath: res.tempFilePath,
-            showMenu: true,
-            success: function () { console.log('文档打开成功') },
-            fail: function (err) {
-              console.error('文档打开失败:', err)
-              wx.showToast({ title: '无法预览此文件', icon: 'none' })
-            }
-          })
+          // 预览失败时给出分享/改后缀的兜底，而不是只弹 toast
+          that._tryOpenWithFallback(res.tempFilePath, filename || 'file')
         } else {
           wx.showToast({ title: '下载失败', icon: 'none' })
         }
@@ -1465,6 +1458,90 @@ Page({
     that.downloadTasks[downloadId] = task
   },
 
+  // 预览失败兜底：分享文件 / 改后缀名重试
+  _tryOpenWithFallback(tempFilePath, filename) {
+    var that = this
+    // 先尝试正常打开
+    wx.openDocument({
+      filePath: tempFilePath,
+      showMenu: true,
+      success: function () { console.log('文档打开成功') },
+      fail: function () {
+        // 打开失败，让用户选择兜底方式
+        wx.showActionSheet({
+          itemList: ['📤 分享文件', '🔤 更改后缀名后重试', '❌ 取消'],
+          success: function (res) {
+            if (res.tapIndex === 0) {
+              that._shareFile(tempFilePath, filename)
+            } else if (res.tapIndex === 1) {
+              that._renameAndOpen(tempFilePath, filename)
+            }
+          },
+          fail: function () {}
+        })
+      }
+    })
+  },
+
+  // 分享文件给好友（wx.shareFileMessage，基础库 2.16.1+）
+  _shareFile(tempFilePath, filename) {
+    if (wx.shareFileMessage) {
+      wx.shareFileMessage({
+        filePath: tempFilePath,
+        fileName: filename || '文件',
+        success: function () { wx.showToast({ title: '已分享', icon: 'success' }) },
+        fail: function (err) {
+          console.error('分享文件失败:', err)
+          wx.showToast({ title: '分享失败，可点文档右上角菜单转发', icon: 'none', duration: 2500 })
+        }
+      })
+    } else {
+      wx.showModal({
+        title: '分享文件',
+        content: '当前微信版本不支持直接分享，请在打开文档后点击右上角「···」转发。',
+        showCancel: false, confirmText: '知道了'
+      })
+    }
+  },
+
+  // 改后缀名重试：把已下载的文件复制到新后缀再 openDocument
+  _renameAndOpen(tempFilePath, filename) {
+    var that = this
+    var base = (filename || 'file').replace(/\.[^.]+$/, '')
+    wx.showActionSheet({
+      itemList: ['.txt（文本）', '.pdf（PDF）', '.doc（Word）', '.xls（Excel）', '.jpg（图片）'],
+      success: function (res) {
+        var exts = ['.txt', '.pdf', '.doc', '.xls', '.jpg']
+        var ext = exts[res.tapIndex]
+        if (!ext) return
+        var newName = base + ext
+        var newPath = wx.env.USER_DATA_PATH + '/' + Date.now() + ext
+        try {
+          wx.getFileSystemManager().copyFile({
+            srcPath: tempFilePath,
+            destPath: newPath,
+            success: function () {
+              wx.openDocument({
+                filePath: newPath,
+                showMenu: true,
+                success: function () { console.log('改后缀后打开成功:', newName) },
+                fail: function () {
+                  wx.showToast({ title: '仍无法打开该格式', icon: 'none' })
+                }
+              })
+            },
+            fail: function (err) {
+              console.error('复制文件失败:', err)
+              wx.showToast({ title: '更改后缀失败', icon: 'none' })
+            }
+          })
+        } catch (e) {
+          wx.showToast({ title: '更改后缀失败', icon: 'none' })
+        }
+      },
+      fail: function () {}
+    })
+  },
   // 先下载到本地再播放：远程音频直接播容易失败/卡顿
   playRemoteAudio(url, filename) {
     var that = this
