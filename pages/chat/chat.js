@@ -1723,7 +1723,15 @@ Page({
       maxWins: msg.maxWins || 3,
       round: msg.round || 1,
       maxStep: msg.maxStep || 3,
-      guessCounts: msg.guessCounts || {} 
+      guessCounts: msg.guessCounts || {},
+      // 你画我猜：让游戏页一开始就知道谁是画者，直接显示对应的 UI
+      currentDrawer: msg.currentDrawer || '',
+      currentDrawerName: msg.currentDrawerName || '',
+      currentWord: msg.currentWord || null,
+      wordHint: msg.wordHint || '',
+      pictionaryRound: msg.currentRound || 0,
+      maxRounds: msg.maxRounds || 5,
+      scores: msg.scores || []
     }
     console.log('[游戏] 跳转游戏页:', gameData)
     // 关闭互动中心

@@ -130,9 +130,15 @@
       <view class="pictionary-canvas" bindtouchstart="onPictionaryTouch" bindtouchmove="onPictionaryMove">
         <canvas canvas-id="pictionaryCanvas" class="pictionary-canvas-element"></canvas>
       </view>
-      <view class="pictionary-controls">
+      <view class="pictionary-controls" wx:if="{{pictionaryIsDrawer}}">
         <button class="pictionary-btn" bindtap="clearPictionary">清除画布</button>
         <button class="pictionary-btn" bindtap="submitPictionary">提交画作</button>
+      </view>
+      <view class="pictionary-guess-bar" wx:if="{{!pictionaryIsDrawer && (gameStatus === 'playing' || gameStatus === '游戏中')}}">
+        <input class="pictionary-input" type="text" placeholder="输入你猜的词..."
+               value="{{pictionaryInput}}" bindinput="onPictionaryInput"
+               bindconfirm="submitPictionaryGuess" confirm-type="send" maxlength="12" />
+        <button class="pictionary-guess-btn" bindtap="submitPictionaryGuess">猜</button>
       </view>
       <view class="pictionary-guesses">
         <view class="guesses-title">猜题记录</view>

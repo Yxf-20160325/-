@@ -7050,8 +7050,12 @@ io.on('connection', (socket) => {
         // 本轮无人猜对，直接推进到下一轮
         game.currentRound++;
         if (game.currentRound < game.maxRounds) {
-            const nextDrawerIndex = (game.players.indexOf(game.currentDrawer) + 1) % game.players.length;
-            game.currentDrawer = game.players[nextDrawerIndex];
+            // 与 ai 对战时保持 ai 一直当画者，玩家一直猜；
+            // 否则轮换画者后 ai 不会猜词，游戏会卡住。
+            if (game.currentDrawer !== PC_SOCKET_ID) {
+                const nextDrawerIndex = (game.players.indexOf(game.currentDrawer) + 1) % game.players.length;
+                game.currentDrawer = game.players[nextDrawerIndex];
+            }
             game.currentWord = game.words[Math.floor(Math.random() * game.words.length)];
             game.roundStartTime = new Date();
             game.guesses = [];
@@ -7846,13 +7850,19 @@ io.on('connection', (socket) => {
             // 切换到下一轮
             game.currentRound++;
             if (game.currentRound < game.maxRounds) {
-                // 更换 drawer
-                const nextDrawerIndex = (game.players.indexOf(game.currentDrawer) + 1) % game.players.length;
-                game.currentDrawer = game.players[nextDrawerIndex];
+                // 与 ai 对战时保持 ai 一直画；真人之间才轮换画者
+                if (game.currentDrawer !== PC_SOCKET_ID) {
+                    const nextDrawerIndex = (game.players.indexOf(game.currentDrawer) + 1) % game.players.length;
+                    game.currentDrawer = game.players[nextDrawerIndex];
+                }
                 // 更换词汇
                 game.currentWord = game.words[Math.floor(Math.random() * game.words.length)];
                 game.roundStartTime = new Date();
                 game.guesses = [];
+                // ai 继续当画者时，下一轮要重新作画，否则玩家看不到新题
+                if (game.currentDrawer === PC_SOCKET_ID) {
+                    setTimeout(function () { pcPictionaryDraw(game.id); }, 800);
+                }
             } else {
                 // 游戏结束
                 game.status = 'ended';
@@ -9709,8 +9719,12 @@ io.on('connection', (socket) => {
 
         game.currentRound++;
         if (game.currentRound < game.maxRounds) {
-            const nextDrawerIndex = (game.players.indexOf(game.currentDrawer) + 1) % game.players.length;
-            game.currentDrawer = game.players[nextDrawerIndex];
+            // 与 ai 对战时保持 ai 一直当画者，玩家一直猜；
+            // 否则轮换画者后 ai 不会猜词，游戏会卡住。
+            if (game.currentDrawer !== PC_SOCKET_ID) {
+                const nextDrawerIndex = (game.players.indexOf(game.currentDrawer) + 1) % game.players.length;
+                game.currentDrawer = game.players[nextDrawerIndex];
+            }
             game.currentWord = game.words[Math.floor(Math.random() * game.words.length)];
             game.roundStartTime = new Date();
             game.guesses = [];

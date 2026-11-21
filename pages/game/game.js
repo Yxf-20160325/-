@@ -111,7 +111,7 @@ Page({
     } else if (gameData.gameType === 'bomb') {
       this.initBombGame()
     } else if (gameData.gameType === 'pictionary') {
-      this.initPictionary()
+      this.initPictionary(gameData)
     } else if (gameData.gameType === 'typing') {
       this.initTyping()
     }
@@ -169,14 +169,28 @@ Page({
     })
   },
 
-  initPictionary() {
+  initPictionary(gameData) {
+    gameData = gameData || {}
+    // 通过 players 反查自己是不是画者：服务端只把 currentWord 给画者，
+    // 所以 currentWord 有值也意味着自己是画者。
+    var drawerId = gameData.currentDrawer || ''
+    var players = gameData.players || []
+    var me = players.find(function (p) {
+      return p && p.username === (gameData.currentUsername || '')
+    })
+    var iAmDrawer = !!(me && me.socketId === drawerId)
+    if (gameData.currentWord) iAmDrawer = true
+
     this.setData({
-      pictionaryWord: '',
+      pictionaryWord: gameData.currentWord || '',
       pictionaryDrawing: '',
       pictionaryGuesses: [],
+      pictionaryInput: '',
+      pictionaryIsDrawer: iAmDrawer,
+      pictionaryIsDrawing: iAmDrawer,
       pictionaryTimeLeft: 60,
-      pictionaryIsDrawing: false,
-      pictionaryWinner: ''
+      pictionaryWinner: '',
+      pictionaryRound: gameData.pictionaryRound || 0
     })
   },
 
@@ -304,6 +318,35 @@ Page({
   submitPictionary() {
     this.safeSend('42' + JSON.stringify(['game-finish-drawing', { gameId: this.data.gameId }]))
     wx.showToast({ title: '已提交，等待下一轮', icon: 'none' })
+  },
+
+  // 猜词方：输入与提交猜测
+  onPictionaryInput(e) {
+    this.setData({ pictionaryInput: e.detail.value })
+  },
+
+  submitPictionaryGuess() {
+    var guess = (this.data.pictionaryInput || '').trim()
+    if (!guess) {
+      wx.showToast({ title: '请输入猜测', icon: 'none' })
+      return
+    }
+    if (this.data.pictionaryIsDrawer) {
+      wx.showToast({ title: '你是画者，不能猜', icon: 'none' })
+      return
+    }
+    if (!this.socket || this.socket.readyState !== 1) {
+      wx.showToast({ title: '连接未就绪', icon: 'none' })
+      return
+    }
+    var payload = JSON.stringify({ gameId: this.data.gameId, guess: guess })
+    this.safeSend('42' + JSON.stringify(['game-guess', payload]))
+    // 本地立即占位，等待服务端回包
+    var own = this.data.myName || '你'
+    var list = (this.data.pictionaryGuesses || []).concat([
+      { player: own, text: guess, pending: true }
+    ])
+    this.setData({ pictionaryGuesses: list, pictionaryInput: '' })
   },
 
 
@@ -733,11 +776,17 @@ Page({
       const patch = {}
       if (data.currentDrawer !== undefined) {
         patch.currentDrawer = data.currentDrawer
-        // 判断自己是不是画者：通过 players 里的 socketId 反查自己的名字
-        const drawerPlayer = (data.players || this.data.players || []).find(function (p) {
-          return p.socketId === data.currentDrawer
-        })
-        const iAmDrawer = !!drawerPlayer && drawerPlayer.username === this.data.myName
+        // 服务端回包没有 players 字段，优先用 currentDrawerName 判断；
+        // 只有开局包带 players 时才走 socketId 反查。
+        let iAmDrawer
+        if (data.currentDrawerName) {
+          iAmDrawer = data.currentDrawerName === this.data.myName
+        } else {
+          const drawerPlayer = (data.players || this.data.players || []).find(function (p) {
+            return p.socketId === data.currentDrawer
+          })
+          iAmDrawer = !!drawerPlayer && drawerPlayer.username === this.data.myName
+        }
         patch.pictionaryIsDrawing = iAmDrawer
         // 画者拿得到答案（currentWord），猜的人只拿到字数提示
         if (iAmDrawer) {
@@ -756,7 +805,12 @@ Page({
           return { player: g.username || '玩家', text: g.guess || '' }
         })
       }
-      if (data.roundAdvanced) {
+      // 轮次变化（猜中换词或超时推进）都要清空画布与旧猜测
+      var roundChanged = data.roundAdvanced ||
+        (typeof data.currentRound === 'number' && this.data.pictionaryRound !== undefined &&
+         data.currentRound !== this.data.pictionaryRound)
+      if (data.currentRound !== undefined) patch.pictionaryRound = data.currentRound
+      if (roundChanged) {
         patch.pictionaryWord = data.currentWord || ''
         patch.pictionaryGuesses = []
         const c = this.picCtx()

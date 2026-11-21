@@ -487,6 +487,35 @@
   font-size: 28rpx;
 }
 
+
+.pictionary-guess-bar {
+  display: flex;
+  gap: 16rpx;
+  margin-bottom: 20rpx;
+  align-items: center;
+}
+
+.pictionary-input {
+  flex: 1;
+  height: 80rpx;
+  padding: 0 20rpx;
+  background: #f8f9fa;
+  border: 2rpx solid #e0e0e0;
+  border-radius: 10rpx;
+  font-size: 28rpx;
+  color: #333;
+}
+
+.pictionary-guess-btn {
+  width: 120rpx;
+  height: 80rpx;
+  background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+  color: #fff;
+  border: none;
+  border-radius: 10rpx;
+  font-size: 28rpx;
+  font-weight: bold;
+}
 .pictionary-guesses {
   border-top: 2rpx solid #eee;
   padding-top: 20rpx;
