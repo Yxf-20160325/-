@@ -2598,6 +2598,96 @@ app.get('/api/csrf-token', (req, res) => {
     res.json({ csrfToken: token, expires });
 });
 
+// ==================== 微信登录 ====================
+// 小程序端流程：wx.login 拿 code → POST /api/wechat/login
+// 服务端用 appid+secret 换 openid 与 session_key。
+// 密钥从环境变量 WECHAT_APP_SECRET 读，不硬编码。
+const WECHAT_APPID = process.env.WECHAT_APPID || 'wx136ff04f12ed97bc';
+const WECHAT_SECRET = process.env.WECHAT_APP_SECRET || '';
+// 记录 username → openid，供后续推送使用
+const userOpenIds = new Map();
+
+app.post('/api/wechat/login', express.json(), (req, res) => {
+    const { code, roomName, nickName, avatarUrl } = req.body
+        || {};
+
+    if (!code) {
+        return res.status(400).json({ success: false, message: '缺少code参数' });
+    }
+    if (!WECHAT_SECRET) {
+        console.warn('[微信登录] 未配置 WECHAT_APP_SECRET');
+        // 降级：本地开发/未配置密钥时，允许以昵称登录，避免完全卡死
+        const fallbackName = nickName || ('用户' + Math.floor(Math.random() * 1000));
+        return res.json({
+            success: true,
+            message: '登录成功（未配置微信密钥，使用降级模式）',
+            username: fallbackName,
+            wechatData: { openid: null, degraded: true },
+            degraded: true
+        });
+    }
+
+    const https = require('https');
+    const url = 'https://api.weixin.qq.com/sns/jscode2session' +
+        '?appid=' + encodeURIComponent(WECHAT_APPID) +
+        '&secret=' + encodeURIComponent(WECHAT_SECRET) +
+        '&js_code=' + encodeURIComponent(code) +
+        '&grant_type=authorization_code';
+
+    const reqWx = https.get(url, (resp) => {
+        let raw = '';
+        resp.on('data', (c) => { raw += c; });
+        resp.on('end', () => {
+            try {
+                const wechatData = JSON.parse(raw);
+                if (wechatData.errcode) {
+                    console.error('[微信登录] 微信接口返回错误:', wechatData.errcode, wechatData.errmsg);
+                    return res.status(400).json({
+                        success: false,
+                        message: wechatData.errmsg || '微信登录失败',
+                        errcode: wechatData.errcode
+                    });
+                }
+                const username = nickName || ('用户' + Math.floor(Math.random() * 1000));
+                if (wechatData.openid) {
+                    userOpenIds.set(username, wechatData.openid);
+                    console.log('[微信登录] 成功:', username, 'openid=' + String(wechatData.openid).slice(0, 8) + '...');
+                }
+                res.json({
+                    success: true,
+                    message: '登录成功',
+                    username: username,
+                    // 注意：session_key 不下发给客户端
+                    wechatData: { openid: wechatData.openid || null }
+                });
+            } catch (e) {
+                console.error('[微信登录] 解析响应失败:', e.message);
+                res.status(500).json({ success: false, message: '解析响应失败' });
+            }
+        });
+    });
+
+    reqWx.on('error', (err) => {
+        console.error('[微信登录] 请求微信服务器失败:', err.message);
+        res.status(500).json({ success: false, message: '请求微信服务器失败' });
+    });
+    reqWx.setTimeout(10000, () => {
+        reqWx.destroy();
+        res.status(504).json({ success: false, message: '微信服务器超时' });
+    });
+});
+
+// 保存 openid（客户端主动上报）
+app.post('/api/wechat/save-openid', express.json(), (req, res) => {
+    const { username, openid } = req.body || {};
+    if (username && openid) {
+        userOpenIds.set(username, openid);
+        return res.json({ success: true, message: '保存成功' });
+    }
+    res.json({ success: false, message: '参数错误' });
+});
+// ==================== 微信登录 END ====================
+
 // 定期清理过期的CSRF令牌（优化：从默认改为10分钟）
 setInterval(() => {
     const now = Date.now();
