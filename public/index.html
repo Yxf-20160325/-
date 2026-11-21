@@ -4814,6 +4814,17 @@
     <div class="modal" id="callUserModal">
         <div class="modal-content" style="max-width: 500px;">
             <h3>选择通话用户</h3>
+            <!-- 通话方式选择：WebRTC 点对点 / Socket.io 服务器中继 -->
+            <div style="display:flex;align-items:center;gap:10px;margin:10px 0;padding:10px;background:#f8f9fa;border-radius:8px;flex-wrap:wrap;">
+                <span style="font-weight:600;">通话方式：</span>
+                <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+                    <input type="radio" name="callMethod" value="webrtc" checked onchange="saveCallMethod(this.value)"> WebRTC 直连
+                </label>
+                <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+                    <input type="radio" name="callMethod" value="socket.io" onchange="saveCallMethod(this.value)"> Socket.io 中继
+                </label>
+                <span id="callMethodTip" style="font-size:12px;color:#666;flex-basis:100%;">WebRTC 延迟低；跨网段/移动网络不通时可选 Socket.io 中继</span>
+            </div>
             <div id="callUserList"></div>
             <div class="modal-buttons">
                 <button type="button" class="btn btn-cancel" onclick="closeCallUserModal()">取消</button>
@@ -20152,6 +20163,13 @@ io.on('connection', (socket) => {
             // 更新用户列表
             updateCallUserList();
             
+            // 恢复上次保存的通话方式选择
+            (function restoreCallMethod() {
+                const saved = localStorage.getItem('callMethod') || 'webrtc';
+                const radios = document.querySelectorAll('input[name=callMethod]');
+                radios.forEach(function (r) { r.checked = (r.value === saved); });
+                saveCallMethod(saved);
+            })();
             callUserModal.classList.add('active');
         }
         
@@ -20203,16 +20221,28 @@ io.on('connection', (socket) => {
         }
         
         // 开始通话函数
+        // 读取用户选择的通话方式（默认 webrtc）
+        function getSelectedCallMethod() {
+            const sel = document.querySelector('input[name=callMethod]:checked');
+            return sel ? sel.value : (localStorage.getItem('callMethod') || 'webrtc');
+        }
+
+        function saveCallMethod(value) {
+            localStorage.setItem('callMethod', value);
+            const tip = document.getElementById('callMethodTip');
+            if (tip) tip.textContent = value === 'socket.io'
+                ? 'Socket.io 中继：经服务器转发，跨网段可用，但延迟较高、消耗服务器流量'
+                : 'WebRTC 直连：延迟低、质量高；跨网段/移动网络不通时可切换 Socket.io 中继';
+        }
+
         function startCall(callType, socketId, username) {
-            // 固定使用 WebRTC 通话方式
-            const callMethod = 'webrtc';
-            
+            // 使用用户在弹窗里选择的通话方式（webrtc / socket.io）
+            const callMethod = getSelectedCallMethod();
             // 关闭通话用户列表
             closeCallUserModal();
-            
             // 调用callSystem的startCall方法
             callSystem.startCall(socketId, callType, callMethod);
-            alert(`正在与 ${username} 发起${callType === 'video' ? '视频' : '语音'}通话`);
+            alert(`正在与 ${username} 发起${callType === 'video' ? '视频' : '语音'}通话（${callMethod === 'socket.io' ? 'Socket.io 中继' : 'WebRTC 直连'}）`);
         }
  
         // 从URL路径获取房间名
