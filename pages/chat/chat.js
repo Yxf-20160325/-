@@ -981,22 +981,30 @@ Page({
     if (!msg) {
       return
     }
+    var username = msg.username || '未知用户'
+    var avatar = msg.avatarUrl || ''
     var message = {
       id: msg.id || Date.now(),
       type: msg.type || 'text',
-      content: msg.content || '',
-      username: msg.username || '未知用户',
-      avatarUrl: msg.avatarUrl || '',
+      // 服务端字段叫 message，客户端历史可能叫 content
+      content: msg.content || msg.message || '',
+      username: username,
+      isSelf: username === this.data.username,
+      // WXML 期待嵌套 user 对象，这里补齐（原来只有扁平字段导致名字/头像为空）
+      user: {
+        nickName: username,
+        avatarUrl: avatar
+      },
+      avatarUrl: avatar,
       roomName: msg.roomName || this.data.roomName,
-      time: msg.time || new Date().toLocaleTimeString(),
-      // 相对路径转绝对：老消息/服务端历史里的 /uploads/xxx 在这里统一处理
+      time: msg.time || msg.timestamp || new Date().toLocaleTimeString(),
       imageUrl: this.normalizeFileUrl(msg.imageUrl || msg.url || ''),
       fileUrl: this.normalizeFileUrl(msg.fileUrl || msg.url || ''),
       filename: msg.filename || msg.fileName || '',
       fileSize: msg.fileSize || '',
       latitude: msg.latitude,
       longitude: msg.longitude,
-      address: msg.address
+      address: msg.address || msg.locationName || ''
     }
     var messages = this.data.messages.slice()
     messages.push(message)
@@ -1039,6 +1047,8 @@ Page({
       uploadProgress: 0,
       uploadStatus: '正在上传...'
     })
+    var uploadId = 'upload_' + Date.now() + '_' + Math.floor(Math.random() * 1000)
+    that.addUpload({ id: uploadId, filename: fileName, type: type })
     var uploadTask = wx.uploadFile({
       url: that.getServerUrl() + '/upload',
       filePath: tempFilePath,
@@ -1056,6 +1066,7 @@ Page({
         if (!fileUrl) {
           console.error('上传响应:', res.statusCode, res.data)
           wx.showToast({ title: '上传失败：未获取到文件地址', icon: 'none' })
+          that.completeUpload(uploadId, false)
           that.hideUploadModal()
           return
         }
@@ -1078,10 +1089,11 @@ Page({
         } else {
           wx.showToast({ title: '已上传，但未连接，无法发送', icon: 'none' })
         }
+        that.completeUpload(uploadId, true)
         that.hideUploadModal()
       },
       fail: function(err) {
-        that.setData({ uploadStatus: '上传失败' })
+        that.completeUpload(uploadId, false)
         that.hideUploadModal()
         console.error('上传失败:', err)
         wx.showToast({ title: '上传失败', icon: 'none' })
@@ -1090,6 +1102,7 @@ Page({
     // 真实上传进度
     if (uploadTask.onProgressUpdate) {
       uploadTask.onProgressUpdate(function(res) {
+        that.updateUploadProgress(uploadId, res.progress)
         that.setData({ uploadProgress: res.progress })
       })
     }
