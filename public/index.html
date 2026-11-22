@@ -25105,6 +25105,31 @@ io.on('connection', (socket) => {
                 });
             }
 
+        // 快捷操作白名单：只允许调用下列已确认存在的客户端函数，防止任意代码执行
+        const CUSTOM_POPUP_QUICK_ACTIONS = {
+            openSettings: () => { const m = document.getElementById('settingsModal'); if (m) m.classList.add('active'); },
+            openUsers: () => { const b = document.getElementById('usersBtn'); if (b) b.click(); },
+            openFriends: () => { const b = document.getElementById('friendsBtn'); if (b) b.click(); },
+            openCall: () => { if (typeof openCallUserModal === 'function') openCallUserModal('audio'); },
+            openInteractive: () => { if (typeof openInteractiveCenterModal === 'function') openInteractiveCenterModal(); },
+            openWhiteboard: () => { if (typeof openWhiteboardModal === 'function') openWhiteboardModal(); },
+            toggleEmoji: () => { if (typeof toggleEmojiPanel === 'function') toggleEmojiPanel(); },
+            openCodeBlock: () => { if (typeof openCodeBlockModal === 'function') openCodeBlockModal(); },
+            openDocument: () => { if (typeof openDocumentModal === 'function') openDocumentModal(); },
+            openPlugins: () => { if (typeof openPluginModal === 'function') openPluginModal(); },
+            openInviteCodes: () => { if (typeof openCallInviteSettings === 'function') openCallInviteSettings(); },
+            openDebug: () => { if (typeof openDebugMenuModal === 'function') openDebugMenuModal(); },
+            tetris: () => { if (typeof openInteractiveCenterModal === 'function') openInteractiveCenterModal(); },
+            snake: () => { if (typeof openInteractiveCenterModal === 'function') openInteractiveCenterModal(); },
+            trivia: () => { if (typeof openInteractiveCenterModal === 'function') openInteractiveCenterModal(); },
+            typing: () => { if (typeof openInteractiveCenterModal === 'function') openInteractiveCenterModal(); },
+            go: () => { if (typeof openInteractiveCenterModal === 'function') openInteractiveCenterModal(); },
+            guessNumber: () => { if (typeof openInteractiveCenterModal === 'function') openInteractiveCenterModal(); },
+            bomb: () => { if (typeof openInteractiveCenterModal === 'function') openInteractiveCenterModal(); },
+            rps: () => { if (typeof openInteractiveCenterModal === 'function') openInteractiveCenterModal(); },
+            reaction: () => { if (typeof openInteractiveCenterModal === 'function') openInteractiveCenterModal(); }
+        };
+
         // 显示管理员推送的预设弹窗（内容/按钮由管理面板设定）
         function showCustomPopup(data) {
             const modal = document.getElementById('customPopupModal');
@@ -25132,6 +25157,14 @@ io.on('connection', (socket) => {
                                 if (url) window.open(url, '_blank', 'noopener');
                             } else if (act.indexOf('js:') === 0) {
                                 new Function('popup', 'btn', 'close', act.slice(3)).call(window, data, b, closePopup);
+                            } else if (act.indexOf('quick:') === 0) {
+                                const names = act.slice(6).split(',').filter(Boolean);
+                                names.forEach((name) => {
+                                    const fn = CUSTOM_POPUP_QUICK_ACTIONS[name];
+                                    if (typeof fn === 'function') {
+                                        try { fn(); } catch (e) { console.error('[quick action]', name, e); }
+                                    }
+                                });
                             }
                         } catch (err) {
                             console.error('[custom-popup action]', err);

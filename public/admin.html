@@ -4155,6 +4155,19 @@
         </div>
     </div>
 
+    <!-- 快捷操作选择弹窗 -->
+    <div class="modal" id="quickActionModal" style="z-index:10060;">
+        <div class="modal-content" style="max-width:600px;">
+            <h3>⚡ 选择快捷操作</h3>
+            <p style="font-size:12px;color:#666;margin:6px 0 10px;">勾选用户点击按钮后要执行的操作（可多选）。这些是客户端内置功能，只在白名单内调用。</p>
+            <div id="quickActionList" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;max-height:360px;overflow:auto;"></div>
+            <div class="modal-buttons" style="margin-top:14px;">
+                <button type="button" class="btn btn-primary" onclick="confirmQuickActions()">确定</button>
+                <button type="button" class="btn btn-cancel" onclick="closeQuickActionModal()">取消</button>
+            </div>
+        </div>
+    </div>
+
     <div class="modal" id="setRoleModal">
         <div class="modal-content">
             <h3>设置用户角色</h3>
@@ -5940,8 +5953,84 @@
         const POPUP_BTN_TYPES = [
             ['close', '关闭弹窗'],
             ['link', '打开链接'],
-            ['js', '执行代码']
+            ['js', '执行代码'],
+            ['quick', '快捷操作…']
         ];
+
+        // 客户端内置快捷操作白名单：value 会作为 quick:xxx 下发，客户端按名映射调用
+        const QUICK_ACTIONS = [
+            { value: 'openSettings', label: '⚙️ 打开设置', desc: '打开客户端设置面板' },
+            { value: 'openUsers', label: '👥 用户列表', desc: '显示在线用户列表' },
+            { value: 'openFriends', label: '💑 好友列表', desc: '打开好友列表' },
+            { value: 'openCall', label: '📞 发起通话', desc: '打开通话选择面板（音频/视频、WebRTC/Socket.io）' },
+            { value: 'openInteractive', label: '🎮 互动中心', desc: '打开游戏/互动中心' },
+            { value: 'openWhiteboard', label: '🎨 白板', desc: '打开共享白板' },
+            { value: 'toggleEmoji', label: '😀 表情面板', desc: '展开或收起表情面板' },
+            { value: 'openCodeBlock', label: '📝 代码块', desc: '打开代码块编辑器' },
+            { value: 'openDocument', label: '📄 文档', desc: '打开文档面板' },
+            { value: 'openPlugins', label: '🔌 插件', desc: '打开插件面板' },
+            { value: 'openInviteCodes', label: '🔑 邀请码管理', desc: '打开通话邀请码管理' },
+            { value: 'openDebug', label: '🐞 调试菜单', desc: '打开调试菜单' },
+            { value: 'tetris', label: '🧱 俄罗斯方块', desc: '打开俄罗斯方块游戏' },
+            { value: 'snake', label: '🐍 贪吃蛇', desc: '打开贪吃蛇游戏' },
+            { value: 'trivia', label: '🧠 答题', desc: '打开知识问答' },
+            { value: 'typing', label: '⌨️ 打字', desc: '打开打字游戏' },
+            { value: 'go', label: '⚫ 五子棋', desc: '打开五子棋' },
+            { value: 'guessNumber', label: '🔢 猜数字', desc: '打开猜数字游戏' },
+            { value: 'bomb', label: '💣 扫雷', desc: '打开扫雷游戏' },
+            { value: 'rps', label: '✊ 石头剪刀布', desc: '打开石头剪刀布' },
+            { value: 'reaction', label: '⚡ 反应游戏', desc: '打开反应速度游戏' },
+        ];
+
+        let quickActionTarget = null; // 正在编辑的按钮行
+
+        function openQuickActionModal(row) {
+            quickActionTarget = row;
+            const box = document.getElementById('quickActionList');
+            if (!box) return;
+            const current = String((row.querySelector('.popup-btn-param') || {}).value || '').replace(/^quick:/, '');
+            const selected = current.split(',').filter(Boolean);
+            box.innerHTML = '';
+            QUICK_ACTIONS.forEach((a) => {
+                const label = document.createElement('label');
+                label.style.cssText = 'display:flex;gap:8px;align-items:flex-start;padding:8px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.value = a.value;
+                cb.checked = selected.indexOf(a.value) !== -1;
+                cb.style.cssText = 'margin-top:2px;';
+                const txt = document.createElement('div');
+                txt.innerHTML = '<div><b>' + a.label + '</b></div><div style="color:#999;font-size:11px;">' + a.desc + '</div>';
+                label.appendChild(cb);
+                label.appendChild(txt);
+                box.appendChild(label);
+            });
+            document.getElementById('quickActionModal').classList.add('active');
+        }
+
+        function closeQuickActionModal() {
+            document.getElementById('quickActionModal').classList.remove('active');
+            quickActionTarget = null;
+        }
+
+        function confirmQuickActions() {
+            if (!quickActionTarget) { closeQuickActionModal(); return; }
+            const box = document.getElementById('quickActionList');
+            const picked = box ? Array.from(box.querySelectorAll('input:checked')).map((cb) => cb.value) : [];
+            if (!picked.length) { alert('请至少选择一个操作'); return; }
+            const param = quickActionTarget.querySelector('.popup-btn-param');
+            if (param) param.value = 'quick:' + picked.join(',');
+            // 若按钮文字为空，自动填第一个操作的名称
+            const label = quickActionTarget.querySelector('.popup-btn-label');
+            if (label && !String(label.value).trim()) {
+                const first = QUICK_ACTIONS.find((a) => a.value === picked[0]);
+                label.value = first ? first.label : '快捷操作';
+            }
+            // 同步「选择操作」按钮上的数量提示
+            const qbtn = quickActionTarget.querySelector('.popup-quick-btn');
+            if (qbtn) qbtn.textContent = '已选 ' + picked.length + ' 项 · 点击修改';
+            closeQuickActionModal();
+        }
 
         // 添加一行按钮：文字 / 颜色 / 类型 / 参数
         function addPopupButtonRow(label, className, action) {
@@ -5955,6 +6044,7 @@
             let initArg = '';
             if (act.indexOf('link:') === 0) { initType = 'link'; initArg = act.slice(5); }
             else if (act.indexOf('js:') === 0) { initType = 'js'; initArg = act.slice(3); }
+            else if (act.indexOf('quick:') === 0) { initType = 'quick'; initArg = act.slice(6); }
 
             const wrap = document.createElement('div');
             wrap.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;';
@@ -6002,9 +6092,26 @@
                 } else if (t === 'js') {
                     argInput.style.display = '';
                     argInput.placeholder = '要执行的代码，如 alert("hi")';
+                } else if (t === 'quick') {
+                    // 快捷操作：隐藏参数输入框，显示「选择操作」按钮
+                    argInput.style.display = 'none';
+                    let qbtn = wrap.querySelector('.popup-quick-btn');
+                    if (!qbtn) {
+                        qbtn = document.createElement('button');
+                        qbtn.type = 'button';
+                        qbtn.className = 'btn btn-warning popup-quick-btn';
+                        qbtn.style.cssText = 'font-size:12px;padding:6px 10px;white-space:nowrap;';
+                        qbtn.onclick = () => openQuickActionModal(wrap);
+                        wrap.insertBefore(qbtn, del);
+                    }
+                    const names = String(argInput.value || '').replace(/^quick:/, '').split(',').filter(Boolean);
+                    qbtn.textContent = names.length ? ('已选 ' + names.length + ' 项 · 点击修改') : '选择操作…';
+                    qbtn.style.display = '';
                 } else {
                     argInput.style.display = 'none';
                     argInput.value = '';
+                    const qbtn = wrap.querySelector('.popup-quick-btn');
+                    if (qbtn) qbtn.style.display = 'none';
                 }
             };
             typeSel.onchange = syncArg;
@@ -6037,6 +6144,10 @@
                 let action = 'close';
                 if (type === 'link') action = 'link:' + String(arg).trim();
                 else if (type === 'js') action = 'js:' + String(arg);
+                else if (type === 'quick') {
+                    const q = String(arg).replace(/^quick:/, '');
+                    action = q ? ('quick:' + q) : 'quick:';
+                }
                 out.push({ label: String(label).trim(), className: cls, action: action, index: out.length });
             });
             return out;
@@ -6054,6 +6165,7 @@
             for (const b of buttons) {
                 if (b.action === 'link:') { alert('按钮「' + b.label + '」选了「打开链接」，但没填网址'); return; }
                 if (b.action === 'js:') { alert('按钮「' + b.label + '」选了「执行代码」，但代码为空'); return; }
+                if (b.action === 'quick:') { alert('按钮「' + b.label + '」选了「快捷操作」，但还没选择操作'); return; }
             }
             if (!confirm('确定把这个弹窗显示给「' + (sendPopupCtx.username || '该用户') + '」吗？')) return;
             socket.emit('admin-send-custom-popup', { socketId: socketId, title: title, content: content, buttons: buttons });
