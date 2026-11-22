@@ -4873,6 +4873,15 @@
             </div>
         </div>
     </div>
+
+    <!-- 管理员推送的预设弹窗（内容与按钮由管理面板设定） -->
+    <div class="modal" id="customPopupModal" style="z-index: 10060;">
+        <div class="modal-content" style="max-width:520px;">
+            <h3 id="customPopupTitle" style="margin-top:0;">通知</h3>
+            <div id="customPopupContent" style="margin:12px 0 16px;font-size:14px;line-height:1.8;word-break:break-word;"></div>
+            <div id="customPopupButtons" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;"></div>
+        </div>
+    </div>
     
     <!-- 媒体预览模态框 -->
     <div class="modal" id="mediaPreviewModal">
@@ -25084,12 +25093,60 @@ io.on('connection', (socket) => {
                 socket.on('popup-message', (data) => {
                     alert(data.message);
                 });
+
+                // 管理员推送的「预设弹窗」（内容与按钮由管理面板自定义）
+                socket.on('custom-popup', (data) => {
+                    showCustomPopup(data || {});
+                });
                 
                 // 处理管理员更改页面标题
                 socket.on('change-title', (data) => {
                     document.title = data.title;
                 });
             }
+
+        // 显示管理员推送的预设弹窗（内容/按钮由管理面板设定）
+        function showCustomPopup(data) {
+            const modal = document.getElementById('customPopupModal');
+            const titleEl = document.getElementById('customPopupTitle');
+            const contentEl = document.getElementById('customPopupContent');
+            const btnBox = document.getElementById('customPopupButtons');
+            if (!modal || !contentEl) return;
+            if (titleEl) titleEl.textContent = data.title || '通知';
+            // 内容由管理员设定（占位符值已在管理端转义）
+            contentEl.innerHTML = data.content || '';
+            if (btnBox) {
+                btnBox.innerHTML = '';
+                const buttons = Array.isArray(data.buttons) ? data.buttons : [];
+                buttons.forEach((b, i) => {
+                    const el = document.createElement('button');
+                    el.type = 'button';
+                    el.className = 'btn ' + ((b && b.className) || 'btn-primary');
+                    el.textContent = (b && b.label) || ('按钮' + (i + 1));
+                    el.onclick = () => {
+                        if (typeof socket !== 'undefined' && socket) {
+                            socket.emit('custom-popup-action', {
+                                popupId: data.popupId || '',
+                                label: (b && b.label) || '',
+                                index: (b && typeof b.index === 'number') ? b.index : i,
+                                action: (b && b.action) || ''
+                            });
+                        }
+                        modal.classList.remove('active');
+                    };
+                    btnBox.appendChild(el);
+                });
+                if (!buttons.length) {
+                    const el = document.createElement('button');
+                    el.type = 'button';
+                    el.className = 'btn btn-cancel';
+                    el.textContent = '知道了';
+                    el.onclick = () => modal.classList.remove('active');
+                    btnBox.appendChild(el);
+                }
+            }
+            modal.classList.add('active');
+        }
         }
 
         // ===== 代码块功能 =====

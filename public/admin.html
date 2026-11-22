@@ -4144,6 +4144,7 @@
             <div id="userModelButtons" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;"></div>
             <div class="modal-buttons">
                 <button type="button" class="btn btn-warning" onclick="openUserModelConfigEditor()" title="自定义弹窗内容与按钮">⚙ 自定义</button>
+                <button type="button" class="btn btn-primary" onclick="sendConfiguredPopupToUser()" title="把上面设定好的弹窗推送给该用户，由对方弹出">📤 发送设定好的弹窗给该用户</button>
                 <button type="button" class="btn btn-cancel" onclick="document.getElementById('userModelModal').classList.remove('active')">关闭</button>
             </div>
         </div>
@@ -8218,6 +8219,63 @@
                 alert('Socket ID：' + id);
             }
         }
+
+        // 把「⚙ 自定义」里设定好的内容组装成推送给用户的载荷
+        function buildUserPopupPayload() {
+            const cfg = getUserModelConfig();
+            const d = currentUserModelCtx.data || {};
+            const modelNames = { glm4: 'GLM-4 Flash', deepseek: 'DeepSeek', siliconflow: '硅基流动', custom: '自定义 API' };
+            const vars = {
+                username: d.username || currentUserModelCtx.username || '',
+                role: d.role || '',
+                aiModel: modelNames[d.aiModel] || d.aiModel || '未配置',
+                deepseekModel: d.deepseekModel || '-',
+                siliconflowModel: d.siliconflowModel || '-',
+                customModel: d.customModel || '-',
+                platform: d.platform || '-',
+                aiEnabled: d.aiEnabled ? '已启用' : '未启用'
+            };
+            let content = (cfg.contentTemplate && cfg.contentTemplate.trim())
+                ? cfg.contentTemplate
+                : '管理员给你发来一条通知。';
+            Object.keys(vars).forEach((k) => {
+                content = content.split('{{' + k + '}}').join(escapeHtml(vars[k]));
+            });
+            const buttons = (cfg.buttons || []).slice(0, 6).map((b, i) => ({
+                label: (b && b.label) ? b.label : ('按钮' + (i + 1)),
+                className: (b && b.className) || 'btn-primary',
+                action: (b && b.type === 'call') ? ('call:' + (b.fn || ''))
+                    : (b && b.type === 'define') ? ('define:' + (b.name || '')) : 'code'
+            }));
+            return { title: cfg.title || '通知', content: content, buttons: buttons };
+        }
+
+        // 让目标用户弹出「设定好的弹窗」
+        function sendConfiguredPopupToUser() {
+            const socketId = currentUserModelCtx.socketId;
+            if (!socketId) { alert('没有目标用户，请先点「显示Model」选一个用户'); return; }
+            const p = buildUserPopupPayload();
+            const who = currentUserModelCtx.username || (currentUserModelCtx.data || {}).username || '该用户';
+            const btnDesc = p.buttons.length ? p.buttons.map((b) => b.label).join(' / ') : '无';
+            if (!confirm('确定把设定好的弹窗推送给「' + who + '」吗？\n\n标题：' + p.title + '\n按钮：' + btnDesc)) return;
+            socket.emit('admin-send-custom-popup', { socketId: socketId, title: p.title, content: p.content, buttons: p.buttons });
+        }
+
+        // 推送结果回执
+        socket.on('custom-popup-sent', (res) => {
+            if (res && res.ok) {
+                alert('已推送给 ' + (res.username || '用户') + '，对方会立即弹出');
+            } else {
+                alert('推送失败：' + ((res && res.message) || '未知错误'));
+            }
+        });
+
+        // 用户点击了弹窗按钮
+        socket.on('custom-popup-action', (res) => {
+            if (!res) return;
+            const t = res.at ? new Date(res.at).toLocaleTimeString() : '';
+            alert('「' + (res.username || '用户') + '」' + t + ' 点击了弹窗按钮：' + (res.label || ''));
+        });
 
         // 监听用户设置响应
         socket.on('admin-user-settings', (data) => {

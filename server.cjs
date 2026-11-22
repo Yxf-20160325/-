@@ -8328,6 +8328,54 @@ io.on('connection', (socket) => {
                 console.log(`管理员向 ${socketId} 发送弹窗: ${message}`);
             }
         });
+
+        // 管理员向指定用户推送「预设弹窗」（内容由管理面板 ⚙ 自定义设定）
+        socket.on('admin-send-custom-popup', (data) => {
+            const me = users.get(socket.id);
+            if (!(socket.id === adminSocketId || (me && me.role === 'superadmin'))) {
+                return socket.emit('custom-popup-sent', { ok: false, message: '无权限' });
+            }
+            if (!data || typeof data !== 'object') {
+                return socket.emit('custom-popup-sent', { ok: false, message: '参数错误' });
+            }
+            const targetSid = typeof data.socketId === 'string' ? data.socketId : '';
+            const target = users.get(targetSid);
+            if (!target) {
+                return socket.emit('custom-popup-sent', { ok: false, message: '用户不在线' });
+            }
+            const title = String(data.title || '通知').slice(0, 60);
+            const content = String(data.content || '').slice(0, 4000);
+            const ALLOWED_CLS = ['btn-primary', 'btn-danger', 'btn-warning', 'btn-info', 'btn-success', 'btn-cancel'];
+            const rawButtons = Array.isArray(data.buttons) ? data.buttons.slice(0, 6) : [];
+            const buttons = rawButtons.map((b, i) => ({
+                index: i,
+                label: String((b && b.label) || ('按钮' + (i + 1))).slice(0, 30),
+                className: ALLOWED_CLS.includes(b && b.className) ? b.className : 'btn-primary',
+                action: typeof (b && b.action) === 'string' ? b.action.slice(0, 200) : ''
+            }));
+            const popupId = 'popup_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+            io.to(targetSid).emit('custom-popup', { popupId, title, content, buttons });
+            socket.emit('custom-popup-sent', { ok: true, popupId, socketId: targetSid, username: target.username });
+            console.log('[管理] 向 ' + target.username + ' 推送预设弹窗（' + buttons.length + ' 个按钮）');
+        });
+
+        // 用户点击预设弹窗的按钮 → 回传给管理员
+        socket.on('custom-popup-action', (data) => {
+            const me = users.get(socket.id);
+            if (!me) return;
+            if (!data || typeof data !== 'object') return;
+            const payload = {
+                username: me.username,
+                socketId: socket.id,
+                popupId: String(data.popupId || '').slice(0, 60),
+                label: String(data.label || '').slice(0, 30),
+                index: Number.isFinite(data.index) ? data.index : -1,
+                action: String(data.action || '').slice(0, 200),
+                at: new Date().toISOString()
+            };
+            if (adminSocketId) io.to(adminSocketId).emit('custom-popup-action', payload);
+            console.log('[弹窗] ' + me.username + ' 点击了「' + payload.label + '」');
+        });
         
         // 管理员更改用户页面标题
         socket.on('admin-change-title', (data) => {
