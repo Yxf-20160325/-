@@ -5993,13 +5993,14 @@
             box.innerHTML = '';
             QUICK_ACTIONS.forEach((a) => {
                 const label = document.createElement('label');
-                label.style.cssText = 'display:flex;gap:8px;align-items:flex-start;padding:8px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;';
+                label.style.cssText = 'display:flex;gap:4px;align-items:flex-start;padding:8px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;';
                 const cb = document.createElement('input');
                 cb.type = 'checkbox';
                 cb.value = a.value;
                 cb.checked = selected.indexOf(a.value) !== -1;
-                cb.style.cssText = 'margin-top:2px;';
+                cb.style.cssText = 'margin:1px 0 0;flex:0 0 auto;width:15px;height:15px;';
                 const txt = document.createElement('div');
+                txt.style.cssText = 'flex:1;min-width:0;';
                 txt.innerHTML = '<div><b>' + a.label + '</b></div><div style="color:#999;font-size:11px;">' + a.desc + '</div>';
                 label.appendChild(cb);
                 label.appendChild(txt);
