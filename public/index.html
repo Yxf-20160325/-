@@ -4442,6 +4442,16 @@
                         </div>
                     </div>
                     
+                    <!-- 通话邀请码管理（有通话权限时可见） -->
+                    <div id="settingsCallInviteSection" style="margin-bottom:20px;">
+                        <h4>🔑 通话邀请码</h4>
+                        <p style="margin-top:5px;font-size:12px;color:#6c757d;">生成邀请码分享给他人解锁通话，每个邀请码最多 5 人使用。</p>
+                        <div style="margin-top:10px;display:flex;gap:8px;">
+                            <button type="button" class="btn btn-success" onclick="generateCallInvite()">生成邀请码</button>
+                        </div>
+                        <div id="callInviteList" style="margin-top:10px;"></div>
+                    </div>
+                    
                     <div style="margin-bottom: 20px;">
                         <h4>音频设备设置</h4>
                         <div style="margin-top: 15px;">
@@ -4823,13 +4833,9 @@
                 </div>
                 <p id="callUnlockMsg" style="margin:8px 0 0;font-size:12px;"></p>
             </div>
-            <!-- 有通话权限时：邀请码管理（可生成，每码最多5人用） -->
-            <div id="callInviteManageBox" style="display:none;padding:15px;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;margin:10px 0;">
-                <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-                    <span style="font-size:13px;color:#2e7d32;">🔑 生成邀请码分享给他人解锁通话（每码最多 5 人使用）</span>
-                    <button type="button" class="btn btn-success" onclick="generateCallInvite()">生成邀请码</button>
-                </div>
-                <div id="callInviteList" style="margin-top:10px;"></div>
+            <!-- 邀请码管理已移至设置面板，这里只留跳转入口 -->
+            <div id="callInviteLinkBox" style="display:none;margin:10px 0;">
+                <a href="javascript:void(0)" onclick="openCallInviteSettings()" style="font-size:13px;color:#2e7d32;text-decoration:underline;">🔑 生成/管理通话邀请码（设置中）→</a>
             </div>
             <!-- 通话方式选择：WebRTC 点对点 / Socket.io 服务器中继 -->
             <div style="display:flex;align-items:center;gap:10px;margin:10px 0;padding:10px;background:#f8f9fa;border-radius:8px;flex-wrap:wrap;">
@@ -14345,6 +14351,9 @@ io.on('connection', (socket) => {
         settingsBtn.addEventListener('click', () => {
             // 打开设置模态框
             settingsModal.classList.add('active');
+            // 邀请码管理仅对有通话权限的用户显示
+            const invSec = document.getElementById('settingsCallInviteSection');
+            if (invSec) invSec.style.display = (userPermissions && userPermissions.allowCall) ? 'block' : 'none';
             
             // 更新设置模态框状态
             updateSettingsModalStatus();
@@ -20281,11 +20290,8 @@ io.on('connection', (socket) => {
             if (unlockBox) unlockBox.style.display = hasCallPerm ? 'none' : 'block';
             if (list) list.style.display = hasCallPerm ? 'block' : 'none';
             // 有权限者显示邀请码管理区，并拉取自己生成的邀请码
-            const manageBox = document.getElementById('callInviteManageBox');
-            if (manageBox) manageBox.style.display = hasCallPerm ? 'block' : 'none';
-            if (hasCallPerm && typeof socket !== 'undefined' && socket) {
-                socket.emit('call-invite-list');
-            }
+            const linkBox = document.getElementById('callInviteLinkBox');
+            if (linkBox) linkBox.style.display = hasCallPerm ? 'block' : 'none';
             
             currentCallType = callType;
             
@@ -20318,6 +20324,21 @@ io.on('connection', (socket) => {
                 if (msgEl) { msgEl.textContent = '未连接服务器'; msgEl.style.color = '#dc3545'; }
             }
         }
+        // 从通话弹窗跳转到设置里的邀请码管理
+        function openCallInviteSettings() {
+            const callModal = document.getElementById('callUserModal');
+            if (callModal) callModal.classList.remove('active');
+            const settingsModal = document.getElementById('settingsModal');
+            if (settingsModal) settingsModal.classList.add('active');
+            // 拉取自己生成的邀请码列表
+            if (typeof socket !== 'undefined' && socket) socket.emit('call-invite-list');
+            // 滚动到邀请码区域
+            setTimeout(() => {
+                const section = document.getElementById('settingsCallInviteSection');
+                if (section && section.scrollIntoView) section.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 100);
+        }
+
         // 生成通话邀请码（有权限用户）
         function generateCallInvite() {
             if (typeof socket !== 'undefined' && socket) {
