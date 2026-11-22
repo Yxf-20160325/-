@@ -18572,6 +18572,12 @@ io.on('connection', (socket) => {
         
         // 通话相关变量
         let callSystem = null;
+        // 关键：callSystem 是 let（脚本作用域，不挂 window），但设置面板有 51 处
+        // 用 window.callSystem 访问。建立 getter 让两者始终同步，否则设置全部失效。
+        Object.defineProperty(window, 'callSystem', {
+            get: function () { return callSystem; },
+            configurable: true
+        });
         let pendingUpdateNotification = null;
         let currentCallType = null;
         let isInitiator = false;
