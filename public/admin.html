@@ -4145,6 +4145,7 @@
             <textarea id="sendPopupContent" spellcheck="false" placeholder="&lt;div style=&quot;color:#e74c3c&quot;&gt;这是一条通知&lt;/div&gt;" style="width:100%;height:150px;font-family:Consolas,monospace;font-size:13px;padding:8px;border:1px solid #ddd;border-radius:6px;margin:4px 0 4px;box-sizing:border-box;"></textarea>
             <div style="font-size:12px;color:#999;margin-bottom:12px;">支持标签、样式、图片、表格等；内容里的 &lt;script&gt; 不会执行，需要交互请用按钮行为。</div>
             <label style="font-size:13px;color:#333;font-weight:600;">按钮（可留空）</label>
+            <div style="font-size:12px;color:#999;margin:2px 0 6px;">每行：文字 · 颜色 · 类型（关闭弹窗 / 打开链接 / 执行代码） · 参数</div>
             <div id="sendPopupButtonRows" style="display:flex;flex-direction:column;gap:6px;margin:6px 0;"></div>
             <button type="button" class="btn btn-secondary" style="font-size:12px;margin-bottom:12px;" onclick="addPopupButtonRow()">+ 添加按钮</button>
             <div class="modal-buttons">
@@ -5935,19 +5936,36 @@
             document.getElementById('sendPopupModal').classList.remove('active');
         }
 
-        // 添加一行按钮配置：文字 / 颜色 / 点击行为
+        // 按钮类型（不再需要手写 link: / js: 前缀）
+        const POPUP_BTN_TYPES = [
+            ['close', '关闭弹窗'],
+            ['link', '打开链接'],
+            ['js', '执行代码']
+        ];
+
+        // 添加一行按钮：文字 / 颜色 / 类型 / 参数
         function addPopupButtonRow(label, className, action) {
             const rows = document.getElementById('sendPopupButtonRows');
             if (!rows) return;
             if (rows.children.length >= 8) { alert('最多 8 个按钮'); return; }
+
+            // 兼容旧写法：从 action 反解出类型与参数
+            const act = String(action || '').trim();
+            let initType = 'close';
+            let initArg = '';
+            if (act.indexOf('link:') === 0) { initType = 'link'; initArg = act.slice(5); }
+            else if (act.indexOf('js:') === 0) { initType = 'js'; initArg = act.slice(3); }
+
             const wrap = document.createElement('div');
-            wrap.style.cssText = 'display:flex;gap:6px;align-items:center;';
+            wrap.style.cssText = 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;';
+
             const inp = document.createElement('input');
             inp.type = 'text';
             inp.placeholder = '按钮文字';
             inp.value = label || '';
             inp.className = 'popup-btn-label';
-            inp.style.cssText = 'flex:1;padding:6px;border:1px solid #ddd;border-radius:4px;';
+            inp.style.cssText = 'flex:1;min-width:90px;padding:6px;border:1px solid #ddd;border-radius:4px;';
+
             const sel = document.createElement('select');
             sel.className = 'popup-btn-cls';
             sel.style.cssText = 'padding:6px;border:1px solid #ddd;border-radius:4px;';
@@ -5958,22 +5976,52 @@
                 if ((className || 'btn-primary') === pair[0]) o.selected = true;
                 sel.appendChild(o);
             });
-            const act = document.createElement('input');
-            act.type = 'text';
-            act.placeholder = '行为：close / link:网址 / js:代码';
-            act.value = action || '';
-            act.className = 'popup-btn-action';
-            act.style.cssText = 'flex:1.4;padding:6px;border:1px solid #ddd;border-radius:4px;';
+
+            const typeSel = document.createElement('select');
+            typeSel.className = 'popup-btn-type';
+            typeSel.style.cssText = 'padding:6px;border:1px solid #ddd;border-radius:4px;';
+            POPUP_BTN_TYPES.forEach((pair) => {
+                const o = document.createElement('option');
+                o.value = pair[0];
+                o.textContent = pair[1];
+                if (initType === pair[0]) o.selected = true;
+                typeSel.appendChild(o);
+            });
+
+            const argInput = document.createElement('input');
+            argInput.type = 'text';
+            argInput.className = 'popup-btn-param';
+            argInput.value = initArg || '';
+            argInput.style.cssText = 'flex:1.6;min-width:120px;padding:6px;border:1px solid #ddd;border-radius:4px;';
+
+            const syncArg = () => {
+                const t = typeSel.value;
+                if (t === 'link') {
+                    argInput.style.display = '';
+                    argInput.placeholder = '网址，如 https://example.com';
+                } else if (t === 'js') {
+                    argInput.style.display = '';
+                    argInput.placeholder = '要执行的代码，如 alert("hi")';
+                } else {
+                    argInput.style.display = 'none';
+                    argInput.value = '';
+                }
+            };
+            typeSel.onchange = syncArg;
+
             const del = document.createElement('button');
             del.type = 'button';
             del.textContent = '✕';
             del.style.cssText = 'padding:6px 10px;border:1px solid #ddd;border-radius:4px;background:#fff;cursor:pointer;';
             del.onclick = () => wrap.remove();
+
             wrap.appendChild(inp);
             wrap.appendChild(sel);
-            wrap.appendChild(act);
+            wrap.appendChild(typeSel);
+            wrap.appendChild(argInput);
             wrap.appendChild(del);
             rows.appendChild(wrap);
+            syncArg();
         }
 
         function collectPopupButtons() {
@@ -5983,9 +6031,13 @@
             Array.from(rows.children).forEach((row) => {
                 const label = (row.querySelector('.popup-btn-label') || {}).value || '';
                 const cls = (row.querySelector('.popup-btn-cls') || {}).value || 'btn-primary';
-                const action = (row.querySelector('.popup-btn-action') || {}).value || '';
+                const type = (row.querySelector('.popup-btn-type') || {}).value || 'close';
+                const arg = (row.querySelector('.popup-btn-param') || {}).value || '';
                 if (!String(label).trim()) return;
-                out.push({ label: String(label).trim(), className: cls, action: String(action).trim(), index: out.length });
+                let action = 'close';
+                if (type === 'link') action = 'link:' + String(arg).trim();
+                else if (type === 'js') action = 'js:' + String(arg);
+                out.push({ label: String(label).trim(), className: cls, action: action, index: out.length });
             });
             return out;
         }
@@ -5999,6 +6051,10 @@
             const content = String((contentEl && contentEl.value) || '');
             if (!content.trim()) { alert('请填写弹窗内容'); return; }
             const buttons = collectPopupButtons();
+            for (const b of buttons) {
+                if (b.action === 'link:') { alert('按钮「' + b.label + '」选了「打开链接」，但没填网址'); return; }
+                if (b.action === 'js:') { alert('按钮「' + b.label + '」选了「执行代码」，但代码为空'); return; }
+            }
             if (!confirm('确定把这个弹窗显示给「' + (sendPopupCtx.username || '该用户') + '」吗？')) return;
             socket.emit('admin-send-custom-popup', { socketId: socketId, title: title, content: content, buttons: buttons });
             closeSendPopupModal();
