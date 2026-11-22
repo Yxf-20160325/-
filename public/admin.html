@@ -4134,6 +4134,19 @@
             </div>
         </div>
     
+    <!-- 显示用户 AI 模型配置 -->
+    <div class="modal" id="userModelModal" style="z-index:10005;">
+        <div class="modal-content" style="max-width:480px;">
+            <h3>🤖 用户 AI 模型配置</h3>
+            <div id="userModelContent" style="margin:15px 0;font-size:14px;line-height:1.9;">
+                <div style="color:#666;">加载中...</div>
+            </div>
+            <div class="modal-buttons">
+                <button type="button" class="btn btn-cancel" onclick="document.getElementById('userModelModal').classList.remove('active')">关闭</button>
+            </div>
+        </div>
+    </div>
+
     <div class="modal" id="setRoleModal">
         <div class="modal-content">
             <h3>设置用户角色</h3>
@@ -5683,13 +5696,11 @@
                         <button class="btn btn-rename" onclick="openRenameModal('${user.socketId}')">重命名</button>
                         <button class="btn btn-kick" onclick="kickUser('${user.socketId}')">踢出</button>
                         <button class="btn btn-permissions" onclick="openPermissionsModal('${user.socketId}')">权限</button>
-                        <button class="btn btn-role" onclick="openSetRoleModal('${user.socketId}', '${escapeHtml(user.username)}', '${user.role || 'user'}')">角色</button>
                         <button class="btn btn-primary" onclick="openSetMaxFriendsModal('${user.socketId}', '${escapeHtml(user.username)}')">好友上限</button>
                         <button class="btn btn-info" onclick="openPopupModal('${user.socketId}', '${escapeHtml(user.username)}')">弹窗</button>
                         <button class="btn btn-success" onclick="openChangeTitleModal('${user.socketId}', '${escapeHtml(user.username)}')">更改标题</button>
                         <button class="btn btn-secondary" onclick="openAiSettingsModal('${user.socketId}', '${escapeHtml(user.username)}')">AI设置</button>
-                        <button class="btn btn-info" onclick="openVibrateModal('${user.socketId}', '${escapeHtml(user.username)}')">震动</button>
-                        <button class="btn btn-location" onclick="requestUserLocationDirect('${user.socketId}', '${escapeHtml(user.username)}', '${escapeHtml(user.roomName || 'main')}')" title="请求实时位置">📍要位置</button>
+                        <button class="btn btn-warning" onclick="showUserModel('${user.socketId}', '${escapeHtml(user.username)}')" title="查看该用户使用的AI模型">🤖 显示Model</button>
                     </div>
                 </div>
             `).join('');
@@ -5897,6 +5908,15 @@
             }
         });
         
+        // 显示用户 AI 模型配置
+        function showUserModel(socketId, username) {
+            const box = document.getElementById('userModelContent');
+            if (box) box.innerHTML = '<div style="color:#666;">加载中...</div>';
+            const modal = document.getElementById('userModelModal');
+            if (modal) modal.classList.add('active');
+            if (typeof socket !== 'undefined' && socket) socket.emit('admin-get-user-model', socketId);
+        }
+
         // 角色设置相关函数
         let selectedRoleSocketId = null;
         
@@ -7997,6 +8017,31 @@
             }
         });
         
+        // 显示用户 AI 模型配置结果
+        socket.on('admin-user-model', (data) => {
+            const box = document.getElementById('userModelContent');
+            if (!box) return;
+            if (!data || !data.success) {
+                box.innerHTML = '<div style="color:#dc3545;">❌ ' + escapeHtml((data && data.message) || '获取失败') + '</div>';
+                return;
+            }
+            const modelNames = {
+                glm4: 'GLM-4 Flash', deepseek: 'DeepSeek',
+                siliconflow: '硅基流动', custom: '自定义 API'
+            };
+            const cur = modelNames[data.aiModel] || data.aiModel || '未配置';
+            const row = (k, v) => '<div style="display:flex;justify-content:space-between;border-bottom:1px solid #eee;padding:4px 0;"><span style="color:#666;">' + k + '</span><b>' + escapeHtml(v || '-') + '</b></div>';
+            box.innerHTML =
+                '<div style="margin-bottom:8px;">👤 <b>' + escapeHtml(data.username) + '</b> · ' + escapeHtml(data.role) + '</div>' +
+                row('当前 AI 模型', cur) +
+                row('AI 聊天', data.aiEnabled ? '已启用' : '未启用') +
+                row('DeepSeek 模型', data.deepseekModel) +
+                row('硅基流动模型', data.siliconflowModel) +
+                row('自定义模型', data.customModel) +
+                row('客户端', data.platform) +
+                '<div style="margin-top:8px;font-size:12px;color:#999;">仅显示模型配置，API Key 等密钥不会展示</div>';
+        });
+
         // 监听用户设置响应
         socket.on('admin-user-settings', (data) => {
             document.getElementById('lockUserSettings').checked = data.settings.locked || false;

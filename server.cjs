@@ -7821,6 +7821,32 @@ io.on('connection', (socket) => {
     });
     
     // 用户设置管理 - 获取用户设置
+    // 管理员查看用户使用的 AI 模型/配置（显示 model 按钮）
+    socket.on('admin-get-user-model', (socketId) => {
+        const admin = users.get(socket.id);
+        if (!admin || (socket.id !== adminSocketId && admin.role !== 'superadmin')) {
+            return socket.emit('admin-user-model', { success: false, message: '无权限' });
+        }
+        const target = users.get(socketId);
+        if (!target) {
+            return socket.emit('admin-user-model', { success: false, message: '用户不在线' });
+        }
+        const us = target.userSettings || {};
+        // 只展示模型类配置，绝不返回 API Key 等密钥
+        socket.emit('admin-user-model', {
+            success: true,
+            username: target.username,
+            role: target.role || 'user',
+            aiModel: us.aiModel || 'glm4',
+            aiEnabled: !!us.enableAIChat,
+            deepseekModel: us.deepseekConfig?.modelName || '',
+            siliconflowModel: us.siliconflowConfig?.modelName || '',
+            customModel: us.customConfig?.modelName || '',
+            platform: target.platform || target.clientType || 'web',
+        });
+        console.log(`[管理] 查看 ${target.username} 的 AI 模型配置`);
+    });
+
     socket.on('admin-get-user-settings', (socketId) => {
         // 允许管理员和超级管理员执行操作
         const user = users.get(socket.id);
