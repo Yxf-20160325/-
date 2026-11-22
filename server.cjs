@@ -6745,6 +6745,8 @@ io.on('connection', (socket) => {
                     users: Array.from(users.values())
                 });
                 console.log(`管理员更新了用户 ${targetUser.username} 的权限: ${JSON.stringify(targetUser.permissions)}`);
+                // 持久化权限，避免用户重进房间后丢失
+                try { db.upsertUser(targetUser); } catch (e) { console.error('[权限] 持久化失败:', e.message); }
             }
         }
     });
@@ -12407,7 +12409,9 @@ io.on('connection', (socket) => {
                 socket.emit('permission-denied', { message: '目标用户不存在或已离线' });
             }
         } else {
-            socket.emit('permission-denied', { message: '您没有通话权限' });
+            const dbg = user && user.permissions ? user.permissions.allowCall : 'no-user';
+            console.log('[通话权限] 拒绝 call-request，socketId=' + socket.id + ' username=' + (user && user.username) + ' allowCall=' + dbg);
+            socket.emit('permission-denied', { message: '您没有通话权限（请联系管理员重新进入房间后重试）' });
         }
     });
 
