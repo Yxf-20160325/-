@@ -14629,6 +14629,11 @@ io.on('connection', (socket) => {
                 this.echoSuppressionGain = 0.3; // 回声抑制增益（0.0-1.0，值越小回声消除越强）
                 this.echoSuppressionLevel = 'medium'; // 回声消除级别: 'low', 'medium', 'high'
                 this.echoReferenceReady = false; // 回声参考音频是否已就绪
+                // 真正可用的 AEC（AudioWorklet NLMS）
+                this.aecNode = null;              // AudioWorkletNode(aec-processor)
+                this.aecRefSource = null;         // 远端参考音频的 MediaElementSource
+                this.aecRefElement = null;        // 播放远端音频的 audio 元素
+                this.aecWorkletReady = false;
                 
                 // Web Audio API 增强音频处理相关
                 this.enhancedAudioContext = null; // 增强音频处理上下文
@@ -15955,6 +15960,61 @@ io.on('connection', (socket) => {
                 }
             }
             
+            // 加载 AEC AudioWorklet（真正的 NLMS 自适应回声消除）
+            async initAecWorklet(ctx) {
+                if (this.aecWorkletReady || !ctx || !ctx.audioWorklet) {
+                    console.warn('[AEC] 浏览器不支持 AudioWorklet，回声消除不可用');
+                    return;
+                }
+                try {
+                    // aec-worklet.js 与页面同源部署，直接 addModule
+                    await ctx.audioWorklet.addModule('/aec-worklet.js');
+                    this.aecNode = new AudioWorkletNode(ctx, 'aec-processor', {
+                        numberOfInputs: 2,
+                        numberOfOutputs: 1,
+                        outputChannelCount: [1],
+                        processorOptions: { filterLength: 1024 }
+                    });
+                    this.aecWorkletReady = true;
+                    // 按当前设置同步参数
+                    this.aecNode.port.postMessage({ type: 'enabled', value: this.softwareEchoCancellation !== false });
+                    const lvlMap = { low: 0.25, medium: 0.5, high: 0.8 };
+                    const lvl = lvlMap[this.echoSuppressionLevel] || 0.5;
+                    this.aecNode.port.postMessage({ type: 'suppression', value: 1 - lvl * 0.8 });
+                    console.log('[AEC] AudioWorklet 已加载，NLMS 回声消除就绪');
+                } catch (e) {
+                    console.error('[AEC] 加载失败:', e);
+                    this.aecWorkletReady = false;
+                }
+            }
+            // 将远端音频（对方的声音）接入 AEC 参考输入，用于消除回声
+            connectAecReference(ctx) {
+                if (!this.aecNode) return;
+                try {
+                    // 先断开旧的参考源
+                    if (this.aecRefSource) {
+                        try { this.aecRefSource.disconnect(); } catch (e) {}
+                        this.aecRefSource = null;
+                    }
+                    // 远端有音频流：直接把它作为参考信号
+                    if (this.remoteStream && this.remoteStream.getAudioTracks().length > 0) {
+                        this.aecRefSource = ctx.createMediaStreamSource(this.remoteStream);
+                        this.aecRefSource.connect(this.aecNode, 1); // 输入1：远端参考
+                        console.log('[AEC] 已接入远端音频参考信号');
+                    } else {
+                        // 远端流还没到：接一个静音恒定源，保证 worklet 两个输入都有数据
+                        const silent = ctx.createConstantSource();
+                        silent.offset.value = 0;
+                        silent.connect(this.aecNode, 1);
+                        silent.start();
+                        this.aecRefSource = silent;
+                        console.log('[AEC] 远端流未就绪，使用静音参考');
+                    }
+                } catch (e) {
+                    console.error('[AEC] 接入参考信号失败:', e);
+                }
+            }
+
             // 初始化增强音频处理（使用 Web Audio API 进行高级降噪和回声消除）
             async initEnhancedAudioProcessor() {
                 if (this.enhancedAudioContext) {
@@ -16053,7 +16113,8 @@ io.on('connection', (socket) => {
                             
                             // 0. 应用软件级回声消除（如果有参考音频）
                             let echoCancelledSample = sample;
-                            if (this.softwareEchoCancellation && this.referenceAudioBuffer) {
+                            // 软件 AEC 已改由 AudioWorklet 处理，这里跳过旧的标量假实现
+                            if (false && this.softwareEchoCancellation && this.referenceAudioBuffer) {
                                 echoCancelledSample = this.applyEchoCancellation(sample, i);
                             }
                             
@@ -16099,6 +16160,8 @@ io.on('connection', (socket) => {
                     };
                     
                     console.log('增强音频处理器初始化成功，使用先进降噪算法，降噪级别:', this.noiseSuppressionLevel);
+                    // 加载真正的 AEC worklet（NLMS 自适应回声消除）
+                    await this.initAecWorklet(this.enhancedAudioContext);
                     return this.enhancedAudioContext;
                 } catch (error) {
                     console.error('初始化增强音频处理器失败:', error);
@@ -16416,11 +16479,22 @@ io.on('connection', (socket) => {
                     this.echoSuppressionLevel = level;
                     this.echoSuppressionGain = levelMap[level];
                     console.log('回声消除级别已设置为:', level, '增益:', this.echoSuppressionGain);
+                    // 同步到 AudioWorklet：强度越高，残留抑制越强（suppression 值越小）
+                    if (this.aecNode) {
+                        const sup = { low: 0.85, medium: 0.6, high: 0.35 }[level] || 0.6;
+                        this.aecNode.port.postMessage({ type: 'suppression', value: sup });
+                        this.aecNode.port.postMessage({ type: 'reset' });
+                    }
                 }
             }
             
             // 更新回声消除设置
             updateEchoCancellationSettings() {
+                // 同步开关到 AEC worklet
+                if (this.aecNode) {
+                    this.aecNode.port.postMessage({ type: 'enabled', value: this.softwareEchoCancellation !== false });
+                    this.aecNode.port.postMessage({ type: 'reset' });
+                }
                 if (!this.isInCall) return;
                 
                 // 如果需要，设置默认的回声消除级别
@@ -16438,30 +16512,19 @@ io.on('connection', (socket) => {
             // 设置回声消除参考音频
             setupEchoCancellationReference(stream) {
                 if (!this.softwareEchoCancellation || !stream) return;
-                
-                console.log('设置回声消除参考音频，流轨道数:', stream.getTracks().length);
-                
                 const audioTracks = stream.getAudioTracks();
                 if (audioTracks.length === 0) {
-                    console.log('流中没有音频轨道，无法设置回声消除参考音频');
+                    console.log('[AEC] 远程流无音频轨道，跳过参考接入');
                     return;
                 }
-                
-                console.log('找到音频轨道用于回声消除:', audioTracks[0].label || audioTracks[0].id);
-                
-                // 在实际应用中，这里应该创建一个AudioContext来分析远程音频
-                // 由于Web Audio API的限制和实时处理的要求，此处为简化实现
-                // 初始化一个空的参考音频缓冲区
-                if (!this.referenceAudioBuffer) {
-                    this.referenceAudioBuffer = new Float32Array(4096);
-                    console.log('初始化回声消除参考音频缓冲区，长度:', this.referenceAudioBuffer.length);
-                }
-                
-                // 设置回声消除参考音频已就绪标志
                 this.echoReferenceReady = true;
-                console.log('回声消除参考音频已设置完成');
+                // 若 AEC worklet 已就绪，把远端音频真正接到参考输入（替换静音源）
+                if (this.aecWorkletReady && this.enhancedAudioContext) {
+                    this.connectAecReference(this.enhancedAudioContext);
+                }
+                console.log('[AEC] 远端参考音频已就绪:', audioTracks[0].label || audioTracks[0].id);
             }
-            
+
             // 将增强音频处理应用到媒体流
             async applyEnhancedAudioToStream(inputStream) {
                 if (!inputStream) return null;
@@ -16486,8 +16549,15 @@ io.on('connection', (socket) => {
                     if (this.isEnhancedAudioEnabled) {
                         const source = ctx.createMediaStreamSource(inputStream);
 
-                        // 连接处理链
-                        source.connect(this.audioProcessor);
+                        // 连接处理链：麦克风 → [AEC] → 降噪 → 噪声门 → 压缩 → 输出
+                        if (this.aecWorkletReady && this.aecNode) {
+                            source.connect(this.aecNode, 0);   // 输入0：麦克风
+                            // 参考输入（输入1）：优先接远端音频，否则接静音源保证 worklet 运行
+                            this.connectAecReference(ctx);
+                            this.aecNode.connect(this.audioProcessor);
+                        } else {
+                            source.connect(this.audioProcessor);
+                        }
                         this.audioProcessor.connect(this.noiseGateNode);
                         this.noiseGateNode.connect(this.compressorNode);
                         this.compressorNode.connect(ctx.destination);
@@ -17999,9 +18069,10 @@ io.on('connection', (socket) => {
             // 显示本地视频流
             showLocalStream(stream) {
                 // 音频通话 + 用户设置中等以上降噪：启用增强降噪（无视频轨道，处理链安全）
+                // 启用条件：开了软件回声消除，或降噪强度非 low（两者都依赖增强处理链）
                 if (stream && this.currentCallType === 'audio' &&
-                    this.audioNoiseSuppression !== false &&
-                    this.noiseSuppressionLevel && this.noiseSuppressionLevel !== 'low' &&
+                    (this.softwareEchoCancellation !== false ||
+                     (this.audioNoiseSuppression !== false && this.noiseSuppressionLevel && this.noiseSuppressionLevel !== 'low')) &&
                     !this.isEnhancedAudioEnabled) {
                     this.isEnhancedAudioEnabled = true;
                     this.applyEnhancedAudioToStream(stream).then(processed => {
