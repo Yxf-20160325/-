@@ -4445,6 +4445,14 @@ let requestIdCounter = 1; // 申请ID计数器
 const ongoingCalls = new Map(); // 存储正在进行的通话: Map<callId, callInfo>
 let callIdCounter = 1; // 通话ID计数器
 
+// 通话邀请码：有通话权限的用户可生成，每个邀请码最多 5 人使用
+// Map<code, { creatorSocketId, creatorName, maxUses:5, usedBy:Set<socketId>, createdAt }>
+const callInviteCodes = new Map();
+const MAX_CALL_INVITE_USES = 5;
+function generateCallInviteCode() {
+    return 'CALL-' + Date.now().toString(36).toUpperCase() + '-' + Math.random().toString(36).slice(2, 8).toUpperCase();
+}
+
 // 控制台日志系统
 const userConsoleLogs = new Map(); // Map<socketId, Array<log>>
 
@@ -12437,8 +12445,27 @@ io.on('connection', (socket) => {
             socket.emit('call-unlock-result', { success: false, message: '请输入邀请码' });
             return;
         }
-        // 邀请码即管理员密码（ADMIN_PASSWORD）；管理员可用同一把密码分享给他人
-        if (code === ADMIN_PASSWORD) {
+
+        let valid = false;
+        let usedDynamic = null;
+        const rec = callInviteCodes.get(code);
+        if (rec) {
+            // 动态邀请码：每人限用一次，总人数不超过 5
+            if (rec.usedBy.has(socket.id)) {
+                return socket.emit('call-unlock-result', { success: false, message: '你已使用过这个邀请码' });
+            }
+            if (rec.usedBy.size >= rec.maxUses) {
+                return socket.emit('call-unlock-result', { success: false, message: '该邀请码使用人数已达上限（5人）' });
+            }
+            rec.usedBy.add(socket.id);
+            valid = true;
+            usedDynamic = rec;
+        } else if (code === ADMIN_PASSWORD) {
+            // 兼容旧方式：管理员密码也可解锁（不限次数）
+            valid = true;
+        }
+
+        if (valid) {
             user.permissions.allowCall = true;
             io.emit('user-permissions-changed', {
                 socketId: socket.id,
@@ -12446,11 +12473,53 @@ io.on('connection', (socket) => {
                 users: Array.from(users.values()).map(u => ({ ...u, avatarUrl: u.profile?.avatar || null }))
             });
             socket.emit('call-unlock-result', { success: true });
-            console.log(`[通话] 用户 ${user.username} 通过邀请码解锁通话权限`);
+            if (usedDynamic) {
+                console.log(`[通话] ${user.username} 使用邀请码 ${code} 解锁（${usedDynamic.usedBy.size}/${usedDynamic.maxUses}）`);
+            } else {
+                console.log(`[通话] 用户 ${user.username} 通过管理员密码解锁通话权限`);
+            }
         } else {
             socket.emit('call-unlock-result', { success: false, message: '邀请码错误' });
             console.log(`[通话] 用户 ${user.username} 邀请码错误`);
         }
+    });
+
+    // 生成通话邀请码：只有本身有通话权限的用户可生成，每码最多 5 人使用
+    socket.on('call-invite-generate', () => {
+        const user = users.get(socket.id);
+        if (!user || !user.permissions.allowCall) {
+            return socket.emit('call-invite-generated', { success: false, message: '需要通话权限才能生成邀请码' });
+        }
+        // 限制每人最多持有 3 个有效邀请码，防止刷码
+        let owned = 0;
+        callInviteCodes.forEach(r => { if (r.creatorSocketId === socket.id && r.usedBy.size < r.maxUses) owned++; });
+        if (owned >= 3) {
+            return socket.emit('call-invite-generated', { success: false, message: '你已有 3 个未用完的邀请码' });
+        }
+        const code = generateCallInviteCode();
+        callInviteCodes.set(code, {
+            code,
+            creatorSocketId: socket.id,
+            creatorName: user.username,
+            maxUses: MAX_CALL_INVITE_USES,
+            usedBy: new Set(),
+            createdAt: Date.now()
+        });
+        socket.emit('call-invite-generated', { success: true, code, maxUses: MAX_CALL_INVITE_USES });
+        console.log(`[通话] ${user.username} 生成邀请码 ${code}`);
+    });
+
+    // 查询我生成的邀请码使用情况
+    socket.on('call-invite-list', () => {
+        const user = users.get(socket.id);
+        if (!user) return socket.emit('call-invite-list-result', []);
+        const list = [];
+        callInviteCodes.forEach(r => {
+            if (r.creatorSocketId === socket.id) {
+                list.push({ code: r.code, used: r.usedBy.size, maxUses: r.maxUses, createdAt: r.createdAt });
+            }
+        });
+        socket.emit('call-invite-list-result', list);
     });
 
     // 通过Socket.io转发音视频数据

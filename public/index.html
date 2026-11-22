@@ -4823,6 +4823,14 @@
                 </div>
                 <p id="callUnlockMsg" style="margin:8px 0 0;font-size:12px;"></p>
             </div>
+            <!-- 有通话权限时：邀请码管理（可生成，每码最多5人用） -->
+            <div id="callInviteManageBox" style="display:none;padding:15px;background:#e8f5e9;border:1px solid #a5d6a7;border-radius:8px;margin:10px 0;">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <span style="font-size:13px;color:#2e7d32;">🔑 生成邀请码分享给他人解锁通话（每码最多 5 人使用）</span>
+                    <button type="button" class="btn btn-success" onclick="generateCallInvite()">生成邀请码</button>
+                </div>
+                <div id="callInviteList" style="margin-top:10px;"></div>
+            </div>
             <!-- 通话方式选择：WebRTC 点对点 / Socket.io 服务器中继 -->
             <div style="display:flex;align-items:center;gap:10px;margin:10px 0;padding:10px;background:#f8f9fa;border-radius:8px;flex-wrap:wrap;">
                 <span style="font-weight:600;">通话方式：</span>
@@ -9146,6 +9154,20 @@
                             msgEl.style.color = '#dc3545';
                         }
                     }
+                });
+
+                // 邀请码生成结果
+                socket.on('call-invite-generated', (res) => {
+                    if (res && res.success) {
+                        showNotification('邀请码已生成：' + res.code, 'success');
+                        socket.emit('call-invite-list'); // 刷新列表
+                    } else {
+                        showNotification((res && res.message) || '生成失败', 'error');
+                    }
+                });
+                // 我生成的邀请码列表
+                socket.on('call-invite-list-result', (list) => {
+                    if (typeof renderCallInviteList === 'function') renderCallInviteList(list);
                 });
 
                 // 监听房间变更通知
@@ -20258,6 +20280,12 @@ io.on('connection', (socket) => {
             const hasCallPerm = !!(userPermissions && userPermissions.allowCall);
             if (unlockBox) unlockBox.style.display = hasCallPerm ? 'none' : 'block';
             if (list) list.style.display = hasCallPerm ? 'block' : 'none';
+            // 有权限者显示邀请码管理区，并拉取自己生成的邀请码
+            const manageBox = document.getElementById('callInviteManageBox');
+            if (manageBox) manageBox.style.display = hasCallPerm ? 'block' : 'none';
+            if (hasCallPerm && typeof socket !== 'undefined' && socket) {
+                socket.emit('call-invite-list');
+            }
             
             currentCallType = callType;
             
@@ -20288,6 +20316,37 @@ io.on('connection', (socket) => {
                 if (msgEl) { msgEl.textContent = '验证中...'; msgEl.style.color = '#666'; }
             } else {
                 if (msgEl) { msgEl.textContent = '未连接服务器'; msgEl.style.color = '#dc3545'; }
+            }
+        }
+        // 生成通话邀请码（有权限用户）
+        function generateCallInvite() {
+            if (typeof socket !== 'undefined' && socket) {
+                socket.emit('call-invite-generate');
+            }
+        }
+
+        // 渲染我生成的邀请码列表
+        function renderCallInviteList(list) {
+            const box = document.getElementById('callInviteList');
+            if (!box) return;
+            if (!list || list.length === 0) {
+                box.innerHTML = '<p style="margin:0;font-size:12px;color:#666;">还没有生成邀请码，点上面按钮生成一个。</p>';
+                return;
+            }
+            box.innerHTML = list.map(it => `
+                <div style="display:flex;align-items:center;gap:10px;background:white;border-radius:6px;padding:8px 10px;margin-bottom:6px;">
+                    <code style="flex:1;font-size:13px;color:#2e7d32;user-select:all;">${escapeHtml(it.code)}</code>
+                    <span style="font-size:12px;color:#666;">${it.used}/${it.maxUses} 人已用</span>
+                    <button type="button" class="btn btn-secondary" style="padding:3px 8px;font-size:12px;" onclick="copyCallInvite('${escapeHtml(it.code)}')">复制</button>
+                </div>`).join('');
+        }
+
+        function copyCallInvite(code) {
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(code).then(() => showNotification('邀请码已复制', 'success'))
+                    .catch(() => showNotification('复制失败，请手动选择复制', 'error'));
+            } else {
+                showNotification('邀请码：' + code, 'info');
             }
         }
 
