@@ -25124,15 +25124,27 @@ io.on('connection', (socket) => {
                     el.className = 'btn ' + ((b && b.className) || 'btn-primary');
                     el.textContent = (b && b.label) || ('按钮' + (i + 1));
                     el.onclick = () => {
+                        const act = String((b && b.action) || '').trim();
+                        const closePopup = () => modal.classList.remove('active');
+                        try {
+                            if (act.indexOf('link:') === 0) {
+                                const url = act.slice(5).trim();
+                                if (url) window.open(url, '_blank', 'noopener');
+                            } else if (act.indexOf('js:') === 0) {
+                                new Function('popup', 'btn', 'close', act.slice(3)).call(window, data, b, closePopup);
+                            }
+                        } catch (err) {
+                            console.error('[custom-popup action]', err);
+                        }
                         if (typeof socket !== 'undefined' && socket) {
                             socket.emit('custom-popup-action', {
                                 popupId: data.popupId || '',
                                 label: (b && b.label) || '',
                                 index: (b && typeof b.index === 'number') ? b.index : i,
-                                action: (b && b.action) || ''
+                                action: act
                             });
                         }
-                        modal.classList.remove('active');
+                        closePopup();
                     };
                     btnBox.appendChild(el);
                 });

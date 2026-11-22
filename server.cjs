@@ -7821,32 +7821,6 @@ io.on('connection', (socket) => {
     });
     
     // 用户设置管理 - 获取用户设置
-    // 管理员查看用户使用的 AI 模型/配置（显示 model 按钮）
-    socket.on('admin-get-user-model', (socketId) => {
-        // 与管理面板其他 admin-* 接口保持一致：管理面板连接不在 users 表中，不能靠 users.get 判定
-        const adminUser = users.get(socket.id);
-        if (!(socket.id === adminSocketId || (adminUser && adminUser.role === 'superadmin'))) {
-            return socket.emit('admin-user-model', { success: false, message: '无权限' });
-        }
-        const target = users.get(socketId);
-        if (!target) {
-            return socket.emit('admin-user-model', { success: false, message: '用户不在线' });
-        }
-        const us = target.userSettings || {};
-        // 只展示模型类配置，绝不返回 API Key 等密钥
-        socket.emit('admin-user-model', {
-            success: true,
-            username: target.username,
-            role: target.role || 'user',
-            aiModel: us.aiModel || 'glm4',
-            aiEnabled: !!us.enableAIChat,
-            deepseekModel: us.deepseekConfig?.modelName || '',
-            siliconflowModel: us.siliconflowConfig?.modelName || '',
-            customModel: us.customConfig?.modelName || '',
-            platform: target.platform || target.clientType || 'web',
-        });
-        console.log(`[管理] 查看 ${target.username} 的 AI 模型配置`);
-    });
 
     socket.on('admin-get-user-settings', (socketId) => {
         // 允许管理员和超级管理员执行操作
@@ -8343,15 +8317,15 @@ io.on('connection', (socket) => {
             if (!target) {
                 return socket.emit('custom-popup-sent', { ok: false, message: '用户不在线' });
             }
-            const title = String(data.title || '通知').slice(0, 60);
-            const content = String(data.content || '').slice(0, 4000);
+            const title = String(data.title || '通知').slice(0, 100);
+            const content = String(data.content || '').slice(0, 20000);
             const ALLOWED_CLS = ['btn-primary', 'btn-danger', 'btn-warning', 'btn-info', 'btn-success', 'btn-cancel'];
-            const rawButtons = Array.isArray(data.buttons) ? data.buttons.slice(0, 6) : [];
+            const rawButtons = Array.isArray(data.buttons) ? data.buttons.slice(0, 8) : [];
             const buttons = rawButtons.map((b, i) => ({
                 index: i,
-                label: String((b && b.label) || ('按钮' + (i + 1))).slice(0, 30),
+                label: String((b && b.label) || ('按钮' + (i + 1))).slice(0, 40),
                 className: ALLOWED_CLS.includes(b && b.className) ? b.className : 'btn-primary',
-                action: typeof (b && b.action) === 'string' ? b.action.slice(0, 200) : ''
+                action: typeof (b && b.action) === 'string' ? b.action.slice(0, 2000) : ''
             }));
             const popupId = 'popup_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
             io.to(targetSid).emit('custom-popup', { popupId, title, content, buttons });
