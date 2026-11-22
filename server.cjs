@@ -5409,8 +5409,8 @@ io.on('connection', (socket) => {
             rateLimitData.messages.push(now);
 
             // ── 刷屏检测 ──
-            if (data.type === 'text' && data.message) {
-                const spamError = checkAndHandleSpam(socket.id, userIP, data.message);
+            if (data.type === 'text' && (data.message || data.content)) {
+                const spamError = checkAndHandleSpam(socket.id, userIP, data.message || data.content || '');
                 if (spamError) {
                     socket.emit('message-error', { message: spamError });
                     return;
@@ -5418,11 +5418,11 @@ io.on('connection', (socket) => {
             }
             
             // 消息长度限制检查
-            if (data.type === 'text' && data.message && data.message.length > 500) {
+            if (data.type === 'text' && (data.message || data.content) && (data.message || data.content).length > 500) {
                 socket.emit('message-error', { message: '消息长度超过限制（最大500字符）' });
                 return;
             }
-            if (data.type === 'code' && data.message && data.message.length > 10000) {
+            if (data.type === 'code' && (data.message || data.content) && (data.message || data.content).length > 10000) {
                 socket.emit('message-error', { message: '代码块内容超过限制（最大10000字符）' });
                 return;
             }
@@ -5495,7 +5495,8 @@ io.on('connection', (socket) => {
             }
             
             // 脏话过滤和计数功能
-            let processedMessage = data.message;
+            // 兼容小程序只发 content 字段的情况（服务端其余逻辑都读 processedMessage）
+            let processedMessage = data.message || data.content || '';
             let containsSwearWord = false;
             
             if (data.type === 'text' && processedMessage) {
