@@ -12,3 +12,7 @@ app.wxss
 project.config.json
 project.private.config.json
 sitemap.json
+
+# 依赖与工具产物
+node_modules/
+.dsh-vision-toolkit/
