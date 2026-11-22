@@ -4855,6 +4855,25 @@
         </div>
     </div>
     
+    <!-- AI 对战难度选择弹窗 -->
+    <div class="modal" id="aiDifficultyModal">
+        <div class="modal-content" style="max-width:420px;">
+            <h3 style="margin-top:0;">🎮 选择 AI 难度</h3>
+            <p style="color:#6c757d;font-size:13px;margin:0 0 8px;">与 <span id="aiDifficultyOpponent">AI</span> 进行 <span id="aiDifficultyGame">游戏</span>，请选择难度：</p>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:15px;">
+                <button type="button" class="btn btn-success" style="width:100%;padding:14px;font-size:15px;" onclick="confirmAiDifficulty('easy')">
+                    😊 休闲 <span style="font-size:12px;font-weight:normal;color:#eee;">AI 会失误，轻松娱乐</span>
+                </button>
+                <button type="button" class="btn btn-warning" style="width:100%;padding:14px;font-size:15px;" onclick="confirmAiDifficulty('hard')">
+                    😈 困难 <span style="font-size:12px;font-weight:normal;">AI 全力以赴，认真对战</span>
+                </button>
+            </div>
+            <div class="modal-buttons" style="justify-content:center;">
+                <button type="button" class="btn btn-cancel" onclick="closeAiDifficultyModal()">取消</button>
+            </div>
+        </div>
+    </div>
+    
     <!-- 媒体预览模态框 -->
     <div class="modal" id="mediaPreviewModal">
         <div class="modal-content" style="max-width: 90vw; max-height: 90vh; overflow: auto; background: transparent; box-shadow: none;">
@@ -6897,14 +6916,36 @@
         }
 
         // 邀请玩家：AI 先弹难度选择（与小程序一致），真人直接邀请
+        let pendingAiInvite = null; // 待发送难度选择的 AI 邀请
         function inviteUser(userId, gameType, isBot) {
             if (!isBot) {
                 sendGameInvitation(userId, gameType);
                 return;
             }
-            // 使用浏览器确认框选难度：确定=困难，取消=休闲
-            const hard = window.confirm('与 AI 对战 - 选择难度\n\n【确定】困难（AI 全力以赴）\n【取消】休闲（AI 会失误）');
-            sendGameInvitation(userId, gameType, hard ? 'hard' : 'easy');
+            // AI 对战：弹出难度选择弹窗（两个明确选项，不用 confirm）
+            pendingAiInvite = { userId: userId, gameType: gameType };
+            const oppEl = document.getElementById('aiDifficultyOpponent');
+            const gameEl = document.getElementById('aiDifficultyGame');
+            if (oppEl) oppEl.textContent = 'AI';
+            if (gameEl) gameEl.textContent = gameType;
+            const modal = document.getElementById('aiDifficultyModal');
+            if (modal) modal.classList.add('active');
+        }
+
+        // 确认难度并发送 AI 邀请
+        function confirmAiDifficulty(difficulty) {
+            const modal = document.getElementById('aiDifficultyModal');
+            if (modal) modal.classList.remove('active');
+            if (pendingAiInvite) {
+                sendGameInvitation(pendingAiInvite.userId, pendingAiInvite.gameType, difficulty);
+                pendingAiInvite = null;
+            }
+        }
+
+        function closeAiDifficultyModal() {
+            const modal = document.getElementById('aiDifficultyModal');
+            if (modal) modal.classList.remove('active');
+            pendingAiInvite = null;
         }
 
         // 响应游戏邀请
