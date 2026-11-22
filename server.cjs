@@ -7823,8 +7823,9 @@ io.on('connection', (socket) => {
     // 用户设置管理 - 获取用户设置
     // 管理员查看用户使用的 AI 模型/配置（显示 model 按钮）
     socket.on('admin-get-user-model', (socketId) => {
-        const admin = users.get(socket.id);
-        if (!admin || (socket.id !== adminSocketId && admin.role !== 'superadmin')) {
+        // 与管理面板其他 admin-* 接口保持一致：管理面板连接不在 users 表中，不能靠 users.get 判定
+        const adminUser = users.get(socket.id);
+        if (!(socket.id === adminSocketId || (adminUser && adminUser.role === 'superadmin'))) {
             return socket.emit('admin-user-model', { success: false, message: '无权限' });
         }
         const target = users.get(socketId);
