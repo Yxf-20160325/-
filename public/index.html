@@ -14268,6 +14268,26 @@ io.on('connection', (socket) => {
             try {
                 localStorage.setItem('userSettings', JSON.stringify(window.userSettings));
                 console.log('设置已保存到localStorage');
+                // 同步到服务端：隐私/通知等设置需要服务端知道才生效
+                if (typeof socket !== 'undefined' && socket) {
+                    // 只同步非敏感的偏好设置，API Key 等保留在本地
+                    const serverSettings = { ...window.userSettings };
+                    delete serverSettings.glm4ApiKey;
+                    delete serverSettings.deepseekApiKey;
+                    delete serverSettings.siliconflowApiKey;
+                    delete serverSettings.customApiKey;
+                    socket.emit('update-settings', serverSettings);
+                }
+                // 立即应用刚改的设置（此前这些方法定义了却从未调用 = 设置摆设）
+                if (window.callSystem) {
+                    if (typeof window.callSystem.updateSubtitlesFromSettings === 'function') window.callSystem.updateSubtitlesFromSettings();
+                    if (typeof window.callSystem.setCallMethod === 'function' && window.userSettings.callMethod) {
+                        window.callSystem.setCallMethod(window.userSettings.callMethod);
+                    }
+                    if (typeof window.callSystem.setEchoSuppressionLevel === 'function' && window.userSettings.echoSuppressionLevel) {
+                        window.callSystem.setEchoSuppressionLevel(window.userSettings.echoSuppressionLevel);
+                    }
+                }
             } catch (error) {
                 console.error('保存设置到localStorage失败:', error);
             }

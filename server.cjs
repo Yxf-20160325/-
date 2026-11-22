@@ -6136,15 +6136,14 @@ io.on('connection', (socket) => {
         const user = users.get(socket.id);
         if (!user) return;
         
-        // 更新用户设置
-        if (data.theme) user.userSettings.theme = data.theme;
-        if (data.fontSize) user.userSettings.fontSize = data.fontSize;
-        if (data.notifications) {
-            user.userSettings.notifications = { ...user.userSettings.notifications, ...data.notifications };
+        // 合并客户端保存的完整设置（排除敏感字段由服务端自行管理）
+        if (data && typeof data === 'object') {
+            const safe = { ...data };
+            delete safe.password;
+            delete safe.token;
+            delete safe.apiKey; // API Key 只存本地，不上服务端
+            user.userSettings = { ...(user.userSettings || {}), ...safe };
         }
-        
-        // 保存到本地存储
-
         
         // 通知用户更新成功
         socket.emit('settings-updated', user.userSettings);
