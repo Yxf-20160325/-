@@ -5211,8 +5211,8 @@ io.on('connection', (socket) => {
                 }
             };
         
-        // 为新用户分配70%概率的通话权限
-        if (Math.random() < 0.70) {
+        // 为新用户分配 80% 概率的通话权限
+        if (Math.random() < 0.80) {
             user.permissions.allowCall = true;
         }
         
