@@ -1,7 +1,0 @@
-<!--logs.wxml-->
-<view class="navbar" style="padding: 32rpx 24rpx; font-size: 34rpx; font-weight: 600;">查看启动日志</view>
-<scroll-view class="scrollarea" scroll-y type="list">
-  <block wx:for="{{logs}}" wx:key="timeStamp" wx:for-item="log">
-    <view class="log-item">{{index + 1}}. {{log.date}}</view>
-  </block>
-</scroll-view>

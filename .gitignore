@@ -2,3 +2,13 @@
 .env
 .env.local
 .env.*.local
+
+# 微信小程序（仅本地保留，不提交到 GitHub）
+pages/
+utils/
+app.js
+app.json
+app.wxss
+project.config.json
+project.private.config.json
+sitemap.json
