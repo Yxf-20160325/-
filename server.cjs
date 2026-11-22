@@ -7,6 +7,8 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const multer = require('multer');
+const crypto = require('crypto');
+const zlib = require('zlib');
 
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -467,6 +469,35 @@ app.get('/api/wechat/openids', (req, res) => {
         openidList.push({ username, openid });
     });
     res.json({ success: true, openids: openidList });
+});
+
+// ── TRTC UserSig：密钥只在服务端，前端不保存（官方 tls-sig-api-v2 算法）──
+const TRTC_SDKAPPID = Number(process.env.TRTC_SDKAPPID || 1600140349);
+const TRTC_SECRETKEY = process.env.TRTC_SECRETKEY || '6ca613545e431bbbba29f3b9295a0d80f9828d76ad2322a8e3518cbf8691e1170';
+function genTRTCUserSig(userId, expireSec) {
+    const current = Math.floor(Date.now() / 1000);
+    const expire = Number(expireSec) || 604800;
+    let toSign = 'TLS.identifier:' + userId + '\n';
+    toSign += 'TLS.sdkappid:' + TRTC_SDKAPPID + '\n';
+    toSign += 'TLS.time:' + current + '\n';
+    toSign += 'TLS.expire:' + expire + '\n';
+    const sig = crypto.createHmac('sha256', TRTC_SECRETKEY).update(toSign).digest('base64');
+    const doc = { 'TLS.ver': '2.0', 'TLS.identifier': String(userId), 'TLS.sdkappid': TRTC_SDKAPPID,
+        'TLS.time': current, 'TLS.expire': expire, 'TLS.sig': sig };
+    const compressed = zlib.deflateSync(Buffer.from(JSON.stringify(doc))).toString('base64');
+    return compressed.replace(/\+/g, '*').replace(/\//g, '-').replace(/=/g, '_');
+}
+app.post('/api/trtc/usersig', express.json(), (req, res) => {
+    try {
+        const { username, socketId } = req.body || {};
+        const ok = Array.from(users.values()).some(u => u.username === username && (!socketId || u.socketId === socketId));
+        if (!ok) return res.status(403).json({ success: false, message: '用户未在线' });
+        const uid = String(username || 'user').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 32) || 'user';
+        res.json({ success: true, sdkAppId: TRTC_SDKAPPID, userId: uid, userSig: genTRTCUserSig(uid, 604800) });
+    } catch (e) {
+        console.error('[TRTC] 生成 UserSig 失败:', e.message);
+        res.status(500).json({ success: false, message: '签名生成失败' });
+    }
 });
 
 // 微信登录API
