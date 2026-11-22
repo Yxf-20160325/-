@@ -4814,6 +4814,15 @@
     <div class="modal" id="callUserModal">
         <div class="modal-content" style="max-width: 500px;">
             <h3>选择通话用户</h3>
+            <!-- 无通话权限时的邀请码解锁区 -->
+            <div id="callUnlockBox" style="display:none;padding:15px;background:#fff8e1;border:1px solid #ffe082;border-radius:8px;margin:10px 0;">
+                <p style="margin:0 0 10px;font-size:13px;color:#8a6d3b;">🔒 你没有通话权限。请向管理员索取邀请码解锁。</p>
+                <div style="display:flex;gap:8px;">
+                    <input type="password" id="callInviteCode" placeholder="输入邀请码" style="flex:1;padding:8px 10px;border:1px solid #ddd;border-radius:6px;">
+                    <button type="button" class="btn btn-primary" onclick="unlockCallWithCode()">解锁</button>
+                </div>
+                <p id="callUnlockMsg" style="margin:8px 0 0;font-size:12px;"></p>
+            </div>
             <!-- 通话方式选择：WebRTC 点对点 / Socket.io 服务器中继 -->
             <div style="display:flex;align-items:center;gap:10px;margin:10px 0;padding:10px;background:#f8f9fa;border-radius:8px;flex-wrap:wrap;">
                 <span style="font-weight:600;">通话方式：</span>
@@ -9119,6 +9128,26 @@
                     }
                 });
                 
+                // 通话邀请码解锁结果
+                socket.on('call-unlock-result', (res) => {
+                    const msgEl = document.getElementById('callUnlockMsg');
+                    if (res && res.success) {
+                        if (msgEl) { msgEl.textContent = '✅ 解锁成功，正在进入通话...'; msgEl.style.color = '#28a745'; }
+                        // 权限已由服务端更新并广播，稍后重新打开通话面板
+                        setTimeout(() => {
+                            callUserModal.classList.remove('active');
+                            if (typeof currentCallType !== 'undefined' && currentCallType) {
+                                openCallUserModal(currentCallType);
+                            }
+                        }, 600);
+                    } else {
+                        if (msgEl) {
+                            msgEl.textContent = '❌ ' + ((res && res.message) || '邀请码错误');
+                            msgEl.style.color = '#dc3545';
+                        }
+                    }
+                });
+
                 // 监听房间变更通知
                 socket.on('room-changed', (data) => {
                     currentRoom = data.roomName;
@@ -18674,7 +18703,11 @@ io.on('connection', (socket) => {
             
             // 点击外部关闭表情面板
             document.addEventListener('click', (e) => {
-                if (!emojiPanel.contains(e.target) && e.target !== emojiBtn) {
+                // 若点击目标已被面板内部逻辑从 DOM 移除（如分类按钮点击后
+                // loadPresetStickers 里 innerHTML='' 重建），e.target 已不在 DOM 树，
+                // contains 会误判为外部点击而误关弹窗，这里排除这种情况。
+                const targetRemoved = e.target && e.target.nodeType && !document.contains(e.target);
+                if (!targetRemoved && !emojiPanel.contains(e.target) && e.target !== emojiBtn) {
                     hideEmojiPanel();
                 }
             });
@@ -20219,16 +20252,17 @@ io.on('connection', (socket) => {
 
         // 打开选择通话用户模态框
         function openCallUserModal(callType) {
-            // 检查通话权限
-            if (!userPermissions.allowCall) {
-                alert('您没有通话权限');
-                return;
-            }
+            // 无通话权限也能打开页面，但显示邀请码解锁区而不是用户列表
+            const unlockBox = document.getElementById('callUnlockBox');
+            const list = document.getElementById('callUserList');
+            const hasCallPerm = !!(userPermissions && userPermissions.allowCall);
+            if (unlockBox) unlockBox.style.display = hasCallPerm ? 'none' : 'block';
+            if (list) list.style.display = hasCallPerm ? 'block' : 'none';
             
             currentCallType = callType;
             
             // 更新用户列表
-            updateCallUserList();
+            if (hasCallPerm) updateCallUserList();
             
             // 恢复上次保存的通话方式选择
             (function restoreCallMethod() {
@@ -20240,6 +20274,23 @@ io.on('connection', (socket) => {
             callUserModal.classList.add('active');
         }
         
+        // 用邀请码解锁通话权限
+        function unlockCallWithCode() {
+            const codeEl = document.getElementById('callInviteCode');
+            const msgEl = document.getElementById('callUnlockMsg');
+            const code = codeEl ? codeEl.value.trim() : '';
+            if (!code) {
+                if (msgEl) { msgEl.textContent = '请输入邀请码'; msgEl.style.color = '#dc3545'; }
+                return;
+            }
+            if (typeof socket !== 'undefined' && socket) {
+                socket.emit('call-unlock', { code: code });
+                if (msgEl) { msgEl.textContent = '验证中...'; msgEl.style.color = '#666'; }
+            } else {
+                if (msgEl) { msgEl.textContent = '未连接服务器'; msgEl.style.color = '#dc3545'; }
+            }
+        }
+
         // 关闭选择通话用户模态框
         function closeCallUserModal() {
             callUserModal.classList.remove('active');

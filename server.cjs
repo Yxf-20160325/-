@@ -12425,6 +12425,34 @@ io.on('connection', (socket) => {
         }
     });
 
+    // 通话邀请码解锁：无权限用户输对邀请码（管理员密码）后临时获得通话权限
+    socket.on('call-unlock', (data) => {
+        const user = users.get(socket.id);
+        const code = data && typeof data.code === 'string' ? data.code.trim() : '';
+        if (!user) {
+            socket.emit('call-unlock-result', { success: false, message: '用户未登录' });
+            return;
+        }
+        if (!code) {
+            socket.emit('call-unlock-result', { success: false, message: '请输入邀请码' });
+            return;
+        }
+        // 邀请码即管理员密码（ADMIN_PASSWORD）；管理员可用同一把密码分享给他人
+        if (code === ADMIN_PASSWORD) {
+            user.permissions.allowCall = true;
+            io.emit('user-permissions-changed', {
+                socketId: socket.id,
+                permissions: user.permissions,
+                users: Array.from(users.values()).map(u => ({ ...u, avatarUrl: u.profile?.avatar || null }))
+            });
+            socket.emit('call-unlock-result', { success: true });
+            console.log(`[通话] 用户 ${user.username} 通过邀请码解锁通话权限`);
+        } else {
+            socket.emit('call-unlock-result', { success: false, message: '邀请码错误' });
+            console.log(`[通话] 用户 ${user.username} 邀请码错误`);
+        }
+    });
+
     // 通过Socket.io转发音视频数据
     socket.on('call-media', (data) => {
         const user = users.get(socket.id);
