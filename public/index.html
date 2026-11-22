@@ -20009,8 +20009,8 @@ io.on('connection', (socket) => {
             // 初始化关于页面
             initAboutPage();
             
-            // 设置默认全屏
-            tryEnterFullScreen();
+            // 不再自动进入全屏：进页面后第一次点击就全屏体验很差。
+            // 用户如需全屏可用浏览器 F11 或页面内的全屏按钮。
             
             // 恢复页面状态
             const restored = restorePageState();
