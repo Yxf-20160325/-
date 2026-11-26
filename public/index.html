@@ -215,6 +215,18 @@
             overflow-y: auto;
             background: #f8f9fa;
         }
+        .chat-container { position: relative; }
+        .scroll-bottom-prompt {
+            position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%);
+            z-index: 50; display: flex; align-items: center; gap: 10px;
+            padding: 8px 14px; background: rgba(0,0,0,0.82); color: #fff;
+            border-radius: 20px; font-size: 13px; box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+            white-space: nowrap;
+        }
+        .scroll-bottom-prompt button {
+            background: #667eea; color: #fff; border: none; border-radius: 12px;
+            padding: 3px 10px; font-size: 12px; cursor: pointer;
+        }
         
         .users-panel {
             width: 200px;
@@ -3728,6 +3740,10 @@
             <div class="messages" id="messages">
                 <div class="system-message">欢迎来到聊天室！请输入昵称加入。</div>
             </div>
+            <div id="scrollBottomPrompt" class="scroll-bottom-prompt" style="display:none;">
+                <span id="scrollBottomLabel">新消息，3 秒后滚动到底部</span>
+                <button type="button" onclick="cancelAutoScroll()">取消</button>
+            </div>
         </div>
 
         <div class="input-area">
@@ -4880,6 +4896,18 @@
             <h3 id="customPopupTitle" style="margin-top:0;">通知</h3>
             <div id="customPopupContent" style="margin:12px 0 16px;font-size:14px;line-height:1.8;word-break:break-word;"></div>
             <div id="customPopupButtons" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;"></div>
+        </div>
+    </div>
+    <!-- 头像过大处理选择弹窗（裁剪 / 整张使用） -->
+    <div class="modal" id="avatarSizeModal" style="z-index: 10070;">
+        <div class="modal-content" style="max-width:460px;">
+            <h3 style="margin-top:0;">头像尺寸过大</h3>
+            <div id="avatarSizeInfo" style="margin:12px 0 16px;font-size:14px;line-height:1.8;color:#555;"></div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
+                <button type="button" class="btn btn-cancel" onclick="closeAvatarSizeModal()">取消</button>
+                <button type="button" class="btn btn-confirm" onclick="chooseAvatarOption('crop')">裁剪使用</button>
+                <button type="button" class="btn btn-confirm" onclick="chooseAvatarOption('whole')">整张使用</button>
+            </div>
         </div>
     </div>
     
@@ -9246,10 +9274,12 @@
                         if (!data.batch || data.startIndex === 0) {
                             messagesDiv.innerHTML = '';
                         }
-                        // 添加历史消息
+                        // 添加历史消息（直接滚动，不弹提示）
+                        window._loadingRoomHistory = true;
                         data.messages.forEach(message => {
                             addMessage(message);
                         });
+                        window._loadingRoomHistory = false;
                         // 如果是分批发送且已完成，滚动到底部
                         if (data.batch && data.done) {
                             messagesDiv.scrollTop = messagesDiv.scrollHeight;
@@ -25079,10 +25109,12 @@ io.on('connection', (socket) => {
                     if (!data.batch || data.startIndex === 0) {
                         messagesDiv.innerHTML = '';
                     }
-                    // 添加历史消息
+                    // 添加历史消息（直接滚动，不弹提示）
+                    window._loadingRoomHistory = true;
                     data.messages.forEach(message => {
                         addMessage(message);
                     });
+                    window._loadingRoomHistory = false;
                     // 如果是分批发送且已完成，滚动到底部
                     if (data.batch && data.done) {
                         messagesDiv.scrollTop = messagesDiv.scrollHeight;
@@ -25629,6 +25661,45 @@ io.on('connection', (socket) => {
         });
         // ===== 消息反应功能结束 =====
 
+        // ===== 新消息自动滚动到底部：先提示，可取消 =====
+        const AUTO_SCROLL_DELAY = 3;
+        let autoScrollTimer = null;
+        let autoScrollTick = null;
+        let autoScrollRemaining = AUTO_SCROLL_DELAY;
+        window._loadingRoomHistory = false;
+        function updateScrollPrompt() {
+            const label = document.getElementById('scrollBottomLabel');
+            if (label) label.textContent = '新消息，' + autoScrollRemaining + ' 秒后滚动到底部';
+        }
+        function hideScrollPrompt() {
+            if (autoScrollTimer) { clearTimeout(autoScrollTimer); autoScrollTimer = null; }
+            if (autoScrollTick) { clearInterval(autoScrollTick); autoScrollTick = null; }
+            const el = document.getElementById('scrollBottomPrompt');
+            if (el) el.style.display = 'none';
+        }
+        function scrollMessagesToBottom() {
+            const el = document.getElementById('messages');
+            if (el) el.scrollTop = el.scrollHeight;
+            hideScrollPrompt();
+        }
+        function cancelAutoScroll() {
+            hideScrollPrompt();
+            showNotification('已取消自动滚动', 'info');
+        }
+        function requestAutoScroll() {
+            if (window._loadingRoomHistory) { scrollMessagesToBottom(); return; }
+            hideScrollPrompt();
+            autoScrollRemaining = AUTO_SCROLL_DELAY;
+            const el = document.getElementById('scrollBottomPrompt');
+            if (el) el.style.display = 'flex';
+            updateScrollPrompt();
+            autoScrollTick = setInterval(function() {
+                autoScrollRemaining = Math.max(0, autoScrollRemaining - 1);
+                updateScrollPrompt();
+            }, 1000);
+            autoScrollTimer = setTimeout(scrollMessagesToBottom, AUTO_SCROLL_DELAY * 1000);
+        }
+
         function addMessage(data) {
             // 保存消息到历史记录数组
             allMessages.push(data);
@@ -25842,7 +25913,7 @@ io.on('connection', (socket) => {
                 }
             });
             
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            requestAutoScroll();
             
             // 发送已读通知（非自己发送的消息）
             if (data.username !== username && data.id) {
@@ -25919,43 +25990,32 @@ io.on('connection', (socket) => {
                     return;
                 }
 
-                // 文件大小限制：2MB（头像不需要太大）
-                if (file.size > 2 * 1024 * 1024) {
-                    alert('头像大小不能超过 2MB');
-                    return;
-                }
-                    
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     const avatarDataUrl = e.target.result;
 
-                    // 【安全】验证图片真实内容 + 限制分辨率（防止超大尺寸图片攻击）
+                    // 【安全】验证图片真实内容
                     const img = new Image();
                     img.onload = function() {
                         const MAX_DIMENSION = 4096;
-                        if (img.width > MAX_DIMENSION || img.height > MAX_DIMENSION) {
-                            alert(`头像尺寸过大（${img.width}×${img.height}），请上传不超过 ${MAX_DIMENSION}×${MAX_DIMENSION} 像素的图片`);
+                        const overSize = file.size > 2 * 1024 * 1024 ||
+                            img.width > MAX_DIMENSION || img.height > MAX_DIMENSION;
+
+                        if (overSize) {
+                            // 超过头像规定大小时不再直接拒绝，提供「裁剪 / 整张使用」
+                            _avatarPending = { img: img };
+                            const info = document.getElementById('avatarSizeInfo');
+                            if (info) {
+                                info.innerHTML = '所选图片为 ' + img.width + '×' + img.height + ' 像素、' +
+                                    (file.size / 1024 / 1024).toFixed(2) + 'MB，超过头像推荐规格（2MB / ' + MAX_DIMENSION + '×' + MAX_DIMENSION + '）。<br>请选择处理方式：';
+                            }
+                            const modal = document.getElementById('avatarSizeModal');
+                            if (modal) modal.classList.add('active');
                             return;
                         }
 
-                        // 将头像压缩到 200×200 再保存，节省 localStorage 空间
-                        const canvas = document.createElement('canvas');
-                        const size = Math.min(img.width, img.height, 200);
-                        canvas.width = size;
-                        canvas.height = size;
-                        const ctx = canvas.getContext('2d');
-                        // 居中裁剪
-                        const offsetX = (img.width - size) / 2;
-                        const offsetY = (img.height - size) / 2;
-                        ctx.drawImage(img, offsetX, offsetY, size, size, 0, 0, size, size);
-                        const compressedUrl = canvas.toDataURL('image/jpeg', 0.85);
-
-                        // 保存头像到localStorage
-                        saveUserAvatar(username, compressedUrl);
-                        // 更新界面上的头像
-                        updateAvatars();
-                        // 发送头像更新通知
-                        socket.emit('avatar-updated', { avatar: compressedUrl });
+                        // 未超限：沿用原有居中裁剪压缩逻辑
+                        applyAvatar(img, 'crop');
                     };
                     img.onerror = function() {
                         alert('图片文件损坏或格式不支持，请重新选择');
@@ -25965,6 +26025,57 @@ io.on('connection', (socket) => {
                 reader.readAsDataURL(file);
             };
             input.click();
+        }
+
+        // 头像过大弹窗：待处理的图片
+        let _avatarPending = null;
+
+        function closeAvatarSizeModal() {
+            const modal = document.getElementById('avatarSizeModal');
+            if (modal) modal.classList.remove('active');
+            _avatarPending = null;
+        }
+
+        // 用户选择「裁剪」或「整张使用」后处理头像
+        function chooseAvatarOption(mode) {
+            const modal = document.getElementById('avatarSizeModal');
+            if (modal) modal.classList.remove('active');
+            if (!_avatarPending) return;
+            const img = _avatarPending.img;
+            _avatarPending = null;
+            applyAvatar(img, mode);
+        }
+
+        // 生成头像数据并保存：crop=居中裁剪为 200×200，whole=等比缩放保留整张
+        function applyAvatar(img, mode) {
+            const MAX_OUTPUT = 200;
+            const MAX_DIMENSION = 4096;
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            if (mode === 'whole') {
+                // 整张使用：等比缩放（限制最大边长，避免生成超大图片），不裁剪
+                let w = img.width, h = img.height;
+                const scale = Math.min(1, MAX_OUTPUT / Math.max(w, h), MAX_DIMENSION / Math.max(w, h));
+                w = Math.max(1, Math.round(w * scale));
+                h = Math.max(1, Math.round(h * scale));
+                canvas.width = w;
+                canvas.height = h;
+                ctx.drawImage(img, 0, 0, w, h);
+            } else {
+                // 裁剪：居中取正方形并压缩到 200×200
+                const size = Math.min(img.width, img.height, MAX_OUTPUT);
+                canvas.width = size;
+                canvas.height = size;
+                const offsetX = (img.width - size) / 2;
+                const offsetY = (img.height - size) / 2;
+                ctx.drawImage(img, offsetX, offsetY, size, size, 0, 0, size, size);
+            }
+
+            const avatarUrl = canvas.toDataURL('image/jpeg', 0.85);
+            saveUserAvatar(username, avatarUrl);
+            updateAvatars();
+            socket.emit('avatar-updated', { avatar: avatarUrl });
         }
         
         // 保存用户头像

@@ -313,6 +313,17 @@ function deleteMessage(roomName, msgId, by, reason, originalContent) {
     );
 }
 
+// 清空房间消息（软删除）：避免管理员在内存里清空后，重启又从 DB 恢复旧消息
+function clearRoomMessages(roomName, by) {
+    if (!roomName) return;
+    fire('UPDATE messages SET is_deleted = 1 WHERE room_name = ?', [roomName]);
+    fire(
+        'INSERT INTO deleted_messages (message_id, room_name, deleted_by, reason, original_content, created_at) ' +
+        'SELECT id, room_name, ?, ?, content, NOW() FROM messages WHERE room_name = ?',
+        [by || null, '管理员清空房间消息', roomName]
+    );
+}
+
 // ============================================================
 // 模块 5：好友 / 私聊 / 禁言 / 黑名单
 // ============================================================
@@ -451,7 +462,7 @@ module.exports = {
     // rooms
     loadAllRooms, saveRoom, deleteRoom, touchRoomActivity,
     // messages
-    insertMessage, getRecentMessages, deleteMessage,
+    insertMessage, getRecentMessages, deleteMessage, clearRoomMessages,
     // social
     addFriendship, removeFriendship, setForcedFriendship, getFriendUsernames,
     insertPrivateMessage, getPrivateMessages, markPrivateRead,

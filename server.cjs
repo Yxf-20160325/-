@@ -4072,6 +4072,20 @@ app.get('/api/apps/install-link/:id', (req, res) => {
 });
 
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+
+// ===== Better Stack 状态监控（公开健康检查端点）=====
+// 供 Better Stack HTTP 监控或外部探活使用；无需鉴权、不受 CSRF/限流影响
+// GET /health -> 200 JSON；GET /health/ping -> 200 纯文本 pong
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        status: 'ok',
+        uptimeSeconds: Math.floor(process.uptime()),
+        timestamp: new Date().toISOString()
+    });
+});
+app.get('/health/ping', (req, res) => {
+    res.status(200).type('text/plain').send('pong');
+});
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin.html')));
 
 // 房间访问路由
@@ -8132,9 +8146,12 @@ io.on('connection', (socket) => {
             // 清空全局消息Map
             messages.clear();
             
-            // 清空所有房间的消息数组
+            // 清空所有房间的消息数组，并同步软删除 DB 记录（否则重启后 room-history 会再次加载旧消息）
             rooms.forEach(room => {
                 room.messages = [];
+                if (db && typeof db.clearRoomMessages === 'function') {
+                    db.clearRoomMessages(room.roomName, user && user.username ? user.username : 'admin');
+                }
             });
             
             // 通知所有用户消息已清空
@@ -14513,6 +14530,35 @@ const PORT = process.env.PORT || 147;
         } catch (e) { console.error('[DB] 加载封禁IP失败:', e.message); }
     }
 })();
+
+// ===== Better Stack Heartbeat 上报 =====
+// 设置 BETTERSTACK_HEARTBEAT_URL 后，服务启动及定时向 Better Stack 发送心跳。
+// 需在 Better Stack 创建 Cron/Heartbeat 监控，并把频率/宽限期设置为略大于上报间隔。
+function reportBetterStackHeartbeat() {
+    try {
+        const url = process.env.BETTERSTACK_HEARTBEAT_URL;
+        if (!url) return; // 未配置则静默跳过
+        const mod = url.startsWith('https:') ? require('https') : require('http');
+        const req = mod.get(url, (resp) => {
+            if (resp && resp.statusCode === 200) {
+                console.log('[BetterStack] 心跳上报成功');
+            } else {
+                console.warn('[BetterStack] 心跳上报返回状态:', resp && resp.statusCode);
+            }
+            if (resp) resp.resume(); // 消费响应，释放连接
+        });
+        req.on('error', (e) => console.warn('[BetterStack] 心跳上报失败:', e.message));
+        req.setTimeout(10000, () => req.destroy());
+    } catch (e) {
+        console.warn('[BetterStack] 心跳上报异常:', e.message);
+    }
+}
+if (process.env.BETTERSTACK_HEARTBEAT_URL) {
+    const hbMs = Math.max(30000, (parseInt(process.env.BETTERSTACK_HEARTBEAT_INTERVAL_MS, 10) || 60000));
+    setTimeout(reportBetterStackHeartbeat, 3000); // 启动后先报一次
+    setInterval(reportBetterStackHeartbeat, hbMs);
+    console.log(`[BetterStack] 心跳上报已启用，间隔 ${hbMs / 1000}s`);
+}
 
 server.listen(PORT, () => {
     console.log(`\n========================================`);
